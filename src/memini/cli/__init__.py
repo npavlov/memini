@@ -13,6 +13,7 @@ Usage::
                         [--name <label>] [--expires-in <duration>]
     memini token list
     memini token revoke <id-or-prefix>
+    memini reindex --workspace <name>
 
 Global options go before the command. ``--config FILE`` sets ``MEMINI_CONFIG_FILE`` for this run;
 every other setting comes from the environment and that file, as for the service
@@ -30,12 +31,18 @@ is stored.
 An error is one line on stderr, ``memini: ...``, without a traceback. No output holds the database
 URL or its password; the server is named as ``host:port``.
 
+``reindex`` rebuilds a workspace's index from raw records under the configured embedding model and
+the chunker of this build (:func:`memini.index.reindex`); it is what a refused search names. It
+needs an embedding provider (``MEMINI_EMBEDDING_PROVIDER``).
+
 Exit codes:
 
 - 0: done; also ``serve`` stopped by SIGINT or SIGTERM.
 - 1: the command failed: no such workspace or token, a name already taken, a migration that failed
-  or is pending, a server that did not start.
-- 2: wrong usage or invalid configuration.
+  or is pending, a server that did not start; for ``reindex`` also a rebuild of the workspace that
+  is running already, raw content that cannot be read, an embedding model that failed, or an index
+  built with another fingerprint.
+- 2: wrong usage or invalid configuration, including no embedding provider for ``reindex``.
 - 3: the database cannot be reached.
 - 130: interrupted by Ctrl-C.
 """
@@ -51,7 +58,7 @@ import psycopg
 
 from memini import __version__
 from memini.auth import SCOPES
-from memini.cli import admin, serve
+from memini.cli import admin, index, serve
 from memini.cli.common import (
     EXIT_FAILURE,
     EXIT_INTERRUPTED,
@@ -63,6 +70,8 @@ from memini.cli.common import (
 )
 from memini.config import CONFIG_FILE_VAR, ConfigError, Settings, load_settings
 from memini.db import MigrationError
+from memini.embeddings import EmbeddingError, EmbeddingsNotConfiguredError
+from memini.index import IndexMismatchError
 
 __all__ = ["build_parser", "main"]
 
@@ -111,6 +120,12 @@ def _describe(error: Exception, database: DatabaseUrl) -> tuple[int, str]:
             return EXIT_UNAVAILABLE, database.unavailable(error)
         case MigrationError():
             return EXIT_FAILURE, f"migration failed: {database.redact(str(error))}"
+        case EmbeddingsNotConfiguredError():  # names settings, never values
+            return EXIT_USAGE, str(error)
+        case EmbeddingError():  # names the provider, the model and the cause; never a key or text
+            return EXIT_FAILURE, f"embedding failed: {database.redact(str(error))}"
+        case IndexMismatchError():  # names the workspace, both fingerprints and `memini reindex`
+            return EXIT_FAILURE, str(error)
         case psycopg.Error():
             primary = error.diag.message_primary or type(error).__name__
             return EXIT_FAILURE, f"database error: {database.redact(primary)}"
@@ -210,5 +225,22 @@ def build_parser() -> argparse.ArgumentParser:
         "token", metavar="id-or-prefix", help="the token's id or prefix, as `token list` shows"
     )
     revoke_token.set_defaults(command=admin.revoke_token_command)
+
+    reindex = commands.add_parser(
+        "reindex",
+        help="rebuild a workspace's index from raw records",
+        description="Rebuild the chunks, vectors and symbols of a workspace from its raw records"
+        " with the configured embedding model and this build's chunker. Unchanged chunks are"
+        " kept and not embedded again. Search in the workspace is refused until the rebuild"
+        " finishes when the model or the chunker changed. Needs an embedding provider.",
+    )
+    reindex.add_argument(
+        "--workspace",
+        metavar="NAME",
+        required=True,
+        type=admin.parse_workspace_name,
+        help="the workspace whose index to rebuild",
+    )
+    reindex.set_defaults(command=index.reindex_command)
 
     return parser

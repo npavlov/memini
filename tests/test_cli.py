@@ -5,6 +5,7 @@ import asyncio
 import socket
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from importlib.metadata import entry_points
@@ -29,10 +30,23 @@ from memini.cli.common import (
 from memini.cli.serve import run_http_server
 from memini.config import Settings, environment_variables
 from memini.db import MigrationError
+from memini.embeddings import EmbeddingError, EmbeddingsNotConfiguredError, EmbeddingSpec
+from memini.index import IndexFingerprint, IndexMismatchError, IndexState
 
 # A distinctive password that must never be printed.
 CANARY = "canary-not-a-real-secret-2d7e51"
 SECRET_URL = f"postgresql://memini:{CANARY}@db.invalid:5432/memini"
+
+STALE_STATE = IndexState(
+    workspace_id=uuid.UUID(int=1),
+    workspace="acme",
+    fingerprint="0" * 64,
+    built_with=IndexFingerprint(
+        EmbeddingSpec(provider="openai_compatible", model="synthetic-embed", dimension=8), "1"
+    ),
+    created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+)
 
 
 @dataclass(frozen=True)
@@ -115,6 +129,8 @@ def test_python_dash_m_runs_main() -> None:
         (("workspace", "create", "Alpha"), "a workspace name is"),
         (("token", "revoke"), "id-or-prefix"),
         (("serve", "--port", "1"), "unrecognized arguments"),
+        (("reindex",), "--workspace"),
+        (("reindex", "--workspace", "No Such"), "a workspace name"),
     ],
 )
 def test_wrong_usage_exits_2_before_reading_settings(
@@ -220,6 +236,19 @@ def test_unparsable_database_url_prints_no_secret(
     assert CANARY not in result.out + result.err
 
 
+def test_reindex_without_an_embedding_provider_exits_2_before_the_database(
+    capsys: pytest.CaptureFixture[str], unreachable: str
+) -> None:
+    result = invoke(capsys, "reindex", "--workspace", "acme")
+
+    assert result.code == EXIT_USAGE
+    assert result.out == ""
+    assert result.err == (
+        "memini: no embedding provider is configured: set MEMINI_EMBEDDING_PROVIDER"
+        " (openai_compatible or local) and the settings it needs\n"
+    )
+
+
 # --- Errors at run time --------------------------------------------------------------------------
 
 
@@ -280,6 +309,28 @@ def test_debug_adds_the_traceback_without_the_secret(
             " (run with --debug for the traceback)\n",
         ),
         (KeyboardInterrupt(), EXIT_INTERRUPTED, "memini: interrupted\n"),
+        (
+            EmbeddingsNotConfiguredError(),
+            EXIT_USAGE,
+            "memini: no embedding provider is configured: set MEMINI_EMBEDDING_PROVIDER"
+            " (openai_compatible or local) and the settings it needs\n",
+        ),
+        (
+            EmbeddingError(f"model synthetic-embed failed near {SECRET_URL}"),
+            EXIT_FAILURE,
+            "memini: embedding failed: model synthetic-embed failed near ***\n",
+        ),
+        (
+            IndexMismatchError(
+                STALE_STATE, IndexFingerprint(STALE_STATE.built_with.embedding, "2")
+            ),
+            EXIT_FAILURE,
+            "memini: the index of workspace acme is out of date: it was built with model"
+            " synthetic-embed (openai_compatible, dimension 8), chunker 1, but the service is"
+            " configured for model synthetic-embed (openai_compatible, dimension 8), chunker 2"
+            " (changed: chunker version). Search and indexing in this workspace are blocked until"
+            " the index is rebuilt: run `memini reindex --workspace acme`\n",
+        ),
     ],
 )
 def test_errors_map_to_exit_codes_and_one_redacted_line(

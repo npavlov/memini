@@ -130,6 +130,40 @@ LOOKUPS: list[tuple[str, str, tuple[str, ...], bool]] = [
     ("runs of a source by time", "run", ("source_id", "started_at"), False),
     ("runs of a stream by time: last result in status", "run", ("stream_id", "started_at"), False),
     ("index state of a workspace: check before search", "index_state", ("workspace_id",), True),
+    ("chunk by id: upsert", "chunk", ("id",), True),
+    (
+        "chunks of a record: the writer's diff and delete; target of the symbol's key",
+        "chunk",
+        ("workspace_id", "source_id", "record_id", "id"),
+        True,
+    ),
+    (
+        "stored vector by text hash: reuse instead of embedding",
+        "chunk",
+        ("workspace_id", "embedding_key", "text_hash"),
+        False,
+    ),
+    ("lexical search", "chunk", ("lexical",), False),
+    ("exact and regex code search", "chunk", ("content",), False),
+    (
+        "target of the chunk's key to its record",
+        "record",
+        ("workspace_id", "source_id", "kind", "id"),
+        True,
+    ),
+    (
+        "symbols of a record: the writer's diff",
+        "symbol",
+        ("record_id", "qualified_name", "ordinal"),
+        True,
+    ),
+    ("get_symbol by name", "symbol", ("workspace_id", "name", "source_id"), False),
+    (
+        "get_symbol by qualified name",
+        "symbol",
+        ("workspace_id", "qualified_name", "source_id"),
+        False,
+    ),
 ]
 
 

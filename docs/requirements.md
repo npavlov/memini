@@ -315,6 +315,27 @@ credential helper that reads it from the environment of the git process (never i
 arguments or on disk), and one ssh key with a known_hosts file and strict host key checking.
 Per-source credentials come with the credential store (M3).
 
+**Index tables, writer and rebuild** (decided 2026-11-18). Chunks and symbols are the tables `chunk`
+and `symbol`. Each row names its record with the record's workspace, source and kind in one foreign
+key, so a row cannot point into another workspace, and deleting a record (forget, retention, a
+deleted source) deletes its chunks and symbols. The writer runs in the caller's transaction: it
+locks the record, checks the fingerprint, compares each chunk with the stored row of the same id
+and writes only what differs. A vector is computed only for a text that has none in the workspace
+under the embedding key; a chunk that only moved keeps its vector. Writing unchanged input again
+embeds nothing and changes no row. The vector column has no dimension, so a change of model needs
+no migration. The HNSW index is one partial index per embedding key on a cast of the column
+(`vector` up to 2000 dimensions, `halfvec` up to 4000, none above), created by the service before
+the first chunk of the key is written, and dropped by the rebuild that leaves it unused; a search
+orders by the same expression, with the key as a literal. The lexical column is a `tsvector` with
+the `simple` configuration (no stemming, the same for every language): a baseline for open
+question 1 to measure against, not its answer. A trigram index on the content serves exact and
+regex code search. `memini reindex --workspace NAME` rebuilds one workspace from raw records,
+record by record through the same writer under the new fingerprint; one last transaction deletes
+the chunks of other embedding keys and records the new fingerprint, so search stays refused until
+it commits. A rebuild that stopped resumes without embedding anything twice. Code is read again
+from the repository mirror (a code record's content hash is its blob id), other kinds from the
+stored payload.
+
 ## 10. Quality
 
 - **Retrieval eval**: a question set per workspace with expected records; recall@k per kind. Run on every

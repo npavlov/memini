@@ -16,8 +16,9 @@ A change of what goes in, or of the encoding, takes a new domain version. The qu
 batch size, the timeout and the endpoint URL are not parts: they do not change stored vectors.
 
 Each workspace's index records its fingerprint in ``index_state`` (migration 0004). The service
-computes the fingerprint its settings call for (``IndexFingerprint(embedding_spec(settings),
-CHUNKER_VERSION)``) and:
+computes the fingerprint its settings call for, :func:`current_fingerprint` of
+``embedding_spec(settings)`` (the spec and :func:`memini.chunking.chunker_fingerprint`: the chunker
+version and the versions of tree-sitter and its grammars), and:
 
 - search calls :func:`check_index` first: a stored fingerprint that differs raises
   :class:`IndexMismatchError`, whose message names ``memini reindex``;
@@ -35,6 +36,7 @@ from uuid import UUID
 from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow
 
+from memini.chunking import chunker_fingerprint
 from memini.config import EmbeddingPooling, EmbeddingProvider
 from memini.embeddings.base import EmbeddingSpec, Normalization
 from memini.ids import hash_fields
@@ -47,6 +49,7 @@ __all__ = [
     "IndexMismatchError",
     "IndexState",
     "check_index",
+    "current_fingerprint",
     "embedding_key",
     "ensure_index",
     "read_index_state",
@@ -127,6 +130,13 @@ class IndexFingerprint:
             "chunker version": self.chunker_version != other.chunker_version,
         }
         return tuple(name for name, changed in parts.items() if changed)
+
+
+def current_fingerprint(spec: EmbeddingSpec) -> IndexFingerprint:
+    """The fingerprint of an index built now with ``spec``: what search checks a stored one against,
+    and what the writer and a rebuild record. Its chunker part is
+    :func:`memini.chunking.chunker_fingerprint`."""
+    return IndexFingerprint(spec, chunker_fingerprint())
 
 
 @dataclass(frozen=True, slots=True)
