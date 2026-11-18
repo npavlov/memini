@@ -79,6 +79,7 @@ memini workspace create <name> | list
 memini token create --scope {read,ingest,admin} [--scope ...] [--workspace <name>] [--name <label>]
                     [--expires-in <duration>]
 memini token list | revoke <id-or-prefix>
+memini reindex --workspace <name>
 ```
 
 ### Settings

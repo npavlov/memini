@@ -43,6 +43,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   line windows for other files; chunk ids stable across runs and unaffected by edits elsewhere.
 - Git mirror manager: one bare mirror per source, fetched atomically (a failed fetch changes nothing),
   hardened git invocations, https and ssh by default; the image ships git and a mirror volume.
+- Index writer: chunk and symbol tables with HNSW, full-text and trigram indexes; unchanged chunks cause
+  no embedding call and no row change; `memini reindex --workspace NAME` rebuilds from raw.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
