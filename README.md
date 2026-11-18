@@ -70,6 +70,10 @@ Or, in a client's JSON configuration:
                            "headers": {"Authorization": "Bearer <token>"}}}}
 ```
 
+Backup and restore: `scripts/backup.sh` writes a pg_dump archive of the database, `scripts/restore.sh FILE`
+restores it into an empty stack; mirrors are cloned again and the credential key is kept apart. See
+[docs/operations/backup.md](docs/operations/backup.md).
+
 Day to day:
 
 | Task | Command |

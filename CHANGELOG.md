@@ -89,6 +89,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   down to the retention start.
 - Per-token rate limits, a request body limit and a time limit on every query a request runs.
 - Configuration reference generated from the settings model (`docs/configuration.md`).
+- Backup and restore scripts and procedure (`docs/operations/backup.md`), with a test that a restored
+  database answers searches identically.
+- Search hits of messages and meetings carry an anchor and a link into the record.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
