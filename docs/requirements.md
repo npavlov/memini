@@ -287,10 +287,29 @@ document is chunked the same way from its payload until its intake (M2) decides 
 | `list_messages` | Messages to me, mentioning me, or from a person, by source and time. |
 | `get_thread` | A whole thread. |
 | `status` | Stream lag, last results, index state. |
-| `add_document`, `record_decision`, `supersede_decision` | Writes; off unless the token has the `ingest` scope. |
+| `add_document`, `record_decision`, `supersede_decision`, `close_decision`, `retract_decision` | Writes; off unless the token has the `ingest` scope. |
 
 Every result carries source kind, locator or URL, timestamp, and `repo@sha` for code. Decisions carry
 status and evidence links.
+
+**Manual operations** (decided 2026-11-18). A person adds, links, closes and retracts knowledge
+items through four MCP tools and their routes, one library (`memini.decisions`) over
+`memini.knowledge`: `record_decision` is `POST /v1/workspaces/{workspace}/decisions`, a decision or
+an open question with its statement, `decided_at`, evidence, participants (person ids) and the
+active items it `replaces` or `answers`; `supersede_decision` is `POST …/decisions/{id}/supersede`,
+links from a stored item to earlier ones; `close_decision` and `retract_decision` are
+`POST …/decisions/{id}/close` and `…/retract`. An item in the path must be in the workspace of the
+path. Evidence names a record by its id, or by its source's name and external id (and its kind
+when the source has two under that id), with an anchor. Every item recorded so is manual, so
+extraction never supersedes or answers it and a correction survives a re-extraction: a person
+corrects an extracted item by recording the correction with `supersedes`, or retracts it. The
+writes need the `ingest` scope (over MCP also `read`, which the endpoint asks of every request) and
+keep a token limited to one workspace inside it (anything outside is not found, 404). A refusal of
+the append-only journal is a 409 whose message names the database constraint: `not_active` (an
+item already superseded, closed or retracted), `supersession_refused` (a cycle, the relation, the
+order, or an extracted item over a manual one) or `journal_refused` (any other trigger); evidence
+or a person that is not found is a 404, a field the journal refuses a 422. Reads
+(`list_decisions`, `get_decision`) are separate tools.
 
 ### HTTP API
 

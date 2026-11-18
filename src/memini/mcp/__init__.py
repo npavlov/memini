@@ -5,6 +5,8 @@
 - :mod:`memini.mcp.query`: ``search``, ``search_code``, ``get_symbol`` and ``read_source``, over
   :mod:`memini.query`, the library the HTTP routes call too.
 - :mod:`memini.mcp.status`: the ``status`` tool.
+- :mod:`memini.mcp.decisions`: ``record_decision``, ``supersede_decision``, ``close_decision`` and
+  ``retract_decision``, over :mod:`memini.decisions`; writes, with the ``ingest`` scope.
 - :mod:`memini.mcp.endpoint`: the server as an ASGI app, stateless with JSON responses.
 
 The HTTP application mounts the endpoint at :data:`MCP_PATH` behind bearer-token authentication

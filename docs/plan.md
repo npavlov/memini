@@ -59,7 +59,8 @@ checkpoint in place and lists the missing calls; a parser fix replays from store
 
 - Extraction with structured output; `llm_policy` per source; provider config per workspace.
 - Supersession check against similar active items.
-- Tools: `list_decisions`, `get_decision`, `record_decision`, `supersede_decision`.
+- Tools: `list_decisions`, `get_decision`, `record_decision`, `supersede_decision`, `close_decision`,
+  `retract_decision`.
 - Decision eval on labelled synthetic threads.
 
 Done when: on a fixture where thread B reverses thread A, A becomes `superseded`, the default list shows

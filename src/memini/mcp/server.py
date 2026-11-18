@@ -30,6 +30,7 @@ from starlette.requests import HTTPConnection
 from memini import __version__
 from memini.auth import Principal
 from memini.db import Pool
+from memini.mcp.decisions import DECISION_WRITE_TOOLS
 from memini.mcp.query import QUERY_TOOLS
 from memini.mcp.status import STATUS_TOOL
 from memini.mcp.tools import Tool, ToolCall
@@ -55,8 +56,9 @@ SERVER_INSTRUCTIONS: Final = (
 )
 """Sent at ``initialize`` (and in ``server/discover``) to every client (principle 11)."""
 
-TOOLS: Final[Sequence[Tool[Any, Any]]] = (*QUERY_TOOLS, STATUS_TOOL)
-"""Every tool the server offers, in the order ``tools/list`` shows them."""
+TOOLS: Final[Sequence[Tool[Any, Any]]] = (*QUERY_TOOLS, STATUS_TOOL, *DECISION_WRITE_TOOLS)
+"""Every tool the server offers, in the order ``tools/list`` shows them. The decision write tools
+need the ``ingest`` scope; a token without it does not see them."""
 
 _PRINCIPAL: Final = "principal"
 """The attribute of ``request.state`` that holds the caller, as in the HTTP API."""
