@@ -50,7 +50,9 @@ live copy stored before the rule stops being live. The run counts ``records_filt
    rows were written: :class:`PayloadIndexer` chunks each payload by its kind
    (:func:`memini.chunking.chunk_payload`) and writes the chunks through the index writer, which
    embeds only texts it has no vector for. Without a hook the records are stored without chunks
-   and counted as not indexed; ``memini reindex`` indexes them.
+   and counted as not indexed; ``memini reindex`` indexes them. The persons hook
+   (:func:`memini.persons.link_records`) then resolves who appears in them to persons and
+   writes their links.
 7. A complete window that ends after the checkpoint moves it to ``to``, with the claim's cursor;
    one that ends at or after the stream's history frontier (``stream.checked_from``, where its
    checked range starts) moves the frontier back to ``from``. Both by compare-and-set against the

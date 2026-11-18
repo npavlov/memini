@@ -313,7 +313,8 @@ class ItemFilters:
     statuses: tuple[ItemStatus, ...] = ("active",)
     """``("active",)`` is the default view; :data:`ALL_STATUSES` is the history."""
     person_ids: tuple[UUID, ...] | None = None
-    """Only items one of these persons took part in."""
+    """Only items one of these persons took part in, or a person merged with one of them: the
+    persons their canonical persons stand for (:mod:`memini.persons`)."""
     record_ids: tuple[str, ...] | None = None
     """Only items with evidence in one of these records."""
     decided_from: datetime | None = None

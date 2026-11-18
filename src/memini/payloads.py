@@ -15,18 +15,25 @@ Fields
 
     ``thread``: ``messages``, a list of one or more messages in the order of the thread. A
     message has ``author`` (a string, not blank), ``sent_at`` (a time with a zone) and ``text`` (a
-    string, possibly empty); optionally ``id`` (its id in the source), ``recipients`` and
-    ``mentions`` (lists of names) and ``url`` (an http or https link to the message). A thread
-    may have a ``title`` (a subject) and a ``channel`` (where it was posted).
+    string, possibly empty); optionally ``id`` (its id in the source), ``recipients``, ``cc``
+    and ``mentions`` (lists of names) and ``url`` (an http or https link to the message). ``cc``
+    is read for persons only, not rendered. A thread
+    may have a ``title`` (a subject), a ``channel`` (where it was posted) and ``people``.
 
     ``meeting``: ``title`` (not blank) and ``started_at``; optionally ``ended_at`` (not before
     ``started_at``), ``participants`` (a list of names), ``summary`` (Markdown), ``action_items``
     (a list; an item is a string, or an object with ``text`` and optionally ``owner``, ``due``
     and ``id``) and ``transcript`` (a list of segments in order, each an object with ``text``,
     not blank, and optionally ``speaker``, ``start`` and ``end``, in seconds from the start of
-    the meeting, and ``id``).
+    the meeting, and ``id``), and ``people``.
 
     ``document``: ``title`` (not blank) and ``text`` (Markdown, possibly empty).
+
+    ``people`` (threads and meetings): what the source knows of the names it uses, a list of
+    objects with ``name`` (not blank, each name once) and optionally ``email`` and
+    ``chat_user_id``: a name of the payload equal to a ``name`` here (both trimmed) is the person
+    with that address or user id (:mod:`memini.persons`). A name is also a mail address on its own
+    (``ann@example.test``, ``Ann Example <ann@example.test>``). Not part of the normalized text.
 
     A time is an ISO 8601 string with a zone offset or ``Z``: ``2026-03-01T09:30:00Z``.
 
@@ -73,6 +80,7 @@ __all__ = [
     "PAYLOAD_KINDS",
     "SEGMENT_ID_DOMAIN",
     "ActionItem",
+    "Contact",
     "Document",
     "Meeting",
     "Message",
@@ -147,6 +155,18 @@ class Message:
     recipients: tuple[str, ...] = ()
     mentions: tuple[str, ...] = ()
     url: str | None = None
+    cc: tuple[str, ...] = ()
+    """Recipients in copy; persons count them as recipients. Not part of the normalized text."""
+
+
+@dataclass(frozen=True, slots=True)
+class Contact:
+    """What the source knows of a name it uses: the person's mail address, its chat user id. As
+    the payload gives them; :mod:`memini.persons` checks and normalizes them."""
+
+    name: str
+    email: str | None = None
+    chat_user_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +176,7 @@ class Thread:
     messages: tuple[Message, ...]
     title: str | None = None
     channel: str | None = None
+    people: tuple[Contact, ...] = ()
 
     @property
     def kind(self) -> Literal["thread"]:
@@ -198,6 +219,7 @@ class Meeting:
     """Markdown."""
     action_items: tuple[ActionItem, ...] = ()
     transcript: tuple[Segment, ...] = ()
+    people: tuple[Contact, ...] = ()
 
     @property
     def kind(self) -> Literal["meeting"]:
@@ -317,6 +339,31 @@ def _url(payload: Mapping[str, Any], key: str, field: str) -> str | None:
     return value
 
 
+def _parse_people(payload: Mapping[str, Any], field: str) -> tuple[Contact, ...]:
+    """The ``people`` of a thread or a meeting; none when absent."""
+    value = payload.get("people")
+    if value is None:
+        return ()
+    where = f"{field}.people"
+    contacts: list[Contact] = []
+    seen: dict[str, int] = {}
+    for index, entry in enumerate(_list(value, where, "a list of people")):
+        at = f"{where}[{index}]"
+        person = _fields(entry, at, "a person is an object with name, email, chat_user_id")
+        name = _text(person, "name", at, required=True)
+        first = seen.setdefault(name.strip(), index)
+        if first != index:
+            raise PayloadError(f"{at}.name", f"the name of {where}[{first}] again")
+        contacts.append(
+            Contact(
+                name=name,
+                email=_optional_text(person, "email", at),
+                chat_user_id=_optional_text(person, "chat_user_id", at),
+            )
+        )
+    return tuple(contacts)
+
+
 def _given_id(payload: Mapping[str, Any], field: str) -> str | None:
     value = payload.get("id")
     if value is None:
@@ -400,6 +447,7 @@ def _parse_thread(payload: Mapping[str, Any], field: str) -> Thread:
             recipients=_names(message, "recipients", at),
             mentions=_names(message, "mentions", at),
             url=_url(message, "url", at),
+            cc=_names(message, "cc", at),
         )
         for message_id, (_, author, sent_at, text, message, at) in zip(ids, drafts, strict=True)
     )
@@ -407,6 +455,7 @@ def _parse_thread(payload: Mapping[str, Any], field: str) -> Thread:
         messages=messages,
         title=_optional_text(payload, "title", field),
         channel=_optional_text(payload, "channel", field),
+        people=_parse_people(payload, field),
     )
 
 
@@ -492,6 +541,7 @@ def _parse_meeting(payload: Mapping[str, Any], field: str) -> Meeting:
         summary=summary,
         action_items=_parse_action_items(payload, field),
         transcript=_parse_transcript(payload, field),
+        people=_parse_people(payload, field),
     )
 
 

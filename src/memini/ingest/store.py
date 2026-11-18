@@ -34,6 +34,7 @@ from memini.ingest.model import (
     StreamChangedError,
 )
 from memini.ingest.validate import MAX_CLOCK_SKEW, prepare_batch
+from memini.persons import LinkCounts, link_records
 from memini.removal import forgotten_record_ids
 from memini.runs import Run, current_run, record_run
 from memini.workspaces import NotFoundError, get_writable_workspace
@@ -163,6 +164,8 @@ class _Tally:
     the batch commits."""
     not_indexed: int = 0
     """Records written without an indexing hook."""
+    persons: LinkCounts = field(default_factory=LinkCounts)
+    """Persons, aliases and links the batch's records made; reported after it commits."""
 
 
 async def _tombstone(conn: Conn, tally: _Tally, source_id: UUID, ids: Sequence[str]) -> int:
@@ -310,6 +313,19 @@ async def _store(
             if counts is not None:
                 tally.index += counts
 
+        if written:
+            # The persons hook (memini.persons): who appears in each record written, resolved to
+            # persons by their aliases, and the record's links to them. It reads the payload as
+            # stored. After the indexer, so the lock it may take on the workspace's persons is
+            # held only until the commit.
+            tally.persons = await link_records(
+                conn,
+                workspace_id=target.workspace_id,
+                owner_id=access.owner_id,
+                source_id=target.source_id,
+                records=written,
+            )
+
         if after is not None and before is not None:
             cur = await conn.execute(
                 _MOVE_CHECKPOINT,
@@ -352,6 +368,14 @@ def _count(run: Run | None, tally: _Tally, batch: PreparedBatch) -> None:
         run.count(name, value)
     for attribute, name in RUN_COUNTS.items():
         run.count(name, getattr(tally.index, attribute))
+    for name, value in (
+        ("persons_created", tally.persons.persons_created),
+        ("aliases_created", tally.persons.aliases_created),
+        ("person_links_inserted", tally.persons.links_inserted),
+        ("person_links_updated", tally.persons.links_updated),
+        ("person_links_deleted", tally.persons.links_deleted),
+    ):
+        run.count(name, value)
 
 
 async def _store_once(

@@ -27,6 +27,8 @@ mirrors and writes run reports; no database credentials leave it::
     memini token list | revoke <id-or-prefix>
     memini search <query> [--code] [--mode MODE] [--workspace NAME ...] ...
     memini forget <workspace> (--record ID | --source NAME --external-id ID [--kind KIND])
+    memini person list|show|lookup|add|rename|merge|split|me <workspace> ...
+    memini person alias add|remove <workspace> <person-id> ...
 
 They read ``MEMINI_URL`` (default ``http://127.0.0.1:6364``) and the token from ``MEMINI_TOKEN`` or
 ``MEMINI_TOKEN_FILE`` (:mod:`memini.cli.client`); ``--url`` and ``--token-file`` override them.
@@ -121,6 +123,7 @@ from memini.cli import (
     evaluate,
     forget,
     index,
+    persons,
     recipes,
     runs,
     search,
@@ -354,6 +357,8 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_commands(commands)
     decisions.add_commands(commands)
     forget.add_commands(commands)
+    person = commands.add_client("person", help=persons.HELP, description=persons.DESCRIPTION)
+    persons.configure_parser(person)
 
     # --- Operator commands: on the database, inside the service's container ----------------------
     serve_parser = commands.add_parser(

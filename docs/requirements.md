@@ -68,7 +68,7 @@ Three layers: raw, index, knowledge.
 | Source | A configured origin. Kind: `git`, `push`, `mcp`. Holds config, `visibility` (`private` or `workspace`), `retention_days`, `llm_policy` (`none`, `local`, `cloud`). |
 | Stream | The unit of incremental sync inside a source: a git ref, a channel, a mailbox query, a meeting list. Holds the cursor, `checked_until`, `checked_from`, schedule, last result and lag. |
 | Record | One raw unit. Kinds: `code_file`, `thread`, `meeting`, `document`. Fields: deterministic `id`, `external_id`, `external_url`, `content_hash`, `occurred_at`, `ingested_at`, `deleted_at`, raw payload stored verbatim, normalized text. |
-| Person | A human, with aliases: email, chat user id, meeting display name, git author. One person is marked as "me". |
+| Person | A human, with aliases: email, chat user id, display name, git author. One person is marked as "me". |
 
 Notes:
 - A record id is a hash of its source, kind and external id, so the same record always gets the same id;
@@ -82,6 +82,40 @@ Notes:
   persons until the user merges them.
 - "Stored verbatim" means that no model rewrites a payload. It does not exempt redaction: secrets and
   card numbers are replaced before a record is stored (principle 11; **Redaction**, section 9).
+
+**Persons** (decided 2026-11-18). One library, `memini.persons`, resolves, links and administers
+persons; tables `person`, `alias`, `record_person`. A display name is one kind of alias wherever it
+was seen (chat, mail header, meeting, document): `display_name` replaces `meeting_name`. Ingest
+calls the library once per batch, in its transaction, for the records whose rows the batch wrote,
+with their payloads as stored (redacted, where redaction changed them). It reads the names of
+each payload as `memini.payloads` parses it: a message's `author` (role `author`), `recipients`
+and `cc` (`recipient`) and `mentions`, anchored at the message's id; a meeting's `participants`
+and transcript speakers (`participant`) and action-item owners (`mention`); a document names
+nobody. A name equal to the `name` of an entry of the payload's `people` (`email`,
+`chat_user_id`) takes that entry's keys; otherwise a name is an address, `Name <address>`, or a
+bare name. Keys are normalized: an address trimmed and lowercased, a chat user id trimmed and
+otherwise as given (a client that sends ids of two chat systems into one workspace qualifies
+them), a name NFKC, case-folded, its spaces collapsed. An identity with keys resolves by its email, then its chat user
+id; its keys that no alias holds are added to the person found, one another person holds stays
+with that person; with no key held, it becomes a new person with an alias per key, and its name is
+not an alias. A bare name resolves as a chat user id as it stands (a chat names people by their
+ids), then as a display name; a name no alias holds becomes a person of its own with a display
+name alias. Nothing is merged by ingest. Resolution makes persons under a transaction
+advisory lock on the workspace's persons, which every change of persons takes; lookups that find
+every key take none. Each record gets the links its payload names (`record_person`: role
+`author`, `recipient`, `mention` or `participant`, the message id as anchor when it has one, and
+the time of the message or meeting), written as a diff, so a record written again with the same
+persons changes no row, and a batch sent again writes nothing at all. Links are derived and go with
+their record. A merge of person B into A sets `B.merged_into` and nothing else: B's aliases, links
+and knowledge participations keep naming B (`knowledge_participant` is append-only), and reads
+resolve a person through `person_root` (its canonical person) and `person_members` (everyone merged
+into it), database functions the list tools use. A split clears `B.merged_into` and restores
+exactly the state before the merge, the persons merged into B included; a person merged into
+another is split before it is merged again, a cycle is refused by the database. Adding an alias
+that another person holds merges that person's canonical person into this one (a split undoes
+it), so a person seen as an address and as a chat id becomes one when one gets the other's alias.
+"Me" is the person marked with the caller's principal, at most one per workspace, resolved to its
+canonical person. Persons are never deleted.
 
 ### Index layer (derived)
 
@@ -201,11 +235,15 @@ the texts embedded.
 for validation, normalized text and chunking alike. Names (authors, recipients, participants,
 speakers, owners) are strings as the source shows them; persons are resolved from them (persons,
 section 3). A thread has `messages` and optionally a `title` (a subject) and a `channel`; a message
-has `author`, `sent_at`, `text`, and optionally `id`, `recipients`, `mentions` and `url`. A meeting
+has `author`, `sent_at`, `text`, and optionally `id`, `recipients`, `cc` (read for persons, not
+rendered), `mentions` and `url`. A meeting
 has `title`, `started_at`, and optionally `ended_at`, `participants`, `summary` (Markdown),
 `action_items` (strings, or objects with `text` and optionally `owner`, `due`, `id`) and
 `transcript` (segments with `text` and optionally `speaker`, `start` and `end` in seconds from the
-start of the meeting, and `id`). A document has `title` and `text` (Markdown). A null field, or a
+start of the meeting, and `id`). A thread or a meeting may carry `people`, what the source knows of
+the names it uses: objects with `name` (each once) and optionally `email` and `chat_user_id`, read
+by person resolution and not part of the normalized text. A document has `title` and `text`
+(Markdown). A null field, or a
 blank optional text, counts as absent, and a blank name in a list names nobody. Evidence and
 locators point at a message or a segment, so each has an id that survives a resend: the source's,
 unique in its record (a repeat is refused), else one derived from what an edit of its text leaves
@@ -541,6 +579,17 @@ give a new token any scope; what bounds the new token is the caller's workspace 
 limited to one workspace creates only tokens limited to it (one for every workspace is refused,
 another workspace is not found) and sees and revokes only those. The first admin token cannot come
 from the API; `memini bootstrap` makes it (section 7).
+
+**Person routes** (decided 2026-11-18). Under `/v1/workspaces/{workspace}/persons`: list and
+search persons (canonical ones by default, by display name, paged; `q` matches a name or an alias),
+read one with the aliases of everyone merged into it, find the canonical person of an alias
+(`lookup?kind=&value=`), and read "me" (`GET …/me`, 404 `no_me` when no one is marked), with the
+`read` scope; make a person with free aliases (409 `alias_held` otherwise), rename one, add or
+remove an alias, merge one into another (`POST …/{id}/merge`, 409 `already_merged` or
+`same_person`), split it (`POST …/{id}/split`, 409 `not_merged`) and set or unset "me"
+(`PUT`/`DELETE …/me`), with the `admin` scope. An alias that is not valid for its kind answers 422
+`invalid_alias` without repeating the value. The client commands `memini person list|show|lookup|
+add|rename|alias add|alias remove|merge|split|me` call these routes.
 
 **Query tools** (decided 2026-11-18). `search`, `search_code`, `read_source` and `get_symbol` are
 one library, `memini.query`, behind the MCP tools and their HTTP routes, with the same arguments and

@@ -270,10 +270,14 @@ async def list_items(
         conditions.append(sql.SQL("i.kind = ANY(%(kinds)s)"))
         params["kinds"] = list(chosen.kinds)
     if chosen.person_ids is not None:
+        # A person stands for everyone merged with it (memini.persons): its participations and
+        # theirs.
         conditions.append(
             sql.SQL(
                 "EXISTS (SELECT 1 FROM knowledge_participant p"
-                " WHERE p.item_id = i.id AND p.person_id = ANY(%(persons)s))"
+                " WHERE p.item_id = i.id AND p.person_id IN ("
+                "   SELECT person_members(person_root(x.id))"
+                "   FROM unnest(%(persons)s::uuid[]) AS x (id)))"
             )
         )
         params["persons"] = list(chosen.person_ids)
