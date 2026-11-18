@@ -106,6 +106,10 @@ sync git sources and search answers `embeddings_not_configured`. Changing the mo
 digest or document prefix changes the index fingerprint: run `memini reindex --workspace NAME`
 afterwards.
 
+Optional reranking: Qwen3-Reranker 0.6B in the process, off by default. Install
+`memini[local-embeddings]` and set `MEMINI_SEARCH_RERANKER=local`; on the code suite it lifts hybrid
+R@1 from 0.61 to 0.78 for about 0.5 s per search. `memini eval --reranker local` measures it.
+
 ### Tools
 
 Over MCP, and over HTTP with the same arguments as query parameters. All need a token with the

@@ -120,6 +120,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Comms tools over MCP and HTTP: `list_meetings` (default: meetings I attended), `get_meeting`,
   `list_messages` (to me, mentioning me, or from a person), `get_thread`, `add_document`; search filters by
   person and role.
+- Optional reranking with Qwen3-Reranker 0.6B in the process (`MEMINI_SEARCH_RERANKER=local`, needs the
+  `local-embeddings` extra): on the code suite hybrid R@1 rises from 0.61 to 0.78 for about 0.5 s per
+  search; off by default.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
