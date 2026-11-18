@@ -171,6 +171,15 @@ At most two OpenAI-compatible chat APIs, declared by the slot they are set in: `
 | `llm_cloud_structured_output`<br>`MEMINI_LLM_CLOUD_STRUCTURED_OUTPUT` | one of `json_schema`, `json_object`, `none` | `json_schema` | restart | json_schema, json_object or none: how the cloud API is asked for JSON. Only with `llm_cloud_url`. The reply is validated against the schema in every case. |
 | `llm_timeout`<br>`MEMINI_LLM_TIMEOUT` | number, more than 0, at most 3600 | `300` | restart | Seconds per LLM request, more than 0, at most 3600. Only with `llm_local_url` or `llm_cloud_url`. |
 
+### Other settings
+
+Settings that no group above takes yet.
+
+| Setting | Values | Default | Change needs | Description |
+| --- | --- | --- | --- | --- |
+| `retention_interval`<br>`MEMINI_RETENTION_INTERVAL` | integer, 60 to 604800 | `3600` | restart | Seconds between two retention passes over a source that has retention_days, 60 to 604800. |
+| `retention_batch_size`<br>`MEMINI_RETENTION_BATCH_SIZE` | integer, 1 to 100000 | `1000` | restart | Records one transaction of a retention pass deletes at most, 1 to 100000. |
+
 ## Client commands
 
 Client commands (`memini workspace create`, `source`, `sync`, `runs`, `token`, `search` and the others that are not operator commands) are HTTP clients of the running service. They read these variables from the environment, and nothing else: not the service's settings, nor its config file. A request may take 60 seconds to answer, and 10 to connect; these are not settings.
