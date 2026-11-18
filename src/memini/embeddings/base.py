@@ -13,6 +13,7 @@ vectors), the query prefix is not (it changes only what a search compares with t
 """
 
 import math
+import time
 from abc import ABC, abstractmethod
 from array import array
 from collections.abc import Sequence
@@ -21,6 +22,7 @@ from types import TracebackType
 from typing import Final, Literal, Protocol, Self
 
 from memini.config import EMBEDDING_MAX_DIMENSION, EmbeddingPooling, EmbeddingProvider
+from memini.metrics import EMBEDDING_DURATION, EMBEDDING_REQUESTS, EMBEDDING_TEXTS
 
 __all__ = [
     "NORMALIZATION",
@@ -170,9 +172,18 @@ class BatchingEmbedder(ABC):
             raise ValueError("cannot embed an empty text")
         prefix = self._spec.document_prefix if kind == "document" else self._query_prefix
         vectors: list[Vector] = []
+        provider = self._spec.provider
         for start in range(0, len(texts), self._batch_size):
             batch = [prefix + text for text in texts[start : start + self._batch_size]]
-            raw = await self._embed_batch(batch)
+            started = time.perf_counter()
+            outcome = "error"
+            try:
+                raw = await self._embed_batch(batch)
+                outcome = "ok"
+            finally:
+                EMBEDDING_REQUESTS.inc(provider=provider, kind=kind, outcome=outcome)
+                EMBEDDING_DURATION.observe(time.perf_counter() - started, provider=provider)
+            EMBEDDING_TEXTS.inc(len(batch), provider=provider, kind=kind)
             if len(raw) != len(batch):
                 raise EmbeddingError(
                     f"{self._spec.describe()} returned {len(raw)} vectors for {len(batch)} texts"

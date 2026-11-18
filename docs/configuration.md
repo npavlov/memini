@@ -64,6 +64,15 @@ The service logs one JSON object per line, on stderr.
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
 | `log_level`<br>`MEMINI_LOG_LEVEL` | one of `CRITICAL`, `ERROR`, `WARNING`, `INFO`, `DEBUG` | `INFO` | restart | One of CRITICAL, ERROR, WARNING, INFO, DEBUG. The lowest level the service logs; any case. |
+| `log_slow_statement_threshold`<br>`MEMINI_LOG_SLOW_STATEMENT_THRESHOLD` | number, 0 to 86400 | `1` | restart | Seconds a database statement may take before it is logged as slow, 0 to 86400; 0: no log. A statement of the service over it is logged at WARNING with its duration, the request or run it served, and its text with every literal replaced by `?`, never its parameters. |
+
+### Metrics
+
+`GET /metrics` serves counts and timings in the Prometheus text format, to a scraper that sends `metrics_token` as its bearer token; without the token the route does not exist. A Memini token is not accepted there. No metric is labelled by a workspace, source, stream or person; `memini_base_current` says what `GET /v1/status?gate=true` says.
+
+| Setting | Values | Default | Change needs | Description |
+| --- | --- | --- | --- | --- |
+| `metrics_token`<br>`MEMINI_METRICS_TOKEN`<br>`MEMINI_METRICS_TOKEN_FILE`<br>*secret* | string, 32 to 512 characters | unset | restart | A random secret of at least 32 characters, without whitespace, e.g. from `openssl rand -hex 32`. Unset: there is no `/metrics` route. Prometheus sends it with `authorization: {credentials_file: ...}`; it reads counts only. |
 
 ### Operator
 

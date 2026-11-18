@@ -12,6 +12,7 @@ the server never runs a tool for nobody.
 """
 
 import logging
+import time
 from collections.abc import Mapping, MutableMapping, Sequence
 from typing import Any, Final, cast
 
@@ -34,6 +35,7 @@ from memini.mcp.decisions import DECISION_WRITE_TOOLS
 from memini.mcp.query import QUERY_TOOLS
 from memini.mcp.status import STATUS_TOOL
 from memini.mcp.tools import Tool, ToolCall
+from memini.metrics import MCP_TOOL_CALLS, MCP_TOOL_DURATION
 from memini.query import QueryServices
 
 __all__ = [
@@ -123,11 +125,22 @@ def build_server(
         principal = _principal(ctx)
         tool = by_name.get(params.name)
         if tool is None or not principal.has_scope(tool.scope):
+            # The name a client sent is counted only when it is a tool's: it is free text.
+            MCP_TOOL_CALLS.inc(tool="unknown" if tool is None else tool.name, outcome="refused")
             # A tool the token may not use looks like one that does not exist.
             raise MCPError(code=INVALID_PARAMS, message="Unknown tool.")
-        return await tool.call(
-            ToolCall(principal=principal, pool=pool, services=resources), params.arguments or {}
-        )
+        started = time.perf_counter()
+        outcome = "error"
+        try:
+            result = await tool.call(
+                ToolCall(principal=principal, pool=pool, services=resources),
+                params.arguments or {},
+            )
+            outcome = "error" if result.is_error else "ok"
+            return result
+        finally:
+            MCP_TOOL_CALLS.inc(tool=tool.name, outcome=outcome)
+            MCP_TOOL_DURATION.observe(time.perf_counter() - started, tool=tool.name)
 
     def input_schema(name: str) -> Mapping[str, Any] | None:
         definition = definitions.get(name)

@@ -9,6 +9,12 @@ What it prints: the verdict, the database and the index across workspaces; a tab
 then, if any, the streams whose runs fail with the first line of the last error, and the workspaces
 whose index is behind with the command that brings it up to date. It exits 0 whether or not the
 base is current: the answer is in the output, and ``--json`` has it for scripts.
+
+``--gate`` makes it the freshness gate (principle 10): the same output, and the exit code says the
+verdict: 0 when the base is current, :data:`~memini.cli.common.EXIT_NOT_CURRENT` when it is not (a
+stream or an index is behind, or the database is not reachable). A service that cannot be reached
+or refuses the token exits as for any client command (3, 5). The verdict is the answer's
+``current``, the one ``GET /v1/status?gate=true`` turns into its status code.
 """
 
 import argparse
@@ -17,7 +23,7 @@ from typing import Any, Final
 
 from memini.cli.arguments import Commands
 from memini.cli.client import Api
-from memini.cli.common import EXIT_OK, message, print_table
+from memini.cli.common import EXIT_NOT_CURRENT, EXIT_OK, message, print_table
 from memini.cli.output import (
     NONE,
     as_list,
@@ -123,9 +129,16 @@ def _index_line(workspace: Mapping[str, Any]) -> str:
 
 def status_command(args: argparse.Namespace, api: Api) -> int:
     body = api.get("v1/status")
-    if args.json:
+    _print(body, as_json=args.json)
+    if args.gate and body.get("current") is not True:
+        return EXIT_NOT_CURRENT
+    return EXIT_OK
+
+
+def _print(body: Mapping[str, Any], *, as_json: bool) -> None:
+    if as_json:
         print_json(body)
-        return EXIT_OK
+        return
     database = as_mapping(body.get("database"))
     if database.get("reachable") is True:
         reached = (
@@ -189,7 +202,6 @@ def status_command(args: argparse.Namespace, api: Api) -> int:
             print(f"\n{title}:")
             for line in lines:
                 print(f"  {line}")
-    return EXIT_OK
 
 
 def add_commands(commands: Commands) -> None:
@@ -200,7 +212,13 @@ def add_commands(commands: Commands) -> None:
         description="Show whether the base is current: per stream its last result, lag, how far"
         " back its history is loaded and whether its records are indexed; per workspace its"
         " index and the command that brings it up to date. The same answer as the MCP status"
-        " tool. Exits 0 whether or not the base is current.",
+        f" tool. Exits 0 whether or not the base is current, unless --gate: then {EXIT_NOT_CURRENT}"
+        " when it is not.",
     )
     status.add_argument("--json", action="store_true", help="print the API's JSON answer")
+    status.add_argument(
+        "--gate",
+        action="store_true",
+        help=f"the freshness gate: exit {EXIT_NOT_CURRENT} when the base is not current",
+    )
     status.set_defaults(client=status_command)

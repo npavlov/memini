@@ -78,6 +78,10 @@ bytes in base64 (``openssl rand -base64 32``). The service starts without it; st
 credential then fails with a message that names the setting. ``credential_old_keys``,
 comma-separated, are keys still accepted for reading while ``memini credentials rotate-key``
 re-encrypts the store with ``credential_key``. Both are secrets.
+
+``metrics_token``, a secret, turns on ``GET /metrics`` (:mod:`memini.api.metrics`): a scraper sends
+it as its bearer token. ``log_slow_statement_threshold`` is the time after which a database
+statement of the service is logged as slow (:mod:`memini.db.statements`).
 """
 
 import base64
@@ -606,6 +610,27 @@ class Settings(BaseModel):
         gt=0,
         le=3600,
         description="seconds per LLM request, more than 0, at most 3600",
+    )
+
+    # --- Observability (memini.metrics, memini.api.metrics, memini.db.statements) ----------------
+    # GET /metrics serves Prometheus metrics, counts only, to a scraper that sends metrics_token
+    # as its bearer token; without it there is no such route. A Memini token is not accepted
+    # there: one that may read metrics could read content too. Every statement on the service's
+    # pool is timed; one over log_slow_statement_threshold is logged with its duration and a
+    # fingerprint of its text, never its parameters.
+    metrics_token: Annotated[SecretStr | None, AfterValidator(_single_line)] = Field(
+        default=None,
+        min_length=32,
+        max_length=512,
+        description="a random secret of at least 32 characters, without whitespace, e.g. from"
+        " `openssl rand -hex 32`",
+    )
+    log_slow_statement_threshold: float = Field(
+        default=1.0,
+        ge=0,
+        le=86400,
+        description="seconds a database statement may take before it is logged as slow, 0 to"
+        " 86400; 0: no log",
     )
 
     @model_validator(mode="before")

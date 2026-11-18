@@ -13,6 +13,7 @@ from psycopg.rows import TupleRow
 from psycopg_pool import AsyncConnectionPool
 
 from memini.db.limits import prepare_connection
+from memini.db.statements import timed_cursor
 
 APPLICATION_NAME = "memini"
 """Shown in `pg_stat_activity`, so a lock holder or a slow query can be traced to the service."""
@@ -37,7 +38,12 @@ async def connect(
 
 @asynccontextmanager
 async def open_pool(
-    url: str, *, min_size: int = 1, max_size: int = 10, timeout: float = 30.0
+    url: str,
+    *,
+    min_size: int = 1,
+    max_size: int = 10,
+    timeout: float = 30.0,
+    slow_statement_threshold: float = 0.0,
 ) -> AsyncGenerator[Pool, None]:
     """Open the connection pool of the service and close it on exit.
 
@@ -45,14 +51,18 @@ async def open_pool(
     request. Every connection knows the pgvector types, so migrate the database first. A connection
     is checked before it is handed out, so a database restart does not reach the caller as an error;
     the same round trip sets its time limits: a request's inside :func:`~memini.db.session_limits`,
-    the database's defaults outside it (:mod:`memini.db.limits`).
+    the database's defaults outside it (:mod:`memini.db.limits`). Every statement is timed, and
+    one over `slow_statement_threshold` seconds is logged (0: none; :mod:`memini.db.statements`).
     """
     pool: Pool = AsyncConnectionPool(
         url,
         min_size=min_size,
         max_size=max_size,
         timeout=timeout,
-        kwargs={"application_name": APPLICATION_NAME},
+        kwargs={
+            "application_name": APPLICATION_NAME,
+            "cursor_factory": timed_cursor(slow_statement_threshold),
+        },
         configure=register_vector_async,
         check=prepare_connection,
         name=APPLICATION_NAME,

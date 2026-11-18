@@ -21,7 +21,7 @@ mirrors and writes run reports; no database credentials leave it::
     memini sync <workspace> <source> [--stream KEY ...] [--wait]
     memini runs <workspace> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
     memini run <run-id>
-    memini status
+    memini status [--gate]
     memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME]
                         [--name LABEL] [--expires-in DURATION]
     memini token list | revoke <id-or-prefix>
@@ -312,7 +312,7 @@ def _describe(error: Exception, database: DatabaseUrl) -> tuple[int, str]:
 EXIT_CODES = (
     "exit codes: 0 done; 1 failed; 2 wrong usage or configuration; 3 the service or the database"
     " cannot be reached; 4 eval: a metric fell below the baseline; 5 the service refused the"
-    " token; 130 interrupted"
+    " token; 6 status --gate: the base is not current; 130 interrupted"
 )
 DESCRIPTION = (
     "Memini: a self-hosted knowledge service. Client commands call the HTTP API of a running"

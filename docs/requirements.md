@@ -730,6 +730,14 @@ control characters, at most 200 characters; the whole text stays on the run, beh
 on (the remote that refused, the setting that is missing) is in the message, and the runs and
 streams routes already show the whole text to a `read` token.
 
+**Freshness gate** (decided 2026-11-18; principle 10). The one call for a script or a health check:
+`GET /v1/status?gate=true` answers the same body with 200 when the base is current and 503 when it
+is not, so the status code alone is the verdict and the body says why; `memini status --gate` prints
+the same table and exits 0 when current, 6 when not (3 when the service cannot be reached, 5 when it
+refuses the token, as every client command). A stream behind for its lag and a workspace's index that
+is behind (stale, or records not indexed) both fail it. Without `gate` the route answers 200 either
+way, and `memini status` exits 0: the answer is in the output.
+
 ## 7. Service and deployment
 
 - One process: HTTP API, MCP over streamable HTTP, scheduler and workers. One Postgres database.
@@ -760,7 +768,8 @@ streams routes already show the whole text to a `read` token.
   token for every workspace it refuses, unless forced.
 - Secrets come from the environment or a secrets file, never from the database in clear text.
   The credentials of sources are stored encrypted, under a key from the environment (section 9).
-- Health and status endpoints, structured logs, run reports.
+- Health and status endpoints, structured logs, run reports, metrics for Prometheus, a log of slow
+  database statements.
 - Backup is a database dump. Repository mirrors are re-cloned. The dump (`pg_dump`, custom format)
   holds every table and index, the HNSW indexes and the journal's triggers included, and
   credentials as ciphertext only; the credential key is backed up apart. `scripts/backup.sh` and
@@ -794,6 +803,44 @@ endpoint included; every limit is a setting, and each error is in the API's erro
   jobs, the scheduler and the CLI are not cut. Past either limit: 503 `query_timeout`, or a tool error
   over MCP. Search keeps its own, `search_timeout` (5 s, 422 `search_timeout`, the query's to
   narrow); deleting a source is exempt, since its cascade grows with the source.
+
+**Metrics** (decided 2026-11-18). `GET /metrics` serves the Prometheus text format (0.0.4) when
+`metrics_token` is set, and only to a request whose bearer token is that value; without the setting
+the route does not exist. A Memini token is not accepted there, an admin one included: a scraper's
+credential sits in a monitoring configuration, and a token that may read metrics should read
+nothing else. A separate listener was not chosen: one more port to bind and publish, for the same
+protection. The route is not rate-limited, like the other public routes: the token is 32 or more
+random characters and a wrong one costs a comparison. What it holds:
+
+- Counted by the code: HTTP requests by route template, method and status, and their latency; MCP
+  tool calls by tool and outcome, and their time; refusals by the rate limits by budget; runs of
+  jobs by kind and status, and their time; batches and texts sent to the embedding model by
+  provider and kind of text; LLM requests by provider class and outcome, their tokens and time;
+  database statements' time, and the slow ones.
+- Read at scrape time: freshness from `read_status` over every workspace (`memini_base_current` is
+  the gate's verdict; streams by `current` and by reason behind, the largest lag of a scheduled
+  stream in seconds and in schedules, failing, missing and loading streams, workspaces by index
+  state, records, records not indexed, chunks); the job queue (queued, due and running jobs by
+  kind, the longest wait of a due job); the connection pool (size, idle, waiting, its counters).
+
+Labels never carry content (principle 11): a route template (`/v1/workspaces/{workspace}`), never
+the path of a request, which holds names and ids, nor its query; tool names, job kinds, statuses,
+provider classes. No metric is labelled by a workspace, source, stream or person: names can be
+private, and metrics often go to a monitoring service outside the store. `memini status` says which
+stream is behind. A metric keeps at most 1,000 label sets, the rest counted under `other`. The
+metrics are counted in the process, from its start (principle 12). The exposition is written in
+Memini (`memini.metrics`) rather than taken from `prometheus_client`: a few lines of format rules,
+no global registry of a library, and the series limit.
+
+**Slow statements** (decided 2026-11-18). The pool's connections time every statement on the
+client, from the call to the end of its result, waiting for locks included; the times go to a
+histogram, and a statement over `log_slow_statement_threshold` (1 s; 0 turns the log off) is
+logged at WARNING, failed ones included (a statement stopped by its time limit is the slowest of
+all), with its duration, the request id or run id of the line, and its text with every literal
+replaced by `?` (strings, dollar-quoted strings, numbers: what `sql.Literal` embedded) and a
+16-digit fingerprint of that text to group lines by. Never its parameters, which psycopg sends apart
+from the text. The server's `log_min_duration_statement` was not chosen: it needs the database's
+configuration, logs parameters, and knows nothing of the request or run.
 
 ## 8. Growing to several users
 

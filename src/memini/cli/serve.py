@@ -13,7 +13,9 @@ model is loaded once. ``retention`` jobs need no embedder and always run: the sc
 for each source with a retention every ``retention_interval``.
 
 Logs are JSON lines on stderr through :func:`memini.logs.configure_logging`, which masks tokens and
-secrets; the password of the database URL is registered as a secret at start.
+secrets; the password of the database URL and the metrics token are registered as secrets at start.
+A statement of the pool slower than ``log_slow_statement_threshold`` is logged
+(:mod:`memini.db.statements`).
 
 uvicorn runs without its ``[standard]`` extras: its pure-Python HTTP parser (h11) is enough for a
 service bound to localhost, and the extras (uvloop, httptools, websockets, watchfiles) serve nothing
@@ -68,11 +70,13 @@ log = logging.getLogger(__name__)
 def configure_logging(settings: Settings) -> None:
     """Send every log record to stderr as a JSON line at ``settings.log_level``, redacted.
 
-    The one place ``serve`` sets up logging. The password of the database URL is registered as a
-    secret, so it is masked wherever it would appear.
+    The one place ``serve`` sets up logging. The password of the database URL and the metrics
+    token are registered as secrets, so they are masked wherever they would appear.
     """
     logs.configure_logging(settings.log_level)
     logs.register_url_secrets(settings.database_url.get_secret_value())
+    if settings.metrics_token is not None:
+        logs.register_secret(settings.metrics_token.get_secret_value())
 
 
 @asynccontextmanager
@@ -190,7 +194,10 @@ async def serve_command(args: argparse.Namespace, settings: Settings) -> int:
                 conn, "run `memini migrate`, or start with `memini serve --migrate`"
             )
 
-    async with open_pool(url) as pool, service_embedder(settings) as embedder:
+    async with (
+        open_pool(url, slow_statement_threshold=settings.log_slow_statement_threshold) as pool,
+        service_embedder(settings) as embedder,
+    ):
         app = create_app(
             settings,
             pool=pool,

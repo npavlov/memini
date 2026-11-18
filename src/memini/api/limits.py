@@ -9,17 +9,18 @@
    ``query_timeout`` (:mod:`memini.api.errors`). Jobs and the CLI run outside requests and keep the
    database's defaults.
 2. **Rate limits**, for ``/v1`` and the MCP endpoint; the public routes (``/healthz``, ``/readyz``,
-   ``/version``, ``/openapi.json``) are not counted. Counted in this process, in memory: one service
-   process (principle 12), so the budgets start full again after a restart. A token has two
-   budgets, keyed by the token's id: reads (``GET``, ``HEAD``, ``OPTIONS``, and every MCP request
-   but a call of a write tool) and writes (every other method, and an MCP call of a tool that is
-   not read-only, such as ``record_decision``). A request whose token is not known to be valid yet
-   (no token, a malformed one, or one not seen to authenticate) is counted against its client
-   address instead (``http_rate_limit_unauthenticated``), before the token is looked up, so
+   ``/version``, ``/openapi.json``, ``/metrics``) are not counted. Counted in this process, in
+   memory: one service process (principle 12), so the budgets start full again after a restart. A
+   token has two budgets, keyed by the token's id: reads (``GET``, ``HEAD``, ``OPTIONS``, and every
+   MCP request but a call of a write tool) and writes (every other method, and an MCP call of a
+   tool that is not read-only, such as ``record_decision``). A request whose token is not known to
+   be valid yet (no token, a malformed one, or one not seen to authenticate) is counted against its
+   client address instead (``http_rate_limit_unauthenticated``), before the token is looked up, so
    guessing tokens is slow and costs no database work once the budget is spent. A token becomes
    known when a request with it authenticates, and is forgotten when one answers 401 or after
    :data:`KNOWN_TOKEN_TTL` idle. Over budget: 429 ``rate_limited`` with ``Retry-After`` in whole
-   seconds, before anything else is done. ``http_rate_limit = false`` turns rate limits off.
+   seconds, before anything else is done; ``memini_rate_limit_refusals_total`` counts it by budget
+   (:mod:`memini.metrics`). ``http_rate_limit = false`` turns rate limits off.
 
    Which tool an MCP request calls is in its body, which is not read here. So an MCP request is
    counted as a read first, as every request is counted before its body arrives; the MCP endpoint
@@ -57,6 +58,7 @@ from memini.auth import AuthenticationError, Principal, bearer_token, hash_token
 from memini.config import Settings
 from memini.db import SessionLimits, session_limits
 from memini.mcp import MCP_PATH
+from memini.metrics import RATE_LIMIT_REFUSALS
 
 __all__ = [
     "KNOWN_TOKEN_TTL",
@@ -316,6 +318,7 @@ _RATE_MESSAGES: Final[dict[Budget, str]] = {
 
 
 def _too_many_requests(refusal: Refusal) -> ApiError:
+    RATE_LIMIT_REFUSALS.inc(budget=refusal.budget)
     seconds = refusal.retry_after
     return ApiError(
         429,

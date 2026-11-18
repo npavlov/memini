@@ -47,6 +47,7 @@ import json
 import logging
 import random
 import re
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Final
 from urllib.parse import urlsplit
@@ -70,6 +71,7 @@ from memini.llm.model import (
     Usage,
 )
 from memini.logs import REDACTED, redact, register_secret
+from memini.metrics import LLM_DURATION, LLM_REQUESTS, LLM_TOKENS
 from memini.runs import current_run
 
 __all__ = ["ChatEndpoint", "endpoint_target", "parse_output"]
@@ -227,6 +229,20 @@ class ChatEndpoint:
             LlmOutputError: the reply does not match the schema.
         """
         self._check(grant)
+        started = time.perf_counter()
+        outcome = "error"
+        try:
+            completion = await self._complete(grant, request)
+            outcome = "ok"
+            return completion
+        except LlmOutputError:
+            outcome = "output_error"
+            raise
+        finally:
+            LLM_REQUESTS.inc(provider=self._class, outcome=outcome)
+            LLM_DURATION.observe(time.perf_counter() - started, provider=self._class)
+
+    async def _complete[T: BaseModel](self, grant: Grant, request: ChatRequest[T]) -> Completion[T]:
         response = await self._post(self._payload(request))
         try:
             answer = _Answer.model_validate_json(response.content)
@@ -238,6 +254,8 @@ class ChatEndpoint:
             input_tokens=answer.usage.prompt_tokens if answer.usage else 0,
             output_tokens=answer.usage.completion_tokens if answer.usage else 0,
         )
+        LLM_TOKENS.inc(usage.input_tokens, provider=self._class, direction="input")
+        LLM_TOKENS.inc(usage.output_tokens, provider=self._class, direction="output")
         run = current_run()
         if run is not None:
             run.llm_tokens(

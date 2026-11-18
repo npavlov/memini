@@ -88,6 +88,7 @@ from pydantic import JsonValue
 
 from memini.auth import ReadFilter
 from memini.logs import redact, run_id_var
+from memini.metrics import RUN_DURATION, RUNS
 from memini.workspaces import NotFoundError
 
 __all__ = [
@@ -391,6 +392,10 @@ class Run:
         except Exception:
             log.error("could not write the report of the run", exc_info=True)
 
+        RUNS.inc(kind=self.kind, status=status)
+        duration_ms = report["duration_ms"]
+        if duration_ms is not None:
+            RUN_DURATION.observe(duration_ms / 1000, kind=self.kind)
         level = {"succeeded": logging.INFO, "failed": logging.ERROR}.get(status, logging.WARNING)
         log.log(
             level,

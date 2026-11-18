@@ -22,7 +22,7 @@ from memini.api import create_app
 from memini.auth import Principal, Scope, generate_token
 from memini.cli import main
 from memini.cli.client import CLIENT_VARIABLES
-from memini.cli.common import EXIT_OK
+from memini.cli.common import EXIT_NOT_CURRENT, EXIT_OK
 from memini.config import Settings, environment_variables
 from memini.status import (
     DatabaseStatus,
@@ -281,6 +281,77 @@ def test_status_json_is_the_answer(cli: Callable[..., Run]) -> None:
     assert json.loads(result.out) == body
 
 
+# --- The gate ------------------------------------------------------------------------------------
+
+
+def a_current_status() -> Json:
+    """Everything current: a scheduled stream within its lag, an index that is ok."""
+    body = a_status()
+    body["current"] = True
+    body["index"] = IndexStatus(
+        state="ok", configured="model fake (dimension 8)", note="Built with it."
+    ).model_dump(mode="json")
+    alpha, beta = body["workspaces"]
+    beta["index"] = index().model_dump(mode="json")
+    alpha["index"] = index(records=45).model_dump(mode="json")
+    for stream in alpha["streams"]:
+        stream["behind"] = []
+        stream["current"] = None if stream["schedule_seconds"] is None else True
+        stream["records_not_indexed"] = 0
+    return body
+
+
+def lagging_stream() -> Json:
+    """Only the git stream is behind, for its lag; every index is up to date."""
+    body = a_current_status()
+    body["current"] = False
+    code = body["workspaces"][0]["streams"][1]
+    code["current"], code["behind"] = False, ["lag"]
+    return body
+
+
+def index_behind() -> Json:
+    """Every stream is current, but a workspace's index is stale."""
+    body = a_current_status()
+    body["current"] = False
+    body["workspaces"][1]["index"] = index(
+        "stale", behind=True, changed=["model"], reindex="memini reindex --workspace beta"
+    ).model_dump(mode="json")
+    return body
+
+
+def test_the_gate_exits_0_when_the_base_is_current(
+    cli: Callable[..., Run], answers: list[httpx2.Request]
+) -> None:
+    result = cli(a_current_status(), "--gate")
+
+    assert result.code == EXIT_OK
+    assert result.out.splitlines()[0] == "current   yes"
+    assert answers[0].url.path == "/v1/status"
+
+
+@pytest.mark.parametrize("body", [lagging_stream, index_behind, a_status])
+def test_the_gate_exits_non_zero_when_a_stream_or_an_index_is_behind(
+    cli: Callable[..., Run], body: Callable[[], Json]
+) -> None:
+    result = cli(body(), "--gate")
+
+    assert result.code == EXIT_NOT_CURRENT
+    assert result.out.splitlines()[0] == "current   no"
+    assert result.err == ""
+
+
+def test_the_gate_reads_current_from_the_json_answer_too(cli: Callable[..., Run]) -> None:
+    body = lagging_stream()
+
+    result = cli(body, "--gate", "--json")
+
+    assert result.code == EXIT_NOT_CURRENT
+    assert json.loads(result.out) == body
+    assert cli(a_current_status(), "--gate", "--json").code == EXIT_OK
+    assert cli(body, "--json").code == EXIT_OK  # without --gate the answer is in the output
+
+
 def test_status_without_streams_says_so_and_still_names_what_is_behind(
     cli: Callable[..., Run],
 ) -> None:
@@ -350,11 +421,35 @@ def test_the_route_needs_the_read_scope_and_reports_a_missing_database(
     assert client.get("/v1/status").status_code == 401
 
 
+def test_the_gate_answers_503_with_the_status_when_the_base_is_not_current(
+    settings: Settings,
+) -> None:
+    authenticator = FakeAuthenticator()
+    client = TestClient(create_app(settings, authenticator=authenticator))
+    headers = authenticator.issue("read")
+
+    gated = client.get("/v1/status", params={"gate": "true"}, headers=headers)
+    plain = client.get("/v1/status", params={"gate": "false"}, headers=headers)
+
+    # No database: not reachable, so not current. The body is the status either way.
+    assert gated.status_code == 503
+    assert gated.json()["current"] is False
+    assert gated.json()["database"]["reachable"] is False
+    assert "error" not in gated.json()
+    assert plain.status_code == 200
+    assert plain.json()["current"] is False
+    refused = client.get("/v1/status", params={"gate": "maybe"}, headers=headers)
+    assert refused.status_code == 422
+
+
 def test_the_schema_documents_the_route(settings: Settings) -> None:
     schema = TestClient(create_app(settings)).get("/openapi.json").json()
 
-    responses = schema["paths"]["/v1/status"]["get"]["responses"]
+    operation = schema["paths"]["/v1/status"]["get"]
+    responses = operation["responses"]
     assert "200" in responses
+    assert "503" in responses
+    assert [parameter["name"] for parameter in operation["parameters"]] == ["gate"]
     assert "default" in responses
     for model in ("ServiceStatus", "StreamStatus", "StreamRun", "WorkspaceIndex", "RunSummary"):
         assert model in schema["components"]["schemas"]

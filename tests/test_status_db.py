@@ -526,3 +526,43 @@ async def test_the_route_reads_through_the_token_s_workspace_limit(
         refused = await client.get("/v1/status", headers=await bearer(db, owner, "ingest", "admin"))
     assert refused.status_code == 403
     assert refused.json()["error"]["code"] == "insufficient_scope"
+
+
+# --- The gate -------------------------------------------------------------------------------------
+
+
+async def gate_of(app: FastAPI, headers: dict[str, str]) -> httpx2.Response:
+    async with client_for(app) as client:
+        return await client.get("/v1/status", params={"gate": "true"}, headers=headers)
+
+
+async def test_the_gate_answers_503_for_a_lagging_stream_and_for_an_index_behind(
+    db: Conn, owner: uuid.UUID, pool: Pool, settings: Settings, admin: dict[str, str]
+) -> None:
+    on = create_app(settings, pool=pool, embedder=FakeEmbedder())
+    await push_setup(on, admin)
+    await push(on, admin, recent_batch("general/0001"))
+
+    current = await gate_of(on, admin)
+    assert current.status_code == 200
+    assert current.json()["current"] is True
+
+    # A scheduled stream three hours behind a 15-minute schedule.
+    *_, stream_id = await insert_git_stream(
+        db, owner, "gamma", checked_ago="3 hours", cursor={"commit": COMMIT, "rules": "r" * 64}
+    )
+    lagging = await gate_of(on, admin)
+    assert lagging.status_code == 503
+    assert lagging.json()["current"] is False
+    assert streams_of(lagging.json(), "gamma")["refs/heads/main"]["behind"] == ["lag"]
+
+    await db.execute("UPDATE stream SET checked_until = now() WHERE id = %s", (stream_id,))
+    assert (await gate_of(on, admin)).status_code == 200
+
+    # The same records, searched with another model: alpha's index is stale, so behind.
+    changed = create_app(settings, pool=pool, embedder=FakeEmbedder(OTHER_MODEL))
+    stale = await gate_of(changed, admin)
+    assert stale.status_code == 503
+    assert index_of(stale.json())["behind"] is True
+    assert index_of(stale.json())["reindex"] == "memini reindex --workspace alpha"
+    assert streams_of(stale.json())["chat/general"]["behind"] == ["index_stale"]

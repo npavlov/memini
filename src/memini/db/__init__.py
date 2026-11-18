@@ -16,6 +16,7 @@ from memini.db.migrate import (
     migrate,
     pending_migrations,
 )
+from memini.db.statements import TimedCursor, statement_fingerprint, timed_cursor
 
 __all__ = [
     "TIMEOUT_ERRORS",
@@ -23,6 +24,7 @@ __all__ = [
     "MigrationError",
     "Pool",
     "SessionLimits",
+    "TimedCursor",
     "check_sequence",
     "connect",
     "current_session_limits",
@@ -33,4 +35,6 @@ __all__ = [
     "pending_migrations",
     "prepare_connection",
     "session_limits",
+    "statement_fingerprint",
+    "timed_cursor",
 ]

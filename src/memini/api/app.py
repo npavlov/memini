@@ -3,7 +3,9 @@
 Layout of the application :func:`create_app` builds:
 
 - Public, no token: ``GET /healthz``, ``GET /readyz``, ``GET /version`` (see
-  :mod:`memini.api.health`) and the OpenAPI schema at ``GET /openapi.json``.
+  :mod:`memini.api.health`) and the OpenAPI schema at ``GET /openapi.json``. ``GET /metrics``
+  (:mod:`memini.api.metrics`), when ``metrics_token`` is set, needs that token instead of a Memini
+  one.
 - Resource routes live under :data:`V1_PREFIX`. The bearer-token dependency
   (:func:`memini.api.auth.authenticate_request`) is on that one router, so every resource route
   needs a valid token and the public routes above do not. A route asks for a scope, a read route
@@ -50,6 +52,7 @@ from memini.api.health import DEFAULT_READINESS_TIMEOUT, ReadinessCheck, build_h
 from memini.api.ingest import build_ingest_router
 from memini.api.limits import RequestLimitsMiddleware
 from memini.api.mcp import mcp_route
+from memini.api.metrics import HttpMetricsMiddleware, RouteTemplates, build_metrics_router
 from memini.api.persons import build_persons_router
 from memini.api.query import build_query_router
 from memini.api.request_id import RequestIdMiddleware
@@ -85,10 +88,18 @@ _TELEMETRY_OFF: Final[TelemetryConfig] = {
 
 
 class _MeminiApp(FastAPI):
+    route_templates: RouteTemplates | None = None
+    """Set by create_app, for the HTTP metrics."""
+
     def build_middleware_stack(self) -> ASGIApp:
         # Outside Starlette's ServerErrorMiddleware, which turns unhandled exceptions into a 500:
-        # that response gets the request id too, and the 500 handler can read it.
-        return RequestIdMiddleware(super().build_middleware_stack())
+        # that response gets the request id too, and the 500 handler can read it. The HTTP metrics
+        # count that 500 too, and the refusals of the request limits.
+        return RequestIdMiddleware(
+            HttpMetricsMiddleware(
+                super().build_middleware_stack(), self.route_templates or RouteTemplates()
+            )
+        )
 
 
 def _lifespan(
@@ -174,23 +185,36 @@ def create_app(
     install_error_handlers(app)
     app.add_middleware(RequestLimitsMiddleware, settings=settings)
 
-    app.include_router(build_health_router(readiness_checks or {}, readiness_timeout))
+    # The HTTP metrics label a request by the template of its route, prefix included.
+    templates = RouteTemplates()
+    public = [build_health_router(readiness_checks or {}, readiness_timeout)]
+    if settings.metrics_token is not None:
+        public.append(build_metrics_router(settings.metrics_token))
+    for router in public:
+        app.include_router(router)
+        templates.add(router.routes)
 
     # Resource routers are included into this router, before it is included into the app:
     # include_router copies the routes it finds at that moment.
     v1 = APIRouter(prefix=V1_PREFIX, dependencies=[Depends(authenticate_request)])
-    v1.include_router(build_workspaces_router())
-    v1.include_router(build_sources_router())
-    v1.include_router(build_ingest_router())
-    v1.include_router(build_runs_router())
-    v1.include_router(build_status_router())
-    v1.include_router(build_tokens_router())
-    v1.include_router(build_persons_router())
-    v1.include_router(build_query_router())
-    v1.include_router(build_decisions_router())
-    v1.include_router(build_forget_router())
+    for router in (
+        build_workspaces_router(),
+        build_sources_router(),
+        build_ingest_router(),
+        build_runs_router(),
+        build_status_router(),
+        build_tokens_router(),
+        build_persons_router(),
+        build_query_router(),
+        build_decisions_router(),
+        build_forget_router(),
+    ):
+        v1.include_router(router)
+        templates.add(router.routes, V1_PREFIX)
     app.include_router(v1)
 
     app.router.routes.append(mcp_route(mcp, authenticator))
+    templates.add(app.router.routes)  # the OpenAPI schema and MCP; included routers have no path
+    app.route_templates = templates
 
     return app

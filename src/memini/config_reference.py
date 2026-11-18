@@ -121,6 +121,14 @@ GROUPS: Final[tuple[Group, ...]] = (
     ),
     Group("Logging", ("log_",), "The service logs one JSON object per line, on stderr."),
     Group(
+        "Metrics",
+        ("metrics_",),
+        "`GET /metrics` serves counts and timings in the Prometheus text format, to a scraper that"
+        " sends `metrics_token` as its bearer token; without the token the route does not exist."
+        " A Memini token is not accepted there. No metric is labelled by a workspace, source,"
+        " stream or person; `memini_base_current` says what `GET /v1/status?gate=true` says.",
+    ),
+    Group(
         "Operator",
         ("principal",),
         "v1 has one user. The operator commands act as one principal, named here.",
@@ -214,6 +222,11 @@ NOTES: Final[Mapping[str, str]] = {
     "database_url": "Compose builds it from `MEMINI_DB_PASSWORD`.",
     "http_port": "The HTTP API and MCP (`/mcp`) listen on it.",
     "log_level": "The lowest level the service logs; any case.",
+    "log_slow_statement_threshold": "A statement of the service over it is logged at WARNING with"
+    " its duration, the request or run it served, and its text with every literal replaced by"
+    " `?`, never its parameters.",
+    "metrics_token": "Unset: there is no `/metrics` route. Prometheus sends it with"
+    " `authorization: {credentials_file: ...}`; it reads counts only.",
     "principal": "The principal the operator commands act as, created on first use:"
     " `memini bootstrap` gives it the first admin token, so it owns what is made with that token.",
     "embedding_provider": "Unset: embeddings are off.",

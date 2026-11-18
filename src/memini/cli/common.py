@@ -23,6 +23,7 @@ __all__ = [
     "EXIT_DENIED",
     "EXIT_FAILURE",
     "EXIT_INTERRUPTED",
+    "EXIT_NOT_CURRENT",
     "EXIT_OK",
     "EXIT_UNAVAILABLE",
     "EXIT_USAGE",
@@ -53,6 +54,9 @@ EXIT_DENIED: Final = 5
 """The service refused the token of a client command: unknown, revoked or expired (HTTP 401), or
 without the scope or the workspace the command needs (HTTP 403). 4 is ``eval``'s regression
 (:data:`memini.cli.evaluate.EXIT_REGRESSION`)."""
+EXIT_NOT_CURRENT: Final = 6
+"""``memini status --gate``: the service answered, and the base is not current (a stream or an
+index is behind, or the database is not reachable)."""
 EXIT_INTERRUPTED: Final = 130
 """Interrupted by Ctrl-C (128 + SIGINT), as shells report it. ``serve`` exits 0 instead."""
 
