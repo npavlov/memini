@@ -4,7 +4,8 @@ expects what the index does not hold. Acceptance of memini-a0t. Every value is s
 
 import json
 import shutil
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from memini.cli import main
 from memini.cli.common import EXIT_FAILURE, EXIT_OK
 from memini.cli.evaluate import EXIT_REGRESSION
 from memini.config import environment_variables
-from memini.evaluation import DEFAULT_LEXICAL, LEXICAL_VARIANTS, LexicalVariant
+from memini.evaluation import DEFAULT_LEXICAL, LEXICAL_VARIANTS, LexicalVariant, runner
 from memini.evaluation.runner import SCRATCH_PREFIX
 from memini.search.retrieval import ChunkScope, Params, Statement, chunk_conditions
 
@@ -50,13 +51,23 @@ def scratch_databases(url: str) -> set[str]:
 @pytest.fixture
 def server(monkeypatch: pytest.MonkeyPatch, postgres_url: str) -> Iterator[str]:
     """The test server in ``MEMINI_DATABASE_URL``; no other setting from the shell. Checks that
-    every scratch database the test made is gone afterwards."""
+    every scratch database the test made is gone afterwards: only those it made, since an eval
+    running elsewhere on the same server may have one of its own at that moment."""
     for name in (*environment_variables(), "MEMINI_PRINCIPAL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("MEMINI_DATABASE_URL", postgres_url)
-    before = scratch_databases(postgres_url)
+    created: list[str] = []
+    original = runner._scratch_database  # pyright: ignore[reportPrivateUsage]
+
+    @asynccontextmanager
+    async def recording(server_url: str, *, keep: bool) -> AsyncGenerator[tuple[str, str]]:
+        async with original(server_url, keep=keep) as (name, url):
+            created.append(name)
+            yield name, url
+
+    monkeypatch.setattr(runner, "_scratch_database", recording)
     yield postgres_url
-    assert scratch_databases(postgres_url) <= before
+    assert not scratch_databases(postgres_url) & set(created)
 
 
 def invoke(capsys: pytest.CaptureFixture[str], *argv: str) -> Run:
