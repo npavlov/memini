@@ -126,6 +126,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Agent executor for MCP sources reachable only inside an agent session: a run API
   (`…/agent-runs`: start, next, responses, finish) and a Claude Code plugin with the `memini-intake`
   skill and a capture hook (`integrations/claude-code`); the agent sees a receipt, not the payload.
+- Service executor (`mcp_sync`): MCP recipes run headlessly over streamable HTTP or stdio, with an egress
+  allowlist, internal-address refusal, a rate budget and retries; mcp source admin in the API and CLI.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.

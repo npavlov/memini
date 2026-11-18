@@ -110,6 +110,11 @@ Optional reranking: Qwen3-Reranker 0.6B in the process, off by default. Install
 `memini[local-embeddings]` and set `MEMINI_SEARCH_RERANKER=local`; on the code suite it lifts hybrid
 R@1 from 0.61 to 0.78 for about 0.5 s per search. `memini eval --reranker local` measures it.
 
+MCP sources: the service syncs MCP servers on a schedule (`memini source add <ws> <name> --kind mcp
+--url URL --recipe PATH --stream KEY`); list their servers in `MEMINI_MCP_ALLOWED_ENDPOINTS` or
+`MEMINI_MCP_ALLOWED_COMMANDS`. Internal addresses are refused unless `MEMINI_MCP_ALLOWED_NETWORKS` lists
+them.
+
 Agent executor: bring an MCP source that Memini cannot reach on its own into Memini from a Claude Code
 session, with the `memini-intake` skill and capture hook in `integrations/claude-code`
 ([docs/recipes.md](docs/recipes.md), Agent executor).
