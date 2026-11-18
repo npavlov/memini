@@ -31,6 +31,7 @@ CONTAINER_ENV: Final = "MEMINI_TEST_PG_CONTAINER"
 
 _TIMEOUT: Final = 120
 _LOCAL_HOSTS: Final = frozenset({"127.0.0.1", "localhost", "::1"})
+_ATTVER: Final = re.compile(r"pg_attver=\d+")
 _VERSION: Final = re.compile(r"\(PostgreSQL\) (\d+)")
 
 
@@ -91,7 +92,9 @@ class PgPrograms:
             "pg_dump", "--schema-only", "--no-owner", *self.connection, f"--dbname={database}"
         ).decode()
         lines = (
-            line.replace("(", "").replace(")", "")
+            # Some pg_dump builds (the one CI found) print a per-column `SET pg_attver=<n>`
+            # whose number differs between any two databases: keep the line, not the number.
+            _ATTVER.sub("pg_attver=N", line.replace("(", "").replace(")", ""))
             for line in text.splitlines()
             if line and not line.startswith(("--", "\\restrict", "\\unrestrict"))
         )
