@@ -5,7 +5,8 @@ Principle 1: every index is derived and can be rebuilt from the raw records. A r
 again. Where the bytes are depends on where the record came from:
 
 - A thread, a meeting or a document of a push or MCP source keeps its payload in the ``record``
-  row, byte for byte (:class:`StoredPayload`).
+  row, byte for byte (:class:`StoredPayload`): canonical JSON, which the chunker of its kind
+  parses (:func:`memini.chunking.chunk_payload`), never the bytes of a file.
 - A file of a git source, a code file or a Markdown document, is not copied into the database:
   the service's mirror of the repository is the raw store, and the record's ``content_hash`` is
   the file's git blob id. Reading it is the git connector's part,
@@ -106,6 +107,9 @@ class RawDocument:
     content: bytes
     path: str | None = None
     """For a file of a repository: its path, for chunk headers and symbols."""
+    payload: bool = False
+    """The content is the record's stored payload (canonical JSON, :mod:`memini.payloads`), not
+    the bytes of a file."""
 
 
 class RawContentUnavailableError(Exception):
@@ -160,7 +164,7 @@ class StoredPayload:
         cur = await self._conn.execute("SELECT payload FROM record WHERE id = %s", (record.id,))
         row = await cur.fetchone()
         payload: bytes | None = None if row is None else row[0]
-        return None if payload is None else RawDocument(content=bytes(payload))
+        return None if payload is None else RawDocument(content=bytes(payload), payload=True)
 
 
 class MirrorNotAvailable:

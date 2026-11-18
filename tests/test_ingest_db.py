@@ -33,6 +33,7 @@ from memini.ingest import (
     WindowGapError,
     canonical_json,
     ingest,
+    normalize,
 )
 from memini.sources import NewPushSource, create_push_source
 from memini.workspaces import NotFoundError, create_workspace, ensure_principal
@@ -183,7 +184,7 @@ async def test_a_batch_is_stored_and_the_same_batch_again_changes_nothing(env: E
             stream_id,
             env.acme,
             env.owner,
-            None,
+            normalize(item.kind, item.payload),
             None,
         )
     # The stored payload is canonical JSON: sorted keys, no whitespace, UTF-8 as it is.
@@ -228,7 +229,6 @@ async def test_a_record_that_changed_is_written_and_the_hook_gets_it(env: Env) -
     assert {record.external_id for record in seen[0]} == {"general/0001", "general/0002", "m-1"}
     assert [record.id for record in seen[0]] == sorted(record.id for record in seen[0])
     assert all(record.content_changed for record in seen[0])
-    await env.db.execute("UPDATE record SET normalized_text = 'derived'")
     before = await versions(env.db)
 
     edited = Batch(
@@ -255,8 +255,12 @@ async def test_a_record_that_changed_is_written_and_the_hook_gets_it(env: Env) -
     assert (
         after[f"record:{rid(env, 'general/0001')}"] != before[f"record:{rid(env, 'general/0001')}"]
     )
+    # The normalized text is written with the payload it is derived from.
     derived = dict(await rows(env.db, "SELECT external_id, normalized_text FROM record"))
-    assert derived == {"general/0001": None, "general/0002": "derived", "m-1": "derived"}
+    assert derived == {
+        item.external_id: normalize(item.kind, item.payload or {}) for item in edited.records
+    }
+    assert "Friday it is." in derived["general/0001"]
     assert (
         await scalar(
             env.db, "SELECT occurred_at FROM record WHERE id = %s", rid(env, "general/0002")

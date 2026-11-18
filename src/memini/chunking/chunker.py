@@ -23,6 +23,7 @@ from memini.chunking.model import (
     DEFAULT_SIZES,
     LANGUAGES,
     MARKDOWN_CHUNKER_VERSION,
+    PAYLOAD_CHUNKER_VERSION,
     Chunk,
     ChunkKind,
     ChunkSizes,
@@ -59,13 +60,16 @@ def chunk_id(record_id: str, key: Key) -> str:
 
 
 def chunker_fingerprint() -> str:
-    """:data:`CHUNKER_VERSION`, :data:`MARKDOWN_CHUNKER_VERSION` and the versions of tree-sitter
-    and of every grammar package.
+    """:data:`CHUNKER_VERSION`, :data:`MARKDOWN_CHUNKER_VERSION`,
+    :data:`PAYLOAD_CHUNKER_VERSION` and the versions of tree-sitter and of every grammar package.
 
     The chunkers' output depends on all of them, so the index fingerprint should include this.
     """
     versions = " ".join(f"{name}/{metadata.version(name)}" for name in GRAMMAR_PACKAGES)
-    return f"memini-chunker/{CHUNKER_VERSION} markdown/{MARKDOWN_CHUNKER_VERSION} {versions}"
+    return (
+        f"memini-chunker/{CHUNKER_VERSION} markdown/{MARKDOWN_CHUNKER_VERSION}"
+        f" payload/{PAYLOAD_CHUNKER_VERSION} {versions}"
+    )
 
 
 def chunk_file(

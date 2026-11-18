@@ -18,6 +18,7 @@ from memini.db import connect, migrate
 from memini.embeddings import Embedder, FakeEmbedder
 from memini.ids import RecordKind
 from memini.index import current_fingerprint, read_index_state
+from memini.ingest import canonical_json
 from memini.workspaces import create_workspace, ensure_principal
 
 pytestmark = pytest.mark.integration
@@ -92,6 +93,9 @@ def query(url: str, sql: Any, params: Any = None) -> list[tuple[Any, ...]]:
     return asyncio.run(run())
 
 
+T = "2026-03-01T09:00:00Z"
+
+
 def add(world: World, kind: RecordKind) -> str:
     async def run() -> str:
         async with connect(world.url, autocommit=True) as conn:
@@ -110,7 +114,9 @@ def add(world: World, kind: RecordKind) -> str:
                 owner_id=world.owner,
                 source_id=world.notes,
                 external_id="note-1",
-                content=b"A synthetic note.",
+                content=canonical_json(
+                    {"messages": [{"author": "Ann Example", "sent_at": T, "text": "A note."}]}
+                ),
                 kind=kind,
             )
 
@@ -120,14 +126,14 @@ def add(world: World, kind: RecordKind) -> str:
 def test_reindex_records_the_fingerprint_and_a_run(
     capsys: pytest.CaptureFixture[str], world: World
 ) -> None:
-    add(world, "thread")  # no chunker for threads yet: nothing to index
+    add(world, "thread")
 
     result = invoke(capsys, "reindex", "--workspace", "acme")
 
     assert result.code == EXIT_OK, result.err
     assert result.out == (
-        "rebuilt the index of workspace acme: 1 records (0 indexed), 0 chunks (0 new, 0 changed,"
-        " 0 unchanged, 0 deleted), 0 texts embedded, 0 vectors reused\n"
+        "rebuilt the index of workspace acme: 1 records (1 indexed), 1 chunks (1 new, 0 changed,"
+        " 0 unchanged, 0 deleted), 1 texts embedded, 0 vectors reused\n"
     )
     assert result.err.startswith(
         "memini: rebuilding the index of workspace acme with model fake-embedder"
@@ -139,7 +145,7 @@ def test_reindex_records_the_fingerprint_and_a_run(
             return None if found is None else found.built_with
 
     assert asyncio.run(state()) == current_fingerprint(FakeEmbedder().spec)
-    runs = query(world.url, "SELECT kind, status, report->'counts'->>'records_cleared' FROM run")
+    runs = query(world.url, "SELECT kind, status, report->'counts'->>'records_indexed' FROM run")
     assert runs == [("reindex", "succeeded", "1")]
 
 

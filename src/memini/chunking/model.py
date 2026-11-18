@@ -1,6 +1,7 @@
 """What the chunker returns: chunks, symbols, and the sizes that shape them."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Final, Literal, get_args
 
 __all__ = [
@@ -9,6 +10,7 @@ __all__ = [
     "DEFAULT_SIZES",
     "LANGUAGES",
     "MARKDOWN_CHUNKER_VERSION",
+    "PAYLOAD_CHUNKER_VERSION",
     "Chunk",
     "ChunkKind",
     "ChunkSizes",
@@ -30,6 +32,11 @@ computed over the text that is stored."""
 MARKDOWN_CHUNKER_VERSION: Final = 1
 """Version of the rules of the Markdown chunker (:mod:`memini.chunking.markdown`), the same way:
 it changes whenever its output for some input can change. The index fingerprint includes it."""
+
+PAYLOAD_CHUNKER_VERSION: Final = 1
+"""Version of the chunkers of pushed records (:mod:`memini.chunking.payloads`: threads, meetings,
+documents) and of the normalized text they cut (:mod:`memini.payloads`), the same way: it changes
+whenever their output for some payload can change. The index fingerprint includes it."""
 
 CHUNK_ID_DOMAIN: Final = "memini.chunk.v1"
 """Domain tag of chunk ids (see :mod:`memini.chunking`). A new rule gets a new tag."""
@@ -54,12 +61,19 @@ SymbolKind = Literal[
 """Kinds of definitions. ``module`` is a Ruby module or a TypeScript namespace; ``struct`` is a
 Go struct type; ``type`` is any other type definition or alias."""
 
-ChunkKind = SymbolKind | Literal["group", "code", "window", "section"]
+ChunkKind = (
+    SymbolKind
+    | Literal["group", "code", "window", "section"]
+    | Literal["messages", "summary", "action_items", "transcript"]
+)
 """A chunk of code is one definition, or a part of one (the kind of that definition); several small
 siblings merged together (``group``); statements outside definitions (``code``); or a line window
 of a file that was not parsed (``window``). A chunk of a Markdown document is one section, or a
 window of one, or the text before the first heading (``section``); or several small sections
-merged together (``group``)."""
+merged together (``group``). A chunk of a thread is a group of consecutive messages, or a window
+of one long message (``messages``). A chunk of a meeting is a section of its summary, or its
+overview when it has no notes (``summary``), its action items (``action_items``), or a window of
+its transcript (``transcript``)."""
 
 Fallback = Literal["unknown_language", "too_large", "binary"]
 """Why a file was not parsed: no grammar for its language, larger than
@@ -141,6 +155,20 @@ class Chunk:
     Postgres text cannot hold a NUL character."""
     content_hash: str
     """SHA-256 of :attr:`text` in UTF-8, 64 lowercase hex characters."""
+    anchor: str | None = None
+    """Where the chunk is in a pushed record, in the form evidence names a place
+    (:class:`memini.knowledge.EvidenceRef`): ``msg-<id>``, the first message of a thread chunk;
+    ``seg-<id>``, the first segment of a transcript window; ``summary``, ``summary/<trail>``,
+    ``action-items`` or ``overview`` in a meeting; a heading trail (``Install > Docker``) in a
+    pushed document. None for code, for a file of a repository, and for the text before the first
+    heading of a document."""
+    url: str | None = None
+    """A link to the chunk's place in its source when the payload has one: the ``url`` of the first
+    message of a thread chunk."""
+    occurred_at: datetime | None = None
+    """When what the chunk holds happened, where the record says so: the time of the first
+    message of a thread chunk; the start of a meeting, or of a transcript window. None for code
+    and documents, which have their record's time."""
 
     @property
     def text(self) -> str:

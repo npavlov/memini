@@ -28,15 +28,18 @@ in a transaction of its own, so that the batch's run can name it.
    may start anywhere: it never moves the checkpoint.
 3. Records are upserted by their deterministic id (:func:`memini.ids.record_id` of the source,
    kind and external id). A record equal to its row (payload, time, URL; and stream, when the
-   batch names one) is not written at all; one that differs is written, a tombstone revived. The
-   derived ``normalized_text`` is cleared when the payload changes.
+   batch names one) is not written at all; one that differs is written, a tombstone revived. Its
+   ``normalized_text`` (:func:`normalize`, the payload as plain text) is written with it.
 4. Tombstones turn live records into tombstones (``deleted_at``) and delete their chunks and
    symbols. A tombstone for a record never stored, or already deleted, changes nothing.
 5. A snapshot (a complete window with ``snapshot``) holds every live record of the stream whose
    ``occurred_at`` is in ``[from, to)``: the stream's records in that window that it does not
    hold become tombstones the same way.
 6. The indexing hook (:class:`RecordIndexer`), if given, derives chunks from the records whose
-   rows were written.
+   rows were written: :class:`PayloadIndexer` chunks each payload by its kind
+   (:func:`memini.chunking.chunk_payload`) and writes the chunks through the index writer, which
+   embeds only texts it has no vector for. Without a hook the records are stored without chunks
+   and counted as not indexed; ``memini reindex`` indexes them.
 7. A complete window that ends after the checkpoint moves it to ``to``, with the claim's cursor,
    by compare-and-set against the checkpoint read in step 1. The checkpoint never moves back, and
    an incomplete window leaves it where it was.
@@ -47,6 +50,7 @@ the checkpoint is where the first batch left it (principle 6). Each batch writes
 ``ingest`` with its counts when ``runs`` is given; an incomplete window ends it as ``partial``.
 """
 
+from memini.ingest.indexing import PayloadIndexer
 from memini.ingest.model import (
     DEFAULT_LIMITS,
     INGESTIBLE_KINDS,
@@ -82,6 +86,7 @@ from memini.ingest.validate import (
     content_hash,
     prepare_batch,
 )
+from memini.payloads import normalize
 
 __all__ = [
     "DEFAULT_LIMITS",
@@ -103,6 +108,7 @@ __all__ = [
     "IngestResult",
     "InvalidBatchError",
     "NotIngestibleError",
+    "PayloadIndexer",
     "PreparedBatch",
     "PreparedRecord",
     "PreparedTombstone",
@@ -115,5 +121,6 @@ __all__ = [
     "canonical_json",
     "content_hash",
     "ingest",
+    "normalize",
     "prepare_batch",
 ]

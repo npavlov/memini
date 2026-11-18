@@ -29,15 +29,17 @@ from index_helpers import (
     source,
     versions,
 )
-from memini.chunking import FileChunks, chunk_file
+from memini.chunking import FileChunks, chunk_file, chunk_payload
 from memini.db import connect
 from memini.embeddings import EmbeddingSpec, FakeEmbedder
+from memini.ids import RecordKind
 from memini.index import (
     DEFAULT_CHUNKERS,
     IndexCounts,
     IndexMismatchError,
     RawContentUnavailableError,
     RawDocument,
+    RecordChunker,
     RecordRef,
     ReindexInProgressError,
     StoredPayload,
@@ -51,6 +53,7 @@ from memini.index import (
     vector_index_exists,
 )
 from memini.index.rebuild import reindex_lock_key
+from memini.ingest import canonical_json
 from memini.runs import record_run
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
@@ -264,7 +267,11 @@ async def test_records_with_nothing_to_index_lose_their_chunks(
         kind="thread",
     )
 
-    result = await reindex(db, fake, workspace_id=scope.acme, raw=raw, page_size=2)
+    chunkers: dict[RecordKind, RecordChunker] = {**DEFAULT_CHUNKERS}
+    del chunkers["thread"]
+    result = await reindex(
+        db, fake, workspace_id=scope.acme, raw=raw, page_size=2, chunkers=chunkers
+    )
 
     assert await rows(db, "SELECT DISTINCT record_id FROM chunk") == [(kept,)]
     assert await rows(db, "SELECT DISTINCT record_id FROM symbol") == [(kept,)]
@@ -307,19 +314,21 @@ async def test_a_stored_payload_is_chunked_by_the_chunker_of_its_kind(
 
 
 NOTE = b"# Synthetic note\n\nThe greenhouse vents open at noon.\n"
+NOTE_PAYLOAD = canonical_json({"title": "Vents", "text": NOTE.decode()})
 
 
 async def test_documents_are_read_by_the_kind_of_their_source_and_chunked_by_headings(
     db: Conn, scope: Scope, fake: FakeEmbedder
 ) -> None:
-    # A document of a push source keeps its payload; one of a git source is a file in the mirror.
+    # A document of a push source keeps its payload, JSON with its title and text; one of a git
+    # source is a file in the mirror.
     pushed = await add_record(
         db,
         workspace_id=scope.acme,
         owner_id=scope.owner,
         source_id=scope.notes,
         external_id="note-1",
-        content=NOTE,
+        content=NOTE_PAYLOAD,
         kind="document",
     )
     synced = await add_record(
@@ -344,13 +353,64 @@ async def test_documents_are_read_by_the_kind_of_their_source_and_chunked_by_hea
     assert result.records_indexed == 2
     assert mirror.reads == [synced]
     found = await rows(
-        db, "SELECT record_id, record_kind, kind, key, path, header FROM chunk ORDER BY path"
+        db,
+        "SELECT record_id, record_kind, kind, key, path, header, start_line, anchor FROM chunk"
+        " ORDER BY path",
     )
     assert found == [
         (synced, "document", "section", "Synthetic note#0", "docs/vents.md",
-         "docs/vents.md: Synthetic note"),
-        (pushed, "document", "section", "Synthetic note#0", None, "note-1: Synthetic note"),
+         "docs/vents.md: Synthetic note", 1, None),
+        (pushed, "document", "section", "Synthetic note#0", None, "Vents: Synthetic note", 3,
+         "Synthetic note"),
     ]  # fmt: skip
+
+
+async def test_threads_and_meetings_are_chunked_from_their_stored_payloads(
+    db: Conn, scope: Scope, fake: FakeEmbedder
+) -> None:
+    thread = canonical_json(
+        {"messages": [{"author": "Ann Example", "sent_at": "2026-03-01T09:00:00Z", "text": "Hi."}]}
+    )
+    meeting = canonical_json({"title": "Sync", "started_at": "2026-03-01T14:00:00Z"})
+    kinds: tuple[tuple[RecordKind, bytes], ...] = (("thread", thread), ("meeting", meeting))
+    records = {
+        kind: await add_record(
+            db,
+            workspace_id=scope.acme,
+            owner_id=scope.owner,
+            source_id=scope.notes,
+            external_id=f"{kind}-1",
+            content=payload,
+            kind=kind,
+        )
+        for kind, payload in kinds
+    }
+
+    result = await reindex(db, fake, workspace_id=scope.acme, raw=default_raw_content(db))
+
+    assert result.records_indexed == 2
+    found = await rows(db, "SELECT record_id, kind, anchor, content FROM chunk ORDER BY kind")
+    (message_id,) = [c.anchor for c in chunk_payload(records["thread"], "thread", thread).chunks]
+    assert found == [
+        (records["thread"], "messages", message_id, "Ann Example · 2026-03-01 09:00 UTC\nHi."),
+        (records["meeting"], "summary", "overview", "Sync\n2026-03-01 14:00 UTC"),
+    ]
+
+
+async def test_a_stored_payload_not_of_its_kind_stops_the_rebuild(
+    db: Conn, scope: Scope, fake: FakeEmbedder
+) -> None:
+    rid = await add_record(
+        db,
+        workspace_id=scope.acme,
+        owner_id=scope.owner,
+        source_id=scope.notes,
+        external_id="thread-1",
+        content=b"A synthetic thread, not JSON.",
+        kind="thread",
+    )
+    with pytest.raises(ValueError, match=f"the payload of thread record {rid} is not valid"):
+        await reindex(db, fake, workspace_id=scope.acme, raw=default_raw_content(db))
 
 
 async def test_a_record_changed_during_the_rebuild_is_read_again(

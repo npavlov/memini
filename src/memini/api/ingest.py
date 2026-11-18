@@ -23,13 +23,23 @@ A body not of the shape: 422 ``validation_error``, with the fields. A batch the 
 ``invalid_batch``, whose message names the field and why, never a value. A git source: 409
 ``not_ingestible``. A complete window that starts after the stream's checkpoint: 409
 ``window_gap``. Another batch in the way: 409 ``ingest_conflict``; sending the batch again is safe.
+
+Indexing. With an embedding provider configured, the records a batch writes are chunked by their
+kind and indexed in the batch's transaction (:class:`memini.ingest.PayloadIndexer`, with the
+embedder the application holds), so a record and its chunks are stored together. A workspace
+whose index was built with another embedding model or chunker refuses the batch: 503
+``index_mismatch``, whose message names ``memini reindex``. A model that fails refuses it too:
+503 ``embedding_failed``. Nothing is stored either way, and the batch can be sent again. Without
+a provider, records are stored without chunks, as the answer's ``index`` says; ``memini reindex``
+indexes them once one is set.
 """
 
 import json
+import logging
 from collections.abc import Callable, Coroutine, Generator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Final, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
@@ -42,17 +52,24 @@ from memini.api.database import Connection
 from memini.api.errors import ApiError
 from memini.config import Settings
 from memini.db import Pool
+from memini.embeddings import EmbeddingError
+from memini.index import IndexMismatchError
+from memini.query import QueryServices
 from memini.workspaces import NotFoundError
 
 __all__ = [
+    "NOT_INDEXED_NOTE",
     "BatchBody",
     "CheckpointInfo",
+    "IndexInfo",
     "IngestAccepted",
     "IngestCounts",
     "RecordBody",
     "WindowBody",
     "build_ingest_router",
 ]
+
+log = logging.getLogger(__name__)
 
 
 # --- The body ------------------------------------------------------------------------------------
@@ -97,8 +114,11 @@ class RecordBody(BaseModel):
         default=None,
         description="The record as a JSON object, stored as canonical JSON (sorted keys, no"
         " whitespace); required for a record. thread: messages, a list of objects with author,"
-        " sent_at and text. meeting: title and started_at, optionally ended_at. document: title"
-        " and text. Other fields are kept.",
+        " sent_at and text, optionally id, recipients, mentions and url; optionally the thread's"
+        " title and channel. meeting: title and started_at, optionally ended_at, participants,"
+        " summary (Markdown), action_items (text, or objects with text, owner, due, id) and"
+        " transcript (objects with text, optionally speaker, start and end in seconds, id)."
+        " document: title and text (Markdown). Other fields are kept.",
     )
     deleted: bool = Field(
         default=False,
@@ -212,6 +232,43 @@ class CheckpointInfo(BaseModel):
     moved: bool = Field(description="Whether this batch moved the checkpoint.")
 
 
+NOT_INDEXED_NOTE: Final = (
+    "No embedding provider is configured, so the records were stored without chunks and search"
+    " does not find them yet. Set MEMINI_EMBEDDING_PROVIDER, then run memini reindex."
+)
+
+
+class IndexInfo(BaseModel):
+    """What the batch did to the index."""
+
+    indexed: bool = Field(
+        description="Whether the records the batch wrote were chunked and indexed with it."
+    )
+    records_not_indexed: int = Field(description="Records written without their chunks.")
+    chunks_inserted: int
+    chunks_updated: int
+    chunks_unchanged: int
+    chunks_deleted: int = Field(description="With tombstones, and parts of records that changed.")
+    texts_embedded: int = Field(description="Texts sent to the embedding model.")
+    vectors_reused: int = Field(description="Texts whose vector was stored already.")
+    note: str | None = Field(description="Why the records were not indexed; null when they were.")
+
+    @classmethod
+    def of(cls, result: ingest.IngestResult, *, indexed: bool) -> "IndexInfo":
+        counts = result.index
+        return cls(
+            indexed=indexed,
+            records_not_indexed=result.not_indexed,
+            chunks_inserted=counts.inserted,
+            chunks_updated=counts.updated,
+            chunks_unchanged=counts.unchanged,
+            chunks_deleted=counts.deleted,
+            texts_embedded=counts.embedded,
+            vectors_reused=counts.reused,
+            note=None if indexed else NOT_INDEXED_NOTE,
+        )
+
+
 class IngestAccepted(BaseModel):
     run_id: UUID | None = Field(description="The run of the batch; GET /v1/runs/{id} has it.")
     stream: str | None = Field(description="The stream's key; null without one.")
@@ -220,9 +277,10 @@ class IngestAccepted(BaseModel):
     checkpoint: CheckpointInfo | None = Field(
         description="The stream's checkpoint after the batch; null without a stream."
     )
+    index: IndexInfo
 
     @classmethod
-    def of(cls, result: ingest.IngestResult) -> "IngestAccepted":
+    def of(cls, result: ingest.IngestResult, *, indexed: bool) -> "IngestAccepted":
         checkpoint = result.checkpoint
         return cls(
             run_id=result.run_id,
@@ -243,6 +301,7 @@ class IngestAccepted(BaseModel):
                 cursor=None if checkpoint.cursor is None else dict(checkpoint.cursor),
                 moved=result.checkpoint_moved,
             ),
+            index=IndexInfo.of(result, indexed=indexed),
         )
 
 
@@ -339,6 +398,16 @@ def _ingest_errors() -> Generator[None]:
             "ingest_conflict",
             "Another batch changed the same stream or records; send the batch again.",
         ) from None
+    except IndexMismatchError as error:
+        raise ApiError(503, "index_mismatch", f"Nothing was stored: {error}.") from None
+    except EmbeddingError as error:
+        log.warning("the records of a batch could not be embedded: %s", error)
+        raise ApiError(
+            503,
+            "embedding_failed",
+            "The records could not be embedded and nothing was stored; the server log says why."
+            " Send the batch again later.",
+        ) from None
 
 
 def build_ingest_router() -> APIRouter:
@@ -357,10 +426,13 @@ def build_ingest_router() -> APIRouter:
         conn: Connection,
     ) -> IngestAccepted:
         """Store a batch of records for a push source in one transaction, with the move of its
-        stream's checkpoint when it claims a complete window. Sending the same batch again changes
-        nothing. The answer counts what the batch did and gives the stream's checkpoint."""
+        stream's checkpoint when it claims a complete window, and their chunks when an embedding
+        provider is configured. Sending the same batch again changes nothing. The answer counts
+        what the batch did, gives the stream's checkpoint and says what it did to the index."""
         settings = cast(Settings, request.app.state.settings)
         pool = cast(Pool | None, request.app.state.pool)
+        embedder = cast(QueryServices, request.app.state.services).embedder
+        indexer = None if embedder is None else ingest.PayloadIndexer(embedder)
         with _ingest_errors():
             result = await ingest.ingest(
                 conn,
@@ -370,7 +442,8 @@ def build_ingest_router() -> APIRouter:
                 body.to_batch(),
                 limits=ingest.IngestLimits.from_settings(settings),
                 runs=pool,
+                indexer=indexer,
             )
-        return IngestAccepted.of(result)
+        return IngestAccepted.of(result, indexed=indexer is not None)
 
     return router

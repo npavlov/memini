@@ -45,7 +45,7 @@ import psycopg
 from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow
 
-from memini.chunking import FileChunks, chunk_file, chunk_markdown
+from memini.chunking import FileChunks, chunk_file, chunk_markdown, chunk_payload
 from memini.embeddings import Embedder
 from memini.ids import RecordKind
 from memini.index.fingerprint import (
@@ -69,6 +69,7 @@ from memini.index.writer import (
     lock_record,
     write_record_chunks,
 )
+from memini.payloads import PayloadError
 from memini.runs import current_run
 
 __all__ = [
@@ -79,6 +80,7 @@ __all__ = [
     "ReindexResult",
     "chunk_code",
     "chunk_document",
+    "chunk_stored_payload",
     "reindex",
     "reindex_lock_key",
 ]
@@ -98,21 +100,41 @@ def chunk_code(record: RecordRef, document: RawDocument) -> FileChunks:
     return chunk_file(record.id, document.path, document.content)
 
 
-def chunk_document(record: RecordRef, document: RawDocument) -> FileChunks:
-    """The chunks of a document: :func:`memini.chunking.chunk_markdown`, by headings.
+def chunk_stored_payload(record: RecordRef, document: RawDocument) -> FileChunks:
+    """The chunks of a thread, a meeting or a pushed document from its stored payload:
+    :func:`memini.chunking.chunk_payload`.
 
-    A Markdown file of a repository is named by its path in the chunk headers; a document without
-    one (pushed, from M2 on) by its external id.
+    Raises:
+        ValueError: the content is not a stored payload, or not a payload of the record's kind;
+            the message names the record and the field, never a value.
     """
+    if not document.payload:
+        raise ValueError(f"the raw content of {record.kind} record {record.id} is not a payload")
+    try:
+        return chunk_payload(record.id, record.kind, document.content)
+    except PayloadError as error:
+        raise ValueError(
+            f"the payload of {record.kind} record {record.id} is not valid: {error}"
+        ) from None
+
+
+def chunk_document(record: RecordRef, document: RawDocument) -> FileChunks:
+    """The chunks of a document, by headings. A Markdown file of a repository:
+    :func:`memini.chunking.chunk_markdown`, named by its path (or its external id) in the chunk
+    headers. A document with a stored payload: its text, named by its title
+    (:func:`chunk_stored_payload`)."""
+    if document.payload:
+        return chunk_stored_payload(record, document)
     return chunk_markdown(record.id, document.path or record.external_id, document.content)
 
 
 DEFAULT_CHUNKERS: Final[Mapping[RecordKind, RecordChunker]] = {
     "code_file": chunk_code,
     "document": chunk_document,
+    "thread": chunk_stored_payload,
+    "meeting": chunk_stored_payload,
 }
-"""The chunker of each kind of record. Threads and meetings get theirs with their intake; until
-then their records have nothing to index."""
+"""The chunker of each kind of record."""
 
 REINDEX_LOCK_NAMESPACE: Final = 0x6D726978
 """First key of the session advisory lock a rebuild holds on its workspace: "mrix" in ASCII."""

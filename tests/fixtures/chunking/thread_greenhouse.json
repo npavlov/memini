@@ -1,0 +1,111 @@
+{
+  "channel": "greenhouse",
+  "title": "Watering schedule",
+  "messages": [
+    {
+      "id": "1772355600.000100",
+      "author": "Ann Example",
+      "sent_at": "2026-03-01T09:00:00Z",
+      "text": "The tomatoes look dry again. Shall we water twice a day from Monday?",
+      "recipients": ["Bo Sample", "Cy Placeholder"],
+      "url": "https://chat.example.invalid/archives/greenhouse/p1772355600000100"
+    },
+    {
+      "id": "1772355780.000200",
+      "author": "Bo Sample",
+      "sent_at": "2026-03-01T09:03:00Z",
+      "text": "Twice is a lot for the peppers.\nLet us keep the peppers on once a day.",
+      "mentions": ["Ann Example"]
+    },
+    {
+      "author": "Cy Placeholder",
+      "sent_at": "2026-03-01T09:10:00+03:00",
+      "text": "Агрегат полива на второй грядке опять течёт.\r\nЯ поставлю ведро."
+    },
+    {
+      "author": "Ann Example",
+      "sent_at": "2026-03-01T09:12:00Z",
+      "text": "Thanks. Then: tomatoes twice a day, peppers once."
+    },
+    {
+      "author": "Bo Sample",
+      "sent_at": "2026-03-01T09:15:00Z",
+      "text": "+1"
+    },
+    {
+      "author": "Dee Sampleton",
+      "sent_at": "2026-03-01T10:40:00Z",
+      "text": "Late to this. The rain barrel is empty, so watering twice needs the tap.\n\nThe tap water is cold in the morning; wait until nine."
+    },
+    {
+      "author": "Ann Example",
+      "sent_at": "2026-03-01T10:45:00Z",
+      "text": "Good point. Morning round at nine, evening round at six."
+    },
+    {
+      "author": "Cy Placeholder",
+      "sent_at": "2026-03-01T11:02:00Z",
+      "text": "Ведро поставил. Нужен новый шланг на десять метров."
+    },
+    {
+      "author": "Bo Sample",
+      "sent_at": "2026-03-01T11:30:00Z",
+      "text": "I can buy the hose on Saturday."
+    },
+    {
+      "author": "Ann Example",
+      "sent_at": "2026-03-02T08:05:00Z",
+      "text": "Decision for the log: from Monday the tomatoes are watered at nine and at six; the peppers at nine only."
+    },
+    {
+      "author": "Dee Sampleton",
+      "sent_at": "2026-03-02T08:20:00Z",
+      "text": ""
+    },
+    {
+      "author": "Cy Placeholder",
+      "sent_at": "2026-03-02T09:00:00Z",
+      "text": "Записал в журнал поливов."
+    },
+    {
+      "author": "Bo Sample",
+      "sent_at": "2026-03-02T12:10:00Z",
+      "text": "Bought the hose: ten metres, green."
+    },
+    {
+      "author": "Ann Example",
+      "sent_at": "2026-03-02T12:12:00Z",
+      "text": "Great, thanks!"
+    },
+    {
+      "author": "Dee Sampleton",
+      "sent_at": "2026-03-02T12:30:00Z",
+      "text": "The bucket under the second bed is full. Emptied it into the barrel."
+    },
+    {
+      "author": "Cy Placeholder",
+      "sent_at": "2026-03-02T13:00:00Z",
+      "text": "Новый шланг подключён, течь пропала."
+    },
+    {
+      "author": "Ann Example",
+      "sent_at": "2026-03-02T13:05:00Z",
+      "text": "Then the bucket can go back to the shed."
+    },
+    {
+      "author": "Bo Sample",
+      "sent_at": "2026-03-03T08:00:00Z",
+      "text": "Morning round done at nine sharp."
+    },
+    {
+      "author": "Cy Placeholder",
+      "sent_at": "2026-03-03T08:02:00Z",
+      "text": "Перцы полил один раз, как договорились."
+    },
+    {
+      "author": "Dee Sampleton",
+      "sent_at": "2026-03-03T18:01:00Z",
+      "text": "Evening round done."
+    }
+  ]
+}

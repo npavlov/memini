@@ -1,0 +1,4 @@
+{
+  "title": "Greenhouse handbook",
+  "text": "\n\nA synthetic handbook of a greenhouse that does not exist.\n\n# Watering\n\nTomatoes are watered at nine and at six.\nPeppers are watered at nine only.\n\n## Water source\n\nThe rain barrel first; the tap when it is empty.\n\n## Полив зимой\n\nЗимой поливаем только утром, тёплой водой.\nВода из крана должна постоять сутки.\n\n# Tools\n\n```\nhose: 10 m\n# not a heading\nbucket: 2\n```\n\n# Journal\n\nEvery watering goes into the journal.\r\n"
+}

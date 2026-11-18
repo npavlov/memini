@@ -2,7 +2,7 @@
 can be refused. Independent of the transport; see :mod:`memini.ingest` for the semantics."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final, Literal, Protocol, get_args
 from uuid import UUID
@@ -11,6 +11,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 
 from memini.config import Settings
+from memini.index import IndexCounts
 
 __all__ = [
     "DEFAULT_LIMITS",
@@ -137,6 +138,8 @@ class PreparedRecord:
     """Canonical JSON of the payload (:func:`memini.ingest.validate.canonical_json`)."""
     content_hash: str
     """SHA-256 of ``payload``, 64 lowercase hex characters."""
+    normalized_text: str
+    """The payload as plain text (:func:`memini.payloads.normalize`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,10 +187,14 @@ class RecordIndexer(Protocol):
     Called once per batch, inside the batch's transaction, after its records and tombstones are
     written and before the checkpoint moves, with the records whose rows were written, by id. If
     it raises, nothing of the batch is stored. Tombstones need no hook: their chunks are deleted
-    by the batch.
+    by the batch. It may return what it wrote to the index; those counts reach the batch's run
+    report and result once the batch has committed. :class:`memini.ingest.PayloadIndexer` is the
+    service's hook.
     """
 
-    async def __call__(self, conn: Conn, records: Sequence[StoredRecord], /) -> None: ...
+    async def __call__(
+        self, conn: Conn, records: Sequence[StoredRecord], /
+    ) -> IndexCounts | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +234,12 @@ class IngestResult:
     checkpoint_moved: bool
     window_complete: bool | None
     """``None`` without a window claim."""
+    index: IndexCounts = field(default_factory=IndexCounts)
+    """What the batch wrote to the index: the chunks the indexing hook wrote, and the chunks
+    deleted with tombstones."""
+    not_indexed: int = 0
+    """Records written without their chunks, because no indexing hook was given: they are
+    searchable once ``memini reindex`` has indexed them."""
 
 
 # --- Errors --------------------------------------------------------------------------------------

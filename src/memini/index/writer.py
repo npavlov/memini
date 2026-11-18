@@ -9,9 +9,9 @@ one transaction:
    records it, an index built with another one refuses the write (principle 9);
 3. creates the HNSW index of the embedding key if it is missing (:mod:`memini.index.vectors`);
 4. reads the record's stored chunks and compares each new chunk with the row of the same id: a row
-   whose text hash, embedding key and place are unchanged gets no statement at all; a new id is
-   inserted; a changed row is updated, with a new vector only if its text or the embedding key
-   changed; a stored id the chunker no longer makes is deleted;
+   whose text hash, embedding key, place, anchor, URL and time are unchanged gets no statement
+   at all; a new id is inserted; a changed row is updated, with a new vector only if its text or
+   the embedding key changed; a stored id the chunker no longer makes is deleted;
 5. embeds only the texts that have no vector yet in the workspace under the embedding key
    (:func:`~memini.embeddings.embed_missing`, principle 6): an unchanged text is never embedded
    again, wherever it was seen before;
@@ -228,21 +228,21 @@ def _owns_transaction(conn: Conn) -> bool:
 
 _CHUNK_COLUMNS: Final = sql.SQL(
     "id, owner_id, key, kind, language, path, symbol, start_line, end_line, start_byte, end_byte,"
-    " text_hash, embedding_key"
+    " text_hash, embedding_key, anchor, url, occurred_at"
 )
 
 _INSERT_CHUNK: Final = (
     "INSERT INTO chunk (id, owner_id, key, kind, language, path, symbol, start_line, end_line,"
-    " start_byte, end_byte, text_hash, embedding_key, workspace_id, source_id, record_id,"
-    " record_kind, header, content, embedding)"
-    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-    " %s::vector)"
+    " start_byte, end_byte, text_hash, embedding_key, anchor, url, occurred_at, workspace_id,"
+    " source_id, record_id, record_kind, header, content, embedding)"
+    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
+    " %s, %s, %s::vector)"
 )
 
 _UPDATE_CHUNK: Final = (
     "UPDATE chunk SET owner_id = %s, key = %s, kind = %s, language = %s, path = %s, symbol = %s,"
     " start_line = %s, end_line = %s, start_byte = %s, end_byte = %s, text_hash = %s,"
-    " embedding_key = %s, header = %s, content = %s,"
+    " embedding_key = %s, anchor = %s, url = %s, occurred_at = %s, header = %s, content = %s,"
     " embedding = coalesce(%s::vector, embedding), updated_at = now()"
     " WHERE id = %s"
 )
@@ -308,6 +308,9 @@ def _chunk_row(record: RecordRef, chunk: Chunk, path: str | None, key: str) -> _
         chunk.end_byte,
         text_hash(f"{header}\n{content}"),
         key,
+        chunk.anchor,
+        chunk.url,
+        chunk.occurred_at,
     )
     return _ChunkRow(stored=stored, header=header, content=content)
 

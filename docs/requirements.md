@@ -153,15 +153,15 @@ is not ingestible) with `external_id`, `occurred_at` with a zone, an optional ht
 `external_url` and a payload, or a tombstone (`deleted`, with the kind and external id only); a
 kind and external id appear once per batch. The payload is a JSON object with the fields its kind
 requires: a thread's `messages`, each with `author`, `sent_at` and `text`; a meeting's `title` and
-`started_at`, and `ended_at` not before it; a document's `title` and `text`. Other fields are kept
-for the parsers of the kinds. It is stored as canonical JSON (keys sorted, no whitespace, UTF-8,
+`started_at`, and `ended_at` not before it; a document's `title` and `text`. The optional fields
+the parsers of the kinds read (Payloads, below) are checked when present; other fields are kept.
+It is stored as canonical JSON (keys sorted, no whitespace, UTF-8,
 numbers as Python writes them), not as the bytes of the request: the same object from another
 client, in another key order or spacing, is the same content and changes nothing (principle 6),
 and redaction at ingest can rewrite it. Nothing a parser reads is lost: an object with a key twice
 is refused rather than collapsed, and a value that is not finite JSON is refused. The content hash
 is SHA-256 of the stored bytes. A record whose payload, time, URL and stream equal its row is not
-written at all; one that differs is written, a tombstone revived, and a changed payload clears the
-derived text. A batch may name a stream, created on first use, and claim a window `[from, to)` of
+written at all; one that differs is written, a tombstone revived, with its normalized text. A batch may name a stream, created on first use, and claim a window `[from, to)` of
 it; batches of one stream take turns on the stream's row. The checkpoint (`checked_until`, with
 the claim's optional `cursor`) moves to `to` only for a complete window that ends after it, by
 compare-and-set in the transaction that stores the records, so it never moves back. A complete
@@ -178,8 +178,38 @@ with its counts. Limits answer 413: the body (`ingest_max_body_size`, 16 MiB, re
 Content-Length before it is read), the items of a batch (`ingest_max_records`, 1000) and a stored
 payload (`ingest_max_payload_size`, 1 MiB). A batch that is not valid answers 422 naming the
 field, never a value. No idempotency key: the content hash and the compare-and-set already make a
-resend harmless. Chunking is a hook in the batch's transaction that the parsers of the kinds fill;
-until they do, pushed records are stored without chunks.
+resend harmless. Chunking is a hook in the batch's transaction: the records a batch writes are
+chunked by their kind (section 5) and indexed with the embedder of the service, so a record and its
+chunks commit together. A workspace whose index is stale refuses the batch (503 `index_mismatch`,
+naming `memini reindex`), and so does a model that fails (503 `embedding_failed`): nothing is
+stored, and the batch can be sent again. Storing such records without chunks was not chosen for
+the reason code sync gives (section 9): a record that is not written again would stay out of the
+index. Without an embedding provider, though, records are stored without chunks, the answer says
+so (`index.indexed` false, with a note) and the run counts `records_not_indexed`; `memini reindex`
+indexes them once a provider is set. The answer and the run report count the chunks written and
+the texts embedded.
+
+**Payloads** (decided 2026-11-18). One library, `memini.payloads`, parses the payload of each kind
+for validation, normalized text and chunking alike. Names (authors, recipients, participants,
+speakers, owners) are strings as the source shows them; persons are resolved from them (persons,
+section 3). A thread has `messages` and optionally a `title` (a subject) and a `channel`; a message
+has `author`, `sent_at`, `text`, and optionally `id`, `recipients`, `mentions` and `url`. A meeting
+has `title`, `started_at`, and optionally `ended_at`, `participants`, `summary` (Markdown),
+`action_items` (strings, or objects with `text` and optionally `owner`, `due`, `id`) and
+`transcript` (segments with `text` and optionally `speaker`, `start` and `end` in seconds from the
+start of the meeting, and `id`). A document has `title` and `text` (Markdown). A null field, or a
+blank optional text, counts as absent, and a blank name in a list names nobody. Evidence and
+locators point at a message or a segment, so each has an id that survives a resend: the source's,
+unique in its record (a repeat is refused), else one derived from what an edit of its text leaves
+alone: 16 hex digits of a hash of a message's author and time (in UTC), of a segment's speaker and
+start (its position without one), with `-2`, `-3` appended where two would coincide. The normalized
+text (`record.normalized_text`, `memini.ingest.normalize`) is the payload as plain text, written
+with the payload so that redaction and the parsers read one form: a thread's channel and title,
+then each message as a line `author → recipients · 2026-03-01 09:30 UTC` and its text; a meeting's
+title, time and participants, then its summary, action items (`- owner: text (due …)`) and
+transcript (`[mm:ss] speaker: text`), each under a line that names it; a document's title and
+text. Line ends become `\n`, NUL becomes U+FFFD, names and titles go on one line, and times are
+shown in UTC to the minute.
 
 ### Three paths
 
@@ -286,7 +316,32 @@ the trail with an ordinal for a repeated trail: editing one section changes the 
 its chunk and nothing else, and renaming a heading changes the ids of the sections under it.
 Documents have no symbols and no language. The Markdown chunker has its own version in the index
 fingerprint. The Markdown files of repositories are documents (code sync, section 9); a pushed
-document is chunked the same way from its payload until its intake (M2) decides otherwise.
+document is chunked the same way from the `text` of its payload (below).
+
+**Chunks of pushed records** (decided 2026-11-18). Threads, meetings and documents of push and MCP
+sources are cut from their normalized text (section 4, Payloads), so a chunk quotes it, and its
+lines and byte offsets count in it. Each chunk has an anchor, the place a locator and evidence
+name: `msg-<id>`, `seg-<id>`, `summary`, `summary/<trail>`, `action-items`, `overview`, or a
+heading trail; and may have a URL (a message's `url`) and a time (its first message, the start of
+its meeting or transcript window). A thread is cut into groups of consecutive messages: a group
+closes before a message when it holds 20 messages, when the message would take it past 50 lines or
+2000 characters, or when it holds at least 3 and the message's id hashes to a boundary (one id in
+4). Greedy packing by size was not chosen: an edit that changes a message's length would move every
+later boundary and re-embed the rest of the thread. The boundaries hang on the ids, so an edited,
+added or removed message changes its own group and, only when it crosses a size limit, the groups
+up to the next boundary; a reply changes the last group. A message is never split unless it alone
+is larger than a group: then it is cut into line windows. The header names the channel and title,
+the authors of the group and its time span. A meeting gives the sections of its summary (the
+Markdown chunker, keys prefixed with `summary`), its action items as one chunk (line windows when
+they do not fit), and transcript windows, groups of segments by the rule of threads with at least
+8 segments, one id in 8 and at most 60; a meeting with none of these is one chunk of its title,
+time and participants. Headers name the title and the time; summary and action items add the
+participants, a transcript window its offsets in the meeting and its speakers. A pushed document is
+its `text` cut by the Markdown chunker, its title standing where a path stands in the header; a
+document without text is one chunk of its title. A chunk id is a hash of the record id and the
+kind with the id of the first message or segment (`messages`, `transcript`), the summary's
+Markdown key, or a fixed key; later windows add their number. The chunkers have their own version
+in the index fingerprint (`payload/1`).
 
 ## 6. Query surface
 

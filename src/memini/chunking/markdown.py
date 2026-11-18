@@ -18,7 +18,7 @@ from memini.chunking.text import (
     windows,
 )
 
-__all__ = ["chunk_markdown"]
+__all__ = ["chunk_markdown", "markdown_chunks"]
 
 _FENCE: Final = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 """The opening line of a fenced code block: its fence, then the info string."""
@@ -57,11 +57,32 @@ def chunk_markdown(
     check_path(path)
     if is_binary(content):
         return FileChunks(None, (), (), fallback="binary", syntax_errors=False)
+    chunks = markdown_chunks(record_id, path, content, sizes=sizes)
+    return FileChunks(None, tuple(chunk for chunk, _ in chunks), (), None, False)
+
+
+def markdown_chunks(
+    record_id: str,
+    label: str,
+    content: bytes,
+    *,
+    sizes: ChunkSizes = DEFAULT_SIZES,
+    key_prefix: Key = (),
+) -> list[tuple[Chunk, str]]:
+    """The chunks of a Markdown text as :func:`chunk_markdown` cuts them, each with the trail of
+    its first section (``Install > Docker``; empty for the text before the first heading).
+
+    For the chunkers of records that hold Markdown in a field (:mod:`memini.chunking.payloads`):
+    ``label`` stands where a path stands in the headers, and ``key_prefix`` goes before each
+    chunk's key in its id, so that two Markdown texts of one record cut apart get distinct ids.
+    Checks neither its arguments nor whether ``content`` is binary.
+    """
     lines = Lines(content)
     headings, opaque = _scan(lines)
     builder = _Builder(lines, sizes, opaque)
     drafts = builder.group([d for s in _sections(lines, headings) for d in builder.drafts(s)])
-    return FileChunks(None, _assemble(record_id, path, lines, drafts), (), None, False)
+    chunks = _assemble(record_id, label, lines, drafts, key_prefix)
+    return [(chunk, draft.sections[0].name) for chunk, draft in zip(chunks, drafts, strict=True)]
 
 
 # --- Headings -----------------------------------------------------------------------------------
@@ -339,7 +360,9 @@ def _label(key: Key) -> str:
     return label + "".join(f"@{part}" for part in window)
 
 
-def _assemble(record_id: str, path: str, lines: Lines, drafts: list[_Draft]) -> tuple[Chunk, ...]:
+def _assemble(
+    record_id: str, path: str, lines: Lines, drafts: list[_Draft], key_prefix: Key
+) -> tuple[Chunk, ...]:
     chunks: list[Chunk] = []
     for draft in drafts:
         if draft.byte_range is not None:
@@ -351,7 +374,7 @@ def _assemble(record_id: str, path: str, lines: Lines, drafts: list[_Draft]) -> 
         content = lines.slice(draft.first_row, draft.last_row, draft.byte_range)
         chunks.append(
             Chunk(
-                id=chunk_id(record_id, draft.key),
+                id=chunk_id(record_id, (*key_prefix, *draft.key)),
                 key=_label(draft.key),
                 kind="group" if len(draft.sections) > 1 else "section",
                 symbol=None,

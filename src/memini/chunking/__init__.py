@@ -1,9 +1,12 @@
-"""Chunking: split a source file or a document into chunks to embed and search; list symbols.
+"""Chunking: split a source file, a document or a pushed record into chunks to embed and search;
+list symbols.
 
 :func:`chunk_file` takes a record id, a repository-relative path and the file's bytes, and returns
 a :class:`FileChunks`: the chunks, the symbols, and why the file was not parsed if it was not.
-:func:`chunk_markdown` does the same for a Markdown document (see Documents below). Both are pure:
-no database, no clock, no randomness; the same input gives the same output on any machine.
+:func:`chunk_markdown` does the same for a Markdown document (see Documents below), and
+:func:`chunk_payload` for a thread, a meeting or a document pushed with a payload (see Pushed
+records). All are pure: no database, no clock, no randomness; the same input gives the same output
+on any machine.
 
 Languages
     Python, JavaScript (with JSX), TypeScript (with TSX), Ruby and Go are parsed with tree-sitter,
@@ -84,11 +87,49 @@ Documents
     does not move it across a size limit; renaming a heading changes the ids of its section and of
     the sections under it.
 
+Pushed records
+    A thread, a meeting or a document of a push or MCP source is cut from its normalized text
+    (:mod:`memini.payloads`): a chunk's lines and byte offsets count in that text, its content is
+    rows of it, and its header is one line that names the record and the part. A chunk has an
+    anchor, the place evidence and locators name (:attr:`Chunk.anchor`), and may have a URL and
+    a time. Sizes: :class:`~memini.chunking.payloads.PayloadSizes`.
+
+    A thread is cut into groups of consecutive messages (kind ``messages``). A group closes
+    before a message when it holds 20 messages, when the message would take it over 50 lines or
+    2000 characters, or when it holds at least 3 messages and the message's id hashes to a
+    boundary (:func:`~memini.chunking.payloads.is_boundary`, one id in 4). The boundaries hang on
+    the ids, not on the text, so an edited message changes its own group and, only when it moves
+    a size limit, the next ones up to the next boundary; a reply added at the end changes the
+    last group or starts one. A message is never split, unless it is larger than a group alone:
+    then it is cut into line windows. The header is the thread's channel and title, the authors
+    of the group and its time span: ``general · Release · Ann Example, Bo Sample · 2026-03-01
+    09:30 to 11:05 UTC``. The key is ``("messages", <id of the first message>)``, a later window
+    adds its number; the anchor is ``msg-<id>``, the URL that message's ``url``, the time its
+    ``sent_at``.
+
+    A meeting gives the sections of its summary, cut by the Markdown chunker (kind ``summary``,
+    key ``("summary", *markdown key)``, anchor ``summary`` or ``summary/<trail>``); its action
+    items, one chunk or line windows of them (``action_items``, ``("action_items",)``,
+    ``action-items``); and windows of its transcript, groups of consecutive segments by the rule
+    of threads (at least 8, one id in 8, at most 60 segments; ``transcript``,
+    ``("transcript", <id of the first segment>)``, ``seg-<id>``). A meeting with none of them is
+    one chunk of its overview (``summary``, ``("overview",)``, ``overview``). Headers start with
+    the title and the time; summary and action items add the participants, a transcript window
+    its span of the meeting and its speakers: ``Release planning · 2026-03-01 14:00 to 14:30 UTC
+    · Transcript 00:05 to 12:40 · Ann Example, Bo Sample``. The time of a chunk is the start of
+    the meeting, or of its window when the segment says when it starts.
+
+    A pushed document is its text cut by the Markdown chunker, its title standing where a file
+    of a repository has its path (``Greenhouse handbook: Install > Docker``); the keys are the
+    Markdown chunker's, the anchor of a chunk is the trail of its first section. A document
+    without text is one chunk of its title.
+
 Index fingerprint
-    :data:`CHUNKER_VERSION` changes whenever the output of the code chunker can change, and
-    :data:`MARKDOWN_CHUNKER_VERSION` whenever the output of the Markdown chunker can.
-    :func:`chunker_fingerprint` has both and the versions of tree-sitter and the grammar packages,
-    which can change the output too.
+    :data:`CHUNKER_VERSION` changes whenever the output of the code chunker can change,
+    :data:`MARKDOWN_CHUNKER_VERSION` whenever the output of the Markdown chunker can, and
+    :data:`PAYLOAD_CHUNKER_VERSION` whenever the output of the chunkers of pushed records can.
+    :func:`chunker_fingerprint` has the three and the versions of tree-sitter and the grammar
+    packages, which can change the output too.
 """
 
 from memini.chunking.chunker import chunk_file, chunk_id, chunker_fingerprint
@@ -100,6 +141,7 @@ from memini.chunking.model import (
     DEFAULT_SIZES,
     LANGUAGES,
     MARKDOWN_CHUNKER_VERSION,
+    PAYLOAD_CHUNKER_VERSION,
     Chunk,
     ChunkKind,
     ChunkSizes,
@@ -109,25 +151,44 @@ from memini.chunking.model import (
     Symbol,
     SymbolKind,
 )
+from memini.chunking.payloads import (
+    DEFAULT_PAYLOAD_SIZES,
+    GroupRule,
+    PayloadSizes,
+    chunk_document_payload,
+    chunk_meeting,
+    chunk_parsed,
+    chunk_payload,
+    chunk_thread,
+)
 
 __all__ = [
     "CHUNKER_VERSION",
     "CHUNK_ID_DOMAIN",
+    "DEFAULT_PAYLOAD_SIZES",
     "DEFAULT_SIZES",
     "EXTENSIONS",
     "LANGUAGES",
     "MARKDOWN_CHUNKER_VERSION",
+    "PAYLOAD_CHUNKER_VERSION",
     "Chunk",
     "ChunkKind",
     "ChunkSizes",
     "Fallback",
     "FileChunks",
+    "GroupRule",
     "Language",
+    "PayloadSizes",
     "Symbol",
     "SymbolKind",
+    "chunk_document_payload",
     "chunk_file",
     "chunk_id",
     "chunk_markdown",
+    "chunk_meeting",
+    "chunk_parsed",
+    "chunk_payload",
+    "chunk_thread",
     "chunker_fingerprint",
     "detect_language",
 ]

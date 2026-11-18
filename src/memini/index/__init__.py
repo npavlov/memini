@@ -46,6 +46,7 @@ from memini.index.rebuild import (
     ReindexResult,
     chunk_code,
     chunk_document,
+    chunk_stored_payload,
     reindex,
 )
 from memini.index.vectors import (
@@ -88,6 +89,7 @@ __all__ = [
     "check_index",
     "chunk_code",
     "chunk_document",
+    "chunk_stored_payload",
     "clear_record_chunks",
     "current_fingerprint",
     "default_raw_content",

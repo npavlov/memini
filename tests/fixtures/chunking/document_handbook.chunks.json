@@ -1,0 +1,121 @@
+{
+  "chunker_version": 1,
+  "normalized": [
+    "Greenhouse handbook",
+    "",
+    "A synthetic handbook of a greenhouse that does not exist.",
+    "",
+    "# Watering",
+    "",
+    "Tomatoes are watered at nine and at six.",
+    "Peppers are watered at nine only.",
+    "",
+    "## Water source",
+    "",
+    "The rain barrel first; the tap when it is empty.",
+    "",
+    "## Полив зимой",
+    "",
+    "Зимой поливаем только утром, тёплой водой.",
+    "Вода из крана должна постоять сутки.",
+    "",
+    "# Tools",
+    "",
+    "```",
+    "hose: 10 m",
+    "# not a heading",
+    "bucket: 2",
+    "```",
+    "",
+    "# Journal",
+    "",
+    "Every watering goes into the journal."
+  ],
+  "chunks": [
+    {
+      "key": "(preamble)",
+      "id": "c59c25de245d70d8f446791da5e68e55dd5ec7f3bfcff5cee1b803c703ee4811",
+      "kind": "group",
+      "lines": [
+        3,
+        17
+      ],
+      "bytes": [
+        21,
+        405
+      ],
+      "anchor": null,
+      "url": null,
+      "occurred_at": null,
+      "content_hash": "13f1185587e6dca15d8c6a59747225592764f47abf7b15931e5865709c5b3076",
+      "text": [
+        "Greenhouse handbook: Watering, Watering > Water source, Watering > Полив зимой",
+        "A synthetic handbook of a greenhouse that does not exist.",
+        "",
+        "# Watering",
+        "",
+        "Tomatoes are watered at nine and at six.",
+        "Peppers are watered at nine only.",
+        "",
+        "## Water source",
+        "",
+        "The rain barrel first; the tap when it is empty.",
+        "",
+        "## Полив зимой",
+        "",
+        "Зимой поливаем только утром, тёплой водой.",
+        "Вода из крана должна постоять сутки."
+      ]
+    },
+    {
+      "key": "Tools#0",
+      "id": "b0227d76fa2c164b93af02d9f072ee237acfb945f90a772f82262fab6d9e9f46",
+      "kind": "section",
+      "lines": [
+        19,
+        25
+      ],
+      "bytes": [
+        407,
+        460
+      ],
+      "anchor": "Tools",
+      "url": null,
+      "occurred_at": null,
+      "content_hash": "cf9ff54bab4b220b1e0efae161df3c6a0081a3a1a6baa4b39837afeeec98d48e",
+      "text": [
+        "Greenhouse handbook: Tools",
+        "# Tools",
+        "",
+        "```",
+        "hose: 10 m",
+        "# not a heading",
+        "bucket: 2",
+        "```"
+      ]
+    },
+    {
+      "key": "Journal#0",
+      "id": "b2c444e2a456deb18d016e1f5b2221995639e5a4c3e6e3aa0160c3dd0238ea51",
+      "kind": "section",
+      "lines": [
+        27,
+        29
+      ],
+      "bytes": [
+        462,
+        510
+      ],
+      "anchor": "Journal",
+      "url": null,
+      "occurred_at": null,
+      "content_hash": "2f582b7b010ea4ea1ceb8671e080a71d53a672baa591f43d9bdf19da99db8189",
+      "text": [
+        "Greenhouse handbook: Journal",
+        "# Journal",
+        "",
+        "Every watering goes into the journal."
+      ]
+    }
+  ]
+}

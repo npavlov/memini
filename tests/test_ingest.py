@@ -177,6 +177,53 @@ def test_a_payload_without_the_fields_of_its_kind_is_refused(record: RecordIn, f
     refuse(one(record), field)
 
 
+@pytest.mark.parametrize(
+    ("record", "field"),
+    [
+        (
+            with_payload(
+                thread("t"),
+                {
+                    "messages": [{"author": "Ann", "sent_at": iso(T0), "text": "", "id": PRIVATE}]
+                    * 2
+                },
+            ),
+            "records[0].payload.messages[1].id",
+        ),
+        (
+            with_payload(meeting("m"), {"title": "Plan", "started_at": iso(T0), "summary": [1]}),
+            "records[0].payload.summary",
+        ),
+        (
+            with_payload(
+                meeting("m"),
+                {
+                    "title": "Plan",
+                    "started_at": iso(T0),
+                    "transcript": [{"text": PRIVATE, "start": -1}],
+                },
+            ),
+            "records[0].payload.transcript[0].start",
+        ),
+    ],
+)
+def test_the_optional_fields_a_parser_reads_are_checked(record: RecordIn, field: str) -> None:
+    refuse(one(record), field)
+
+
+def test_a_prepared_record_carries_its_normalized_text() -> None:
+    prepared = prepare_batch(
+        Batch(records=[thread("general/0001"), document("doc-1", "# Notes\r\n\nWater.\n")]),
+        LIMITS,
+    )
+    first, second = prepared.records
+    assert first.normalized_text.startswith("general\n\nAnn Example · 2026-03-01 08:00 UTC\n")
+    assert first.normalized_text.endswith(
+        "Bo Sample · 2026-03-01 09:00 UTC\nShall we move it to Friday?"
+    )
+    assert second.normalized_text == "Greenhouse handbook\n\n# Notes\n\nWater."
+
+
 def test_a_record_needs_a_kind_an_id_a_zoned_time_and_an_object() -> None:
     error = refuse(
         one(RecordIn(kind="code_file", external_id="main:a.py", deleted=True)), "records[0].kind"

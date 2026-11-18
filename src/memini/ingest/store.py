@@ -95,15 +95,18 @@ async def _resolve(
 
 
 # The records of the batch, by id: each one inserted, or written again where anything differs.
-# The stream stays when the batch names none. The derived text goes with a changed payload.
+# The stream stays when the batch names none. The normalized text is derived from the payload, so
+# it is written with it.
 _UPSERT: Final = """
 INSERT INTO record AS r (id, workspace_id, owner_id, source_id, stream_id, kind, external_id,
-                         external_url, content_hash, occurred_at, payload)
+                         external_url, content_hash, occurred_at, payload, normalized_text)
 SELECT u.id, %(workspace_id)s, %(owner_id)s, %(source_id)s, %(stream_id)s::uuid, u.kind,
-       u.external_id, u.external_url, u.content_hash, u.occurred_at, u.payload
+       u.external_id, u.external_url, u.content_hash, u.occurred_at, u.payload, u.normalized_text
 FROM unnest(%(ids)s::text[], %(kinds)s::text[], %(external_ids)s::text[], %(urls)s::text[],
-            %(hashes)s::text[], %(times)s::timestamptz[], %(payloads)s::bytea[])
-     AS u (id, kind, external_id, external_url, content_hash, occurred_at, payload)
+            %(hashes)s::text[], %(times)s::timestamptz[], %(payloads)s::bytea[],
+            %(texts)s::text[])
+     AS u (id, kind, external_id, external_url, content_hash, occurred_at, payload,
+           normalized_text)
 ORDER BY u.id
 ON CONFLICT (id) DO UPDATE SET
     stream_id = coalesce(EXCLUDED.stream_id, r.stream_id),
@@ -111,8 +114,7 @@ ON CONFLICT (id) DO UPDATE SET
     content_hash = EXCLUDED.content_hash,
     occurred_at = EXCLUDED.occurred_at,
     payload = EXCLUDED.payload,
-    normalized_text = CASE WHEN r.content_hash = EXCLUDED.content_hash
-                           THEN r.normalized_text END,
+    normalized_text = EXCLUDED.normalized_text,
     deleted_at = NULL,
     updated_at = now()
 WHERE r.content_hash <> EXCLUDED.content_hash
@@ -154,7 +156,10 @@ class _Tally:
     checkpoint: Checkpoint | None = None
     moved: bool = False
     index: IndexCounts = field(default_factory=IndexCounts)
-    """Chunks and symbols deleted with tombstones; reported only after the batch commits."""
+    """Chunks and symbols the indexing hook wrote and the tombstones deleted; reported only after
+    the batch commits."""
+    not_indexed: int = 0
+    """Records written without an indexing hook."""
 
 
 async def _tombstone(conn: Conn, tally: _Tally, source_id: UUID, ids: Sequence[str]) -> int:
@@ -245,6 +250,7 @@ async def _store(
                     "hashes": [item.content_hash for item in records],
                     "times": [item.occurred_at for item in records],
                     "payloads": [item.payload for item in records],
+                    "texts": [item.normalized_text for item in records],
                 },
             )
             for rid, inserted, revived, content_changed in await cur.fetchall():
@@ -286,10 +292,14 @@ async def _store(
             absent = [row[0] for row in await cur.fetchall()]
             tally.reconciled = await _tombstone(conn, tally, target.source_id, absent)
 
-        if indexer is not None and written:
+        if indexer is None:
+            tally.not_indexed = len(written)
+        elif written:
             # The indexing hook: the parsers of the kinds chunk and index the records here, so a
             # record and its chunks change in one transaction, as a file of a git source does.
-            await indexer(conn, sorted(written, key=lambda record: record.id))
+            counts = await indexer(conn, sorted(written, key=lambda record: record.id))
+            if counts is not None:
+                tally.index += counts
 
         if (
             window is not None
@@ -324,6 +334,7 @@ def _count(run: Run | None, tally: _Tally) -> None:
         ("records_deleted", tally.deleted),
         ("records_unchanged", tally.unchanged),
         ("records_reconciled", tally.reconciled),
+        ("records_not_indexed", tally.not_indexed),
     ):
         run.count(name, value)
     for attribute, name in RUN_COUNTS.items():
@@ -367,8 +378,10 @@ async def ingest(
     Args:
         runs: where the batch's run row is written (kind ``ingest``): the pool, or a connection
             used for nothing else. ``None``: no run row.
-        indexer: the indexing hook (:class:`~memini.ingest.RecordIndexer`); ``None``: records are
-            stored without their chunks, and ``memini reindex`` indexes them later.
+        indexer: the indexing hook (:class:`~memini.ingest.RecordIndexer`), the service's being
+            :class:`~memini.ingest.PayloadIndexer`; ``None``: records are stored without their
+            chunks (counted as ``records_not_indexed``), and ``memini reindex`` indexes them
+            later.
 
     Raises:
         ValueError: ``conn`` has a transaction open.
@@ -379,7 +392,9 @@ async def ingest(
         WindowGapError: a complete window starts after the stream's checkpoint.
         StreamChangedError, BatchConflictError: another writer got in the way; nothing was stored,
             and sending the batch again is safe.
-        Exception: whatever ``indexer`` raises; nothing was stored.
+        Exception: whatever ``indexer`` raises; nothing was stored. The service's hook raises
+            :class:`~memini.index.IndexMismatchError` for a workspace whose index must be
+            rebuilt first, and :class:`~memini.embeddings.EmbeddingError` when the model fails.
     """
     if conn.info.transaction_status != pq.TransactionStatus.IDLE:
         raise ValueError("ingest commits its own transactions: pass an idle connection")
@@ -425,4 +440,6 @@ def _result(
         checkpoint=tally.checkpoint,
         checkpoint_moved=tally.moved,
         window_complete=None if batch.window is None else batch.window.complete,
+        index=tally.index,
+        not_indexed=tally.not_indexed,
     )

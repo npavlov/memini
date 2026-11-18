@@ -1,0 +1,34 @@
+{
+  "title": "Планёрка по теплице",
+  "started_at": "2026-03-03T07:00:00Z",
+  "ended_at": "2026-03-03T07:40:00Z",
+  "participants": ["Аня Пример", "Борис Образец", "Cy Placeholder"],
+  "summary": "Обсудили полив и рассаду.\n\n## Решения\n\n- Томаты поливаем дважды в день, в девять и в шесть.\n- Перцы поливаем раз в день.\n\n## Риски\n\nШланг течёт; до субботы ставим ведро.\n\n## Open questions\n\nDo we heat the greenhouse in March?",
+  "action_items": [
+    {"id": "ai-1", "owner": "Борис Образец", "text": "Купить шланг на десять метров", "due": "2026-03-07"},
+    {"owner": "Cy Placeholder", "text": "Log every watering\nin the greenhouse journal"},
+    "Проверить бочку для дождевой воды"
+  ],
+  "transcript": [
+    {"speaker": "Аня Пример", "start": 4, "end": 11.5, "text": "Начнём с полива."},
+    {"speaker": "Аня Пример", "start": 12, "end": 30, "text": "Томаты сохнут, предлагаю поливать дважды в день."},
+    {"speaker": "Борис Образец", "start": 31, "end": 44, "text": "Для перцев это много."},
+    {"speaker": "Борис Образец", "start": 45, "end": 60, "text": "Перцы оставим на одном поливе."},
+    {"speaker": "Cy Placeholder", "start": 62, "end": 75, "text": "The hose on the second bed leaks again."},
+    {"speaker": "Cy Placeholder", "start": 76, "end": 80, "text": "I put a bucket under it."},
+    {"speaker": "Аня Пример", "start": 81, "end": 95, "text": "Хорошо. Утром в девять, вечером в шесть."},
+    {"speaker": "Борис Образец", "start": 96, "end": 101, "text": "Шланг куплю в субботу."},
+    {"speaker": "Аня Пример", "start": 102, "end": 120, "text": "Тогда записываем решение."},
+    {"speaker": "Cy Placeholder", "start": 121, "end": 133, "text": "Do we need heating in March?"},
+    {"speaker": "Аня Пример", "start": 134, "end": 150, "text": "Пока не знаем. Вернёмся к этому через неделю."},
+    {"speaker": "Борис Образец", "start": 151, "end": 160, "text": "Рассаду перцев пересадим в пятницу."},
+    {"speaker": "Cy Placeholder", "start": 161, "end": 170, "text": "Seedlings go to bigger pots on Friday."},
+    {"speaker": "Аня Пример", "start": 171, "end": 180, "text": "Бочку для дождевой воды надо проверить."},
+    {"speaker": "Борис Образец", "start": 181, "end": 190, "text": "Она пустая с прошлой недели."},
+    {"speaker": "Cy Placeholder", "start": 191, "end": 200, "text": "Then we use the tap for now."},
+    {"speaker": "Аня Пример", "start": 201, "end": 215, "text": "Да. Вода из крана холодная утром, поэтому в девять."},
+    {"speaker": "Борис Образец", "start": 216, "end": 225, "text": "Согласен."},
+    {"speaker": "Аня Пример", "start": 3605, "end": 3610, "text": "Это всё на сегодня."},
+    {"text": "(тишина)"}
+  ]
+}

@@ -15,16 +15,14 @@ sent it with whatever key order, spacing or escapes: re-sending a record changes
 in one object is refused rather than silently collapsed (by the transport, which parses the
 JSON), and a value that is not finite JSON is refused.
 
-**Required fields by kind.** Extra fields are kept and not checked; the parsers of the kinds
-(chunking, persons) read them.
+**Fields by kind.** A payload is parsed by the parser of its kind (:mod:`memini.payloads`): a
+thread needs ``messages``, each with ``author``, ``sent_at`` and ``text``; a meeting ``title`` and
+``started_at``; a document ``title`` and ``text``. The optional fields the parsers read
+(recipients, mentions, participants, summary, action items, transcript, the ids of messages and
+segments) are checked when present; other fields are kept and not checked.
 
-- ``thread``: ``messages``, a list of one or more objects, each with ``author`` (a non-empty
-  string), ``sent_at`` (a time with a zone) and ``text`` (a string, possibly empty).
-- ``meeting``: ``title`` (a non-empty string) and ``started_at`` (a time with a zone); if given,
-  ``ended_at`` is a time with a zone, not before ``started_at``.
-- ``document``: ``title`` (a non-empty string) and ``text`` (a string).
-
-A time is an ISO 8601 string with a zone offset or ``Z``: ``2026-03-01T09:30:00Z``.
+**Normalized text.** The parsed payload is rendered as the record's plain text
+(:func:`memini.payloads.normalize`), stored as ``normalized_text`` with the payload.
 """
 
 import hashlib
@@ -48,6 +46,7 @@ from memini.ingest.model import (
     PreparedTombstone,
     WindowClaim,
 )
+from memini.payloads import PayloadError, parse_payload, render
 
 __all__ = [
     "MAX_CLOCK_SKEW",
@@ -69,7 +68,6 @@ MAX_PAYLOAD_DEPTH: Final = 64
 """Objects and lists nested in a payload or a cursor, the outermost one included."""
 MAX_CURSOR_SIZE: Final = 4096
 """Bytes of a window's cursor as canonical JSON."""
-MAX_TIME_LENGTH: Final = 64
 MAX_CLOCK_SKEW: Final = timedelta(minutes=5)
 """How far past the database clock a window may end: client clocks differ a little."""
 
@@ -163,64 +161,12 @@ def _aware(value: object, field: str) -> datetime:
     return value
 
 
-def _time(payload: Mapping[str, Any], key: str, field: str) -> datetime:
-    """The time at ``payload[key]``: an ISO 8601 string with a zone."""
-    value = payload.get(key)
-    where = f"{field}.{key}"
-    if not isinstance(value, str) or len(value) > MAX_TIME_LENGTH:
-        raise InvalidBatchError(where, "a time with a zone, such as 2026-03-01T09:30:00Z")
+def _normalized(kind: IngestKind, payload: Mapping[str, Any], field: str) -> str:
+    """The normalized text of a payload of ``kind``, checked by the parser of the kind."""
     try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        parsed = None
-    if parsed is None or parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
-        raise InvalidBatchError(where, "a time with a zone, such as 2026-03-01T09:30:00Z")
-    return parsed
-
-
-def _text(payload: Mapping[str, Any], key: str, field: str, *, required: bool) -> str:
-    value = payload.get(key)
-    if not isinstance(value, str) or (required and not value.strip()):
-        raise InvalidBatchError(
-            f"{field}.{key}", "a string that is not blank" if required else "a string"
-        )
-    return value
-
-
-def _check_thread(payload: Mapping[str, Any], field: str) -> None:
-    messages: object = payload.get("messages")
-    if not isinstance(messages, list | tuple) or not messages:
-        raise InvalidBatchError(f"{field}.messages", "a list of one or more messages")
-    items: list[object] | tuple[object, ...] = messages  # pyright: ignore[reportUnknownVariableType]
-    for index, message in enumerate(items):
-        where = f"{field}.messages[{index}]"
-        if not isinstance(message, Mapping):
-            raise InvalidBatchError(where, "a message is an object")
-        fields: Mapping[str, Any] = message  # pyright: ignore[reportUnknownVariableType]
-        _text(fields, "author", where, required=True)
-        _time(fields, "sent_at", where)
-        _text(fields, "text", where, required=False)
-
-
-def _check_meeting(payload: Mapping[str, Any], field: str) -> None:
-    _text(payload, "title", field, required=True)
-    started = _time(payload, "started_at", field)
-    if payload.get("ended_at") is not None:
-        ended = _time(payload, "ended_at", field)
-        if ended < started:
-            raise InvalidBatchError(f"{field}.ended_at", "not before started_at")
-
-
-def _check_document(payload: Mapping[str, Any], field: str) -> None:
-    _text(payload, "title", field, required=True)
-    _text(payload, "text", field, required=False)
-
-
-_KIND_CHECKS: Final = {
-    "thread": _check_thread,
-    "meeting": _check_meeting,
-    "document": _check_document,
-}
+        return render(parse_payload(kind, payload, field=field)).text
+    except PayloadError as error:
+        raise InvalidBatchError(error.field, error.reason) from None
 
 
 def _kind(value: str, field: str) -> IngestKind:
@@ -345,7 +291,7 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
                 f"at most {limits.max_payload_size} bytes as stored",
                 code="payload_too_large",
             )
-        _KIND_CHECKS[kind](item.payload, f"{field}.payload")
+        normalized_text = _normalized(kind, item.payload, f"{field}.payload")
         records.append(
             PreparedRecord(
                 index=index,
@@ -355,6 +301,7 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
                 external_url=_external_url(item.external_url, f"{field}.external_url"),
                 payload=payload,
                 content_hash=content_hash(payload),
+                normalized_text=normalized_text,
             )
         )
     return PreparedBatch(
