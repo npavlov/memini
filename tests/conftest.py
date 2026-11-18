@@ -1,4 +1,4 @@
-"""Shared fixtures.
+"""Shared fixtures. Every value here is synthetic.
 
 Database fixtures are for tests marked `integration`. They need a Postgres server with pgvector:
 `make db` starts one, or `MEMINI_TEST_DATABASE_URL` points to another. The role in the URL must be
@@ -13,11 +13,19 @@ from urllib.parse import urlsplit, urlunsplit
 import psycopg
 import pytest
 from psycopg import sql
+from pydantic import SecretStr
 
+from memini.config import Settings
 from memini.db import migrate
 
 TEST_DATABASE_URL_ENV = "MEMINI_TEST_DATABASE_URL"
 DEFAULT_TEST_DATABASE_URL = "postgresql://memini:memini@127.0.0.1:55432/memini"
+
+
+@pytest.fixture
+def settings() -> Settings:
+    """Valid settings whose database URL points nowhere; for tests that never connect."""
+    return Settings(database_url=SecretStr("postgresql://fake:fake@db.invalid:5432/memini"))
 
 
 @pytest.fixture(scope="session")
