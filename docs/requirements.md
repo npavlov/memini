@@ -245,7 +245,7 @@ means rather than of its text, is recorded with each run.
 |---|---|
 | Chunking | Code: tree-sitter, by class and function, small siblings merged, line windows as fallback. Threads: message groups. Meetings: summary sections and transcript windows. Documents: headings. |
 | Dense vectors | Local multilingual embedding model, pinned in config with its digest: Qwen3-Embedding 0.6B through Ollama by default. |
-| Lexical | BM25 in Postgres with a per-language configuration. Trigram index for exact and regex code search. |
+| Lexical | Postgres full-text search (`tsvector`) with stemming for English and Russian, code identifiers cut into words. Trigram index for exact and regex code search. |
 | Rerank | Local cross-encoder, optional. |
 | Decision extraction | One LLM call per new or changed thread or meeting, structured output. Skipped when `llm_policy` is `none`. |
 | Supersession | For each extracted item: fetch the top-k similar active items of the workspace, one LLM call classifies it as new, duplicate, or replacing or answering specific items. |
@@ -456,7 +456,7 @@ does not mean migrating data.
 | Database | Postgres with pgvector | One stateful store; cursors, records and jobs in one transaction |
 | Database access | psycopg 3, async, plain SQL; `psycopg_pool`; the `pgvector` adapter | The SQL later work needs is Postgres SQL; typed; async like FastAPI and MCP. See below |
 | Migrations | Numbered SQL files and a small runner in `memini.db` | Forward only; one transaction per file; an advisory lock for concurrent starts. See below |
-| Lexical search | Postgres BM25 extension or built-in `tsvector`; `pg_trgm` | Open question 1 |
+| Lexical search | Built-in `tsvector`, `russian` configuration; `pg_trgm` | In the stock image; as good as BM25 on the eval. See below |
 | Embeddings | Local, in-process or through an OpenAI-compatible endpoint; by default Qwen3-Embedding 0.6B in Ollama | Open question 2, settled |
 | LLM | OpenAI-compatible endpoint for local models; cloud providers as opt-in | Principle 8 |
 
@@ -568,10 +568,9 @@ that wrote them has committed, so a batch that rolls back reports nothing. The v
 no dimension, so a change of model needs no migration. The HNSW index is one partial index per embedding key on a cast of the column
 (`vector` up to 2000 dimensions, `halfvec` up to 4000, none above), created by the service before
 the first chunk of the key is written, and dropped by the rebuild that leaves it unused; a search
-orders by the same expression, with the key as a literal. The lexical column is a `tsvector` with
-the `simple` configuration (no stemming, the same for every language): a baseline for open
-question 1 to measure against, not its answer. A trigram index on the content serves exact and
-regex code search. `memini reindex --workspace NAME` rebuilds one workspace from raw records,
+orders by the same expression, with the key as a literal. The lexical column is a generated
+`tsvector` of the header and content (Lexical search, below); a trigram index on the content
+serves exact and regex code search. `memini reindex --workspace NAME` rebuilds one workspace from raw records,
 record by record through the same writer under the new fingerprint; one last transaction deletes
 the chunks of other embedding keys and records the new fingerprint, so search stays refused until
 it commits. A rebuild that stopped resumes without embedding anything twice. The files of git
@@ -627,11 +626,12 @@ the next sync lists it in full and brings its records back.
 API. Its modes are `hybrid` (the default), `dense`, `lexical`, `exact`, `regex` and `symbol`; the
 "semantic" mode of `search_code` is `hybrid` over code records. A hybrid search takes up to
 `search_candidates` (50) chunks from the dense and from the lexical retriever and merges them by
-reciprocal rank fusion: a chunk scores the sum of 1 / (k + rank) over the retrievers that found
-it, k being `search_rrf_k` (60). Only ranks count, so a cosine distance and a lexical rank need no
-common scale. The dense retriever scans the HNSW index iteratively, so a selective filter still
-fills the list. The lexical one looks for any word of the query in the `simple` tsvector, ranked
-by `ts_rank_cd`: the baseline of open question 1, replaceable in one place. Exact search
+weighted reciprocal rank fusion: a chunk scores the sum of weight / (k + rank) over the retrievers
+that found it, k being `search_rrf_k` (1) and the weights `search_dense_weight` (3) and
+`search_lexical_weight` (1), as the eval chose them (Lexical search, below). Only ranks count, so
+a cosine distance and a lexical rank need no common scale. The dense retriever scans the HNSW
+index iteratively, so a selective filter still fills the list. The lexical one looks for any word
+of the query in the lexical column, ranked by `ts_rank` (Lexical search, below). Exact search
 (`LIKE`) and regex search (`~`, newline-sensitive, as grep reads a pattern) use the trigram
 index. A search runs in one read-only transaction, so the fingerprint check and every statement
 see one snapshot, and each statement under `statement_timeout` (`search_timeout`, 5 s): a regular
@@ -707,6 +707,85 @@ a cloud endpoint takes only a grant whose policy is `cloud`. A test parses every
 service and fails on any other import of it. `llm_policy` does not govern embeddings: chunk text of
 every source goes to the embedding endpoint the user set (above).
 
+**Lexical search** (decided 2026-11-18, open question 1). The lexical column is the built-in
+`tsvector` of the chunk's header and content, generated by Postgres (migration 0010): identifiers
+cut into words, then parsed with the `russian` configuration; a query is any of its words, parsed
+the same way, ranked by `ts_rank`. The `russian` configuration stems Cyrillic words with the
+Russian Snowball stemmer and ASCII words with the English one, each with its stop words, so one
+configuration serves both languages, also mixed in one chunk (code with Russian comments), without
+a language per chunk; the Russian stemmer folds ё into е. Cutting identifiers (SQL function
+`lexical_text`) turns dots and slashes into spaces and splits camel case (`formatUptime`:
+`format Uptime`; `HTMLParser`: `HTML Parser`), Latin and Cyrillic; the parser already reads `_`
+as a space. Without it, `formatUptime` is one word, and `TideTable.height` or `tidewater/fees.py`
+one host or file name. The parser lowercases by the database's character type: the database needs
+a UTF-8 one (the image's `en_US.utf8`, or the builtin `C.UTF-8`); under plain `C`, Cyrillic words
+keep their capitals and miss lowercase queries. Hybrid search fuses with k = 1 and the dense ranks
+weighted 3: a lexical first hit scores 1/2, as a dense fifth does, so an identifier only the
+lexical retriever finds still reaches the first ten. The lexical configuration is not part of the
+index fingerprint: the column is generated, so changing it is a migration that parses every row
+again (`ALTER COLUMN ... SET EXPRESSION`), and the code that parses queries ships with that
+migration; nothing derived from it can be stale.
+
+Measured on the code suite (eval/code, 96 questions of the lexical mode: 39 in Russian, 24 asked
+in the other language than their answer), recall at 10 / MRR. The lexical mode does not depend on
+the embedding model (FakeEmbedder):
+
+| Lexical retriever (`memini eval --lexical`) | All | Russian | Cross-language |
+|---|---|---|---|
+| `tsvector-simple`: `simple`, `ts_rank_cd` (migration 0005) | 0.61 / 0.42 | 0.64 / 0.47 | 0.06 / 0.02 |
+| `tsvector-simple-split`: identifiers cut | 0.68 / 0.47 | 0.64 / 0.47 | 0.10 / 0.06 |
+| `tsvector-english` | 0.73 / 0.53 | 0.64 / 0.47 | 0.30 / 0.15 |
+| `tsvector-english-russian`: both concatenated | 0.75 / 0.56 | 0.69 / 0.54 | 0.30 / 0.15 |
+| `tsvector-russian` | 0.75 / 0.56 | 0.70 / 0.54 | 0.30 / 0.15 |
+| `tsvector-simple-russian-split` | 0.75 / 0.56 | 0.69 / 0.54 | 0.17 / 0.07 |
+| `tsvector-russian-split-cd`: `russian`, cut, `ts_rank_cd` | 0.82 / 0.61 | 0.70 / 0.54 | 0.29 / 0.17 |
+| `tsvector-russian-split-n1`: as chosen, rank / (1 + log length) | 0.82 / 0.66 | 0.71 / 0.55 | 0.31 / 0.20 |
+| **`tsvector-russian-split`**: `russian`, cut, `ts_rank` (chosen) | **0.82 / 0.66** | **0.71 / 0.56** | **0.31 / 0.20** |
+| `bm25-textsearch-simple`: `pg_textsearch` BM25 | 0.71 / 0.54 | 0.68 / 0.51 | 0.23 / 0.10 |
+| `bm25-textsearch-russian` | 0.76 / 0.60 | 0.71 / 0.54 | 0.31 / 0.14 |
+| `bm25-textsearch-russian-split` | 0.81 / 0.64 | 0.71 / 0.54 | 0.31 / 0.19 |
+
+Hybrid and dense with Qwen3-Embedding 0.6B through Ollama (query instruction prefix), on the same
+96 questions (dense added to the symbol and exact questions for this comparison). Dense alone:
+0.99 / 0.75, Russian 1.00 / 0.67, cross-language 0.98 / 0.66.
+
+| Lexical leg | Fusion k = 60, weights 1 and 1 (before) | Fusion k = 1, dense weight 3 (chosen) |
+|---|---|---|
+| `tsvector-simple` | 0.86 / 0.63; ru 0.91 / 0.60; cross 0.65 / 0.27 | 0.99 / 0.77; ru 1.00 / 0.71; cross 0.98 / 0.65 |
+| `tsvector-russian-split-cd` | 0.97 / 0.73; ru 0.97 / 0.63; cross 0.90 / 0.38 | 0.99 / 0.76; ru 1.00 / 0.67; cross 0.98 / 0.64 |
+| **`tsvector-russian-split`** | 0.97 / 0.73; ru 0.97 / 0.63; cross 0.90 / 0.39 | **0.99 / 0.76; ru 1.00 / 0.67; cross 0.98 / 0.64** |
+| `bm25-textsearch-russian-split` | 0.97 / 0.71; ru 0.97 / 0.60; cross 0.90 / 0.40 | 0.99 / 0.76; ru 1.00 / 0.67; cross 0.98 / 0.64 |
+
+What the numbers say. Stemming with the `russian` configuration adds 0.14 to the lexical recall,
+cutting identifiers 0.07, both together 0.21; `ts_rank` orders the found chunks better than
+`ts_rank_cd` (MRR 0.66 against 0.61), and dividing by the length changes nothing here (the chunker
+bounds the length of a chunk). BM25 of `pg_textsearch` over the same text is no better than
+`tsvector` (0.81 / 0.64): on a corpus of a hundred chunks its inverse document frequency has
+little to work with, and stop words, the main thing it would discount, are already dropped.
+The fusion was the larger part of hybrid falling behind dense: with equal weights and k = 60, a
+chunk the lexical retriever ranks high in a question asked in the other language pulls the right
+answer down. A grid of k (1, 2, 5, 10, 20, 60) and dense weight (1 to 4) gave recall 0.98 to 0.99
+and MRR 0.75 to 0.77 for every k up to 5 with a weight of 2 or more; weights at k = 60 did little
+(weight 3: 0.98 / 0.72), and fewer candidates (20) added 0.01. k = 1 with weight 3 gave
+0.99 / 0.76 for the four lexical legs alike. There hybrid ranks the answer higher than dense on 7
+questions (by 1 to 4 places) and lower on 5 (by 1, or 3 for one), and misses at recall 10 at most
+one question that dense finds: a
+cross-language one dense ranks 7th, which hybrid ranks 10th or 11th from run to run (so on the
+committed suite, hybrid 0.98 / 0.76 over its 96 questions, 0.97 / 0.73 over the 75 that dense
+0.99 / 0.72 runs). With that fusion the lexical leg hardly moves hybrid on this suite,
+whose dense recall is already 0.99; it is chosen for the lexical mode itself (identifiers, exact
+words, a search without a model's judgement) and for corpora where the model misses. Run to run,
+Ollama's vectors move a metric by up to 0.01.
+
+`pg_textsearch` (Timescale, v1.5.1 of 2026-10-02, PostgreSQL License, Postgres 17 and 18) was
+measured in a throwaway image built from the pinned pgvector image with the extension compiled in.
+It is not in the official pgvector image, and it must be loaded through
+`shared_preload_libraries`: the compose database would need an image of its own and a server
+setting, and a managed Postgres an administrator, against open question 3 (the stock pgvector
+image) and principle 12, for no gain on the eval. ParadeDB `pg_search` was not measured: AGPL-3.0
+(prior-art.md). The `bm25-textsearch-*` variants stay in the eval's registry, to measure again on
+a larger suite, where inverse document frequency has more to work with.
+
 ## 10. Quality
 
 - **Retrieval eval**: a question set per workspace with expected records; recall@k per kind. Run on every
@@ -739,7 +818,8 @@ retriever and the reranker; a baseline is such a report, and a run exits with co
 recall or MRR of a group falls below the baseline by more than a margin (0.02). The lexical
 retriever and the reranker are chosen by name from registries of the eval (`--lexical`,
 `--reranker`), and `memini.search.search` takes the lexical statement as a parameter: open question
-1 adds its candidates there and measures them against `tsvector-simple`. The committed baseline,
+1 measured its candidates there (section 9, Lexical search), and they stay in the registry. The
+committed baseline,
 `eval/code/baseline-fake.json`, covers the modes the FakeEmbedder does not take part in (lexical,
 exact, regex, symbol) and is what CI compares with on every pull request (`make eval` in the `eval`
 job of `ci.yml`): a change that lowers a recall or an MRR below it by more than the margin fails the
@@ -771,8 +851,10 @@ margin of 0.05 (`QWEN3_MARGIN` in the Makefile).
 
 ## 12. Open questions
 
-1. BM25: `pg_textsearch` (Postgres 17+) or built-in `tsvector`. Needs a check of Russian stemming and
-   ranking quality on the eval set.
+1. Settled on 2026-11-18 by the retrieval eval: built-in `tsvector` with the `russian`
+   configuration (Russian and English stemming), identifiers cut into words, ranked by `ts_rank`;
+   hybrid fusion with k = 1 and the dense ranks weighted 3. BM25 through `pg_textsearch` ranked no
+   better and is not in the stock pgvector image (section 9, Lexical search).
 2. Settled on 2026-11-18 by the owner: Qwen3-Embedding 0.6B (`qwen3-embedding:0.6b`, 1024 dimensions,
    multilingual, strong on code), served by Ollama through the OpenAI-compatible provider; defaults
    and compose in section 9 (**Default embedding model**). Measured on the code suite

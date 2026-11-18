@@ -366,8 +366,13 @@ def format_report(report: Report) -> str:
         f"index fingerprint {str(setup.get('index_fingerprint'))[:12]};"
         f" chunker {setup.get('chunker')}",
         f"lexical {setup.get('lexical')}; reranker {setup.get('reranker')};"
-        f" candidates {search.get('candidates')}, rrf_k {search.get('rrf_k')};"
-        f" {report.depth} hits per search",
+        f" candidates {search.get('candidates')}, rrf_k {search.get('rrf_k')}"
+        + (
+            f", weights dense {search['dense_weight']} lexical {search['lexical_weight']}"
+            if "dense_weight" in search and "lexical_weight" in search
+            else ""
+        )
+        + f"; {report.depth} hits per search",
         *(f"note: {note}" for note in report.notes),
         "",
     ]

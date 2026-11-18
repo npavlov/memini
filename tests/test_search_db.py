@@ -279,32 +279,40 @@ async def test_hybrid_fuses_dense_and_lexical_candidates_once_each(
     for found in top.values():
         assert found.dense_rank in (1, 2)
         assert found.lexical_rank in (1, 2)
+    # The default fusion: k = 1, the dense ranks weighted 3, the lexical ones 1.
+    defaults = SearchOptions()
+    k, dense, lexical = defaults.rrf_k, defaults.dense_weight, defaults.lexical_weight
+    assert (k, dense, lexical) == (1, 3.0, 1.0)
     first = hits[0]
     assert first.score == pytest.approx(
-        1 / (60 + (first.dense_rank or 0)) + 1 / (60 + (first.lexical_rank or 0))
+        dense / (k + (first.dense_rank or 0)) + lexical / (k + (first.lexical_rank or 0))
     )
     # Some hits come from one retriever only, and score only its part.
     single = [h for h in hits if (h.dense_rank is None) != (h.lexical_rank is None)]
     assert single
     for h in single:
-        rank = h.dense_rank or h.lexical_rank or 0
-        assert h.score == pytest.approx(1 / (60 + rank))
+        if h.dense_rank is not None:
+            assert h.score == pytest.approx(dense / (k + h.dense_rank))
+        else:
+            assert h.score == pytest.approx(lexical / (k + (h.lexical_rank or 0)))
     assert [h.score for h in hits] == sorted((h.score or 0 for h in hits), reverse=True)
 
 
-async def test_the_rrf_k_comes_from_the_options(
+async def test_the_rrf_k_and_weights_come_from_the_options(
     db: Conn, fake: FakeEmbedder, corpus: Corpus
 ) -> None:
     water = corpus.chunk("greenhouse", "water")
+    options = SearchOptions(rrf_k=5, dense_weight=0.5, lexical_weight=2)
 
-    hits = await find(
-        db, fake, reader(corpus.scope), text_of(water), options=SearchOptions(rrf_k=5)
-    )
+    hits = await find(db, fake, reader(corpus.scope), text_of(water), options=options)
 
-    first = hits[0]
-    assert first.score == pytest.approx(
-        1 / (5 + (first.dense_rank or 0)) + 1 / (5 + (first.lexical_rank or 0))
-    )
+    for hit in hits:
+        parts = [
+            weight / (5 + rank)
+            for weight, rank in ((0.5, hit.dense_rank), (2, hit.lexical_rank))
+            if rank is not None
+        ]
+        assert hit.score == pytest.approx(sum(parts))
 
 
 async def test_dense_finds_the_nearest_chunk(db: Conn, fake: FakeEmbedder, corpus: Corpus) -> None:
@@ -372,8 +380,73 @@ async def test_lexical_ranks_chunks_with_more_of_the_words_first(
         ("watering", None),
         ("ogorod", "harvest"),
     }
-    assert (hits[0].score or 0) > (hits[1].score or 0) == (hits[2].score or 0)
-    assert hits[1].chunk_id < hits[2].chunk_id  # a tie goes to the smaller id
+    assert (hits[0].score or 0) > (hits[1].score or 0) >= (hits[2].score or 0)
+
+
+async def test_lexical_breaks_a_tie_by_the_chunk_id(
+    db: Conn, fake: FakeEmbedder, corpus: Corpus
+) -> None:
+    hits = await find(
+        db, fake, reader(corpus.scope, corpus.scope.acme), "plant.soil litres", "lexical"
+    )
+
+    # The water function of the repository and of its fork: the same text, the same rank.
+    water, fork = corpus.chunk("greenhouse", "water"), corpus.chunk("fork", "water")
+    assert {h.chunk_id for h in hits[:2]} == {water.id, fork.id}
+    assert hits[0].score == hits[1].score
+    assert hits[0].chunk_id < hits[1].chunk_id
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # Stemming: other forms of the words the text holds, in both languages.
+        ("грядкам урожаев", {("ogorod", "harvest")}),
+        ("pruning tomato", {("pruning", None)}),
+        ("harvested", {("ledger", "totalHarvest")}),
+        # Identifiers cut into words: camel case, and the path in the header.
+        ("total", {("ledger", "totalHarvest")}),
+        ("ogorod", {("ogorod", None), ("ogorod", "harvest"), ("ogorod", "полить")}),
+        # A whole identifier still finds its definition.
+        ("totalHarvest", {("ledger", "totalHarvest")}),
+    ],
+)
+async def test_lexical_stems_words_and_splits_identifiers(
+    db: Conn,
+    fake: FakeEmbedder,
+    corpus: Corpus,
+    text: str,
+    expected: set[tuple[str, str | None]],
+) -> None:
+    hits = await find(db, fake, reader(corpus.scope, corpus.scope.acme), text, "lexical")
+
+    assert expected <= {(_label(corpus, h), h.symbol) for h in hits}
+
+
+async def test_lexical_ignores_stop_words(db: Conn, fake: FakeEmbedder, corpus: Corpus) -> None:
+    access = reader(corpus.scope, corpus.scope.acme)
+
+    assert await find(db, fake, access, "the and of", "lexical") == []
+    assert await find(db, fake, access, "и в на", "lexical") == []
+    with_stop_words = await find(db, fake, access, "the tomatoes of friday", "lexical")
+    assert [_label(corpus, h) for h in with_stop_words] == ["pruning"]
+
+
+async def test_the_lexical_column_is_what_the_retriever_parses_queries_with(
+    db: Conn, corpus: Corpus
+) -> None:
+    """Migration 0012 makes the column; the retriever parses query words with the same function
+    and configuration. If one changes without the other, words stop meeting."""
+    del corpus
+    document = retrieval.lexical_statement.document(sql.SQL("header || E'\\n' || content"))
+    cur = await db.execute(
+        sql.SQL("SELECT count(*), count(*) FILTER (WHERE lexical = {}) FROM chunk").format(document)
+    )
+    row = await cur.fetchone()
+    assert row is not None
+    total, same = row
+    assert total > 0
+    assert same == total
 
 
 async def test_exact_finds_a_substring_and_its_line(

@@ -19,6 +19,8 @@ from memini.search.patterns import glob_regex
 
 __all__ = [
     "DEFAULT_CANDIDATES",
+    "DEFAULT_DENSE_WEIGHT",
+    "DEFAULT_LEXICAL_WEIGHT",
     "DEFAULT_LIMIT",
     "DEFAULT_RERANK_DEPTH",
     "DEFAULT_RRF_K",
@@ -79,9 +81,16 @@ DEFAULT_TIMEOUT: Final = 5.0
 """Seconds one statement of a search may run (``search_timeout``)."""
 DEFAULT_CANDIDATES: Final = 50
 """Candidates each retriever of a hybrid search contributes (``search_candidates``)."""
-DEFAULT_RRF_K: Final = 60
-"""The constant k of reciprocal rank fusion (``search_rrf_k``): Cormack, Clarke and Buettcher
-(2009) found 60 a robust choice, and it is the common default since."""
+DEFAULT_RRF_K: Final = 1
+"""The constant k of reciprocal rank fusion (``search_rrf_k``). Cormack, Clarke and Buettcher
+(2009) found 60 a robust choice for retrievers of like quality; with a dense retriever far ahead
+of the lexical one, the retrieval eval found a small k with the dense ranks weighted higher
+better (docs/requirements.md, section 9, Lexical search)."""
+DEFAULT_DENSE_WEIGHT: Final = 3.0
+"""The weight of the dense retriever's ranks in the fusion (``search_dense_weight``). With k = 1,
+the lexical retriever's first hit scores 1/2, as the dense retriever's fifth does (3/6)."""
+DEFAULT_LEXICAL_WEIGHT: Final = 1.0
+"""The weight of the lexical retriever's ranks in the fusion (``search_lexical_weight``)."""
 DEFAULT_SNIPPET_CHARS: Final = 2000
 """The most characters of a chunk's content a hit carries."""
 DEFAULT_RERANK_DEPTH: Final = 50
@@ -223,8 +232,12 @@ class SearchOptions:
     """How many chunks each retriever of a hybrid search contributes to the fusion. Also the
     ``hnsw.ef_search`` of the dense retriever (at least 40, pgvector's default)."""
     rrf_k: int = DEFAULT_RRF_K
-    """The k of reciprocal rank fusion: a chunk scores the sum of 1 / (k + rank) over the
+    """The k of reciprocal rank fusion: a chunk scores the sum of weight / (k + rank) over the
     retrievers that found it. A larger k flattens the difference between ranks."""
+    dense_weight: float = DEFAULT_DENSE_WEIGHT
+    """What a rank of the dense retriever counts in the fusion: it scores weight / (k + rank)."""
+    lexical_weight: float = DEFAULT_LEXICAL_WEIGHT
+    """What a rank of the lexical retriever counts in the fusion."""
     snippet_chars: int = DEFAULT_SNIPPET_CHARS
     """The most characters of a chunk's content a hit carries; longer content is cut and the hit
     is marked ``truncated``."""
@@ -237,6 +250,10 @@ class SearchOptions:
         for name in ("candidates", "rrf_k", "snippet_chars", "rerank_depth"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be at least 1")
+        for name in ("dense_weight", "lexical_weight"):
+            weight: float = getattr(self, name)
+            if not (math.isfinite(weight) and weight > 0):
+                raise ValueError(f"{name} must be a positive number")
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "SearchOptions":
@@ -244,6 +261,8 @@ class SearchOptions:
             timeout=settings.search_timeout,
             candidates=settings.search_candidates,
             rrf_k=settings.search_rrf_k,
+            dense_weight=settings.search_dense_weight,
+            lexical_weight=settings.search_lexical_weight,
         )
 
 

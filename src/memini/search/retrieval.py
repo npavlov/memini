@@ -20,10 +20,13 @@ The retrievers:
   workspace the planner may rather sort its rows exactly, through the btree on the workspace and
   embedding key; both give the nearest chunks.
 - **lexical**: chunks whose ``lexical`` tsvector holds any word of the query, ranked by
-  ``ts_rank_cd``. This is the baseline of open question 1 (BM25 in Postgres, per language): the
-  column uses the ``simple`` configuration of migration 0005. A different lexical index replaces
-  :func:`lexical_statement` and nothing else; :func:`memini.search.search` takes another one of
-  the same shape (:data:`LexicalStatement`), which is how the retrieval eval compares them.
+  ``ts_rank``. The column (migration 0010) is the chunk's header and content with identifiers cut
+  into words (:func:`split_identifiers`), parsed with the ``russian`` configuration, which stems
+  Russian and English words alike (:data:`LEXICAL_CONFIG`); open question 1 chose it by the
+  retrieval eval over the ``simple`` configuration of 0005 and BM25 through ``pg_textsearch``. A
+  different lexical index replaces :data:`lexical_statement` and nothing else;
+  :func:`memini.search.search` takes another one of the same shape (:data:`LexicalStatement`),
+  which is how the retrieval eval compares them.
 - **exact**: ``LIKE`` / ``ILIKE`` on the content; **regex**: ``~`` / ``~*``. Both are served by the
   trigram index on the content (``pg_trgm``), and run under the search's statement timeout,
   because a regular expression can take time without end and a short pattern gives the trigram
@@ -62,22 +65,26 @@ __all__ = [
     "ChunkScope",
     "LexicalStatement",
     "Params",
+    "RankFunction",
     "Statement",
+    "TsvectorRetriever",
     "chunk_conditions",
     "chunk_rows",
     "dense_statement",
     "lexical_statement",
     "match_statement",
     "pinned_commit",
+    "split_identifiers",
     "symbol_definition",
     "symbol_statement",
 ]
 
 type Conn = AsyncConnection[TupleRow]
 
-LEXICAL_CONFIG: Final = "simple"
-"""The text search configuration of the ``lexical`` column (migration 0005). A query is parsed
-with the same one, or its words would not meet the stored ones."""
+LEXICAL_CONFIG: Final = "russian"
+"""The text search configuration of the ``lexical`` column (migration 0010). It stems Cyrillic words
+with the Russian Snowball stemmer and ASCII words with the English one, each with its stop words.
+A query is parsed with the same one, or its words would not meet the stored ones."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,35 +175,106 @@ def dense_statement(scope: ChunkScope, vector: Vector, limit: int) -> Statement:
     return Statement(query, param.values)
 
 
-def lexical_statement(scope: ChunkScope, text: str, limit: int) -> Statement:
-    """The ``limit`` chunks that hold most of the words of ``text``: rows of
-    ``(chunk id, ts_rank_cd)``, best first.
+def split_identifiers(text: sql.Composable) -> sql.Composable:
+    """``text`` with the identifiers of code cut into words: the SQL function ``lexical_text``
+    of migration 0010.
 
-    The words are alternatives (``|``): a question in natural language has words no chunk holds,
-    and the simple configuration drops no stop words. The rank weighs how many of them a chunk
-    holds and how close together.
+    The text search parser keeps ``formatUptime`` as one word and ``TideTable.height`` or
+    ``tidewater/fees.py`` as one host or file name, so a question about the uptime or the fees
+    would not find them. ``lexical_text`` turns dots and slashes into spaces and cuts a lower-case
+    letter or digit followed by a capital (``formatUptime``: ``format Uptime``), and a run of
+    capitals before a capitalised word (``HTMLParser``: ``HTML Parser``), in Latin and Cyrillic
+    letters. Snake case needs nothing: the parser reads ``_`` as a space. The ``lexical`` column
+    is made with it, so a query word goes through the same function.
     """
-    param = Params()
-    where = chunk_conditions(scope, param)
-    config = sql.Literal(LEXICAL_CONFIG)
-    tsquery = sql.SQL("({})").format(
-        sql.SQL(" || ").join(
-            sql.SQL("plainto_tsquery({}::regconfig, {})").format(config, param(term))
-            for term in lexical_terms(text)
+    return sql.SQL("lexical_text({})").format(text)
+
+
+type RankFunction = Literal["ts_rank", "ts_rank_cd"]
+
+
+@dataclass(frozen=True, slots=True)
+class TsvectorRetriever:
+    """A lexical retriever over a ``tsvector`` column of ``chunk``; an instance is a
+    :data:`LexicalStatement`.
+
+    The column holds :meth:`document` of the chunk's header and content. A query word is parsed
+    the same way, with each configuration, so its lexemes meet the stored ones. The service's is
+    :data:`lexical_statement`; the retrieval eval measures others, each on a column it adds to
+    its scratch database (:mod:`memini.evaluation.variants`).
+    """
+
+    column: str
+    configs: tuple[str, ...]
+    """Text search configurations; the column concatenates the tsvector of each."""
+    split: bool
+    """Whether identifiers are cut into words (:func:`split_identifiers`) before parsing."""
+    rank: RankFunction = "ts_rank"
+    normalization: int = 0
+    """The ``normalization`` argument of the rank function (a bit mask; 0: none)."""
+
+    def _text(self, text: sql.Composable) -> sql.Composable:
+        return split_identifiers(text) if self.split else text
+
+    def document(self, text: sql.Composable) -> sql.Composable:
+        """The expression of the column over ``text``."""
+        return sql.SQL(" || ").join(
+            sql.SQL("to_tsvector({}::regconfig, {})").format(sql.Literal(config), self._text(text))
+            for config in self.configs
         )
-    )
-    query = sql.SQL(
-        "SELECT c.id, ts_rank_cd(c.lexical, {tsquery}) AS rank FROM {from_}"
-        " WHERE c.lexical @@ {tsquery} AND {where}"
-        " ORDER BY rank DESC, c.id LIMIT {limit}"
-    ).format(tsquery=tsquery, from_=_FROM, where=where, limit=sql.Literal(limit))
-    return Statement(query, param.values)
+
+    def tsquery(self, text: str, param: Params) -> sql.Composable:
+        """Any word of ``text``: the alternatives (``||``) of each word parsed with each
+        configuration. A word that is only a stop word adds nothing."""
+        return sql.SQL("({})").format(
+            sql.SQL(" || ").join(
+                sql.SQL("plainto_tsquery({}::regconfig, {})").format(
+                    sql.Literal(config), self._text(param(term))
+                )
+                for term in lexical_terms(text)
+                for config in self.configs
+            )
+        )
+
+    def __call__(self, scope: ChunkScope, text: str, limit: int) -> Statement:
+        """The ``limit`` chunks that hold most of the words of ``text``: rows of
+        ``(chunk id, rank)``, best first.
+
+        The words are alternatives (``|``): a question in natural language has words no chunk
+        holds. The rank weighs how often a chunk holds them (``ts_rank``), or how many of them
+        and how close together (``ts_rank_cd``).
+        """
+        param = Params()
+        where = chunk_conditions(scope, param)
+        tsquery = self.tsquery(text, param)
+        column = _c(self.column)
+        query = sql.SQL(
+            "SELECT c.id, {rank}({column}, {tsquery}, {normalization}) AS rank FROM {from_}"
+            " WHERE {column} @@ {tsquery} AND {where}"
+            " ORDER BY rank DESC, c.id LIMIT {limit}"
+        ).format(
+            rank=sql.Identifier(self.rank),
+            column=column,
+            tsquery=tsquery,
+            normalization=sql.Literal(self.normalization),
+            from_=_FROM,
+            where=where,
+            limit=sql.Literal(limit),
+        )
+        return Statement(query, param.values)
+
+
+lexical_statement: Final = TsvectorRetriever(
+    column="lexical", configs=(LEXICAL_CONFIG,), split=True, rank="ts_rank"
+)
+"""The service's lexical retriever: the ``lexical`` column of migration 0010, any word of the query
+parsed with :data:`LEXICAL_CONFIG` after :func:`split_identifiers`, ranked by ``ts_rank``."""
 
 
 type LexicalStatement = Callable[[ChunkScope, str, int], Statement]
 """Makes the statement of the lexical retriever from the scope, the query text and a limit: rows of
 ``(chunk id, score)``, best first, at most the limit, under :func:`chunk_conditions`.
-:func:`lexical_statement` is the service's."""
+:data:`lexical_statement` is the service's."""
 
 
 def match_statement(

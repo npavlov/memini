@@ -136,6 +136,34 @@ def test_a_worse_lexical_retriever_fails_the_comparison(
     assert "the baseline has the mode exact, which this run did not measure" in run.out
 
 
+def test_a_variant_with_a_column_of_its_own_runs_on_the_scratch_database(
+    server: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """tsvector-simple, the service's retriever before open question 1, adds its column in
+    prepare; it is measured below the committed baseline of the service's."""
+    del server
+    report = tmp_path / "report.json"
+    run = invoke(
+        capsys,
+        "--suite",
+        str(SUITE),
+        "--fake-embeddings",
+        "--modes",
+        "lexical",
+        "--lexical",
+        "tsvector-simple",
+        "--baseline",
+        str(BASELINE),
+        "--json",
+        str(report),
+    )
+    assert run.code == EXIT_REGRESSION, run.err
+    data = json.loads(report.read_text())
+    assert data["setup"]["lexical"] == "tsvector-simple"
+    recall = data["modes"]["lexical"]["groups"]["all"]["recall"]["10"]
+    assert recall == pytest.approx(0.61, abs=0.01)
+
+
 SMALL_SUITE = """
 format = 1
 name = "pond"

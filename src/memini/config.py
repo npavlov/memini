@@ -429,7 +429,7 @@ class Settings(BaseModel):
     # --- Search (memini.search) -------------------------------------------------------------------
     # Limits of one search: how long a statement may run (a regular expression can backtrack
     # without end), how many candidates each retriever of a hybrid search contributes, and the k
-    # of reciprocal rank fusion.
+    # of reciprocal rank fusion and the weight of each retriever's ranks in it.
     search_timeout: float = Field(
         default=5.0,
         gt=0,
@@ -443,10 +443,24 @@ class Settings(BaseModel):
         description="candidates per retriever of a hybrid search, an integer from 1 to 1000",
     )
     search_rrf_k: int = Field(
-        default=60,
+        default=1,
         ge=1,
         le=1000,
         description="the k of reciprocal rank fusion, an integer from 1 to 1000",
+    )
+    search_dense_weight: float = Field(
+        default=3.0,
+        gt=0,
+        le=100,
+        description="the weight of the dense retriever's ranks in the fusion, more than 0, at"
+        " most 100",
+    )
+    search_lexical_weight: float = Field(
+        default=1.0,
+        gt=0,
+        le=100,
+        description="the weight of the lexical retriever's ranks in the fusion, more than 0, at"
+        " most 100",
     )
 
     # --- Ingest (memini.ingest) -------------------------------------------------------------------

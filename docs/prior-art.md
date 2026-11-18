@@ -48,8 +48,9 @@ responses verbatim and keeps the model out of the sync loop.
 
 ## Storage
 
-Postgres only: pgvector for dense search, BM25 or `tsvector` for lexical search, `pg_trgm` for exact code
-search, plain tables for persons and supersession links. Cursors, records and jobs share one transaction.
+Postgres only: pgvector for dense search, built-in `tsvector` with stemming for lexical search,
+`pg_trgm` for exact code search, plain tables for persons and supersession links. Cursors, records
+and jobs share one transaction.
 
 | Alternative | Why not |
 |---|---|
@@ -57,5 +58,6 @@ search, plain tables for persons and supersession links. Cursors, records and jo
 | SQLite with sqlite-vec | Vector extension was pre-1.0; fits a single-user lite mode at most |
 | LanceDB | No relational side |
 | ParadeDB `pg_search` | AGPL-3.0 |
+| Timescale `pg_textsearch` (BM25) | PostgreSQL License, but not in the pgvector image and loaded through `shared_preload_libraries`; ranked no better than `tsvector` on the eval (requirements, section 9, Lexical search) |
 | Kuzu | Archived in 2025 |
 | FalkorDB, Neo4j | SSPL; GPL with a JVM. A graph database is not needed for v1 |

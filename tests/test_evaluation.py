@@ -16,6 +16,8 @@ from memini.cli.common import EXIT_USAGE
 from memini.cli.evaluate import parse_ks, parse_modes
 from memini.config import environment_variables
 from memini.evaluation import (
+    DEFAULT_LEXICAL,
+    LEXICAL_VARIANTS,
     EvalConfig,
     Expected,
     Ranked,
@@ -35,6 +37,7 @@ from memini.evaluation.metrics import first_ranks, tie_groups
 from memini.evaluation.report import GroupSummary, ModeResult, QuestionResult
 from memini.evaluation.runner import Target, header_trails, hit_matches, summarize
 from memini.search import Hit, SearchOptions, SymbolDefinition
+from memini.search.retrieval import lexical_statement
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = ROOT / "eval" / "code" / "suite.toml"
@@ -500,6 +503,16 @@ def test_the_config_checks_its_values() -> None:
             EvalConfig(modes=("lexical",), ks=ks)
     with pytest.raises(ValueError, match="mode"):
         EvalConfig(modes=())
+
+
+def test_the_default_lexical_variant_is_the_services_and_the_others_bring_their_index() -> None:
+    default = LEXICAL_VARIANTS[DEFAULT_LEXICAL]
+    assert default.statement is lexical_statement
+    assert default.prepare is None  # the service's column, from migration 0010
+    others = [v for name, v in LEXICAL_VARIANTS.items() if name != DEFAULT_LEXICAL]
+    assert others
+    assert all(v.prepare is not None for v in others)
+    assert all(name == v.name for name, v in LEXICAL_VARIANTS.items())
 
 
 # --- The command, before it builds anything ------------------------------------------------------

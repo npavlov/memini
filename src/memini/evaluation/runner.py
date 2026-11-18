@@ -554,6 +554,8 @@ def _setup(suite: Suite, embedder: Embedder, config: EvalConfig) -> dict[str, An
         "search": {
             "candidates": config.options.candidates,
             "rrf_k": config.options.rrf_k,
+            "dense_weight": config.options.dense_weight,
+            "lexical_weight": config.options.lexical_weight,
             "rerank_depth": config.options.rerank_depth,
         },
     }

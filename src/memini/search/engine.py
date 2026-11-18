@@ -297,7 +297,9 @@ async def _retrieve(
         lexical = await lexical_retriever(scope, query.text, candidates).rows(conn)
 
     fused = reciprocal_rank_fusion(
-        [[row[0] for row in dense], [row[0] for row in lexical]], k=options.rrf_k
+        [[row[0] for row in dense], [row[0] for row in lexical]],
+        k=options.rrf_k,
+        weights=(options.dense_weight, options.lexical_weight),
     )[:depth]
     distances = {row[0]: float(row[1]) for row in dense}
     lexical_scores = {row[0]: float(row[1]) for row in lexical}

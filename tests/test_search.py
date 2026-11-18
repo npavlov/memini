@@ -175,6 +175,29 @@ def test_fusion_needs_a_positive_k() -> None:
     assert reciprocal_rank_fusion([[], []], k=60) == []
 
 
+def test_fusion_weighs_each_list() -> None:
+    rankings = [["a", "b", "c"], ["c", "d"]]
+
+    fused = reciprocal_rank_fusion(rankings, k=1, weights=(3, 1))
+
+    by_id = {f.id: f for f in fused}
+    assert by_id["a"].score == pytest.approx(3 / 2)
+    assert by_id["c"].score == pytest.approx(3 / 4 + 1 / 2)
+    assert by_id["d"].score == pytest.approx(1 / 3)
+    assert [f.id for f in fused] == ["a", "c", "b", "d"]
+    # Without weights, each list counts once: c, found by both, comes first.
+    assert reciprocal_rank_fusion(rankings, k=1)[0].id == "c"
+    assert reciprocal_rank_fusion(rankings, k=1, weights=(1, 1)) == reciprocal_rank_fusion(
+        rankings, k=1
+    )
+
+
+@pytest.mark.parametrize("weights", [(1.0,), (1.0, 0.0), (1.0, -2.0), (float("nan"), 1.0)])
+def test_fusion_needs_one_positive_weight_per_list(weights: tuple[float, ...]) -> None:
+    with pytest.raises(ValueError, match="weight"):
+        reciprocal_rank_fusion([["a"], ["b"]], k=1, weights=weights)
+
+
 # --- Queries and filters -------------------------------------------------------------------------
 
 
@@ -260,18 +283,22 @@ def test_options_come_from_the_search_settings() -> None:
             "MEMINI_SEARCH_TIMEOUT": "0.5",
             "MEMINI_SEARCH_CANDIDATES": "120",
             "MEMINI_SEARCH_RRF_K": "30",
+            "MEMINI_SEARCH_DENSE_WEIGHT": "2.5",
+            "MEMINI_SEARCH_LEXICAL_WEIGHT": "0.5",
         }
     )
 
     options = SearchOptions.from_settings(settings)
 
     assert (options.timeout, options.candidates, options.rrf_k) == (0.5, 120, 30)
+    assert (options.dense_weight, options.lexical_weight) == (2.5, 0.5)
 
 
 def test_search_settings_have_defaults_and_bounds() -> None:
     defaults = SearchOptions.from_settings(load_settings({"MEMINI_DATABASE_URL": FAKE_URL}))
     assert defaults == SearchOptions()
-    assert (defaults.timeout, defaults.candidates, defaults.rrf_k) == (5.0, 50, 60)
+    assert (defaults.timeout, defaults.candidates, defaults.rrf_k) == (5.0, 50, 1)
+    assert (defaults.dense_weight, defaults.lexical_weight) == (3.0, 1.0)
 
     with pytest.raises(ConfigError) as refused:
         load_settings(
@@ -280,18 +307,30 @@ def test_search_settings_have_defaults_and_bounds() -> None:
                 "MEMINI_SEARCH_TIMEOUT": "0",
                 "MEMINI_SEARCH_CANDIDATES": "1001",
                 "MEMINI_SEARCH_RRF_K": "zero",
+                "MEMINI_SEARCH_DENSE_WEIGHT": "0",
+                "MEMINI_SEARCH_LEXICAL_WEIGHT": "101",
             }
         )
     assert [problem.split(":")[0] for problem in refused.value.problems] == [
         "MEMINI_SEARCH_TIMEOUT",
         "MEMINI_SEARCH_CANDIDATES",
         "MEMINI_SEARCH_RRF_K",
+        "MEMINI_SEARCH_DENSE_WEIGHT",
+        "MEMINI_SEARCH_LEXICAL_WEIGHT",
     ]
 
 
 @pytest.mark.parametrize(
     "arguments",
-    [{"timeout": 0}, {"timeout": float("nan")}, {"candidates": 0}, {"rrf_k": 0}],
+    [
+        {"timeout": 0},
+        {"timeout": float("nan")},
+        {"candidates": 0},
+        {"rrf_k": 0},
+        {"dense_weight": 0},
+        {"lexical_weight": -1},
+        {"lexical_weight": float("inf")},
+    ],
 )
 def test_invalid_options_are_refused(arguments: dict[str, float]) -> None:
     with pytest.raises(ValueError, match="must be"):
