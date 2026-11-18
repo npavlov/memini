@@ -26,6 +26,10 @@ with ``settings.database_url.get_secret_value()`` at the point of use.
 For the development compose stack, where Postgres listens on 127.0.0.1:55432::
 
     MEMINI_DATABASE_URL=postgresql://memini:memini@127.0.0.1:55432/memini
+
+``principal`` (``MEMINI_PRINCIPAL``, default ``owner``) names the principal the CLI acts as: it owns
+the workspaces and tokens the CLI creates, and is created on first use. v1 has one user, so the
+default fits; set it only to give that principal another name, and keep it the same afterwards.
 """
 
 import os
@@ -40,6 +44,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, V
 __all__ = [
     "CONFIG_FILE_VAR",
     "ENV_PREFIX",
+    "HANDLE_REGEX",
     "ConfigError",
     "LogLevel",
     "Settings",
@@ -52,6 +57,10 @@ CONFIG_FILE_VAR: Final = "MEMINI_CONFIG_FILE"
 _FILE_SUFFIX: Final = "_FILE"
 
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"]
+
+HANDLE_REGEX: Final = r"^[a-z0-9][a-z0-9_-]{0,62}$"
+"""A valid name of a principal, as :data:`memini.workspaces.HANDLE_PATTERN` and the database check
+it. Repeated here so that this module imports no database code; a test keeps the two equal."""
 
 
 def _upper(value: object) -> object:
@@ -74,6 +83,12 @@ class Settings(BaseModel):
     log_level: Annotated[LogLevel, BeforeValidator(_upper)] = Field(
         default="INFO",
         description="one of CRITICAL, ERROR, WARNING, INFO, DEBUG",
+    )
+    principal: str = Field(
+        default="owner",
+        pattern=HANDLE_REGEX,
+        description="1 to 63 lowercase letters, digits, '-' or '_', starting with a letter"
+        " or digit",
     )
 
 

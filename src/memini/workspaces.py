@@ -2,8 +2,12 @@
 
 v1 has one principal, the user. It must exist before it can own a workspace or a token, so setup
 runs :func:`ensure_principal` first, then :func:`create_workspace` and
-:func:`memini.auth.create_token`. Reads take the :class:`~memini.auth.ReadFilter` of the caller, so
-they cannot bypass the authorization filter.
+:func:`memini.auth.create_token`. Reads made for a request take the
+:class:`~memini.auth.ReadFilter` of the caller, so they cannot bypass the authorization filter.
+
+The CLI is the exception: it acts for a principal with the database's own credentials, not with a
+token, so there is no token to filter by. It lists what that principal owns,
+:func:`list_owned_workspaces`, as :func:`memini.auth.list_tokens` lists their tokens.
 """
 
 import re
@@ -25,6 +29,7 @@ __all__ = [
     "create_workspace",
     "ensure_principal",
     "get_workspace",
+    "list_owned_workspaces",
     "list_workspaces",
 ]
 
@@ -130,3 +135,17 @@ async def get_workspace(
     cur = await conn.execute(query, (name,))
     row = await cur.fetchone()
     return None if row is None else _workspace(row)
+
+
+async def list_owned_workspaces(
+    conn: AsyncConnection[TupleRow], *, owner_id: UUID
+) -> list[Workspace]:
+    """The workspaces ``owner_id`` owns, by name.
+
+    For the CLI. A read made for a request uses :func:`list_workspaces` with the caller's filter.
+    """
+    query = sql.SQL("SELECT {} FROM workspace w WHERE w.owner_id = %s ORDER BY w.name").format(
+        _WORKSPACE_COLUMNS
+    )
+    cur = await conn.execute(query, (owner_id,))
+    return [_workspace(row) for row in await cur.fetchall()]

@@ -9,10 +9,12 @@ from pydantic import ValidationError
 
 from memini.config import (
     CONFIG_FILE_VAR,
+    HANDLE_REGEX,
     ConfigError,
     environment_variables,
     load_settings,
 )
+from memini.workspaces import HANDLE_PATTERN
 
 FAKE_URL = "postgresql://fake:fake@db.invalid:5432/memini"
 # A distinctive value that must never leave the settings object.
@@ -37,6 +39,7 @@ def test_defaults_apply_when_only_the_required_key_is_set() -> None:
     assert settings.http_host == "127.0.0.1"
     assert settings.http_port == 6364
     assert settings.log_level == "INFO"
+    assert settings.principal == "owner"
 
 
 def test_reads_the_environment() -> None:
@@ -46,6 +49,7 @@ def test_reads_the_environment() -> None:
             "MEMINI_HTTP_HOST": "0.0.0.0",  # noqa: S104 - a value under test, nothing binds to it
             "MEMINI_HTTP_PORT": "7001",
             "MEMINI_LOG_LEVEL": "debug",
+            "MEMINI_PRINCIPAL": "someone-else",
             "UNRELATED": "ignored",
             "MEMINI_SOMETHING_ELSE": "ignored",
         }
@@ -54,6 +58,7 @@ def test_reads_the_environment() -> None:
     assert settings.http_host == "0.0.0.0"  # noqa: S104
     assert settings.http_port == 7001
     assert settings.log_level == "DEBUG"
+    assert settings.principal == "someone-else"
 
 
 def test_reads_os_environ_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,6 +133,10 @@ def test_missing_required_key_is_named() -> None:
         ("MEMINI_HTTP_PORT", "0"),
         ("MEMINI_HTTP_PORT", "65536"),
         ("MEMINI_LOG_LEVEL", "LOUD"),
+        ("MEMINI_PRINCIPAL", "Owner"),
+        ("MEMINI_PRINCIPAL", "-owner"),
+        ("MEMINI_PRINCIPAL", "owner\n"),
+        ("MEMINI_PRINCIPAL", "o" * 64),
     ],
 )
 def test_invalid_value_is_named(key: str, value: str) -> None:
@@ -273,3 +282,7 @@ def test_environment_variable_names_do_not_collide() -> None:
 
     assert len(names) == len(set(names))
     assert {"MEMINI_CONFIG_FILE", "MEMINI_DATABASE_URL", "MEMINI_DATABASE_URL_FILE"} <= set(names)
+
+
+def test_principal_names_follow_the_handle_pattern_of_the_database() -> None:
+    assert f"^{HANDLE_PATTERN.pattern}$" == HANDLE_REGEX

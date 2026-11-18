@@ -200,7 +200,8 @@ persons and aliases, reindex, forget (hard delete of a record and everything der
 
 - One process: HTTP API, MCP over streamable HTTP, scheduler and workers. One Postgres database.
 - `docker compose up` is the supported install. Binds to localhost by default.
-- A CLI wraps the API for setup and operations.
+- A CLI wraps the API for setup and operations. Setup (migrations, workspaces, tokens) works on the
+  database directly: the first token cannot come from an API that asks for one.
 - Secrets come from the environment or a secrets file, never from the database in clear text.
 - Health and status endpoints, structured logs, run reports.
 - Backup is a database dump. Repository mirrors are re-cloned.

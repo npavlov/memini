@@ -19,7 +19,11 @@ dependencies = [
     "pgvector>=0.5.1",
     "psycopg[binary,pool]>=3.3.9",
     "pydantic>=2.14.3",
+    "uvicorn>=0.54.0",
 ]
+
+[project.scripts]
+memini = "memini.cli:main"
 
 [project.urls]
 Repository = "https://github.com/npavlov/memini"

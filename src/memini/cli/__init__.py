@@ -1,0 +1,214 @@
+"""The ``memini`` command: start the service, migrate the database, manage workspaces and tokens.
+
+Usage::
+
+    memini [--config FILE] [--debug] <command> ...
+    memini --version
+
+    memini serve [--migrate]
+    memini migrate
+    memini workspace create <name>
+    memini workspace list
+    memini token create --scope {read,ingest,admin} [--scope ...] [--workspace <name>]
+                        [--name <label>] [--expires-in <duration>]
+    memini token list
+    memini token revoke <id-or-prefix>
+
+Global options go before the command. ``--config FILE`` sets ``MEMINI_CONFIG_FILE`` for this run;
+every other setting comes from the environment and that file, as for the service
+(:mod:`memini.config`). ``--debug`` adds the traceback to an error.
+
+The commands work on the database directly, not through the HTTP API: the first token cannot come
+from an API that asks for one. They act as the principal named by the ``principal`` setting
+(``MEMINI_PRINCIPAL``, default ``owner``), which is created on first use. v1 has one user, and that
+principal owns every workspace and token the CLI creates.
+
+Results go to stdout, messages to stderr. ``token create`` prints the token alone on stdout, so
+``TOKEN=$(memini token create --scope read)`` captures it. It is shown this once: only its digest
+is stored.
+
+An error is one line on stderr, ``memini: ...``, without a traceback. No output holds the database
+URL or its password; the server is named as ``host:port``.
+
+Exit codes:
+
+- 0: done; also ``serve`` stopped by SIGINT or SIGTERM.
+- 1: the command failed: no such workspace or token, a name already taken, a migration that failed
+  or is pending, a server that did not start.
+- 2: wrong usage or invalid configuration.
+- 3: the database cannot be reached.
+- 130: interrupted by Ctrl-C.
+"""
+
+import argparse
+import asyncio
+import os
+import sys
+from collections.abc import Callable, Coroutine, Sequence
+from typing import Any
+
+import psycopg
+
+from memini import __version__
+from memini.auth import SCOPES
+from memini.cli import admin, serve
+from memini.cli.common import (
+    EXIT_FAILURE,
+    EXIT_INTERRUPTED,
+    EXIT_UNAVAILABLE,
+    EXIT_USAGE,
+    CommandError,
+    DatabaseUrl,
+    message,
+)
+from memini.config import CONFIG_FILE_VAR, ConfigError, Settings, load_settings
+from memini.db import MigrationError
+
+__all__ = ["build_parser", "main"]
+
+type Command = Callable[[argparse.Namespace, Settings], Coroutine[Any, Any, int]]
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the ``memini`` command with ``argv`` (default ``sys.argv[1:]``); return the exit code."""
+    try:
+        args = build_parser().parse_args(argv)
+    except SystemExit as exit_:  # --help, --version, or a usage error argparse has printed
+        return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
+    command: Command = args.command
+    debug: bool = args.debug
+
+    environ = dict(os.environ)
+    if args.config is not None:
+        environ[CONFIG_FILE_VAR] = args.config
+    try:
+        settings = load_settings(environ)
+    except ConfigError as error:  # its text names keys, never values
+        message(str(error))
+        return EXIT_USAGE
+
+    database = DatabaseUrl(settings)
+    try:
+        database.check()
+        return asyncio.run(command(args, settings))
+    except KeyboardInterrupt:
+        message("interrupted")
+        return EXIT_INTERRUPTED
+    except Exception as error:
+        code, text = _describe(error, database)
+        message(text)
+        if debug:
+            print(database.format_traceback(error), file=sys.stderr, end="", flush=True)
+        return code
+
+
+def _describe(error: Exception, database: DatabaseUrl) -> tuple[int, str]:
+    """Exit code and one line for an error; any text that is not the CLI's own is redacted."""
+    match error:
+        case CommandError():
+            return error.exit_code, error.text
+        case psycopg.OperationalError():  # also psycopg_pool.PoolTimeout
+            return EXIT_UNAVAILABLE, database.unavailable(error)
+        case MigrationError():
+            return EXIT_FAILURE, f"migration failed: {database.redact(str(error))}"
+        case psycopg.Error():
+            primary = error.diag.message_primary or type(error).__name__
+            return EXIT_FAILURE, f"database error: {database.redact(primary)}"
+        case _:
+            return EXIT_FAILURE, (
+                f"unexpected error: {type(error).__name__}: {database.redact(str(error))}"
+                " (run with --debug for the traceback)"
+            )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="memini",
+        description="Memini: a self-hosted knowledge service. Settings come from MEMINI_*"
+        " environment variables and an optional TOML file.",
+    )
+    parser.add_argument("--version", action="version", version=f"memini {__version__}")
+    parser.add_argument(
+        "--config",
+        metavar="FILE",
+        help=f"a TOML settings file; sets {CONFIG_FILE_VAR} for this run",
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="show the traceback when a command fails"
+    )
+    commands = parser.add_subparsers(title="commands", metavar="<command>", required=True)
+
+    serve_parser = commands.add_parser(
+        "serve",
+        help="run the service until SIGINT or SIGTERM",
+        description="Run the HTTP API on MEMINI_HTTP_HOST:MEMINI_HTTP_PORT. Refuses to start"
+        " while migrations are pending.",
+    )
+    serve_parser.add_argument(
+        "--migrate", action="store_true", help="apply pending migrations first"
+    )
+    serve_parser.set_defaults(command=serve.serve_command)
+
+    migrate_parser = commands.add_parser(
+        "migrate",
+        help="apply pending database migrations",
+        description="Apply pending migrations and print each one. Nothing to do is not an error.",
+    )
+    migrate_parser.set_defaults(command=admin.migrate_command)
+
+    workspace = commands.add_parser("workspace", help="create and list workspaces")
+    workspace_commands = workspace.add_subparsers(metavar="<command>", required=True)
+    create_workspace = workspace_commands.add_parser("create", help="create a workspace")
+    create_workspace.add_argument(
+        "name",
+        type=admin.parse_workspace_name,
+        help="1 to 63 lowercase letters, digits, '-' or '_', starting with a letter or digit",
+    )
+    create_workspace.set_defaults(command=admin.create_workspace_command)
+    list_workspaces = workspace_commands.add_parser("list", help="list workspaces")
+    list_workspaces.set_defaults(command=admin.list_workspaces_command)
+
+    token = commands.add_parser("token", help="create, list and revoke bearer tokens")
+    token_commands = token.add_subparsers(metavar="<command>", required=True)
+    create_token = token_commands.add_parser(
+        "create",
+        help="create a token and print it once",
+        description="Create a bearer token. The token alone goes to stdout, and is shown only"
+        " this once; details go to stderr.",
+    )
+    create_token.add_argument(
+        "--scope",
+        action="append",
+        required=True,
+        choices=SCOPES,
+        help="what the token may do; repeat for more than one",
+    )
+    create_token.add_argument(
+        "--workspace",
+        metavar="NAME",
+        type=admin.parse_workspace_name,
+        help="limit the token to this workspace (default: every workspace)",
+    )
+    create_token.add_argument(
+        "--name",
+        metavar="LABEL",
+        type=admin.parse_token_name,
+        default=admin.DEFAULT_TOKEN_NAME,
+        help=f"what the token is for, e.g. 'laptop agent' (default: {admin.DEFAULT_TOKEN_NAME})",
+    )
+    create_token.add_argument(
+        "--expires-in",
+        metavar="DURATION",
+        type=admin.parse_duration,
+        help="e.g. 90d, 12h or 1w2d (units: s, m, h, d, w); default: never expires",
+    )
+    create_token.set_defaults(command=admin.create_token_command)
+    list_tokens = token_commands.add_parser("list", help="list tokens, without secrets")
+    list_tokens.set_defaults(command=admin.list_tokens_command)
+    revoke_token = token_commands.add_parser("revoke", help="revoke a token")
+    revoke_token.add_argument(
+        "token", metavar="id-or-prefix", help="the token's id or prefix, as `token list` shows"
+    )
+    revoke_token.set_defaults(command=admin.revoke_token_command)
+
+    return parser
