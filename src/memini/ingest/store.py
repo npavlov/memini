@@ -16,6 +16,7 @@ from memini.auth import WriteAccess
 from memini.ids import record_id
 from memini.index import IndexCounts, delete_record_chunks
 from memini.index.writer import RUN_COUNTS
+from memini.ingest.checkpoint import advance_checkpoint
 from memini.ingest.model import (
     DEFAULT_LIMITS,
     INGESTIBLE_SOURCE_KINDS,
@@ -30,7 +31,6 @@ from memini.ingest.model import (
     RecordIndexer,
     StoredRecord,
     StreamChangedError,
-    WindowGapError,
 )
 from memini.ingest.validate import MAX_CLOCK_SKEW, prepare_batch
 from memini.runs import Run, current_run, record_run
@@ -139,9 +139,9 @@ _ABSENT: Final = (
 )
 
 _MOVE_CHECKPOINT: Final = (
-    "UPDATE stream SET checked_until = %s, cursor = %s"
+    "UPDATE stream SET checked_until = %s, checked_from = %s, cursor = %s"
     " WHERE id = %s AND checked_until IS NOT DISTINCT FROM %s"
-    " AND cursor IS NOT DISTINCT FROM %s::jsonb"
+    " AND checked_from IS NOT DISTINCT FROM %s AND cursor IS NOT DISTINCT FROM %s::jsonb"
 )
 
 
@@ -198,28 +198,26 @@ async def _store(
         else:
             # Batches of one stream take turns here; each sees the checkpoint the last one left.
             cur = await conn.execute(
-                "SELECT now(), checked_until, cursor FROM stream WHERE id = %s FOR NO KEY UPDATE",
+                "SELECT now(), checked_until, cursor, checked_from FROM stream WHERE id = %s"
+                " FOR NO KEY UPDATE",
                 (target.stream_id,),
             )
             row = await cur.fetchone()
             if row is None:  # the source was deleted since the stream was found
                 raise NotFoundError("source")
-            before = Checkpoint(checked_until=row[1], cursor=row[2])
+            before = Checkpoint(checked_until=row[1], cursor=row[2], checked_from=row[3])
         if row is None:  # SELECT now() returns a row
             raise RuntimeError("SELECT now() returned no row")
         now: datetime = row[0]
         tally.checkpoint = before
 
+        after: Checkpoint | None = None
         if window is not None:
             if window.end > now + MAX_CLOCK_SKEW:
                 raise InvalidBatchError("window.to", "later than the service's clock")
-            if (
-                window.complete
-                and before is not None
-                and before.checked_until is not None
-                and window.start > before.checked_until
-            ):
-                raise WindowGapError(before.checked_until)
+            if before is not None:
+                # Where a complete window moves the checked range; a gap is refused here.
+                after = advance_checkpoint(before, window, batch.cursor)
 
         ids = {
             item.index: record_id(target.source_id, item.kind, item.external_id)
@@ -301,26 +299,23 @@ async def _store(
             if counts is not None:
                 tally.index += counts
 
-        if (
-            window is not None
-            and window.complete
-            and before is not None
-            and (before.checked_until is None or window.end > before.checked_until)
-        ):
+        if after is not None and before is not None:
             cur = await conn.execute(
                 _MOVE_CHECKPOINT,
                 (
-                    window.end,
-                    _jsonb(batch.cursor),
+                    after.checked_until,
+                    after.checked_from,
+                    _jsonb(after.cursor),
                     target.stream_id,
                     before.checked_until,
+                    before.checked_from,
                     _jsonb(before.cursor),
                 ),
             )
             if cur.rowcount != 1:
                 raise StreamChangedError("the stream's checkpoint changed under the batch")
-            tally.checkpoint = Checkpoint(checked_until=window.end, cursor=batch.cursor)
-            tally.moved = True
+            tally.checkpoint = after
+            tally.moved = after.checked_until != before.checked_until
     return tally
 
 

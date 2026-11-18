@@ -199,10 +199,14 @@ class RecordIndexer(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class Checkpoint:
-    """Where a stream's sync stands: everything up to ``checked_until`` is stored."""
+    """Where a stream's sync stands: everything from ``checked_from`` up to ``checked_until`` is
+    stored (:mod:`memini.ingest.checkpoint`)."""
 
     checked_until: datetime | None
     cursor: Mapping[str, Any] | None
+    checked_from: datetime | None = None
+    """The history frontier. ``None`` before the first complete window, and where the start of
+    the range was never recorded (it is then taken to be ``checked_until``)."""
 
 
 @dataclass(frozen=True, slots=True)

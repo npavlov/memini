@@ -170,8 +170,15 @@ The source names its streams by key, and `{stream}` puts the key into the argume
 | `backfill` | duration | How much older history each later run loads, in steps, until the source's retention start. Left out: no history beyond the initial window. |
 | `max_span` | duration | The longest window one listing covers; the planner splits a longer one. For servers that cap a search's results. |
 
-A source may override each value. The planner (not the recipe) chooses each run's windows: from
-the checkpoint less `overlap` to a time pinned for the run, or `initial` back for a new stream.
+A source may override each value in its own `window` object, with the same durations, and null
+for `backfill` or `max_span` to turn them off; it may also set `history`, how far back its history
+loads at most (a source with neither a retention nor `history` loads 365 days back, or `initial`
+if longer). The planner (`memini.intake`, not the recipe) chooses each run's windows: from the
+checkpoint less `overlap` to a time pinned for the run, or `initial` back for a new stream; and,
+with `backfill`, one step of older history ending at the stream's frontier, never before the
+retention start. Windows longer than `max_span` are split: forward windows run oldest first,
+history windows newest first, and each chain stops at its first incomplete window. Requirements,
+section 4, has the rules.
 
 ## `[list]`: the list call
 

@@ -10,6 +10,7 @@ Wrap the work of a job in :func:`record_run`::
         async with run.step("store"):
             run.count("records_stored", await store(batch))
         run.llm_tokens(model="local-model", input=1200, output=80)
+        run.detail("plan", {"windows": 2})
         if batch.incomplete:
             run.set_outcome("partial", "3 calls of the window are missing")
 
@@ -50,7 +51,8 @@ The report, version 1 (:class:`RunReport`)::
       "counts": {"records_fetched": 120, "records_stored": 118},
       "llm": {"calls": 2, "input_tokens": 1200, "output_tokens": 80,
               "by_model": {"local-model": {"calls": 2, "input_tokens": 1200,
-                                           "output_tokens": 80}}}
+                                           "output_tokens": 80}}},
+      "details": {"plan": {"windows": 2}}  # only when the job set one: see Run.detail
     }
 
 A step's ``status`` is ``running``, ``succeeded``, ``failed`` or ``cancelled``; a running step has
@@ -65,6 +67,7 @@ newest first; :func:`get_run` returns one with its report. Both take the caller'
 import asyncio
 import base64
 import binascii
+import copy
 import logging
 import re
 import time
@@ -81,6 +84,7 @@ from psycopg import AsyncConnection, errors, pq, sql
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
+from pydantic import JsonValue
 
 from memini.auth import ReadFilter
 from memini.logs import redact, run_id_var
@@ -171,6 +175,7 @@ class RunReport(TypedDict):
     steps_omitted: int
     counts: dict[str, int]
     llm: LlmReport
+    details: NotRequired[dict[str, JsonValue]]
 
 
 class RunError(Exception):
@@ -237,6 +242,7 @@ class Run:
         self._steps_omitted = 0
         self._counts: dict[str, int] = {}
         self._llm: dict[str, ModelUsage] = {}
+        self._details: dict[str, JsonValue] = {}
         self._outcome: tuple[Outcome, str] | None = None
         self._lock = asyncio.Lock()
 
@@ -291,6 +297,15 @@ class Run:
         usage["input_tokens"] += input
         usage["output_tokens"] += output
 
+    def detail(self, name: str, value: JsonValue) -> None:
+        """Set ``details.name`` of the report to ``value``, a JSON value: what an operator needs
+        to see of the run besides steps and counts, such as the windows a sync planned. The name
+        is lower case, digits and ``_``; setting it again replaces the value. The value is copied.
+        """
+        if not _NAME.fullmatch(name):
+            raise ValueError(f"a detail name matches {_NAME.pattern}, got {name!r}")
+        self._details[name] = copy.deepcopy(value)
+
     def set_outcome(self, status: Outcome, reason: str) -> None:
         """End the run as ``partial``, ``failed`` or ``cancelled`` when the block exits normally.
 
@@ -310,7 +325,7 @@ class Run:
             "output_tokens": sum(usage["output_tokens"] for usage in self._llm.values()),
             "by_model": {model: ModelUsage(**usage) for model, usage in self._llm.items()},
         }
-        return {
+        report: RunReport = {
             "version": REPORT_VERSION,
             "duration_ms": None,
             "steps": [StepReport(**step) for step in self._steps],
@@ -318,6 +333,9 @@ class Run:
             "counts": dict(self._counts),
             "llm": llm,
         }
+        if self._details:
+            report["details"] = copy.deepcopy(self._details)
+        return report
 
     async def save_progress(self) -> None:
         """Write the report so far to the running row now. A failure is logged, not raised."""

@@ -448,3 +448,28 @@ async def test_a_failed_report_write_after_success_is_logged_not_raised(
     assert failure["level"] == "ERROR"
     assert failure["run_id"] == str(run.id)
     assert failure["exception"]["message"] == "the run's connection is closed"
+
+
+async def test_details_reach_the_report_only_when_a_job_sets_them(pool: Pool, scope: Scope) -> None:
+    async with record_run(
+        pool, workspace_id=scope.workspace, owner_id=scope.owner, kind="sync"
+    ) as plain:
+        pass
+    assert "details" not in (await run_row(pool, plain.id))["report"]
+
+    plan: dict[str, Any] = {"windows": [{"kind": "forward", "from": "2026-03-01T00:00:00Z"}]}
+    async with record_run(
+        pool, workspace_id=scope.workspace, owner_id=scope.owner, kind="sync"
+    ) as run:
+        run.detail("plan", plan)
+        plan["windows"].clear()  # the run keeps a copy
+        run.detail("note", "first")
+        run.detail("note", "second")  # set again: replaced
+        with pytest.raises(ValueError, match="detail name"):
+            run.detail("Plan", {})
+
+    report = (await run_row(pool, run.id))["report"]
+    assert report["details"] == {
+        "plan": {"windows": [{"kind": "forward", "from": "2026-03-01T00:00:00Z"}]},
+        "note": "second",
+    }

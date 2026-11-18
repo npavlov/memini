@@ -66,7 +66,7 @@ Three layers: raw, index, knowledge.
 | Entity | Meaning |
 |---|---|
 | Source | A configured origin. Kind: `git`, `push`, `mcp`. Holds config, `visibility` (`private` or `workspace`), `retention_days`, `llm_policy` (`none`, `local`, `cloud`). |
-| Stream | The unit of incremental sync inside a source: a git ref, a channel, a mailbox query, a meeting list. Holds the cursor, `checked_until`, schedule, last result and lag. |
+| Stream | The unit of incremental sync inside a source: a git ref, a channel, a mailbox query, a meeting list. Holds the cursor, `checked_until`, `checked_from`, schedule, last result and lag. |
 | Record | One raw unit. Kinds: `code_file`, `thread`, `meeting`, `document`. Fields: deterministic `id`, `external_id`, `external_url`, `content_hash`, `occurred_at`, `ingested_at`, `deleted_at`, raw payload stored verbatim, normalized text. |
 | Person | A human, with aliases: email, chat user id, meeting display name, git author. One person is marked as "me". |
 
@@ -168,7 +168,12 @@ compare-and-set in the transaction that stores the records, so it never moves ba
 window must start at or before the checkpoint (an overlap margin); one that starts after it is
 refused (409 `window_gap`), as it would count the gap as checked. An incomplete window stores its
 records and leaves the checkpoint, and its run is `partial`; a window older than the checkpoint
-(history loaded later) stores its records and leaves it too. A window may end at most five minutes
+(history loaded later) stores its records and leaves it too. Where the checked history starts is
+the stream's frontier, `checked_from`: everything from it to the checkpoint is stored. The first
+complete window sets it to `from`; a complete window that ends at or after it moves it back to
+`from`, in the same transaction and by the same compare-and-set, and it never moves forward. A
+complete window that ends before it leaves a gap: its records are stored and the frontier stays.
+A stream whose frontier was never recorded is taken to start at its checkpoint. A window may end at most five minutes
 past the database clock. A snapshot, a complete window with `snapshot`, holds every live record of
 the stream whose `occurred_at` is in the window: the stream's records there that it leaves out
 become tombstones. A tombstone sets `deleted_at` and deletes the record's chunks in the same
@@ -268,6 +273,23 @@ means rather than of its text, is recorded with each run.
   titles).
 - Separate locks per source, so a slow code index does not block message intake.
 - Every run writes a report: steps, durations, record counts, LLM tokens.
+
+**Intake planner** (decided 2026-11-18). One pure function, `memini.intake.plan_windows`, chooses
+the windows `[from, to)` a sync of a stream runs, for both executors. Its input is the stream's
+checked range (`checked_from`, `checked_until`), the source's retention, the recipe's `[window]`
+with the source's overrides, and `as_of`: the database time pinned for the run, by a sync job in its
+`args` at its first attempt, so every attempt plans from the same time. The planner reads no clock,
+and the last run's result is not an input: a failed or incomplete window leaves the range where it
+was, so the same state and `as_of` give the same windows again. Nothing starts before the history
+start, the later of the retention start and the source's `history` limit (365 days, or `initial`
+if longer, when neither is set), and nothing ends after `as_of`. A new stream gets the initial
+window, `initial` back from `as_of`. A stream with a checkpoint gets the forward window from the
+checkpoint less `overlap` to `as_of`, and none when `as_of` is not after the checkpoint (a clock
+that went back, or a retry whose forward windows all completed); with `backfill` set, also one
+history step, `backfill` back from the frontier, until the frontier reaches the history start. A
+window longer than `max_span` is split; forward windows run oldest first, history windows newest
+first, each one ingest batch that claims it, and each chain stops at its first incomplete window.
+The plan goes into the run report (`details.plan`), each window into a step of its own.
 
 ## 5. Derive pipeline
 
