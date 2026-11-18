@@ -1,6 +1,7 @@
 """Migrations and the pool against a real Postgres: run with `make test-integration`."""
 
 import asyncio
+import re
 
 import anyio
 import pytest
@@ -20,6 +21,10 @@ from memini.db import (
 from memini.db.migrate import MIGRATION_LOCK_KEY
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
+
+CORE_TABLES = frozenset(
+    {"principal", "workspace", "token", "source", "stream", "record", "person", "alias", "run"}
+)
 
 
 async def _applied(url: str) -> list[tuple[int, str, str]]:
@@ -51,6 +56,8 @@ async def test_migrations_apply_to_an_empty_database(empty_database_url: str) ->
     async with connect(empty_database_url) as conn:
         cur = await conn.execute("SELECT extname FROM pg_extension ORDER BY extname")
         assert {name for (name,) in await cur.fetchall()} >= {"vector", "pg_trgm"}
+        cur = await conn.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        assert {name for (name,) in await cur.fetchall()} >= CORE_TABLES
         assert await pending_migrations(conn) == []
     applied = await _applied(empty_database_url)
     assert [(v, c) for v, c, _ in applied] == [(m.version, m.checksum) for m in every]
@@ -74,27 +81,31 @@ async def test_concurrent_runs_apply_each_migration_once(empty_database_url: str
 
 
 async def test_a_failed_migration_leaves_nothing_behind(empty_database_url: str) -> None:
-    broken = Migration(2, "broken", b"CREATE TABLE half_done (id integer);\nSELECT 1 / 0;\n")
+    shipped = load_migrations()
+    broken = Migration(
+        len(shipped) + 1, "broken", b"CREATE TABLE half_done (id integer);\nSELECT 1 / 0;\n"
+    )
 
-    with pytest.raises(MigrationError, match=r"0002_broken\.sql failed"):
-        await migrate(empty_database_url, migrations=[*load_migrations(), broken])
+    with pytest.raises(MigrationError, match=re.escape(f"{broken.file_name} failed")):
+        await migrate(empty_database_url, migrations=[*shipped, broken])
 
     async with connect(empty_database_url) as conn:
         cur = await conn.execute("SELECT to_regclass('half_done') IS NULL")
         assert await cur.fetchone() == (True,)
-    assert [v for v, _, _ in await _applied(empty_database_url)] == [1]
+    assert [v for v, _, _ in await _applied(empty_database_url)] == [m.version for m in shipped]
 
 
 async def test_an_edited_migration_is_refused(migrated_database_url: str) -> None:
-    first = load_migrations()[0]
+    first, *rest = load_migrations()
     edited = Migration(first.version, first.name, first.sql + b"-- edited\n")
 
     with pytest.raises(MigrationError, match="changed on disk"):
-        await migrate(migrated_database_url, migrations=[edited])
+        await migrate(migrated_database_url, migrations=[edited, *rest])
 
 
 async def test_a_database_from_a_newer_build_is_refused(migrated_database_url: str) -> None:
-    newer = [*load_migrations(), Migration(2, "from_a_newer_build", b"SELECT 1;\n")]
+    shipped = load_migrations()
+    newer = [*shipped, Migration(len(shipped) + 1, "from_a_newer_build", b"SELECT 1;\n")]
     await migrate(migrated_database_url, migrations=newer)
 
     async with connect(migrated_database_url) as conn:

@@ -59,7 +59,7 @@ Three layers: raw, index, knowledge.
 |---|---|
 | Workspace | Isolation unit: a company or a project. Every row carries `workspace_id`. |
 | Principal | The user. One in v1. Every row carries `owner_id`. |
-| Token | Bearer token (stored hashed) bound to a principal, with scopes `read`, `ingest`, `admin`. |
+| Token | Bearer token (stored hashed) bound to a principal, with scopes `read`, `ingest`, `admin`; optionally limited to one workspace. |
 
 ### Raw layer
 
@@ -71,6 +71,8 @@ Three layers: raw, index, knowledge.
 | Person | A human, with aliases: email, chat user id, meeting display name, git author. One person is marked as "me". |
 
 Notes:
+- A record id is a hash of its source, kind and external id, so the same record always gets the same id;
+  the stream it arrived through is not part of it.
 - Code is not copied into the database. The service keeps its own bare mirror of each repository; the
   mirror is the raw store, the database holds the file list at the pinned commit. The service never touches
   a user's working copy.
