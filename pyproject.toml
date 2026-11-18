@@ -14,6 +14,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "cryptography>=50.0.2",
     "fastapi>=0.164.0",
     "httpx2>=2.16.2",
     "mcp>=2.3.0",

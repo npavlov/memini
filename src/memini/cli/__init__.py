@@ -17,6 +17,10 @@ Usage::
     memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--margin M] [--k 1,5,10]
                 [--modes MODE,...] [--fake-embeddings] [--lexical NAME] [--reranker NAME]
                 [--json PATH] [--keep]
+    memini credentials set --workspace <name> --source <name> --kind {api_key,oauth}  < secret
+    memini credentials list [--workspace <name>]
+    memini credentials delete --workspace <name> --source <name>
+    memini credentials rotate-key [--batch-size N]
 
 Global options go before the command. ``--config FILE`` sets ``MEMINI_CONFIG_FILE`` for this run;
 every other setting comes from the environment and that file, as for the service
@@ -42,6 +46,12 @@ needs an embedding provider (``MEMINI_EMBEDDING_PROVIDER``).
 the suite's fixture repositories into a scratch database it creates on the configured server and
 drops afterwards, prints recall@k and MRR per mode, kind and language, and compares them with a
 baseline report. It never reads or writes the configured database itself; the role needs CREATEDB.
+
+``credentials`` stores the API keys and OAuth tokens of sources, encrypted with
+``MEMINI_CREDENTIAL_KEY``, and re-encrypts them under a new key (:mod:`memini.cli.credentials`).
+A secret is read from stdin, never from an argument, and never printed. ``rotate-key`` exits 1
+while credentials are left under another key; without ``MEMINI_CREDENTIAL_KEY`` the commands that
+need it exit 2.
 
 Exit codes:
 
@@ -71,7 +81,7 @@ import psycopg
 
 from memini import __version__
 from memini.auth import SCOPES
-from memini.cli import admin, evaluate, index, serve
+from memini.cli import admin, credentials, evaluate, index, serve
 from memini.cli.common import (
     EXIT_FAILURE,
     EXIT_INTERRUPTED,
@@ -343,5 +353,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="keep the scratch database and the temporary repositories, for inspection",
     )
     evaluation.set_defaults(command=evaluate.eval_command)
+    credentials.configure_parser(
+        commands.add_parser(
+            "credentials", help=credentials.HELP, description=credentials.DESCRIPTION
+        )
+    )
 
     return parser

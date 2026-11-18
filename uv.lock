@@ -436,6 +436,7 @@ name = "memini"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx2" },
     { name = "mcp" },
@@ -469,6 +470,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=50.0.2" },
     { name = "fastapi", specifier = ">=0.164.0" },
     { name = "httpx2", specifier = ">=2.16.2" },
     { name = "mcp", specifier = ">=2.3.0" },

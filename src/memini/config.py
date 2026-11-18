@@ -47,8 +47,17 @@ limits, which transports a source may use and the credentials for remotes. A lis
 TOML array in the config file, or comma-separated in the environment
 (``MEMINI_GIT_LOCAL_ROOTS=/srv/repos,/home/me/src``). A size is a number of bytes, or a number with
 a binary unit: ``512M``, ``5G``, ``1GiB``.
+
+The ``credential_*`` settings hold the keys of the credential store (:mod:`memini.credentials`),
+where the API keys and OAuth tokens of sources are kept, encrypted. ``credential_key`` is 32 random
+bytes in base64 (``openssl rand -base64 32``). The service starts without it; storing or reading a
+credential then fails with a message that names the setting. ``credential_old_keys``,
+comma-separated, are keys still accepted for reading while ``memini credentials rotate-key``
+re-encrypts the store with ``credential_key``. Both are secrets.
 """
 
+import base64
+import binascii
 import os
 import re
 import tomllib
@@ -70,6 +79,7 @@ from pydantic import (
 
 __all__ = [
     "CONFIG_FILE_VAR",
+    "CREDENTIAL_KEY_BYTES",
     "EMBEDDING_MAX_DIMENSION",
     "ENV_PREFIX",
     "HANDLE_REGEX",
@@ -78,6 +88,7 @@ __all__ = [
     "EmbeddingProvider",
     "LogLevel",
     "Settings",
+    "decode_credential_key",
     "environment_variables",
     "load_settings",
 ]
@@ -156,6 +167,40 @@ def _single_line(secret: SecretStr | None) -> SecretStr | None:
 type _ByteSize = Annotated[int, BeforeValidator(_byte_size)]
 type _AbsolutePath = Annotated[Path, AfterValidator(_absolute)]
 type _Hostname = Annotated[str, AfterValidator(_hostname)]
+
+
+# --- Credential store: value types ---------------------------------------------------------------
+
+CREDENTIAL_KEY_BYTES: Final = 32
+"""The length of a credential store key: AES-256."""
+
+
+def decode_credential_key(text: str) -> bytes:
+    """The bytes of a credential store key written in base64, in the standard or the URL-safe
+    alphabet, with or without padding.
+
+    Raises:
+        ValueError: ``text`` is not base64 of :data:`CREDENTIAL_KEY_BYTES` bytes. The message never
+            holds the text.
+    """
+    padded = text + "=" * (-len(text) % 4)
+    try:
+        key = base64.b64decode(padded.replace("-", "+").replace("_", "/"), validate=True)
+    except binascii.Error:
+        raise ValueError("not base64") from None
+    if len(key) != CREDENTIAL_KEY_BYTES:
+        raise ValueError(f"not {CREDENTIAL_KEY_BYTES} bytes")
+    return key
+
+
+def _credential_key(secret: SecretStr) -> SecretStr:
+    decode_credential_key(secret.get_secret_value())
+    return secret
+
+
+_CREDENTIAL_KEY_DESCRIPTION: Final = (
+    "32 random bytes in base64, e.g. from `openssl rand -base64 32`"
+)
 
 
 class Settings(BaseModel):
@@ -304,6 +349,25 @@ class Settings(BaseModel):
         " against",
     )
 
+    # --- Credential store (memini.credentials) ----------------------------------------------------
+    # The API keys and OAuth tokens of sources are stored encrypted with credential_key
+    # (AES-256-GCM). Without it the service starts, and the credential store refuses to work.
+    # credential_old_keys are accepted for reading only, while a rotation runs. The annotations
+    # are written out, not a `type` alias: a setting is a secret when its annotation names
+    # SecretStr (_mentions_secret), which an alias would hide.
+    credential_key: Annotated[SecretStr, AfterValidator(_credential_key)] | None = Field(
+        default=None, description=_CREDENTIAL_KEY_DESCRIPTION
+    )
+    credential_old_keys: Annotated[
+        tuple[Annotated[SecretStr, AfterValidator(_credential_key)], ...],
+        BeforeValidator(_comma_list),
+    ] = Field(
+        default=(),
+        description="keys still read during a rotation, comma-separated, each "
+        + _CREDENTIAL_KEY_DESCRIPTION
+        + "; only together with credential_key",
+    )
+
     # --- Search (memini.search) -------------------------------------------------------------------
     # Limits of one search: how long a statement may run (a regular expression can backtrack
     # without end), how many candidates each retriever of a hybrid search contributes, and the k
@@ -334,6 +398,17 @@ class Settings(BaseModel):
         if info.data.get("git_https_token") is not None and not hosts:
             raise ValueError("git_https_token is set without the hosts it may be sent to")
         return hosts
+
+    @field_validator("credential_old_keys")
+    @classmethod
+    def _old_keys_need_a_key(
+        cls, keys: tuple[SecretStr, ...], info: ValidationInfo
+    ) -> tuple[SecretStr, ...]:
+        # An old key is only read from; without a current key nothing could be rotated to. Not
+        # checked when credential_key itself was refused: that problem is reported already.
+        if keys and "credential_key" in info.data and info.data["credential_key"] is None:
+            raise ValueError("credential_old_keys is set without credential_key")
+        return keys
 
 
 class ConfigError(Exception):

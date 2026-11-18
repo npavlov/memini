@@ -282,6 +282,7 @@ search and sync, so a local model is loaded once.
   service's container, because they run before a token exists or below the API: migrations, the first
   admin token (bootstrap), key rotation and a full reindex.
 - Secrets come from the environment or a secrets file, never from the database in clear text.
+  The credentials of sources are stored encrypted, under a key from the environment (section 9).
 - Health and status endpoints, structured logs, run reports.
 - Backup is a database dump. Repository mirrors are re-cloned.
 
@@ -476,6 +477,31 @@ carries the kinds of its source and record, the source's name, the external id a
 `occurred_at`, the path, symbol and lines, and the chunk's content as stored, cut to 2000
 characters (data, never instructions). For code it also carries the commit pinned in the cursor of
 the record's stream.
+
+**Credential store** (decided 2026-11-18). The service executor needs a credential for each source
+it reaches on its own: an API key, or OAuth tokens with a refresh token. They are kept in the table
+`credential`, one per source, encrypted with AES-256-GCM from `cryptography` under `credential_key`
+(`MEMINI_CREDENTIAL_KEY` or `_FILE`: 32 random bytes in base64), which never enters the database.
+The service starts without the key; the store then refuses with a message that names the setting.
+The secret fields (the API key; the access token, the refresh token, the client secret) are one
+encrypted JSON object; the kind, the expiry, the token endpoint, the client id and the scope stay
+in clear. GCM rather than Fernet, because GCM authenticates associated data: each ciphertext is
+bound to its row's id, workspace, source and kind, so a ciphertext copied into another row, or a
+row whose kind was changed, fails to decrypt. Each row names its key by a key id (16 hex digits of
+an HMAC under the key), so `memini credentials rotate-key` finds every row not under the current
+key and re-encrypts it, in batches that commit one by one, reading it with a key of
+`credential_old_keys`. The rotation is idempotent and resumable, refuses before it changes anything
+when a row is under a key it lacks, and leaves the secret and its generation as they were; during
+it the service runs with the new key and the old ones. A refresh runs in one transaction: it locks
+the row, calls the token endpoint, writes the new tokens as the next generation and commits. The
+old tokens therefore stay until the new ones are committed, and a refresh that waited for the lock
+finds the newer generation and does not spend the old refresh token a second time (a provider that
+detects reuse would revoke the grant). One window stays open: a provider that spends a refresh
+token on use, and a crash between its answer and the commit. The new tokens then existed only in
+memory and the source must be authorized again; a failure that leaves the process running hands
+them back to be stored on another connection. Secret values are `SecretStr` in memory, registered
+for log redaction as soon as they are decrypted, and no log line, error text or HTTP response holds
+one; no route returns a secret. `memini credentials set` stores a credential read from stdin.
 
 ## 10. Quality
 
