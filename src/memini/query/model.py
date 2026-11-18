@@ -17,6 +17,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from memini.chunking import Language
 from memini.gitsync import split_code_external_id
 from memini.ids import RecordKind
+from memini.persons import MAX_VALUE_LENGTH, Role
 from memini.query.reader import MAX_REF_CHARS, code_locator
 from memini.search import MAX_LIMIT, Hit, SourceKind
 from memini.search.model import DEFAULT_LIMIT, MAX_FILTER_VALUES, MAX_QUERY_CHARS
@@ -51,6 +52,9 @@ Globs = Annotated[
     list[Annotated[str, Field(min_length=1, max_length=MAX_GLOB_CHARS)]],
     Field(max_length=MAX_FILTER_VALUES),
 ]
+PersonName = Annotated[str, Field(min_length=1, max_length=MAX_VALUE_LENGTH)]
+"""A person as a caller names one: "me", a person id, or an alias (memini.persons.lookup)."""
+Persons = Annotated[list[PersonName], Field(max_length=MAX_FILTER_VALUES)]
 
 SearchMode = Literal["hybrid", "dense", "lexical"]
 CodeMode = Literal["semantic", "exact", "regex", "symbol"]
@@ -66,6 +70,17 @@ _PATHS = (
 )
 _LANGUAGES = "Only code parsed as one of these languages."
 _CASE = "Whether case matters (exact, regex and symbol; the other modes ignore case)."
+_PERSONS = (
+    "Only records that name one of these persons: 'me' (the person marked as the caller), a"
+    " person id, or an alias as the sources show it (a mail address, a chat user id, a display"
+    " name). A person stands for everyone merged into it. A name that matches no one gives no"
+    " hits."
+)
+_ROLES = (
+    "With persons: only records where the person is one of these: author (wrote a message),"
+    " recipient (a message was sent to them, to or cc), mention (a message or an action item"
+    " names them), participant (took part in a meeting). Default: any."
+)
 
 
 class SearchArguments(BaseModel):
@@ -89,6 +104,8 @@ class SearchArguments(BaseModel):
     until: AwareDatetime | None = Field(
         default=None, description="Only records that occurred before this time (ISO 8601)."
     )
+    persons: Persons | None = Field(default=None, description=_PERSONS)
+    roles: list[Role] | None = Field(default=None, description=_ROLES)
     mode: SearchMode = Field(
         default="hybrid",
         description="hybrid: by meaning and by words, fused (the default); dense: by meaning only;"

@@ -13,10 +13,13 @@ Who calls what:
   author, recipient, mention, participant). See :mod:`memini.persons.resolve`.
 - **Administration** (the HTTP API) lists and finds persons, adds and removes aliases, merges and
   splits persons and marks "me": :mod:`memini.persons.directory`.
-- **Queries** that list a person's records (``list_meetings``, ``list_messages``) read
-  ``record_person`` through the person's merges: the SQL functions ``person_root(id)`` (the
-  canonical person) and ``person_members(id)`` (a person and everyone merged into it) give the
-  persons one canonical person stands for, ``person_members(person_root(x))``.
+- **Queries** that list a person's records (``list_meetings``, ``list_messages``, the ``persons``
+  filter of search) read ``record_person`` through the person's merges: the SQL functions
+  ``person_root(id)`` (the canonical person) and ``person_members(id)`` (a person and everyone
+  merged into it) give the persons one canonical person stands for,
+  ``person_members(person_root(x))``. :func:`resolve_persons` finds the canonical persons a caller
+  names ("me", a person id, an alias) and :func:`member_ids` the persons they stand for
+  (:mod:`memini.persons.lookup`).
 
 A merge is reversible: it marks the merged person and changes no other row, so a split restores
 exactly what was there. Persons are never deleted by it.
@@ -48,6 +51,14 @@ from memini.persons.identities import (
     normalize_chat_user_id,
     normalize_email,
     normalize_name,
+)
+from memini.persons.lookup import (
+    ME,
+    PersonRef,
+    alias_keys,
+    member_ids,
+    parse_person_ref,
+    resolve_persons,
 )
 from memini.persons.model import (
     ALIAS_KINDS,
@@ -85,6 +96,7 @@ __all__ = [
     "MAX_NAME_LENGTH",
     "MAX_PERSON_PAGE",
     "MAX_VALUE_LENGTH",
+    "ME",
     "PERSON_LOCK_NAMESPACE",
     "ROLES",
     "Alias",
@@ -102,8 +114,10 @@ __all__ = [
     "Person",
     "PersonCursor",
     "PersonPage",
+    "PersonRef",
     "Role",
     "add_alias",
+    "alias_keys",
     "check_display_name",
     "clean_display_name",
     "create_person",
@@ -115,14 +129,17 @@ __all__ = [
     "link_records",
     "list_persons",
     "lock_persons",
+    "member_ids",
     "merge_person",
     "normalize_alias",
     "normalize_chat_user_id",
     "normalize_email",
     "normalize_name",
+    "parse_person_ref",
     "person_lock_key",
     "remove_alias",
     "rename_person",
+    "resolve_persons",
     "set_me",
     "split_person",
     "unset_me",

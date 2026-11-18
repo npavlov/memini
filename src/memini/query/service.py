@@ -50,6 +50,8 @@ from memini.auth import ReadFilter
 from memini.config import Settings
 from memini.embeddings import Embedder, EmbeddingError, EmbeddingsNotConfiguredError
 from memini.git import GitOptions, MirrorManager
+from memini.ingest import DEFAULT_LIMITS, IngestLimits
+from memini.persons import parse_person_ref
 from memini.query.model import (
     CodeSearchArguments,
     Definition,
@@ -114,13 +116,17 @@ class QueryServices:
     """The service's embedder; ``None`` when no embedding provider is configured, or the
     application is not running."""
     read_limits: ReadLimits = DEFAULT_READ_LIMITS
+    ingest_limits: IngestLimits = DEFAULT_LIMITS
+    """The limits of a batch, for the ``add_document`` write (:mod:`memini.comms`)."""
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "QueryServices":
-        """Options and mirrors from ``settings``; the embedder is set later. Reads nothing yet."""
+        """Options, mirrors and limits from ``settings``; the embedder is set later. Reads
+        nothing yet."""
         return cls(
             search_options=SearchOptions.from_settings(settings),
             mirrors=MirrorManager(GitOptions.from_settings(settings)),
+            ingest_limits=IngestLimits.from_settings(settings),
         )
 
 
@@ -205,6 +211,10 @@ async def run_search(
                 kinds=None if arguments.kinds is None else tuple(arguments.kinds),
                 since=arguments.since,
                 until=arguments.until,
+                persons=None
+                if arguments.persons is None
+                else tuple(parse_person_ref(person) for person in arguments.persons),
+                roles=None if arguments.roles is None else tuple(arguments.roles),
             ),
         )
         hits = await _search(conn, services, access, query)

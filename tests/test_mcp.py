@@ -60,8 +60,24 @@ BASE_URL = "http://memini.test"
 OWNER = uuid.UUID("00000000-0000-7000-8000-0000000000f0")
 MODES = pytest.mark.parametrize("mode", ["legacy", "auto"])
 """legacy: the initialize handshake (protocol 2025-11-25); auto: server/discover (2026-07-28)."""
-TOOL_NAMES = ["search", "search_code", "read_source", "get_symbol", "status"]
-WRITE_TOOL_NAMES = ["record_decision", "supersede_decision", "close_decision", "retract_decision"]
+TOOL_NAMES = [
+    "search",
+    "search_code",
+    "read_source",
+    "get_symbol",
+    "list_meetings",
+    "get_meeting",
+    "list_messages",
+    "get_thread",
+    "status",
+]
+WRITE_TOOL_NAMES = [
+    "add_document",
+    "record_decision",
+    "supersede_decision",
+    "close_decision",
+    "retract_decision",
+]
 """The tools a token sees only with the ingest scope."""
 
 

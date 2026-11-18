@@ -4,6 +4,8 @@
 - :mod:`memini.mcp.tools`: what a tool is: typed arguments, a typed result, a scope.
 - :mod:`memini.mcp.query`: ``search``, ``search_code``, ``get_symbol`` and ``read_source``, over
   :mod:`memini.query`, the library the HTTP routes call too.
+- :mod:`memini.mcp.comms`: ``list_meetings``, ``get_meeting``, ``list_messages``, ``get_thread``
+  and the write ``add_document``, over :mod:`memini.comms`, the library the HTTP routes call too.
 - :mod:`memini.mcp.status`: the ``status`` tool.
 - :mod:`memini.mcp.decisions`: ``record_decision``, ``supersede_decision``, ``close_decision`` and
   ``retract_decision``, over :mod:`memini.decisions`; writes, with the ``ingest`` scope.

@@ -400,6 +400,10 @@ async def test_a_database_token_lists_the_tools(app: FastAPI, db: Conn, world: W
         "search_code",
         "read_source",
         "get_symbol",
+        "list_meetings",
+        "get_meeting",
+        "list_messages",
+        "get_thread",
         "status",
     ]
 

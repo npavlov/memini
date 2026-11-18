@@ -389,10 +389,10 @@ def test_an_mcp_write_call_passes_with_rate_limits_off(
         assert response.json()["result"]["isError"] is True
 
 
-def test_the_write_tools_are_the_decision_tools() -> None:
+def test_the_write_tools_are_add_document_and_the_decision_tools() -> None:
     decision_tools = {tool.name for tool in DECISION_WRITE_TOOLS}
-    assert decision_tools == WRITE_TOOLS
-    assert len(WRITE_TOOLS) == 4
+    assert {"add_document", *decision_tools} == WRITE_TOOLS
+    assert len(WRITE_TOOLS) == 5
 
 
 def call(name: object, method: str = "tools/call") -> bytes:

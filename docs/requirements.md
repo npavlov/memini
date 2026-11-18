@@ -672,8 +672,10 @@ add|rename|alias add|alias remove|merge|split|me` call these routes.
 one library, `memini.query`, behind the MCP tools and their HTTP routes, with the same arguments and
 results: `GET /v1/search`, `GET /v1/search/code`, `GET /v1/symbols` and
 `GET /v1/workspaces/{workspace}/sources/{source}/files/{path}`. `search` ranks every kind of record
-(modes `hybrid`, `dense`, `lexical`); the person filter waits for M2. A hit carries its workspace,
-source and source kind, record kind, a locator (`repo@sha:path#L12-L30` for a file of a repository,
+(modes `hybrid`, `dense`, `lexical`); its `persons` filter keeps the records that name one of the
+persons (`record_person`, read through merges as the comms tools read it, below) and `roles`
+narrows it to `author`, `recipient`, `mention` or `participant`; a name that matches no one gives
+no hits. A hit carries its workspace, source and source kind, record kind, a locator (`repo@sha:path#L12-L30` for a file of a repository,
 code or Markdown; `source:external_id#anchor` for anything else), `occurred_at` (the record's
 time, which `since` and `until` compare), for such a file the repository, ref and commit, and the
 chunk's text. A chunk of a thread, a meeting or a pushed document adds its place in the record
@@ -697,6 +699,53 @@ read, 409 for a repository not synced yet, 503 for a stale index (the message na
 `memini reindex`) or no embedding provider. Every search mode needs the embedder, whose spec the
 fingerprint check compares (principle 9); reading code needs none. `serve` makes one embedder for
 search and sync, so a local model is loaded once.
+
+**Comms tools** (decided 2026-11-18). `list_meetings`, `get_meeting`, `list_messages`,
+`get_thread` and `add_document` are one library, `memini.comms`, behind the MCP tools and their
+routes, with the same arguments and results: `GET /v1/meetings`, `GET /v1/meetings/{record_id}`,
+`GET /v1/messages`, `GET /v1/threads/{record_id}`, `GET …/meetings/{external_id}` and
+`GET …/threads/{external_id}` (`…` is `/v1/workspaces/{workspace}/sources/{source}`), and
+`POST …/documents`; `memini meetings` and `memini messages` are clients of the two lists. The
+reads need the `read` scope, `add_document` the `ingest` scope. A listing is for a `person`: `me`
+(the default; the person marked with the caller's principal, in each workspace read), a person id,
+or an alias as sources show it (a mail address, also `Name <address>`, is an email; anything else
+is tried as a chat user id, a display name, then a git author name, the order ingest resolves a bare
+name in), resolved by `memini.persons.resolve_persons` to its canonical person, which stands for
+everyone merged into it (`person_members`): their `record_person` links are read. "Me" with no
+person marked answers 404 `no_me`, a name that matches no one 404 `not_found`. `list_meetings` lists the
+meeting records where the person is a `participant` (listed, or a speaker), by `since` and `until`
+on the meeting's time, `workspaces`, `sources` and `limit`; `list_messages` lists messages, one
+result per message, where the person has one of `roles` (default `recipient` and `mention`:
+messages sent to them, to or cc, or that mention them; `author`: their own), by the time the
+message was sent and the same filters. A link names the message by its id, so a message result is
+the thread record with the message's anchor `msg-<id>`, its author, recipients, cc, mentions and
+text (cut to the snippet length), and the roles the person has in it. Without a `query` both are
+metadata and time only, newest first, and need no embedder. A `query` is matched by words, not by
+meaning: the lexical retriever of `search` (mode `lexical`, the stemmed `tsvector`) runs over the
+chunks of the person's meetings or threads (the `persons` and `roles` filters), at most 100 chunks;
+a meeting comes back when a chunk of its notes holds a word of the query, ranked by its best chunk,
+with that chunk's anchor and snippet; a message when a chunk that holds it does (its lines overlap
+the message's rows of the normalized text). Hybrid ranking was not chosen: a dense retriever ranks
+every candidate and has no threshold that means "not about this" across models, so it cannot leave
+out the meeting that is the person's but about something else, which "meetings I attended about X"
+asks; no language model takes part either. A search by meaning over a person's records is `search`
+with `persons`. Results carry the workspace, source and source kind, `record_id`, `external_id`,
+the record's URL and time, a locator `source:external_id#anchor` and a link; `record_id` with the
+anchor is an evidence reference. `get_meeting` and `get_thread` take a `record_id`, or a `source`
+and `external_id` (and the `workspace` when two have such a record: 422 `ambiguous_record`), and
+answer 404 for a tombstone and 422 `wrong_kind` for a record of the other kind. `get_meeting` gives
+the title, times, participants as the notes name them and the canonical persons with their roles
+(participants, and action-item owners as `mention`), summary and action items, and the transcript
+(segments with anchor `seg-<id>`) only with `include_transcript`; `get_thread` the canonical persons
+and every message in order. `add_document` stores one `document` record (a `title` and a Markdown
+`text`, an optional `url` and `occurred_at`, default now) in a push source (409 `not_ingestible`
+for any other) through `memini.ingest`, so redaction, the source's filters, the ingest run and
+indexing with the service's embedder apply as to any batch, with the push API's errors. Its
+`external_id` defaults to `doc-` and 16 hex digits of a hash of the title and text, so the same
+document sent again changes nothing and an edited text is another document; a given id sent again
+replaces it. The answer says whether it was `inserted`, `updated`, `unchanged`, `revived` or
+`forgotten`, and gives the `record_id` that `record_decision` cites (section 3: a decision taken
+in a conversation is first stored as a document).
 
 **Status** (decided 2026-11-18; principle 10). One function, `memini.status.read_status`, answers
 the MCP `status` tool, `GET /v1/status` (scope `read`) and `memini status` (a table; `--json` prints

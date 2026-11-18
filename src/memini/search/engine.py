@@ -2,25 +2,25 @@
 
 :func:`search` is the one entry point. In order:
 
-1. A ``persons`` filter is refused (:class:`UnsupportedFilterError`): persons are linked to
-   records in milestone M2, and an empty answer would read as "this person said nothing".
-2. For ``hybrid`` and ``dense``, a first check of the index fingerprint, so that a stale index is
+1. For ``hybrid`` and ``dense``, a first check of the index fingerprint, so that a stale index is
    refused before the query costs an embedding call; then the query is embedded (``kind="query"``,
    with the query prefix), outside any transaction.
-3. One read-only transaction at ``REPEATABLE READ``, so that the check and every statement after it
+2. One read-only transaction at ``REPEATABLE READ``, so that the check and every statement after it
    see one snapshot: a rebuild that finishes meanwhile cannot change the index under the search.
    ``statement_timeout`` bounds each statement; ``hnsw.ef_search`` and ``hnsw.iterative_scan``
    are set for the dense retriever.
-4. The scope: the workspaces the caller may read (the :class:`~memini.auth.ReadFilter`, narrowed
+3. The scope: the workspaces the caller may read (the :class:`~memini.auth.ReadFilter`, narrowed
    by the ``workspaces`` filter), each checked with :func:`~memini.index.check_index` against the
    fingerprint the embedder and this chunker make. Any mismatch raises
    :class:`~memini.index.IndexMismatchError` for the whole search, in every mode (below); a
    workspace with no index yet has nothing to search and is left out. Source and repository
-   names are resolved to ids within those workspaces.
-5. The retrievers of the mode (:mod:`memini.search.retrieval`); for ``hybrid``, reciprocal rank
+   names are resolved to ids within those workspaces, and the ``persons`` filter to the persons
+   whose links count (:func:`memini.persons.resolve_persons`: each reference's canonical person
+   and everyone merged into it); a filter that names nothing the caller may read gives no hits.
+4. The retrievers of the mode (:mod:`memini.search.retrieval`); for ``hybrid``, reciprocal rank
    fusion of the dense and lexical candidates (:mod:`memini.search.fusion`).
-6. One read of the hits' chunks, records and sources, under the same conditions.
-7. For a ranked mode with a :class:`~memini.search.model.Reranker`, the reranker reorders the top
+5. One read of the hits' chunks, records and sources, under the same conditions.
+6. For a ranked mode with a :class:`~memini.search.model.Reranker`, the reranker reorders the top
    :attr:`~memini.search.model.SearchOptions.rerank_depth` hits, after the transaction.
 
 Every mode refuses a stale index, not only those that embed the query. Principle 9 blocks search
@@ -45,7 +45,8 @@ from psycopg.rows import TupleRow
 from memini.auth import ReadFilter
 from memini.embeddings import Embedder, Vector
 from memini.index import IndexFingerprint, VectorIndex, check_index, current_fingerprint
-from memini.search.errors import InvalidSearchError, SearchTimeoutError, UnsupportedFilterError
+from memini.persons.lookup import member_ids, resolve_persons
+from memini.search.errors import InvalidSearchError, SearchTimeoutError
 from memini.search.fusion import reciprocal_rank_fusion
 from memini.search.model import (
     RANKED_MODES,
@@ -98,7 +99,6 @@ async def search(
     passes others to compare them (open question 1).
 
     Raises:
-        UnsupportedFilterError: the ``persons`` filter is set.
         InvalidSearchError: the regular expression of a ``regex`` query is not valid.
         IndexMismatchError: the index of a workspace searched was built with another fingerprint;
             nothing in any workspace is searched until ``memini reindex`` rebuilds it.
@@ -108,10 +108,6 @@ async def search(
     options = options or SearchOptions()
     if conn.info.transaction_status != TransactionStatus.IDLE:
         raise RuntimeError("search runs in a transaction of its own; the connection is in one")
-    if query.filters.persons is not None:
-        raise UnsupportedFilterError(
-            "the persons filter is not supported yet: records are linked to persons in milestone M2"
-        )
     expected = current_fingerprint(embedder.spec)
     index = VectorIndex.of(embedder.spec)
     ranked = query.mode in RANKED_MODES
@@ -180,8 +176,19 @@ async def _scope(
     source_ids = await _sources(conn, access, list(indexed), filters)
     if source_ids == ():
         return None
+    person_ids: tuple[UUID, ...] | None = None
+    if filters.persons is not None:
+        roots = await resolve_persons(conn, access, list(indexed), filters.persons)
+        person_ids = await member_ids(conn, [root for found in roots.values() for root in found])
+        if not person_ids:
+            return None
     return ChunkScope(
-        access=access, workspaces=indexed, index=index, source_ids=source_ids, filters=filters
+        access=access,
+        workspaces=indexed,
+        index=index,
+        source_ids=source_ids,
+        filters=filters,
+        person_ids=person_ids,
     )
 
 

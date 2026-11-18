@@ -16,8 +16,9 @@ Layout of the application :func:`create_app` builds:
   aliases (:mod:`memini.api.persons`). Freshness:
   ``GET /v1/status`` (:mod:`memini.api.status`), the same answer as the MCP ``status`` tool.
   Intake: batches of records for push sources (:mod:`memini.api.ingest`). Queries: search, code
-  search, symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools.
-  Knowledge: recording, superseding, closing and retracting decisions by hand
+  search, symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools;
+  meetings, messages, threads and adding a document (:mod:`memini.api.comms`), the same calls as
+  the MCP comms tools. Knowledge: recording, superseding, closing and retracting decisions by hand
   (:mod:`memini.api.decisions`), the same calls as the MCP write tools.
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
   bearer tokens, the ``read`` scope for every request. It is an ASGI app of its own: it gets request
@@ -45,6 +46,7 @@ from starlette.types import ASGIApp
 
 from memini import __version__
 from memini.api.auth import authenticate_request
+from memini.api.comms import build_comms_router
 from memini.api.decisions import build_decisions_router
 from memini.api.errors import ERROR_RESPONSES, install_error_handlers
 from memini.api.forget import build_forget_router
@@ -206,6 +208,7 @@ def create_app(
         build_tokens_router(),
         build_persons_router(),
         build_query_router(),
+        build_comms_router(),
         build_decisions_router(),
         build_forget_router(),
     ):

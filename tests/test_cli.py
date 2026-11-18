@@ -211,6 +211,8 @@ def test_help_lists_client_and_operator_commands_apart(
         "status",
         "token",
         "search",
+        "meetings",
+        "messages",
         "decision",
         "forget",
         "person",

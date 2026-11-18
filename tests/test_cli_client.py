@@ -287,6 +287,8 @@ def test_no_command_has_an_option_that_takes_a_token(capsys: pytest.CaptureFixtu
         ("token", "list"),
         ("token", "revoke"),
         ("search",),
+        ("meetings",),
+        ("messages",),
         ("serve",),
         ("migrate",),
         ("bootstrap",),
@@ -985,6 +987,79 @@ def test_search_refuses_options_of_the_other_tool(
     assert result.code == EXIT_USAGE
     assert complaint in result.err
     assert service.requests == []
+
+
+# --- meetings, messages --------------------------------------------------------------------------
+
+
+def test_meetings_prints_each_meeting_with_its_passage(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    meeting: Json = {
+        "workspace": "acme",
+        "source": "notes",
+        "kind": "meeting",
+        "locator": "notes:m/1#summary",
+        "link": None,
+        "title": "Release planning\x1b[2J",
+        "started_at": "2026-03-02T10:00:00Z",
+        "occurred_at": "2026-03-02T10:00:00Z",
+        "participants": ["Ann Example", "Bo Example"],
+        "snippet": "Ship on Friday.",
+        "truncated": False,
+    }
+    service.answer(ok({"persons": [], "meetings": [meeting]}))
+
+    result = cli("meetings", "release", "--since", "2026-03-01T00:00:00Z", "--source", "notes")
+
+    assert service.last.url.path == "/v1/meetings"
+    assert service.last.url.params.multi_items() == [
+        ("person", "me"),
+        ("query", "release"),
+        ("since", "2026-03-01T00:00:00+00:00"),
+        ("sources", "notes"),
+        ("limit", "10"),
+    ]
+    assert result.out.splitlines() == [
+        "notes:m/1#summary  (meeting, acme/notes, 2026-03-02T10:00Z)",
+        "  Release planning\\x1b[2J",
+        "  with Ann Example, Bo Example",
+        "    Ship on Friday.",
+    ]
+
+
+def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: FakeService) -> None:
+    each: Json = {
+        "workspace": "acme",
+        "source": "chat",
+        "kind": "thread",
+        "locator": "chat:general/1#msg-m1",
+        "link": "https://chat.example.invalid/m1",
+        "author": "U02BO",
+        "sent_at": "2026-03-02T09:30:00Z",
+        "roles": ["author"],
+        "channel": "general",
+        "title": None,
+        "text": "Bought the hose.",
+        "truncated": True,
+    }
+    service.answer(ok({"persons": [], "messages": [each]}))
+
+    result = cli("messages", "--person", "bo@example.test", "--role", "author", "--limit", "5")
+
+    assert service.last.url.path == "/v1/messages"
+    assert service.last.url.params.multi_items() == [
+        ("person", "bo@example.test"),
+        ("limit", "5"),
+        ("roles", "author"),
+    ]
+    assert result.out.splitlines() == [
+        "chat:general/1#msg-m1  (message from U02BO, acme/chat, 2026-03-02T09:30Z; author)",
+        "  in general",
+        "  link: https://chat.example.invalid/m1",
+        "    Bought the hose.",
+        "    …",
+    ]
 
 
 # --- token ---------------------------------------------------------------------------------------

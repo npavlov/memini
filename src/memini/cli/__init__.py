@@ -26,6 +26,8 @@ mirrors and writes run reports; no database credentials leave it::
                         [--name LABEL] [--expires-in DURATION]
     memini token list | revoke <id-or-prefix>
     memini search <query> [--code] [--mode MODE] [--workspace NAME ...] ...
+    memini meetings [QUERY] [--person ME_ID_OR_ALIAS] [--since TIME] [--until TIME] ...
+    memini messages [QUERY] [--person ME_ID_OR_ALIAS] [--role {recipient,mention,author} ...] ...
     memini forget <workspace> (--record ID | --source NAME --external-id ID [--kind KIND])
     memini person list|show|lookup|add|rename|merge|split|me <workspace> ...
     memini person alias add|remove <workspace> <person-id> ...
@@ -133,6 +135,7 @@ import psycopg
 from memini import __version__
 from memini.cli import (
     admin,
+    comms,
     credentials,
     decisions,
     evaluate,
@@ -372,6 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_commands(commands)
     tokens.add_commands(commands)
     search.add_commands(commands)
+    comms.add_commands(commands)
     decisions.add_commands(commands)
     forget.add_commands(commands)
     person = commands.add_client("person", help=persons.HELP, description=persons.DESCRIPTION)

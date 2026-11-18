@@ -28,7 +28,6 @@ from memini.search import (
     SearchOptions,
     SearchQuery,
     SearchTimeoutError,
-    UnsupportedFilterError,
     retrieval,
     search,
 )
@@ -786,15 +785,18 @@ async def test_filters_combine(db: Conn, fake: FakeEmbedder, corpus: Corpus) -> 
         assert {(h.path, h.language) for h in hits} == {(OGOROD_PATH, "python")}
 
 
-async def test_the_persons_filter_is_not_supported_yet(
+async def test_a_persons_filter_that_names_no_one_finds_nothing_and_embeds_nothing(
     db: Conn, fake: FakeEmbedder, corpus: Corpus
 ) -> None:
-    filters = SearchFilters(persons=("me",))
+    # No person is marked as me, and no alias holds the address: an empty answer, as for a
+    # source name that matches nothing; the query is not even embedded. The persons filter at
+    # work is checked on the comms fixtures (test_comms_db.py).
     fake.reset()
 
-    for mode in MODES:
-        with pytest.raises(UnsupportedFilterError, match="persons"):
-            await find(db, fake, reader(corpus.scope), "water", mode, filters=filters)
+    for persons in (("me",), ("nobody@example.test",), (uuid.uuid4(),)):
+        filters = SearchFilters(persons=persons, roles=("author",))
+        for mode in MODES:
+            assert await find(db, fake, reader(corpus.scope), "water", mode, filters=filters) == []
     assert fake.texts == []
 
 

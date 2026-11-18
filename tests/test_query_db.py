@@ -281,7 +281,17 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
     async with mcp_client(world.app(), await world.token()) as client:
         tools = {tool.name: tool for tool in (await client.list_tools()).tools}
 
-    assert list(tools) == ["search", "search_code", "read_source", "get_symbol", "status"]
+    assert list(tools) == [
+        "search",
+        "search_code",
+        "read_source",
+        "get_symbol",
+        "list_meetings",
+        "get_meeting",
+        "list_messages",
+        "get_thread",
+        "status",
+    ]
     expected = {
         "search": {"query", "limit", "workspaces", "sources", "repositories", "kinds", "since"},
         "search_code": {"query", "mode", "repositories", "paths", "languages", "case_sensitive"},

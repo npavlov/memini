@@ -14,6 +14,7 @@ from uuid import UUID
 from memini.chunking import LANGUAGES, Language
 from memini.config import Settings
 from memini.ids import RecordKind
+from memini.persons.model import ROLES, Role
 from memini.search.errors import InvalidSearchError
 from memini.search.patterns import glob_regex
 
@@ -166,8 +167,13 @@ class SearchFilters:
     until: datetime | None = None
     """Records whose ``occurred_at`` is before this time."""
     persons: tuple[str | UUID, ...] | None = None
-    """Records of a person. Accepted here, refused by :func:`memini.search.search` with
-    :class:`UnsupportedFilterError` until persons are linked to records (milestone M2)."""
+    """Records that name one of these persons (``record_person``): a ``str`` is ``"me"`` or an
+    alias as sources show it (a mail address, a chat user id, a display name), a
+    :class:`~uuid.UUID` a person id (:func:`memini.persons.resolve_persons`). Each stands for its
+    canonical person and everyone merged into it."""
+    roles: tuple[Role, ...] | None = None
+    """With ``persons``: only records where one of them has one of these roles: ``author``,
+    ``recipient``, ``mention``, ``participant``. Default: any role."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "workspaces", _names("workspaces", self.workspaces))
@@ -176,6 +182,9 @@ class SearchFilters:
         object.__setattr__(self, "persons", _names("persons", self.persons))
         object.__setattr__(self, "kinds", _one_of("kinds", self.kinds, _RECORD_KINDS))
         object.__setattr__(self, "languages", _one_of("languages", self.languages, LANGUAGES))
+        object.__setattr__(self, "roles", _one_of("roles", self.roles, ROLES))
+        if self.roles is not None and self.persons is None:
+            raise InvalidSearchError("the roles filter needs the persons filter")
         if isinstance(self.paths, str):
             raise InvalidSearchError("the paths filter takes a list of globs, not one string")
         _check_count("paths", self.paths)
