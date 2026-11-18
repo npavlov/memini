@@ -342,7 +342,13 @@ async def test_status_reads_through_the_authorization_filter(
 async def test_a_database_token_lists_the_tools(app: FastAPI, db: Conn, world: World) -> None:
     async with mcp_client(app, await new_token(db, world, "read")) as client:
         listed = await client.list_tools()
-    assert [tool.name for tool in listed.tools] == ["status"]
+    assert [tool.name for tool in listed.tools] == [
+        "search",
+        "search_code",
+        "read_source",
+        "get_symbol",
+        "status",
+    ]
 
 
 async def test_the_client_cannot_connect_without_a_token(app: FastAPI) -> None:

@@ -9,16 +9,24 @@ Layout of the application :func:`create_app` builds:
   needs a valid token and the public routes above do not. A route asks for a scope, a read route
   for the authorization filter and a write route for its write access, through
   :mod:`memini.api.auth`. Administration: workspaces (:mod:`memini.api.workspaces`), sources and
-  streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`).
+  streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`). Queries: search, code search,
+  symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools.
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
   bearer tokens, the ``read`` scope for every request. It is an ASGI app of its own: it gets request
   ids from the outer middleware, and its session manager runs in the application's lifespan.
+
+The query tools and routes share one :class:`~memini.query.QueryServices` (``app.state.services``):
+the search options, the repository mirrors, and the embedder that embeds queries. The embedder is
+created from the settings when the application starts and closed when it stops, unless one is
+given to :func:`create_app`, which its caller then owns and closes. Without an embedding provider
+there is none: search answers 503 ``embeddings_not_configured``, and reading files still works.
 
 The interactive documentation pages (Swagger UI and ReDoc) are off: they load scripts from a CDN,
 so a browser that opens them on a local service would run third-party code in the service's
 origin. Any OpenAPI viewer can read ``/openapi.json`` instead.
 """
 
+import logging
 from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Final
@@ -32,6 +40,7 @@ from memini.api.auth import authenticate_request
 from memini.api.errors import ERROR_RESPONSES, install_error_handlers
 from memini.api.health import DEFAULT_READINESS_TIMEOUT, ReadinessCheck, build_health_router
 from memini.api.mcp import mcp_route
+from memini.api.query import build_query_router
 from memini.api.request_id import RequestIdMiddleware
 from memini.api.runs import build_runs_router
 from memini.api.sources import build_sources_router
@@ -39,12 +48,16 @@ from memini.api.workspaces import build_workspaces_router
 from memini.auth import Authenticator, pool_authenticator
 from memini.config import Settings
 from memini.db import Pool
+from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_embedder
 from memini.mcp import McpEndpoint, build_server
+from memini.query import QueryServices
 
 __all__ = ["OPENAPI_URL", "V1_PREFIX", "create_app"]
 
 V1_PREFIX: Final = "/v1"
 OPENAPI_URL: Final = "/openapi.json"
+
+log = logging.getLogger(__name__)
 
 # FastAPI's built-in OpenTelemetry instrumentation is off. Once an OpenTelemetry provider is set, it
 # records exception messages, request validation input and query strings, any of which can carry
@@ -65,11 +78,25 @@ class _MeminiApp(FastAPI):
         return RequestIdMiddleware(super().build_middleware_stack())
 
 
-def _lifespan(mcp: McpEndpoint) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+def _lifespan(
+    mcp: McpEndpoint, services: QueryServices, settings: Settings, *, own_embedder: bool
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-        async with mcp.run():
-            yield
+        created: Embedder | None = None
+        if own_embedder:
+            try:
+                created = create_embedder(settings)  # cheap: a model loads on first use
+            except EmbeddingsNotConfiguredError as error:
+                log.info("search is off: %s", error)
+            services.embedder = created
+        try:
+            async with mcp.run():
+                yield
+        finally:
+            if created is not None:
+                services.embedder = None
+                await created.aclose()
 
     return lifespan
 
@@ -81,6 +108,7 @@ def create_app(
     authenticator: Authenticator | None = None,
     readiness_checks: Mapping[str, ReadinessCheck] | None = None,
     readiness_timeout: float = DEFAULT_READINESS_TIMEOUT,
+    embedder: Embedder | None = None,
 ) -> FastAPI:
     """Build the HTTP application.
 
@@ -99,11 +127,18 @@ def create_app(
             Each returns when its dependency is usable and raises when it is not. With none,
             the service reports ready.
         readiness_timeout: seconds each check may take before it counts as failed.
+        embedder: the embedder that embeds search queries, owned by the caller, who closes it
+            (``memini serve`` shares one with the sync jobs; tests pass a fake). Without it, one
+            is created from the settings while the application runs, if a provider is
+            configured.
 
     Raises:
         ValueError: ``readiness_timeout`` is not a finite number above zero.
+        EmbeddingError: at start, embedding settings that cannot make an embedder.
     """
-    mcp = McpEndpoint(build_server(pool=pool))
+    services = QueryServices.from_settings(settings)
+    services.embedder = embedder
+    mcp = McpEndpoint(build_server(pool=pool, services=services))
     app = _MeminiApp(
         title="Memini",
         summary="Self-hosted knowledge service: code, messages and meeting notes in; "
@@ -115,10 +150,11 @@ def create_app(
         redoc_url=None,
         responses=ERROR_RESPONSES,
         telemetry=_TELEMETRY_OFF,
-        lifespan=_lifespan(mcp),
+        lifespan=_lifespan(mcp, services, settings, own_embedder=embedder is None),
     )
     app.state.settings = settings
     app.state.pool = pool
+    app.state.services = services
     if authenticator is None and pool is not None:
         authenticator = pool_authenticator(pool)
     app.state.authenticator = authenticator
@@ -132,6 +168,7 @@ def create_app(
     v1.include_router(build_workspaces_router())
     v1.include_router(build_sources_router())
     v1.include_router(build_runs_router())
+    v1.include_router(build_query_router())
     app.include_router(v1)
 
     app.router.routes.append(mcp_route(mcp, authenticator))

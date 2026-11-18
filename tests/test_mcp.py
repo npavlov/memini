@@ -57,6 +57,7 @@ BASE_URL = "http://memini.test"
 OWNER = uuid.UUID("00000000-0000-7000-8000-0000000000f0")
 MODES = pytest.mark.parametrize("mode", ["legacy", "auto"])
 """legacy: the initialize handshake (protocol 2025-11-25); auto: server/discover (2026-07-28)."""
+TOOL_NAMES = ["search", "search_code", "read_source", "get_symbol", "status"]
 
 
 class FakeAuthenticator:
@@ -140,13 +141,13 @@ async def test_a_client_with_a_token_lists_the_tools(
     async with mcp_client(app, authenticator.issue("read"), mode=mode) as client:
         listed = await client.list_tools()
 
-    assert [tool.name for tool in listed.tools] == ["status"]
-    (status,) = listed.tools
-    assert status.output_schema is not None
-    assert status.input_schema["additionalProperties"] is False
-    assert status.annotations is not None
-    assert status.annotations.read_only_hint is True
-    assert status.annotations.open_world_hint is False
+    assert [tool.name for tool in listed.tools] == TOOL_NAMES
+    for tool in listed.tools:
+        assert tool.output_schema is not None, tool.name
+        assert tool.input_schema["additionalProperties"] is False, tool.name
+        assert tool.annotations is not None
+        assert tool.annotations.read_only_hint is True
+        assert tool.annotations.open_world_hint is False
 
 
 @MODES
@@ -394,12 +395,12 @@ async def test_a_tool_is_visible_only_with_its_scope(authenticator: FakeAuthenti
     app = app_with([*TOOLS, ECHO], authenticator)
 
     async with mcp_client(app, authenticator.issue("read")) as client:
-        assert [tool.name for tool in (await client.list_tools()).tools] == ["status"]
+        assert [tool.name for tool in (await client.list_tools()).tools] == TOOL_NAMES
         with pytest.raises(MCPError, match=r"^Unknown tool\.$"):
             await client.call_tool("echo", {"text": "hello"})
 
     async with mcp_client(app, authenticator.issue("read", "ingest")) as client:
-        assert [tool.name for tool in (await client.list_tools()).tools] == ["status", "echo"]
+        assert [tool.name for tool in (await client.list_tools()).tools] == [*TOOL_NAMES, "echo"]
         result = await client.call_tool("echo", {"text": "hello"})
         assert result.structured_content == {"text": "hello"}
         assert text_of(result.content[0]) == "hello"

@@ -30,8 +30,10 @@ from starlette.requests import HTTPConnection
 from memini import __version__
 from memini.auth import Principal
 from memini.db import Pool
+from memini.mcp.query import QUERY_TOOLS
 from memini.mcp.status import STATUS_TOOL
 from memini.mcp.tools import Tool, ToolCall
+from memini.query import QueryServices
 
 __all__ = [
     "SERVER_INSTRUCTIONS",
@@ -53,7 +55,7 @@ SERVER_INSTRUCTIONS: Final = (
 )
 """Sent at ``initialize`` (and in ``server/discover``) to every client (principle 11)."""
 
-TOOLS: Final[Sequence[Tool[Any, Any]]] = (STATUS_TOOL,)
+TOOLS: Final[Sequence[Tool[Any, Any]]] = (*QUERY_TOOLS, STATUS_TOOL)
 """Every tool the server offers, in the order ``tools/list`` shows them."""
 
 _PRINCIPAL: Final = "principal"
@@ -82,8 +84,17 @@ def _principal(ctx: ServerRequestContext[Any, Any]) -> Principal:
     return principal
 
 
-def build_server(*, pool: Pool | None, tools: Sequence[Tool[Any, Any]] = TOOLS) -> Server[Any]:
+def build_server(
+    *,
+    pool: Pool | None,
+    services: QueryServices | None = None,
+    tools: Sequence[Tool[Any, Any]] = TOOLS,
+) -> Server[Any]:
     """The MCP server with ``tools``, reading from ``pool``.
+
+    ``services`` is what the query tools need (search options, mirrors, the embedder); the
+    application passes its own and sets the embedder while it runs. Without it the query tools
+    answer that search and reading code are not available.
 
     A token sees and may call only the tools whose scope it has.
 
@@ -94,6 +105,7 @@ def build_server(*, pool: Pool | None, tools: Sequence[Tool[Any, Any]] = TOOLS) 
     if len(by_name) != len(tools):
         raise ValueError("two tools share a name")
     definitions = {tool.name: tool.definition() for tool in tools}
+    resources = services if services is not None else QueryServices()
 
     async def list_tools(
         ctx: ServerRequestContext[Any, Any], params: PaginatedRequestParams | None
@@ -111,7 +123,9 @@ def build_server(*, pool: Pool | None, tools: Sequence[Tool[Any, Any]] = TOOLS) 
         if tool is None or not principal.has_scope(tool.scope):
             # A tool the token may not use looks like one that does not exist.
             raise MCPError(code=INVALID_PARAMS, message="Unknown tool.")
-        return await tool.call(ToolCall(principal=principal, pool=pool), params.arguments or {})
+        return await tool.call(
+            ToolCall(principal=principal, pool=pool, services=resources), params.arguments or {}
+        )
 
     def input_schema(name: str) -> Mapping[str, Any] | None:
         definition = definitions.get(name)

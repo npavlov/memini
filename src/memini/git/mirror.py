@@ -570,6 +570,32 @@ class MirrorManager:
                 return entry
         raise PathNotFound(f"no {path!r} in commit {commit}")
 
+    async def list_directory(self, mirror: Mirror, commit: str, path: str = "") -> list[TreeEntry]:
+        """The entries of the directory at ``path`` in ``commit`` (an object id), not recursive:
+        files, symlinks, submodules and directories, in git's order (by name). ``""`` is the root.
+
+        Each entry's ``path`` is its full repository-relative path. A symlink is listed, never
+        followed.
+
+        Raises:
+            InvalidPath: see :func:`check_path`; ``""`` is allowed here.
+            RevisionNotFound: ``commit`` is not in the mirror.
+            PathNotFound: no directory at ``path``: nothing there, or a file.
+        """
+        if path:
+            check_path(path)
+        await self._commit(mirror, commit)
+        args = ["ls-tree", "-z", "-l", "--full-tree", commit]
+        if path:
+            # With the trailing slash, ls-tree lists what is inside the directory; a file of that
+            # name matches nothing.
+            args += ["--", f"{path}/"]
+        output = await self._git.run(args, git_dir=mirror.path)
+        entries = [_tree_entry(record) for record in output.stdout.split(b"\0") if record]
+        if path and not entries:  # a git tree is never empty, but the root of an empty commit
+            raise PathNotFound(f"no directory {path!r} in commit {commit}")
+        return entries
+
     async def read_blob(
         self, mirror: Mirror, commit: str, path: str, *, max_size: int | None = None
     ) -> bytes:

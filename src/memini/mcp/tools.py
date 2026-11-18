@@ -4,7 +4,9 @@ A :class:`Tool` validates its arguments with a pydantic model, runs, and returns
 The client gets that model as ``structuredContent``, described by the tool's ``outputSchema``, and a
 short text summary as ``content``. Errors stay inside the result (``isError``) so a model can see
 them; their text never holds argument values or exception text, which can carry private content or
-secrets. The exception goes to the server log.
+secrets. The exception goes to the server log. A tool that refuses for a reason the caller can act
+on (a query that is not valid, nothing found) raises :class:`ToolError`, whose message is sent as
+it is.
 
 A tool receives a :class:`ToolCall`: the authenticated principal and the service's resources. A tool
 that reads data calls ``authorization.authorize_read(call.principal)`` and passes the filter to its
@@ -13,7 +15,7 @@ read functions, like a read route does.
 
 import logging
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from mcp_types import CallToolResult, TextContent, ToolAnnotations
@@ -22,10 +24,16 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from memini.auth import Principal, Scope
 from memini.db import Pool
+from memini.query import QueryServices
 
-__all__ = ["NoArguments", "Tool", "ToolCall", "ToolDefinition"]
+__all__ = ["NoArguments", "Tool", "ToolCall", "ToolDefinition", "ToolError"]
 
 _log = logging.getLogger(__name__)
+
+
+class ToolError(Exception):
+    """A refusal the caller can act on. The message is sent to the client as it is: it must never
+    hold an argument value, stored content, a secret or exception text."""
 
 
 class NoArguments(BaseModel):
@@ -42,6 +50,8 @@ class ToolCall:
     """The caller. Reads go through ``authorize_read(principal)``."""
     pool: Pool | None
     """The database pool; ``None`` when the service runs without a database."""
+    services: QueryServices = field(default_factory=QueryServices)
+    """What the query tools need: search options, the repository mirrors, the embedder."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -87,6 +97,8 @@ class Tool[ArgumentsT: BaseModel, ResultT: BaseModel]:
             return _error_result(f"Invalid arguments: {problems}.")
         try:
             result = await self.run(call, parsed)
+        except ToolError as error:
+            return _error_result(str(error))
         except Exception:
             _log.exception("tool %s failed", self.name)
             return _error_result(f"The {self.name} tool failed; the server log has the details.")

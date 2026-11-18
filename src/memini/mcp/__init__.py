@@ -2,6 +2,8 @@
 
 - :mod:`memini.mcp.server`: the server, its instructions and :data:`TOOLS`, the one list of tools.
 - :mod:`memini.mcp.tools`: what a tool is: typed arguments, a typed result, a scope.
+- :mod:`memini.mcp.query`: ``search``, ``search_code``, ``get_symbol`` and ``read_source``, over
+  :mod:`memini.query`, the library the HTTP routes call too.
 - :mod:`memini.mcp.status`: the ``status`` tool.
 - :mod:`memini.mcp.endpoint`: the server as an ASGI app, stateless with JSON responses.
 
@@ -11,7 +13,7 @@ The HTTP application mounts the endpoint at :data:`MCP_PATH` behind bearer-token
 
 from memini.mcp.endpoint import MCP_PATH, McpEndpoint
 from memini.mcp.server import SERVER_INSTRUCTIONS, SERVER_NAME, TOOLS, bind_principal, build_server
-from memini.mcp.tools import NoArguments, Tool, ToolCall
+from memini.mcp.tools import NoArguments, Tool, ToolCall, ToolError
 
 __all__ = [
     "MCP_PATH",
@@ -22,6 +24,7 @@ __all__ = [
     "NoArguments",
     "Tool",
     "ToolCall",
+    "ToolError",
     "bind_principal",
     "build_server",
 ]

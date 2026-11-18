@@ -1,12 +1,15 @@
 """``memini serve``: run the service until SIGINT or SIGTERM.
 
 Order of start: logging, migrations (refuse to start while any is pending, unless ``--migrate``
-applies them), the connection pool, the application, the job handlers (:func:`job_handlers`), the
-job worker and scheduler, the HTTP server. Order of stop: the HTTP server finishes open requests (up
-to :data:`SHUTDOWN_GRACE` seconds) and runs the application's shutdown; the worker and scheduler
-stop (a running job finishes within the worker's grace period or goes back to the queue); pending
-run reports are written; the handlers release what they hold (the embedder); then the pool closes.
-A stop by signal exits 0.
+applies them), the connection pool, the embedder (:func:`service_embedder`), the application, the
+job handlers (:func:`job_handlers`), the job worker and scheduler, the HTTP server. Order of stop:
+the HTTP server finishes open requests (up to :data:`SHUTDOWN_GRACE` seconds) and runs the
+application's shutdown; the worker and scheduler stop (a running job finishes within the worker's
+grace period or goes back to the queue); pending run reports are written; the embedder is closed;
+then the pool closes. A stop by signal exits 0.
+
+One embedder serves the search queries of the application and the ``git_sync`` jobs: a local
+model is loaded once.
 
 Logs are JSON lines on stderr through :func:`memini.logs.configure_logging`, which masks tokens and
 secrets; the password of the database URL is registered as a secret at start.
@@ -48,6 +51,7 @@ __all__ = [
     "job_handlers",
     "run_http_server",
     "serve_command",
+    "service_embedder",
 ]
 
 SHUTDOWN_GRACE: Final = 10
@@ -69,7 +73,28 @@ def configure_logging(settings: Settings) -> None:
 
 
 @asynccontextmanager
-async def job_handlers(settings: Settings, pool: Pool) -> AsyncGenerator[Mapping[str, Handler]]:
+async def service_embedder(settings: Settings) -> AsyncGenerator[Embedder | None]:
+    """The embedder the settings describe, for the duration of the block, then closed; ``None``
+    without an embedding provider. ``serve`` shares it between the application and the jobs.
+
+    Raises:
+        EmbeddingError: a setting the provider needs is missing (settings built by hand only).
+    """
+    try:
+        embedder = create_embedder(settings)
+    except EmbeddingsNotConfiguredError:
+        yield None
+        return
+    try:
+        yield embedder
+    finally:
+        await embedder.aclose()
+
+
+@asynccontextmanager
+async def job_handlers(
+    settings: Settings, pool: Pool, *, embedder: Embedder | None = None
+) -> AsyncGenerator[Mapping[str, Handler]]:
     """The job handlers ``serve`` runs, by job kind, for the duration of the block.
 
     ``git_sync`` (:mod:`memini.gitsync`) is there when an embedding provider is configured and
@@ -77,14 +102,18 @@ async def job_handlers(settings: Settings, pool: Pool) -> AsyncGenerator[Mapping
     and written. Code is synced only into an index: without embeddings there is none to write, and
     records synced without their chunks would be left out of the index once embeddings are set,
     since a sync writes only what changed. Otherwise a warning says why git sources are not
-    synced, and the scheduler leaves their streams alone. The embedder is closed at the end.
+    synced, and the scheduler leaves their streams alone.
+
+    ``embedder`` is the service's, which the caller closes; without it, one is created from the
+    settings and closed at the end.
     """
     handlers: dict[str, Handler] = {}
-    embedder: Embedder | None = None
-    try:
-        embedder = create_embedder(settings)
-    except EmbeddingsNotConfiguredError as error:
-        log.warning("git sources are not synced: %s", error)
+    owned = embedder is None
+    if embedder is None:
+        try:
+            embedder = create_embedder(settings)
+        except EmbeddingsNotConfiguredError as error:
+            log.warning("git sources are not synced: %s", error)
     try:
         if embedder is not None:
             options = GitOptions.from_settings(settings)
@@ -95,7 +124,7 @@ async def job_handlers(settings: Settings, pool: Pool) -> AsyncGenerator[Mapping
                 log.warning("git sources are not synced: %s", problem)
         yield handlers
     finally:
-        if embedder is not None:
+        if owned and embedder is not None:
             await embedder.aclose()
 
 
@@ -143,9 +172,17 @@ async def serve_command(args: argparse.Namespace, settings: Settings) -> int:
                 conn, "run `memini migrate`, or start with `memini serve --migrate`"
             )
 
-    async with open_pool(url) as pool:
-        app = create_app(settings, pool=pool, readiness_checks={"database": database_check(pool)})
-        async with job_handlers(settings, pool) as handlers, background_jobs(pool, handlers):
+    async with open_pool(url) as pool, service_embedder(settings) as embedder:
+        app = create_app(
+            settings,
+            pool=pool,
+            readiness_checks={"database": database_check(pool)},
+            embedder=embedder,
+        )
+        async with (
+            job_handlers(settings, pool, embedder=embedder) as handlers,
+            background_jobs(pool, handlers),
+        ):
             started = await run_http_server(app, settings)
     if not started:
         raise CommandError("the HTTP server did not start; see the log above")

@@ -3,10 +3,10 @@
 - :class:`MirrorManager` creates (:meth:`~MirrorManager.ensure_mirror`), fetches
   (:meth:`~MirrorManager.fetch`, :meth:`~MirrorManager.sync`) and removes mirrors, and reads them:
   refs, :meth:`~MirrorManager.resolve`, :meth:`~MirrorManager.ls_tree`,
-  :meth:`~MirrorManager.read_blob`, :meth:`~MirrorManager.read_blobs`,
-  :meth:`~MirrorManager.blob_sizes`, :meth:`~MirrorManager.committed_at`,
-  :meth:`~MirrorManager.diff_names`. :mod:`memini.git.mirror` describes the layout, the atomic
-  fetch and the locking.
+  :meth:`~MirrorManager.list_directory`, :meth:`~MirrorManager.read_blob`,
+  :meth:`~MirrorManager.read_blobs`, :meth:`~MirrorManager.blob_sizes`,
+  :meth:`~MirrorManager.committed_at`, :meth:`~MirrorManager.diff_names`.
+  :mod:`memini.git.mirror` describes the layout, the atomic fetch and the locking.
 - :func:`parse_remote` checks a source location against the allowlist of transports before any
   process starts (:mod:`memini.git.remote`).
 - :class:`Git` runs the git CLI hardened, with credentials kept out of arguments, URLs and files

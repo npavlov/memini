@@ -624,6 +624,37 @@ async def test_read_blob_reads_a_file_at_a_commit(tree: tuple[MirrorManager, Any
 
 
 @pytest.mark.anyio
+async def test_list_directory_lists_one_level_and_follows_no_link(
+    tree: tuple[MirrorManager, Any, str],
+) -> None:
+    manager, mirror, commit = tree
+
+    root = await manager.list_directory(mirror, commit)
+    assert [(e.path, e.kind, e.mode) for e in root] == [
+        ("README.md", "blob", "100644"),
+        ("big.txt", "blob", "100644"),
+        ("link", "blob", "120000"),
+        ("src", "tree", "040000"),
+        ("tool.sh", "blob", "100755"),
+    ]
+    assert root[1].size == 5000
+    assert root[3].size is None
+    src = await manager.list_directory(mirror, commit, "src")
+    assert [(e.path, e.kind) for e in src] == [("src/app.py", "blob"), ("src/deep", "tree")]
+    assert [e.path for e in await manager.list_directory(mirror, commit, "src/deep")] == [
+        "src/deep/mod.py"
+    ]
+    for not_a_directory in ("README.md", "link", "missing", "src/app.py"):
+        with pytest.raises(PathNotFound):
+            await manager.list_directory(mirror, commit, not_a_directory)
+    for bad in ("../src", "/src", "src/", "src/../src", "a\x00b"):
+        with pytest.raises(InvalidPath):
+            await manager.list_directory(mirror, commit, bad)
+    with pytest.raises(RevisionNotFound):
+        await manager.list_directory(mirror, "0" * 40)
+
+
+@pytest.mark.anyio
 async def test_read_blob_refuses_a_file_over_the_limit(
     tree: tuple[MirrorManager, Any, str], tmp_path: Path, sources: Path
 ) -> None:
