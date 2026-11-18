@@ -114,6 +114,7 @@ from memini import __version__
 from memini.cli import (
     admin,
     credentials,
+    decisions,
     evaluate,
     index,
     recipes,
@@ -347,6 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_commands(commands)
     tokens.add_commands(commands)
     search.add_commands(commands)
+    decisions.add_commands(commands)
 
     # --- Operator commands: on the database, inside the service's container ----------------------
     serve_parser = commands.add_parser(

@@ -406,7 +406,9 @@ the append-only journal is a 409 whose message names the database constraint: `n
 item already superseded, closed or retracted), `supersession_refused` (a cycle, the relation, the
 order, or an extracted item over a manual one) or `journal_refused` (any other trigger); evidence
 or a person that is not found is a 404, a field the journal refuses a 422. Reads
-(`list_decisions`, `get_decision`) are separate tools.
+(`list_decisions`, `get_decision`) are separate tools. From the CLI, `memini decision record`,
+`supersede`, `close` and `retract` are clients of the four routes; evidence there is
+`SOURCE:EXTERNAL_ID[#ANCHOR]` or `RECORD_ID[#ANCHOR]`.
 
 ### HTTP API
 
