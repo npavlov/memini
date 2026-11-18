@@ -4,7 +4,7 @@
 | Route | Scope | Does |
 |---|---|---|
 | ``GET …/sources`` | read | list the sources of a workspace |
-| ``POST …/sources`` | admin | add a git source (201) |
+| ``POST …/sources`` | admin | add a git or a push source (201) |
 | ``GET …/sources/{source}`` | read | one source |
 | ``PATCH …/sources/{source}`` | admin | change its settings |
 | ``DELETE …/sources/{source}`` | admin | delete it, its streams, runs and mirror (204) |
@@ -44,6 +44,7 @@ from memini.sources import (
 from memini.status import STALE_AFTER_SCHEDULES
 
 __all__ = [
+    "NewPushSource",
     "NewSource",
     "SourceChanges",
     "SourceInfo",
@@ -97,7 +98,7 @@ type _Patterns = Annotated[
 
 
 class NewSource(BaseModel):
-    """A git source to add. Only git sources are added through the API so far."""
+    """A git source to add."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -129,6 +130,29 @@ class NewSource(BaseModel):
             include=self.include,
             exclude=self.exclude,
             builtin_excludes=self.builtin_excludes,
+            visibility=self.visibility,
+            retention_days=self.retention_days,
+            llm_policy=self.llm_policy,
+        )
+
+
+class NewPushSource(BaseModel):
+    """A push source to add: clients send its records to ``POST …/sources/{source}/records``.
+    It has no location, refs or schedule; a batch that names a stream creates it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["push"] = Field(description="The kind of source: push.")
+    name: str = Field(pattern=HANDLE_REGEX, description=_NAME)
+    visibility: Visibility = Field(default="private", description=_VISIBILITY)
+    retention_days: int | None = Field(
+        default=None, ge=1, le=MAX_RETENTION_DAYS, description=_RETENTION
+    )
+    llm_policy: LlmPolicy = Field(default="local", description=_LLM_POLICY)
+
+    def to_new(self) -> sources.NewPushSource:
+        return sources.NewPushSource(
+            name=self.name,
             visibility=self.visibility,
             retention_days=self.retention_days,
             llm_policy=self.llm_policy,
@@ -390,22 +414,26 @@ def build_sources_router() -> APIRouter:
             found = await sources.list_sources(conn, access, workspace)
         return SourceList(sources=[SourceInfo.of(source) for source in found])
 
-    @router.post("", status_code=201, summary="Add a git source")
+    @router.post("", status_code=201, summary="Add a source")
     async def create_source(
         workspace: str,
-        body: NewSource,
+        body: Annotated[NewSource | NewPushSource, Field(discriminator="kind")],
         access: AdminAccess,
         options: GitSettings,
         conn: Connection,
     ) -> SourceInfo:
-        """Add a git source with one stream per ref. The location is checked by the rules the
-        mirror enforces (422 ``invalid_source`` names the setting and why, never the value), not
-        fetched: the first sync creates the mirror. 409 if the workspace has a source of that
-        name."""
+        """Add a git source with one stream per ref, or a push source. A git location is checked
+        by the rules the mirror enforces (422 ``invalid_source`` names the setting and why, never
+        the value), not fetched: the first sync creates the mirror. A push source takes batches
+        of records at ``POST …/sources/{source}/records``. 409 if the workspace has a source of
+        that name."""
         with admin_errors():
-            source = await sources.create_git_source(
-                conn, access, workspace, body.to_new(), options=options
-            )
+            if isinstance(body, NewPushSource):
+                source = await sources.create_push_source(conn, access, workspace, body.to_new())
+            else:
+                source = await sources.create_git_source(
+                    conn, access, workspace, body.to_new(), options=options
+                )
         return SourceInfo.of(source)
 
     @router.get("/{source}", summary="Get a source")

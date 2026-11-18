@@ -4,7 +4,12 @@ Source configuration lives in the database and is managed through these function
 (:mod:`memini.api.sources`) and the CLI are thin layers over them (requirements, section 6 and open
 question 4). There is no configuration file to apply.
 
-A **git source** (the only kind added here so far) is:
+A **push source** is a name and the shared settings below (``visibility``, ``retention_days``,
+``llm_policy``), nothing else: clients send its records through the ingest API
+(:mod:`memini.ingest`), and its streams are created by the first batch that names them. It has no
+location, refs or schedule, and the service never syncs it (:func:`create_push_source`).
+
+A **git source** is:
 
 - ``source.config``, a JSON object of the shape :class:`GitConfig` reads and writes::
 
@@ -89,6 +94,7 @@ __all__ = [
     "JobBrief",
     "LlmPolicy",
     "NewGitSource",
+    "NewPushSource",
     "NotFoundError",
     "NotSyncableError",
     "RunBrief",
@@ -107,6 +113,7 @@ __all__ = [
     "check_refs",
     "check_schedule",
     "create_git_source",
+    "create_push_source",
     "delete_source",
     "get_source",
     "list_sources",
@@ -416,6 +423,16 @@ class NewGitSource:
     include: Sequence[str] = ()
     exclude: Sequence[str] = ()
     builtin_excludes: bool = True
+    visibility: Visibility = "private"
+    retention_days: int | None = None
+    llm_policy: LlmPolicy = "local"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NewPushSource:
+    """What :func:`create_push_source` adds. See the module for each setting."""
+
+    name: str
     visibility: Visibility = "private"
     retention_days: int | None = None
     llm_policy: LlmPolicy = "local"
@@ -795,6 +812,40 @@ async def create_git_source(
         raise
 
 
+async def create_push_source(
+    conn: Conn, access: WriteAccess, workspace: str, new: NewPushSource
+) -> Source:
+    """Add a push source to the workspace ``workspace``: no location, refs or schedule, and no
+    streams until a batch of records names one (:func:`memini.ingest.ingest`).
+
+    Raises:
+        InvalidSourceError: a setting is refused; nothing was written.
+        NotFoundError: no such workspace that ``access`` may change.
+        SourceExistsError: the workspace has a source of that name.
+    """
+    name = _check_name(new.name)
+    visibility = _check_choice("visibility", new.visibility, get_args(Visibility))
+    retention_days = _check_retention(new.retention_days)
+    llm_policy = _check_choice("llm_policy", new.llm_policy, get_args(LlmPolicy))
+    try:
+        async with conn.transaction():
+            found = await get_writable_workspace(conn, access, workspace)
+            cur = await conn.execute(
+                "INSERT INTO source (workspace_id, owner_id, name, kind, visibility,"
+                " retention_days, llm_policy) VALUES (%s, %s, %s, 'push', %s, %s, %s)"
+                " RETURNING id",
+                (found.id, access.owner_id, name, visibility, retention_days, llm_policy),
+            )
+            row = await cur.fetchone()
+            if row is None:  # INSERT ... RETURNING always returns the row
+                raise RuntimeError("INSERT INTO source returned no row")
+            return await _reload(conn, access, row[0])
+    except errors.UniqueViolation as error:
+        if error.diag.constraint_name == _SOURCE_NAME_KEY:
+            raise SourceExistsError(f"the workspace has a source named {name}") from None
+        raise
+
+
 async def update_source(
     conn: Conn, access: WriteAccess, workspace: str, name: str, changes: SourceUpdate
 ) -> Source:
@@ -852,6 +903,10 @@ async def update_source(
                 raise InvalidSourceError(
                     "refs" if not isinstance(refs, Unset) else "include",
                     f"refs and path rules are settings of git sources, not of {source.kind}",
+                )
+            if source.kind == "push" and schedule is not None and not isinstance(schedule, Unset):
+                raise InvalidSourceError(
+                    "schedule", "push sources are not synced by the service; clients send records"
                 )
             assignments: list[sql.Composable] = [sql.SQL("updated_at = now()")]
             params: list[Any] = []

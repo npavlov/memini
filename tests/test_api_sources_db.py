@@ -350,7 +350,10 @@ async def test_invalid_settings_are_refused_without_echoing_them(
     too_long = f"https://git.example.invalid/{SECRET}/" + "x" * 2100
     response = await new_source(client, admin, "alpha", location=too_long)
     error = refused(response, 422, "validation_error")
-    assert error["details"] == [{"location": ["body", "location"], "type": "string_too_long"}]
+    # The body is one of the kinds of source, so the kind is part of the location.
+    assert error["details"] == [
+        {"location": ["body", "git", "location"], "type": "string_too_long"}
+    ]
     assert SECRET not in response.text
 
     for body, setting in (

@@ -11,6 +11,7 @@ needs a valid token and the public routes do not. A route then asks for what it 
 - for an administrative write, a parameter typed :data:`AdminAccess`: the ``admin`` scope plus the
   :class:`~memini.auth.WriteAccess` to pass to the write function, which keeps a token limited to
   one workspace inside it. Declare it before a database connection too.
+- for an ingest write, a parameter typed :data:`IngestAccess`: the same with the ``ingest`` scope.
 
 Responses follow RFC 6750:
 
@@ -51,11 +52,13 @@ __all__ = [
     "AdminAccess",
     "AdminPrincipal",
     "CurrentPrincipal",
+    "IngestAccess",
     "IngestPrincipal",
     "ReadAccess",
     "ReadPrincipal",
     "admin_access",
     "authenticate_request",
+    "ingest_access",
     "insufficient_scope_challenge",
     "insufficient_scope_error",
     "read_access",
@@ -176,3 +179,13 @@ async def admin_access(principal: AdminPrincipal) -> WriteAccess:
 AdminAccess = Annotated[WriteAccess, Depends(admin_access)]
 """What an administrative write route takes: the caller's :class:`~memini.auth.WriteAccess`, after
 the admin scope."""
+
+
+async def ingest_access(principal: IngestPrincipal) -> WriteAccess:
+    """The ``ingest`` scope and what the caller may change, for a route that stores records."""
+    return authorization.authorize_write(principal, "ingest")
+
+
+IngestAccess = Annotated[WriteAccess, Depends(ingest_access)]
+"""What an ingest route takes: the caller's :class:`~memini.auth.WriteAccess`, after the ingest
+scope."""

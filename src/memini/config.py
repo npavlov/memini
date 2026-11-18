@@ -391,6 +391,31 @@ class Settings(BaseModel):
         description="the k of reciprocal rank fusion, an integer from 1 to 1000",
     )
 
+    # --- Ingest (memini.ingest) -------------------------------------------------------------------
+    # Limits of one batch of records sent to the ingest API: the request body, the records in it,
+    # and the payload of one record in its stored form. A body over the limit is refused by its
+    # Content-Length before it is read, or as soon as more of it arrives.
+    ingest_max_body_size: _ByteSize = Field(
+        default=16 * 1024**2,
+        ge=1024,
+        le=1024**3,
+        description="the largest request body of an ingest batch, 1K to 1G: bytes, or a number"
+        " with K, M or G",
+    )
+    ingest_max_records: int = Field(
+        default=1000,
+        ge=1,
+        le=100_000,
+        description="the most records and tombstones in one ingest batch, 1 to 100000",
+    )
+    ingest_max_payload_size: _ByteSize = Field(
+        default=1024**2,
+        ge=1024,
+        le=1024**3,
+        description="the largest payload of one record as stored, 1K to 1G: bytes, or a number"
+        " with K, M or G",
+    )
+
     @field_validator("git_https_token_hosts")
     @classmethod
     def _token_has_hosts(cls, hosts: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:

@@ -143,6 +143,44 @@ Everything enters through one operation: a batch of records for a source, each w
 advances only when the window is complete, in the same transaction. Ingest is idempotent. Deletions arrive
 as tombstones or through a full-snapshot reconcile.
 
+**Ingest** (decided 2026-11-18). One library, `memini.ingest`, is the contract: the push API
+(`POST /v1/workspaces/{workspace}/sources/{source}/records`, scope `ingest`, inside the token's
+workspace limit) and the MCP recipe executors (M3) end in it. It takes batches for push and mcp
+sources; a git source is refused (409 `not_ingestible`), its records come from its mirror. A push
+source is a name and the shared settings (visibility, retention, LLM policy): no location, refs or
+schedule, never synced. An item is a record of kind `thread`, `meeting` or `document` (`code_file`
+is not ingestible) with `external_id`, `occurred_at` with a zone, an optional http(s)
+`external_url` and a payload, or a tombstone (`deleted`, with the kind and external id only); a
+kind and external id appear once per batch. The payload is a JSON object with the fields its kind
+requires: a thread's `messages`, each with `author`, `sent_at` and `text`; a meeting's `title` and
+`started_at`, and `ended_at` not before it; a document's `title` and `text`. Other fields are kept
+for the parsers of the kinds. It is stored as canonical JSON (keys sorted, no whitespace, UTF-8,
+numbers as Python writes them), not as the bytes of the request: the same object from another
+client, in another key order or spacing, is the same content and changes nothing (principle 6),
+and redaction at ingest can rewrite it. Nothing a parser reads is lost: an object with a key twice
+is refused rather than collapsed, and a value that is not finite JSON is refused. The content hash
+is SHA-256 of the stored bytes. A record whose payload, time, URL and stream equal its row is not
+written at all; one that differs is written, a tombstone revived, and a changed payload clears the
+derived text. A batch may name a stream, created on first use, and claim a window `[from, to)` of
+it; batches of one stream take turns on the stream's row. The checkpoint (`checked_until`, with
+the claim's optional `cursor`) moves to `to` only for a complete window that ends after it, by
+compare-and-set in the transaction that stores the records, so it never moves back. A complete
+window must start at or before the checkpoint (an overlap margin); one that starts after it is
+refused (409 `window_gap`), as it would count the gap as checked. An incomplete window stores its
+records and leaves the checkpoint, and its run is `partial`; a window older than the checkpoint
+(history loaded later) stores its records and leaves it too. A window may end at most five minutes
+past the database clock. A snapshot, a complete window with `snapshot`, holds every live record of
+the stream whose `occurred_at` is in the window: the stream's records there that it leaves out
+become tombstones. A tombstone sets `deleted_at` and deletes the record's chunks in the same
+transaction; one for a record never stored changes nothing. Any failure rolls back records,
+tombstones, chunks and checkpoint together (principle 7). Each batch writes a run of kind `ingest`
+with its counts. Limits answer 413: the body (`ingest_max_body_size`, 16 MiB, refused by its
+Content-Length before it is read), the items of a batch (`ingest_max_records`, 1000) and a stored
+payload (`ingest_max_payload_size`, 1 MiB). A batch that is not valid answers 422 naming the
+field, never a value. No idempotency key: the content hash and the compare-and-set already make a
+resend harmless. Chunking is a hook in the batch's transaction that the parsers of the kinds fill;
+until they do, pushed records are stored without chunks.
+
 ### Three paths
 
 | Path | What | v1 |
@@ -266,7 +304,8 @@ start. An apply-from-file command can come later on top of the same calls; it is
 are under `/v1`: create a workspace; list, add, read, change and delete the sources of a workspace;
 list the streams of a source with their lag, last run and queued sync; trigger a sync; list the runs of
 a workspace, a source or a stream, newest first and paged; read one run with its report. Reads need
-the `read` scope, changes the `admin` scope. A git source is a location, the refs it tracks and path
+the `read` scope, changes the `admin` scope. A push source is a name and the shared settings; the
+batches sent to it create its streams (section 4). A git source is a location, the refs it tracks and path
 globs: `source.config` holds `{"location", "include", "exclude"}`, each tracked ref is a stream keyed
 by its full name (`refs/heads/main`), and the schedule is set on all its streams at once. The location
 is checked when the source is added, by the rules the mirror enforces at every fetch (section 9, git
