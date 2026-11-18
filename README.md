@@ -17,6 +17,11 @@ Design stage. Nothing runs yet.
 - [Implementation plan](docs/plan.md)
 - [Prior art](docs/prior-art.md)
 
+## Contributing
+
+Issues and pull requests are welcome. Setup, checks and project rules: [CONTRIBUTING.md](CONTRIBUTING.md).
+Report a vulnerability privately, as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 [Apache-2.0](LICENSE).
