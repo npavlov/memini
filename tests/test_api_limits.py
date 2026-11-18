@@ -636,21 +636,19 @@ LIMIT_VARIABLES = {
     for name in Settings.model_fields
     if name.startswith("http_") and name not in ("http_host", "http_port")
 }
-"""The request limits, as environment variables. The image sets the host and port."""
+"""The request limits, as environment variables. Compose sets the host and port."""
 
 
-def test_compose_passes_every_request_limit_through() -> None:
+def test_compose_leaves_every_request_limit_to_the_settings_file() -> None:
+    # A limit compose set in the service's `environment` would override .env.memini, even empty.
     text = (ROOT / "compose.yaml").read_text(encoding="utf-8")
-    passed = re.findall(r"(?m)^ +(MEMINI_HTTP_[A-Z_]+): \$\{(MEMINI_HTTP_[A-Z_]+):-\}$", text)
 
-    assert all(name == default for name, default in passed)
-    assert {name for name, _ in passed} == LIMIT_VARIABLES
+    assert not [name for name in LIMIT_VARIABLES if name in text]
 
 
-def test_env_example_lists_the_request_limits_with_the_services_defaults() -> None:
-    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+def test_env_memini_example_lists_the_request_limits_with_the_services_defaults() -> None:
+    text = (ROOT / ".env.memini.example").read_text(encoding="utf-8")
     listed = dict(re.findall(r"(?m)^# (MEMINI_HTTP_[A-Z_]+)=(.*)$", text))
-    del listed["MEMINI_HTTP_PORT"]  # the port on the host, which compose publishes
 
     assert set(listed) == LIMIT_VARIABLES
     url = {"MEMINI_DATABASE_URL": FAKE_URL}

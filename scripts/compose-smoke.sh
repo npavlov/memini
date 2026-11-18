@@ -12,6 +12,13 @@
 #
 # - the service port is published on 127.0.0.1 only, and the service does not run as root;
 # - git and ssh are installed, the mirror volume is writable and the root filesystem is not;
+# - the settings reach the service as compose.yaml says: in a one-off container of the service
+#   (`docker compose run`), started with a settings file of its own (MEMINI_ENV_FILE) that sets
+#   MEMINI_SEARCH_TIMEOUT, and a credential key made for the check in a secret file
+#   (MEMINI_CREDENTIAL_KEY_FILE), the service's own settings code reads that timeout and that key
+#   (by its key id), as the service user; `docker inspect` shows the setting, and the key's path
+#   but never the key. The service that runs keeps its settings, so a stack in use is not changed;
+#   the one-off container is removed;
 # - the CLI on the host creates and lists a workspace and tokens, and no listing holds a token;
 # - /healthz and /readyz answer 200;
 # - /mcp refuses a request without a token, and one with an unknown token (401);
@@ -31,8 +38,8 @@
 #   COMPOSE_PROJECT_NAME=memini-smoke MEMINI_HTTP_PORT=16364 MEMINI_DB_PORT=15432 \
 #     scripts/compose-smoke.sh --down
 #
-# Needs docker with compose v2, and uv. Runs on bash 3.2 (macOS) and later, and on Linux with GNU
-# tools (CI runs it with `make smoke` on ubuntu-latest).
+# Needs docker with Docker Compose 2.24.0 or later (compose.yaml), and uv. Runs on bash 3.2 (macOS)
+# and later, and on Linux with GNU tools (CI runs it with `make smoke` on ubuntu-latest).
 
 set -euo pipefail
 
@@ -41,6 +48,17 @@ readonly TOKEN_NAME=compose-smoke
 readonly ADMIN_TOKEN_NAME=compose-smoke-admin
 readonly CONTAINER_PORT=6364
 readonly WAIT_TIMEOUT=180
+# Not the default (5), so that only the settings file can have set it.
+readonly SEARCH_TIMEOUT=7.5
+# Run inside the one-off container: the settings as the service reads them. No secret is printed:
+# the key's id is an HMAC under the key, made to be shown.
+readonly SETTINGS_READOUT='
+from memini.config import load_settings
+from memini.credentials import Keyring
+settings = load_settings()
+key = Keyring.from_settings(settings).current
+print(f"search_timeout={settings.search_timeout:g} credential_key={key.id}")
+'
 
 usage() {
   echo "usage: $0 [--down]"
@@ -75,6 +93,19 @@ for tool in docker uv; do
   command -v "$tool" >/dev/null 2>&1 || fail "$tool is not installed"
 done
 
+# compose.yaml has an optional env_file (`required: false`), which Docker Compose reads from 2.24.0.
+compose_version="$(docker compose version --short 2>/dev/null)" || fail "docker compose is not installed"
+compose_version="${compose_version#v}"
+compose_major="${compose_version%%.*}"
+compose_minor="${compose_version#*.}"
+compose_minor="${compose_minor%%.*}"
+case "$compose_major:$compose_minor" in
+  *[!0-9:]* | :* | *:) fail "cannot read the version of docker compose: '$compose_version'" ;;
+esac
+if [ "$compose_major" -lt 2 ] || { [ "$compose_major" -eq 2 ] && [ "$compose_minor" -lt 24 ]; }; then
+  fail "Docker Compose $compose_version is too old: compose.yaml needs 2.24.0 or later"
+fi
+
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
@@ -86,6 +117,7 @@ admin_token=""
 admin_id=""
 token=""
 token_id=""
+settings_container=""
 
 # The CLI on the host, as a client of the service: the URL and the admin token's file, and no
 # MEMINI_TOKEN from the caller's shell, which would clash with the file.
@@ -106,6 +138,11 @@ revoke() { # <what> <token id>
 cleanup() {
   local status=$?
   set +e
+  if [ -n "$settings_container" ]; then
+    docker rm --force "$settings_container" >/dev/null 2>&1 \
+      || printf 'WARN  remove the container %s with: docker rm -f %s\n' \
+        "$settings_container" "$settings_container" >&2
+  fi
   if [ -n "$token_id" ]; then
     revoke "smoke token" "$token_id"
   elif [ -n "$token" ]; then
@@ -172,6 +209,51 @@ if docker compose exec -T memini sh -c 'touch /opt/memini/write-test' >/dev/null
   fail "the root filesystem of the service is writable"
 fi
 ok "the mirror volume is writable; the root filesystem is not"
+
+step "settings from a settings file and a secret file, in a one-off container"
+# Its own settings file, its own key, and every other secret file unset, whatever .env says: the
+# variables compose.yaml points at /run/secrets, set empty here, win over .env.
+settings_file="$tmp/settings.env"
+key_file="$tmp/credential_key"
+printf 'MEMINI_SEARCH_TIMEOUT=%s\n' "$SEARCH_TIMEOUT" >"$settings_file"
+key_id="$(uv run --quiet python scripts/compose_smoke.py key "$key_file")" \
+  || fail "could not write a credential key"
+run_env=("MEMINI_ENV_FILE=$settings_file" "MEMINI_CREDENTIAL_KEY_FILE=$key_file")
+while IFS= read -r variable; do
+  [ "$variable" = MEMINI_CREDENTIAL_KEY_FILE ] || run_env+=("$variable=")
+done < <(sed -n 's/^ *\(MEMINI_[A-Z0-9_]*\): \${[A-Z0-9_]*:+\/run\/secrets\/.*/\1/p' compose.yaml)
+[ "${#run_env[@]}" -gt 2 ] || fail "compose.yaml mounts no secret files"
+settings_container="memini-smoke-settings-${tmp##*.}"
+if ! env "${run_env[@]}" docker compose run --detach --no-deps --name "$settings_container" \
+  --entrypoint sleep memini 600 >/dev/null 2>"$tmp/run.err"; then
+  fail "docker compose run: $(tail -n 5 "$tmp/run.err")"
+fi
+
+docker inspect "$settings_container" >"$tmp/inspect.json" \
+  || fail "docker inspect $settings_container"
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$settings_container" \
+  >"$tmp/env.txt" || fail "docker inspect $settings_container"
+grep -qxF "MEMINI_SEARCH_TIMEOUT=$SEARCH_TIMEOUT" "$tmp/env.txt" \
+  || fail "MEMINI_SEARCH_TIMEOUT from the settings file is not in the container's environment"
+grep -qxF "MEMINI_CREDENTIAL_KEY_FILE=/run/secrets/credential_key" "$tmp/env.txt" \
+  || fail "MEMINI_CREDENTIAL_KEY_FILE does not point at the mounted secret"
+# The patterns come from the file, so the key is never on a command line.
+if grep -qFf "$key_file" "$tmp/inspect.json"; then
+  fail "docker inspect shows the credential key"
+fi
+ok "docker inspect: MEMINI_SEARCH_TIMEOUT=$SEARCH_TIMEOUT, the key's path, not the key"
+
+run_uid="$(docker exec "$settings_container" id -u)" || fail "docker exec $settings_container"
+[ "$run_uid" != "0" ] || fail "the one-off container runs as root"
+if ! readout="$(docker exec "$settings_container" python -c "$SETTINGS_READOUT" \
+  2>"$tmp/readout.err")"; then
+  fail "the settings in the container: $(tail -n 5 "$tmp/readout.err")"
+fi
+expected="search_timeout=$SEARCH_TIMEOUT credential_key=$key_id"
+[ "$readout" = "$expected" ] || fail "the settings in the container: '$readout', expected '$expected'"
+ok "the service's settings code, as uid $run_uid, reads the timeout and the key (id $key_id)"
+docker rm --force "$settings_container" >/dev/null
+settings_container=""
 
 step "the first admin token, with memini bootstrap in the container"
 # --force: on a stack that is in use, its own admin token stays where it is. The token alone goes to

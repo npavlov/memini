@@ -9,8 +9,8 @@
 # their streams and pins, runs, jobs, token digests, credentials as ciphertext, and the record of
 # applied migrations. It does not hold the repository mirrors (the next sync of each git source
 # clones its repository again), the credential key (MEMINI_CREDENTIAL_KEY: back it up apart from
-# the archive), or the settings in .env and the environment. docs/operations/backup.md has the
-# whole procedure and restoring with scripts/restore.sh.
+# the archive), or the settings in .env, .env.memini, the secret files and the environment.
+# docs/operations/backup.md has the whole procedure and restoring with scripts/restore.sh.
 #
 # The service keeps running: pg_dump reads one consistent snapshot of the database. The archive is
 # written next to FILE with mode 600 (it holds private messages and code), checked with
@@ -110,4 +110,4 @@ mv "$partial" "$file"
 size="$(wc -c <"$file" | tr -d ' ')"
 printf 'ok    wrote %s (%s bytes, mode 600): %s tables with data, %s indexes, %s triggers\n' \
   "$file" "$size" "$tables" "$indexes" "$triggers"
-printf 'note  not in the archive: the credential key (MEMINI_CREDENTIAL_KEY), .env, the mirrors\n'
+printf 'note  not in the archive: the credential key, the secret files, .env, .env.memini, the mirrors\n'

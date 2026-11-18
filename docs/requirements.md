@@ -702,6 +702,18 @@ streams routes already show the whole text to a `read` token.
 
 - One process: HTTP API, MCP over streamable HTTP, scheduler and workers. One Postgres database.
 - `docker compose up` is the supported install. Binds to localhost by default.
+- Every setting can be set under compose (decided 2026-11-18). The service's settings come from an
+  optional file, `.env.memini` (`.env.memini.example`), which compose passes into the container as it
+  is, so a new setting needs no change of `compose.yaml`; a list of variables passed one by one fell
+  behind the settings, and could not be told apart from what compose reads itself. `.env` keeps
+  what compose reads on the host: the published ports, the database password, and the paths of
+  secret files. Compose sets the database URL, the listen address and port and the mirror directory
+  itself, over the file. Every secret setting but the database URL, and the ssh key and known_hosts
+  of git, is a compose secret: a file on the host, named in `.env`, mounted read-only and read
+  through `MEMINI_*_FILE` (or the path setting), so no secret shows in `docker inspect`; a secret
+  that is not set gets an empty placeholder file and an empty variable. A local repository is a
+  source only once its directory is mounted into the container. Needs Docker Compose 2.24.0, for
+  an optional `env_file`.
 - A CLI wraps the API for setup and operations (decided 2026-11-18). Its commands are HTTP clients of
   the running service, with a service URL and a token: the service is the one place that checks scopes,
   applies the authorization filter, touches the mirrors and writes run reports, and no database
@@ -738,7 +750,7 @@ endpoint included; every limit is a setting, and each error is in the API's erro
   token bucket that holds a minute's worth and refills steadily. Over budget: 429 `rate_limited` with
   `Retry-After` in seconds. The public routes are not counted. Buckets that have refilled are
   forgotten and at most 10,000 are kept per budget, so memory stays bounded. `http_rate_limit = false`
-  turns them off. Compose passes every `MEMINI_HTTP_*` limit through to the service.
+  turns them off. Under compose they are set in `.env.memini`, as every setting is.
 - Body size: at most `http_max_body_size` (1 MiB) on every route but the batch route, which keeps
   `ingest_max_body_size` (16 MiB). A body over it is refused by its `Content-Length` before it is
   read, or as soon as more of it arrives: 413 `content_too_large`.
@@ -846,11 +858,12 @@ embeds a query after an instruction, `Instruct: {task}\nQuery:`, and a document 
 document prefix stays empty. The task, measured on the code suite against seven other wordings
 and none (open question 2), is "Given a search query, retrieve the relevant code or documentation
 that can help answer the query". The query prefix is not in the fingerprint, so changing it needs
-no reindex. The compose stack passes the `MEMINI_EMBEDDING_*` variables from the environment or
-`.env` (`.env.example` lists them, commented out) and, when a provider is set without a URL,
-points the URL at Ollama on the host, `http://host.docker.internal:11434/v1`; an `extra_hosts`
-entry with `host-gateway` makes that name work on Linux too, where Ollama must also listen on the
-Docker bridge. Compose keeps embeddings off by default as well, rather than on with Ollama
+no reindex. Under compose the `MEMINI_EMBEDDING_*` settings go into `.env.memini`
+(`.env.memini.example` lists them, commented out), the provider with the URL of Ollama on the
+host, `http://host.docker.internal:11434/v1`: inside the container 127.0.0.1 is the container
+itself, and compose does not read the settings file to fill in a URL. An `extra_hosts` entry with
+`host-gateway` makes that name work on Linux too, where Ollama must also listen on the Docker
+bridge. Compose keeps embeddings off by default as well, rather than on with Ollama
 assumed: on a machine without Ollama a default-on stack would accept sources and then fail every
 sync and search on a connection error, while off it names the setting to set; and the smoke test
 in CI needs no model.

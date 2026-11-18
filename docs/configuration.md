@@ -129,7 +129,7 @@ The service keeps a bare mirror of every git source and reads code from it. Remo
 | `git_max_mirror_size`<br>`MEMINI_GIT_MAX_MIRROR_SIZE` | size, at least 1 | `5G` | restart | The largest size of one mirror on disk: bytes, or a number with K, M, G or T. |
 | `git_max_blob_size`<br>`MEMINI_GIT_MAX_BLOB_SIZE` | size, at least 1 | `1M` | restart | The largest file read from a mirror: bytes, or a number with K, M, G or T. |
 | `git_allow_http`<br>`MEMINI_GIT_ALLOW_HTTP` | boolean | `false` | restart | True or false: allow plain http:// remotes (no TLS). |
-| `git_local_roots`<br>`MEMINI_GIT_LOCAL_ROOTS` | list of paths | empty | restart | Absolute directory paths, comma-separated, under which local repositories may be sources; empty: no local sources. With compose, a local repository must also be mounted into the container. |
+| `git_local_roots`<br>`MEMINI_GIT_LOCAL_ROOTS` | list of paths | empty | restart | Absolute directory paths, comma-separated, under which local repositories may be sources; empty: no local sources. With compose, mount the directory into the container as well; compose.yaml has an example. |
 | `git_https_token`<br>`MEMINI_GIT_HTTPS_TOKEN`<br>`MEMINI_GIT_HTTPS_TOKEN_FILE`<br>*secret* | string | unset | restart | A token for https remotes, without whitespace. |
 | `git_https_username`<br>`MEMINI_GIT_HTTPS_USERNAME` | string | `x-access-token` | restart | The user name sent with `git_https_token`: printable ASCII, no spaces. |
 | `git_https_token_hosts`<br>`MEMINI_GIT_HTTPS_TOKEN_HOSTS` | list of strings | empty | restart | Host names, comma-separated, that `git_https_token` is sent to; required when the token is set. |
@@ -192,12 +192,40 @@ Client commands (`memini workspace create`, `source`, `sync`, `runs`, `token`, `
 
 ## Docker compose
 
-`compose.yaml` reads these variables from the environment, or from `.env` next to it (`.env.example` lists them). Change one, then `docker compose up -d`.
+`compose.yaml` (Docker Compose 2.24.0 or later) takes its configuration from three places, none of them required. After a change, `docker compose up -d` recreates the service.
+
+### What compose reads: `.env`
+
+`compose.yaml` reads these variables from the environment, or from `.env` next to it (`.env.example` lists them), and the paths of the secret files below. They configure compose on the host; none of them is a setting of the service.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MEMINI_HTTP_PORT` | `6364` | The port on the host's 127.0.0.1 the service is published on; MCP at `http://127.0.0.1:6364/mcp` by default. Not passed into the container, where the service listens on 6364 (the image sets `MEMINI_HTTP_PORT`). |
+| `MEMINI_HTTP_PORT` | `6364` | The port on the host's 127.0.0.1 the service is published on; MCP at `http://127.0.0.1:6364/mcp` by default. Not the setting `http_port`: in the container compose sets `MEMINI_HTTP_PORT` to 6364, where the service listens. |
 | `MEMINI_DB_PORT` | `55432` | The port on the host's 127.0.0.1 the database is published on. |
 | `MEMINI_DB_PASSWORD` | `memini` | The password of the database role, a development default; letters and digits only, as compose puts it into `MEMINI_DATABASE_URL` as it is. Set it before the first start: the database keeps the password it was created with. |
+| `MEMINI_ENV_FILE` | `.env.memini` | The settings file, which compose passes into the service's container; relative to `compose.yaml`, or absolute. Optional: a file that does not exist is skipped. |
 
-Compose passes these settings from the same environment into the service: `MEMINI_LOG_LEVEL`, `MEMINI_EMBEDDING_PROVIDER`, `MEMINI_EMBEDDING_URL`, `MEMINI_EMBEDDING_MODEL`, `MEMINI_EMBEDDING_DIMENSION`, `MEMINI_EMBEDDING_DIGEST`, `MEMINI_EMBEDDING_QUERY_PREFIX`, `MEMINI_EMBEDDING_DOCUMENT_PREFIX`, `MEMINI_EMBEDDING_BATCH_SIZE`, `MEMINI_EMBEDDING_TIMEOUT`, `MEMINI_HTTP_MAX_BODY_SIZE`, `MEMINI_HTTP_STATEMENT_TIMEOUT`, `MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT`, `MEMINI_HTTP_RATE_LIMIT`, `MEMINI_HTTP_RATE_LIMIT_READS`, `MEMINI_HTTP_RATE_LIMIT_WRITES`, `MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED`. With `MEMINI_EMBEDDING_PROVIDER` set and no URL, it sets `MEMINI_EMBEDDING_URL` to Ollama on the host, `http://host.docker.internal:11434/v1`. It sets `MEMINI_DATABASE_URL` itself, and the image sets `MEMINI_HTTP_HOST` (`0.0.0.0`), `MEMINI_HTTP_PORT` (`6364`), `MEMINI_GIT_MIRROR_DIR` (`/var/lib/memini/mirrors`). Any other setting reaches the service only when it is added to the `environment` of the `memini` service in `compose.yaml`.
+### The settings of the service: `.env.memini`
+
+Compose passes every line of `.env.memini`, or of the file `MEMINI_ENV_FILE` names, into the service's container as it is: one `MEMINI_NAME=value` per line, the variables of the settings above. So any setting can be set there, a new one included, without a change of `compose.yaml`; `.env.memini.example` lists them. Its values show in `docker inspect`: a secret goes into a file (below) instead.
+
+Compose sets these itself, over a line of that file: `MEMINI_DATABASE_URL` (the database of the stack, with `MEMINI_DB_PASSWORD`), `MEMINI_HTTP_HOST` (`0.0.0.0`), `MEMINI_HTTP_PORT` (`6364`), `MEMINI_GIT_MIRROR_DIR` (`/var/lib/memini/mirrors`). Inside the container 127.0.0.1 is the container itself: with `embedding_provider`, set `MEMINI_EMBEDDING_URL=http://host.docker.internal:11434/v1` for Ollama on the host. The image has no in-process model, so `local` is not available there.
+
+### Secrets and other files
+
+Each of these variables, set in `.env`, names a file on the host: relative to `compose.yaml`, or absolute. Compose mounts it read-only into the container as a compose secret and sets the same variable there to the file's path in the container, where the service reads it; the file's content never shows in `docker inspect`. Unset, compose mounts the empty `secrets/unset` instead and leaves the setting unset. The service runs as uid 10001 and must be able to read the file: on Linux it keeps its owner and mode in the container, so give it to that user (`sudo chown 10001 FILE`, mode 400); Docker Desktop and OrbStack let the container's user read it. ssh refuses a private key that others can read: keep the key's mode 600 or 400. Compose does not notice a change of a file's content: `docker compose up -d --force-recreate memini` reads it again.
+
+| Variable | In the container | Setting |
+| --- | --- | --- |
+| `MEMINI_EMBEDDING_API_KEY_FILE` | `/run/secrets/embedding_api_key` | `embedding_api_key` |
+| `MEMINI_GIT_HTTPS_TOKEN_FILE` | `/run/secrets/git_https_token` | `git_https_token` |
+| `MEMINI_GIT_SSH_KEY_PATH` | `/run/secrets/git_ssh_key` | `git_ssh_key_path` |
+| `MEMINI_GIT_SSH_KNOWN_HOSTS_PATH` | `/run/secrets/git_ssh_known_hosts` | `git_ssh_known_hosts_path` |
+| `MEMINI_CREDENTIAL_KEY_FILE` | `/run/secrets/credential_key` | `credential_key` |
+| `MEMINI_CREDENTIAL_OLD_KEYS_FILE` | `/run/secrets/credential_old_keys` | `credential_old_keys` |
+| `MEMINI_LLM_LOCAL_API_KEY_FILE` | `/run/secrets/llm_local_api_key` | `llm_local_api_key` |
+| `MEMINI_LLM_CLOUD_API_KEY_FILE` | `/run/secrets/llm_cloud_api_key` | `llm_cloud_api_key` |
+
+### Local repositories
+
+A local repository is a source only under `git_local_roots`, and the container sees no directory of the host until it is mounted: mount the directory that holds the repositories, read-only, and list its path in the container in `MEMINI_GIT_LOCAL_ROOTS`. `compose.yaml` has an example under `volumes`.

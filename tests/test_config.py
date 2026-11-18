@@ -423,10 +423,11 @@ def test_the_local_provider_gets_no_default_model(tmp_path: Path) -> None:
     )
 
 
-def test_env_example_shows_what_the_provider_alone_implies() -> None:
-    # .env.example lists the defaults of the default model, commented out; they must stay the ones
-    # the provider alone gets. Compose reads `\n` in a double-quoted value as a line break.
-    text = (Path(__file__).parent.parent / ".env.example").read_text(encoding="utf-8")
+def test_env_memini_example_shows_what_the_provider_alone_implies() -> None:
+    # .env.memini.example lists the defaults of the default model, commented out; they must stay
+    # the ones the provider and the URL of the host's Ollama get. Compose reads `\n` in a
+    # double-quoted value as a line break.
+    text = (Path(__file__).parent.parent / ".env.memini.example").read_text(encoding="utf-8")
     listed = {
         key: value[1:-1].replace("\\n", "\n") if value.startswith('"') else value
         for key, value in re.findall(r"(?m)^# (MEMINI_EMBEDDING_[A-Z_]+)=(.*)$", text)
@@ -440,7 +441,8 @@ def test_env_example_shows_what_the_provider_alone_implies() -> None:
         {
             "MEMINI_DATABASE_URL": FAKE_URL,
             "MEMINI_EMBEDDING_PROVIDER": "openai_compatible",
-            # compose's default, not the service's: inside a container 127.0.0.1 is the container
+            # set with the provider, not the service's default: inside a container 127.0.0.1 is
+            # the container
             "MEMINI_EMBEDDING_URL": "http://host.docker.internal:11434/v1",
         }
     )

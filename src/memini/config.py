@@ -62,8 +62,9 @@ The default model is Qwen3-Embedding 0.6B as Ollama serves it (docs/requirements
   measured, and the instruction the model expects before a query.
 
 A value that is set wins over its default. Another model gets no dimension, digest or prefix from
-here: it needs its own ``embedding_dimension``. The compose stack sets ``embedding_url`` to the
-host's Ollama when a provider is set (compose.yaml, .env.example).
+here: it needs its own ``embedding_dimension``. Under compose, ``embedding_url`` is set with the
+provider to the host's Ollama, as inside a container 127.0.0.1 is the container
+(.env.memini.example).
 
 The ``git_*`` settings configure the git connector (:mod:`memini.git`): where the mirrors live, the
 limits, which transports a source may use and the credentials for remotes. A list setting is a

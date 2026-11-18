@@ -1,5 +1,10 @@
 CLAUDE.local.md
 .env
+.env.memini
+# Secret files of the compose stack (.env.example); secrets/unset is the empty file of a secret
+# that is not set.
+/secrets/*
+!/secrets/unset
 .venv/
 __pycache__/
 .DS_Store

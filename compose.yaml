@@ -1,4 +1,4 @@
-# Memini with its database: the supported install.
+# Memini with its database: the supported install. Needs Docker Compose 2.24.0 or later.
 #
 #   docker compose up                 # build the image, start the database and the service
 #   docker compose up -d --wait       # the same in the background; returns once both are healthy
@@ -9,27 +9,24 @@
 # container's own network interface, which the host reaches through the published port. To let
 # other machines reach Memini, change the published address here, and put TLS in front of it.
 #
-# Settings, from the environment or a `.env` file next to this one:
+# Configuration lives in three places, none of them required (docs/configuration.md, "Docker
+# compose"):
 #
-# - MEMINI_HTTP_PORT: host port of the service (default 6364; MCP at http://127.0.0.1:6364/mcp).
-# - MEMINI_DB_PORT: host port of the database (default 55432, to stay clear of a local Postgres on
-#   5432).
-# - MEMINI_DB_PASSWORD: password of the database role (default: memini, a development default).
-#   Use letters and digits: it goes into the service's database URL as is. For more than a local
-#   machine, set a strong one before the first start: the database keeps the password it was
-#   created with.
-# - MEMINI_LOG_LEVEL: CRITICAL, ERROR, WARNING, INFO (default) or DEBUG.
-# - MEMINI_EMBEDDING_*: embeddings, off unless MEMINI_EMBEDDING_PROVIDER is set. With
-#   MEMINI_EMBEDDING_PROVIDER=openai_compatible and nothing else, the service embeds with
-#   Qwen3-Embedding 0.6B (qwen3-embedding:0.6b) from Ollama on the host, at
-#   http://host.docker.internal:11434/v1. Without embeddings the service starts and serves, but it
-#   does not sync git sources, and search answers that no embedding provider is configured. See
-#   .env.example.
-# - MEMINI_HTTP_MAX_BODY_SIZE, MEMINI_HTTP_STATEMENT_TIMEOUT,
-#   MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT, MEMINI_HTTP_RATE_LIMIT, MEMINI_HTTP_RATE_LIMIT_READS,
-#   MEMINI_HTTP_RATE_LIMIT_WRITES and MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED: the request limits of
-#   the service (body size, database time, requests a minute per token and per address); unset,
-#   the service's defaults. See .env.example.
+# - `.env` next to this file (.env.example): what compose itself reads on the host. The ports
+#   published on the host (MEMINI_HTTP_PORT, default 6364, MCP at http://127.0.0.1:6364/mcp;
+#   MEMINI_DB_PORT, default 55432), the database password (MEMINI_DB_PASSWORD, default memini:
+#   letters and digits only, set before the first start, as the database keeps the password it was
+#   created with), where the settings file is (MEMINI_ENV_FILE), and the paths of the files that
+#   hold secrets (MEMINI_CREDENTIAL_KEY_FILE and the others under `secrets` below).
+# - `.env.memini` (.env.memini.example): the settings of the service, one MEMINI_NAME=value per
+#   line, passed into the container as they are. Embeddings, git, search, ingest, retention, LLM
+#   providers, logging: every setting but the few compose sets itself (below). Its values show in
+#   `docker inspect`, so no secret goes there.
+# - Secret files, mounted read-only into the container and read by the service through
+#   MEMINI_*_FILE: their values never show in `docker inspect`.
+#
+# After a change, `docker compose up -d` recreates the service. A secret file whose content
+# changed is not noticed that way: `docker compose up -d --force-recreate memini`.
 #
 # Data lives in named volumes: `memini-db` (the database) and `memini-mirrors` (the bare mirrors
 # of git sources, which can be re-cloned). `docker compose down` keeps them; only
@@ -69,39 +66,45 @@ services:
     pull_policy: build
     # The first start applies the migrations; later starts find none pending.
     command: ["serve", "--migrate"]
+    # The settings of the service (.env.memini.example), from .env.memini next to this file or the
+    # file MEMINI_ENV_FILE names. Optional: without it, the service's defaults apply, and with them
+    # no embeddings. Every line reaches the service as it is, so a new setting needs no change
+    # here. (`required: false` needs Docker Compose 2.24.0.)
+    env_file:
+      - path: ${MEMINI_ENV_FILE:-.env.memini}
+        required: false
     environment:
+      # Set here, over a line of the settings file: the database of this stack, and what the image
+      # sets as well. In .env, MEMINI_HTTP_PORT is the port on the host; inside the container the
+      # service listens on 6364, on every interface of the container, and keeps its mirrors on the
+      # volume below.
       MEMINI_DATABASE_URL: postgresql://memini:${MEMINI_DB_PASSWORD:-memini}@db:5432/memini
-      MEMINI_LOG_LEVEL: ${MEMINI_LOG_LEVEL:-INFO}
-      # Embeddings (.env.example). A variable left empty counts as not set, so the defaults of
-      # the service apply (src/memini/config.py): the model qwen3-embedding:0.6b, its dimension,
-      # digest and query instruction. Only the URL differs from the service's default: inside
-      # the container, 127.0.0.1 is the container itself, so it points at Ollama on the host
-      # when a provider is set, and stays empty (no embedding setting at all) when none is.
-      # The image has no in-process model: openai_compatible is the provider to use here.
-      MEMINI_EMBEDDING_PROVIDER: ${MEMINI_EMBEDDING_PROVIDER:-}
-      MEMINI_EMBEDDING_URL: ${MEMINI_EMBEDDING_URL:-${MEMINI_EMBEDDING_PROVIDER:+http://host.docker.internal:11434/v1}}
-      MEMINI_EMBEDDING_MODEL: ${MEMINI_EMBEDDING_MODEL:-}
-      MEMINI_EMBEDDING_DIMENSION: ${MEMINI_EMBEDDING_DIMENSION:-}
-      MEMINI_EMBEDDING_DIGEST: ${MEMINI_EMBEDDING_DIGEST:-}
-      MEMINI_EMBEDDING_QUERY_PREFIX: ${MEMINI_EMBEDDING_QUERY_PREFIX:-}
-      MEMINI_EMBEDDING_DOCUMENT_PREFIX: ${MEMINI_EMBEDDING_DOCUMENT_PREFIX:-}
-      MEMINI_EMBEDDING_BATCH_SIZE: ${MEMINI_EMBEDDING_BATCH_SIZE:-}
-      MEMINI_EMBEDDING_TIMEOUT: ${MEMINI_EMBEDDING_TIMEOUT:-}
-      # Request limits (.env.example, docs/requirements.md section 7). Empty counts as not set, so
-      # the service's defaults apply: a body of at most 1M, 30 s per database statement, 300 s idle
-      # in a transaction, and a minute's budget of 600 reads and 120 writes per token, 60 requests
-      # per address without a valid token. MEMINI_HTTP_PORT is not among them: here it is the port
-      # on the host, and the image sets the one the service listens on.
-      MEMINI_HTTP_MAX_BODY_SIZE: ${MEMINI_HTTP_MAX_BODY_SIZE:-}
-      MEMINI_HTTP_STATEMENT_TIMEOUT: ${MEMINI_HTTP_STATEMENT_TIMEOUT:-}
-      MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT: ${MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT:-}
-      MEMINI_HTTP_RATE_LIMIT: ${MEMINI_HTTP_RATE_LIMIT:-}
-      MEMINI_HTTP_RATE_LIMIT_READS: ${MEMINI_HTTP_RATE_LIMIT_READS:-}
-      MEMINI_HTTP_RATE_LIMIT_WRITES: ${MEMINI_HTTP_RATE_LIMIT_WRITES:-}
-      MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED: ${MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED:-}
+      MEMINI_HTTP_HOST: 0.0.0.0
+      MEMINI_HTTP_PORT: "6364"
+      MEMINI_GIT_MIRROR_DIR: /var/lib/memini/mirrors
+      # Secrets and other files (`secrets` below): set to the file's path in the container when
+      # its path on the host is set in .env, and empty, which counts as not set, when it is not.
+      MEMINI_CREDENTIAL_KEY_FILE: ${MEMINI_CREDENTIAL_KEY_FILE:+/run/secrets/credential_key}
+      MEMINI_CREDENTIAL_OLD_KEYS_FILE: ${MEMINI_CREDENTIAL_OLD_KEYS_FILE:+/run/secrets/credential_old_keys}
+      MEMINI_GIT_HTTPS_TOKEN_FILE: ${MEMINI_GIT_HTTPS_TOKEN_FILE:+/run/secrets/git_https_token}
+      MEMINI_GIT_SSH_KEY_PATH: ${MEMINI_GIT_SSH_KEY_PATH:+/run/secrets/git_ssh_key}
+      MEMINI_GIT_SSH_KNOWN_HOSTS_PATH: ${MEMINI_GIT_SSH_KNOWN_HOSTS_PATH:+/run/secrets/git_ssh_known_hosts}
+      MEMINI_EMBEDDING_API_KEY_FILE: ${MEMINI_EMBEDDING_API_KEY_FILE:+/run/secrets/embedding_api_key}
+      MEMINI_LLM_LOCAL_API_KEY_FILE: ${MEMINI_LLM_LOCAL_API_KEY_FILE:+/run/secrets/llm_local_api_key}
+      MEMINI_LLM_CLOUD_API_KEY_FILE: ${MEMINI_LLM_CLOUD_API_KEY_FILE:+/run/secrets/llm_cloud_api_key}
+    # Each at /run/secrets/<name>, read-only.
+    secrets:
+      - credential_key
+      - credential_old_keys
+      - git_https_token
+      - git_ssh_key
+      - git_ssh_known_hosts
+      - embedding_api_key
+      - llm_local_api_key
+      - llm_cloud_api_key
     # host.docker.internal is the host: Docker Desktop and OrbStack define it, and on Linux this
     # entry maps it to the host's address on the Docker bridge. Ollama on Linux listens on
-    # 127.0.0.1 only by default; see .env.example for making it reachable from the container.
+    # 127.0.0.1 only by default; see .env.memini.example for making it reachable from the container.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -122,10 +125,14 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      # The bare mirrors of git sources (MEMINI_GIT_MIRROR_DIR in the image), owned by the service
-      # user. A local repository becomes a source only if it is mounted into the container too, and
-      # its directory is listed in MEMINI_GIT_LOCAL_ROOTS.
+      # The bare mirrors of git sources (MEMINI_GIT_MIRROR_DIR), owned by the service user.
       - memini-mirrors:/var/lib/memini/mirrors
+      # Local repositories as sources: mount the directory that holds them, read-only (the service
+      # only clones from them), and list its path in the container in MEMINI_GIT_LOCAL_ROOTS in
+      # .env.memini; a source then names a repository by that path, e.g. /srv/repos/app. On Linux
+      # the files must be readable by the service user, uid 10001. For example, with
+      # MEMINI_GIT_LOCAL_ROOTS=/srv/repos:
+      # - /home/me/src:/srv/repos:ro
     cap_drop:
       - ALL
     security_opt:
@@ -136,6 +143,30 @@ services:
       options:
         max-size: 10m
         max-file: "3"
+
+# The secret files of the service: each one's path on the host comes from .env (.env.example), and
+# relative paths start at this directory; secrets/ is ignored by git for them. The service runs as
+# uid 10001 and reads them: on Linux a file keeps its owner and mode in the container, so make it
+# readable by that user (`sudo chown 10001 FILE`, mode 400); Docker Desktop and OrbStack let the
+# container's user read it. A secret that is not set gets secrets/unset, an empty file the service
+# does not read.
+secrets:
+  credential_key:
+    file: ${MEMINI_CREDENTIAL_KEY_FILE:-./secrets/unset}
+  credential_old_keys:
+    file: ${MEMINI_CREDENTIAL_OLD_KEYS_FILE:-./secrets/unset}
+  git_https_token:
+    file: ${MEMINI_GIT_HTTPS_TOKEN_FILE:-./secrets/unset}
+  git_ssh_key:
+    file: ${MEMINI_GIT_SSH_KEY_PATH:-./secrets/unset}
+  git_ssh_known_hosts:
+    file: ${MEMINI_GIT_SSH_KNOWN_HOSTS_PATH:-./secrets/unset}
+  embedding_api_key:
+    file: ${MEMINI_EMBEDDING_API_KEY_FILE:-./secrets/unset}
+  llm_local_api_key:
+    file: ${MEMINI_LLM_LOCAL_API_KEY_FILE:-./secrets/unset}
+  llm_cloud_api_key:
+    file: ${MEMINI_LLM_CLOUD_API_KEY_FILE:-./secrets/unset}
 
 volumes:
   memini-db:

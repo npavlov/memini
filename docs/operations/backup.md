@@ -26,7 +26,8 @@ one, set `COMPOSE_PROJECT_NAME` (and its ports) as for `docker compose` itself.
 | Credentials of sources | yes, as AES-256-GCM ciphertext | Readable only with the credential key |
 | The credential key (`MEMINI_CREDENTIAL_KEY`) | **no** | Back it up apart (below) |
 | Repository mirrors (volume `memini-mirrors`) | no | Cloned again by the next sync |
-| Settings: `.env`, the environment, a settings file | no | Keep them with the installation |
+| Settings: `.env`, `.env.memini`, the environment, a TOML settings file | no | Keep them with the installation |
+| Other secret files of compose (tokens, API keys, the ssh key) | no | Keep them apart, like the key |
 | The database role and its password | no | Compose creates the role on the first start |
 
 An archive holds private messages, meeting notes and code. `scripts/backup.sh` writes it with mode
@@ -56,7 +57,8 @@ For a nightly backup, run it from cron or a systemd timer, e.g.:
 ### The credential key
 
 The credentials of sources are encrypted under `MEMINI_CREDENTIAL_KEY` (or the file
-`MEMINI_CREDENTIAL_KEY_FILE` names), which never enters the database. Keep a copy of the key
+`MEMINI_CREDENTIAL_KEY_FILE` names; under compose, the file on the host that `.env` names, e.g.
+`secrets/credential_key`), which never enters the database. Keep a copy of the key
 apart from the archives, e.g. in a password manager: whoever has both can read the credentials.
 Without the key a restored database still serves everything else; each credential is then set again
 with `memini credentials set`.
@@ -69,8 +71,10 @@ old key as long as you keep those archives, and restore them with it in
 
 1. Clone this repository at the version that made the archive, or a newer one. An older Memini
    refuses a database migrated by a newer one.
-2. Put back the settings: `.env` (ports, `MEMINI_DB_PASSWORD`, the embedding settings) and the
-   credential key. With another embedding model, search is refused until `memini reindex` rebuilds
+2. Put back the settings: `.env` (ports, `MEMINI_DB_PASSWORD`, the paths of the secret files),
+   `.env.memini` (the embedding settings and the others), and the secret files, the credential key
+   among them, readable by the service ([configuration.md](../configuration.md), "Docker
+   compose"). With another embedding model, search is refused until `memini reindex` rebuilds
    each workspace (principle 9); with the same one, nothing needs rebuilding. Local repositories
    (`MEMINI_GIT_LOCAL_ROOTS`) are mounted at the same paths as before.
 3. Restore:

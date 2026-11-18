@@ -22,9 +22,9 @@ Where each part comes from:
 - :data:`NOTES`: what a setting is for, or a rule across settings, where the description in the
   model gives only the form of the value. A description is also the "expected ..." text of an
   error message, which is why the model does not carry these.
-- The client variables (:mod:`memini.cli.client`), the variables of compose.yaml and the settings
-  the image sets: constants here, which tests check against that module, compose.yaml, the
-  Dockerfile and .env.example.
+- The client variables (:mod:`memini.cli.client`), the variables of compose.yaml, the settings
+  compose and the image set, and the settings compose mounts as files: constants here, which tests
+  check against that module, compose.yaml, the Dockerfile, .env.example and .env.memini.example.
 """
 
 import re
@@ -62,7 +62,12 @@ from memini.config import (
 
 __all__ = [
     "CHANGE_NOTES",
-    "COMPOSE_SERVICE_SETTINGS",
+    "COMPOSE_EMBEDDING_URL",
+    "COMPOSE_ENV_FILE",
+    "COMPOSE_FILE_SETTINGS",
+    "COMPOSE_SECRETS_DIR",
+    "COMPOSE_SET_SETTINGS",
+    "COMPOSE_UNSET_SECRET",
     "COMPOSE_VARIABLES",
     "GROUPS",
     "IMAGE_SETTINGS",
@@ -71,6 +76,8 @@ __all__ = [
     "REINDEX_SETTINGS",
     "TOML_EXAMPLE",
     "Group",
+    "compose_file_variable",
+    "compose_secret",
     "computed_defaults",
     "env_var",
     "is_secret",
@@ -224,7 +231,8 @@ NOTES: Final[Mapping[str, str]] = {
     "embedding_pooling": "How the token vectors of a text become one: their mean, or the vector"
     " of the first token.",
     "embedding_max_tokens": "A longer text is cut to this many tokens.",
-    "git_local_roots": "With compose, a local repository must also be mounted into the container.",
+    "git_local_roots": "With compose, mount the directory into the container as well; compose.yaml"
+    " has an example.",
     "credential_key": "Unset: the service starts, and storing or reading a credential fails with"
     " a message that names this setting.",
     "llm_local_url": "Unset, and `llm_cloud_url` unset too: no LLM is called.",
@@ -252,8 +260,8 @@ COMPOSE_VARIABLES: Final[Mapping[str, tuple[str, str]]] = {
     "MEMINI_HTTP_PORT": (
         "6364",
         "The port on the host's 127.0.0.1 the service is published on; MCP at"
-        " `http://127.0.0.1:6364/mcp` by default. Not passed into the container, where the"
-        " service listens on 6364 (the image sets `MEMINI_HTTP_PORT`).",
+        " `http://127.0.0.1:6364/mcp` by default. Not the setting `http_port`: in the container"
+        " compose sets `MEMINI_HTTP_PORT` to 6364, where the service listens.",
     ),
     "MEMINI_DB_PORT": ("55432", "The port on the host's 127.0.0.1 the database is published on."),
     "MEMINI_DB_PASSWORD": (
@@ -262,35 +270,57 @@ COMPOSE_VARIABLES: Final[Mapping[str, tuple[str, str]]] = {
         " compose puts it into `MEMINI_DATABASE_URL` as it is. Set it before the first start: the"
         " database keeps the password it was created with.",
     ),
+    "MEMINI_ENV_FILE": (
+        ".env.memini",
+        "The settings file, which compose passes into the service's container; relative to"
+        " `compose.yaml`, or absolute. Optional: a file that does not exist is skipped.",
+    ),
 }
-"""The variables compose.yaml reads that are not settings passed to the service: name, default,
-description. A test reads compose.yaml."""
+"""The variables compose.yaml reads on the host, besides the paths of the secret files: name,
+default, description. A test reads compose.yaml."""
 
-COMPOSE_SERVICE_SETTINGS: Final = (
-    "log_level",
-    "embedding_provider",
-    "embedding_url",
-    "embedding_model",
-    "embedding_dimension",
-    "embedding_digest",
-    "embedding_query_prefix",
-    "embedding_document_prefix",
-    "embedding_batch_size",
-    "embedding_timeout",
-    "http_max_body_size",
-    "http_statement_timeout",
-    "http_idle_in_transaction_timeout",
-    "http_rate_limit",
-    "http_rate_limit_reads",
-    "http_rate_limit_writes",
-    "http_rate_limit_unauthenticated",
+COMPOSE_ENV_FILE: Final = ".env.memini"
+"""The settings file compose passes into the service's container unless ``MEMINI_ENV_FILE`` names
+another; ``.env.memini.example`` lists the settings. Optional (``required: false``, which needs
+Docker Compose 2.24.0)."""
+
+COMPOSE_SET_SETTINGS: Final[Mapping[str, str]] = {
+    "database_url": "the database of the stack, with `MEMINI_DB_PASSWORD`",
+    "http_host": IMAGE_SETTINGS["http_host"],
+    "http_port": IMAGE_SETTINGS["http_port"],
+    "git_mirror_dir": IMAGE_SETTINGS["git_mirror_dir"],
+}
+"""The settings compose.yaml sets in the service's container, over a line of the settings file,
+and what to: the database URL, and what the image sets too. ``MEMINI_HTTP_PORT`` is the port on the
+host in ``.env``; a line meant for it in the settings file must not move the port inside. A test
+reads compose.yaml."""
+
+COMPOSE_FILE_SETTINGS: Final = (
+    "embedding_api_key",
+    "git_https_token",
+    "git_ssh_key_path",
+    "git_ssh_known_hosts_path",
+    "credential_key",
+    "credential_old_keys",
+    "llm_local_api_key",
+    "llm_cloud_api_key",
 )
-"""The settings compose.yaml passes from its environment, or ``.env``, into the service's
-container. A test reads compose.yaml."""
+"""The settings whose value compose.yaml mounts as a file, a compose secret: every secret but the
+database URL, which compose sets itself, and the files of ssh. Each file's path on the host comes
+from :func:`compose_file_variable` in ``.env``; the service reads it at
+``COMPOSE_SECRETS_DIR/<compose_secret(name)>``. A test reads compose.yaml, and checks that every
+secret setting is here."""
+
+COMPOSE_SECRETS_DIR: Final = "/run/secrets"
+"""Where compose mounts secrets in a container."""
+
+COMPOSE_UNSET_SECRET: Final = "./secrets/unset"  # noqa: S105 - a path, of an empty file
+"""The empty file compose mounts for a secret whose path is not set; the service does not read it,
+as the variable that would point at it is empty."""
 
 COMPOSE_EMBEDDING_URL: Final = "http://host.docker.internal:11434/v1"
-"""What compose sets ``embedding_url`` to when a provider is set without a URL: Ollama on the
-host."""
+"""The ``embedding_url`` of Ollama on the host, from inside a container: ``.env.memini.example``
+sets it with the provider."""
 
 TOML_EXAMPLE: Final = """\
 log_level = "DEBUG"
@@ -338,6 +368,18 @@ def env_var(name: str) -> str:
 def is_secret(name: str) -> bool:
     """Whether setting ``name`` is a secret: read from the environment only, also as ``_FILE``."""
     return _is_secret(name)
+
+
+def compose_file_variable(name: str) -> str:
+    """The variable that holds the file of setting ``name``, one of :data:`COMPOSE_FILE_SETTINGS`:
+    ``MEMINI_NAME_FILE`` for a secret, the setting's own variable for a path. In ``.env`` it is the
+    path on the host; compose sets it in the container to the path of the mounted file."""
+    return env_var(name) + _FILE_SUFFIX if is_secret(name) else env_var(name)
+
+
+def compose_secret(name: str) -> str:
+    """The name of the compose secret that mounts the file of setting ``name``."""
+    return name.removesuffix("_path")
 
 
 def computed_defaults() -> dict[str, tuple[bool, object]]:
@@ -688,27 +730,72 @@ def _client_section() -> list[str]:
 
 
 def _compose_section() -> list[str]:
-    rows = [
+    variables = [
         [_code(name), _code(default), text] for name, (default, text) in COMPOSE_VARIABLES.items()
     ]
-    passed = ", ".join(_code(env_var(name)) for name in COMPOSE_SERVICE_SETTINGS)
-    image = ", ".join(
-        f"{_code(env_var(name))} ({_code(value)})" for name, value in IMAGE_SETTINGS.items()
+    pinned = ", ".join(
+        f"{_code(env_var(name))} ({value if name == 'database_url' else _code(value)})"
+        for name, value in COMPOSE_SET_SETTINGS.items()
     )
+    files = [
+        [
+            _code(compose_file_variable(name)),
+            _code(f"{COMPOSE_SECRETS_DIR}/{compose_secret(name)}"),
+            _code(name),
+        ]
+        for name in Settings.model_fields
+        if name in COMPOSE_FILE_SETTINGS
+    ]
+    unset = COMPOSE_UNSET_SECRET.removeprefix("./")
     return [
         "## Docker compose",
         "",
+        "`compose.yaml` (Docker Compose 2.24.0 or later) takes its configuration from three"
+        " places, none of them required. After a change, `docker compose up -d` recreates the"
+        " service.",
+        "",
+        "### What compose reads: `.env`",
+        "",
         "`compose.yaml` reads these variables from the environment, or from `.env` next to it"
-        " (`.env.example` lists them). Change one, then `docker compose up -d`.",
+        " (`.env.example` lists them), and the paths of the secret files below. They configure"
+        " compose on the host; none of them is a setting of the service.",
         "",
-        *_table(["Variable", "Default", "Description"], rows),
+        *_table(["Variable", "Default", "Description"], variables),
         "",
-        f"Compose passes these settings from the same environment into the service: {passed}."
-        f" With `{env_var('embedding_provider')}` set and no URL, it sets"
-        f" `{env_var('embedding_url')}` to Ollama on the host, {_code(COMPOSE_EMBEDDING_URL)}."
-        f" It sets `{env_var('database_url')}` itself, and the image sets {image}. Any other"
-        " setting reaches the service only when it is added to the `environment` of the `memini`"
-        " service in `compose.yaml`.",
+        "### The settings of the service: `.env.memini`",
+        "",
+        f"Compose passes every line of `{COMPOSE_ENV_FILE}`, or of the file `MEMINI_ENV_FILE`"
+        " names, into the service's container as it is: one `MEMINI_NAME=value` per line, the"
+        " variables of the settings above. So any setting can be set there, a new one included,"
+        " without a change of `compose.yaml`; `.env.memini.example` lists them. Its values show"
+        " in `docker inspect`: a secret goes into a file (below) instead.",
+        "",
+        f"Compose sets these itself, over a line of that file: {pinned}. Inside the container"
+        " 127.0.0.1 is the container itself: with `embedding_provider`, set"
+        f" `{env_var('embedding_url')}={COMPOSE_EMBEDDING_URL}` for Ollama on the host. The image"
+        " has no in-process model, so `local` is not available there.",
+        "",
+        "### Secrets and other files",
+        "",
+        "Each of these variables, set in `.env`, names a file on the host: relative to"
+        " `compose.yaml`, or absolute. Compose mounts it read-only into the container as a compose"
+        " secret and sets the same variable there to the file's path in the container, where the"
+        " service reads it; the file's content never shows in `docker inspect`. Unset, compose"
+        f" mounts the empty `{unset}` instead and leaves the setting unset. The service runs as"
+        " uid 10001 and must be able to read the file: on Linux it keeps its owner and mode in the"
+        " container, so give it to that user (`sudo chown 10001 FILE`, mode 400); Docker Desktop"
+        " and OrbStack let the container's user read it. ssh refuses a private key that others"
+        " can read: keep the key's mode 600 or 400. Compose does not notice a change of a file's"
+        " content: `docker compose up -d --force-recreate memini` reads it again.",
+        "",
+        *_table(["Variable", "In the container", "Setting"], files),
+        "",
+        "### Local repositories",
+        "",
+        "A local repository is a source only under `git_local_roots`, and the container sees no"
+        " directory of the host until it is mounted: mount the directory that holds the"
+        " repositories, read-only, and list its path in the container in"
+        f" `{env_var('git_local_roots')}`. `compose.yaml` has an example under `volumes`.",
         "",
     ]
 

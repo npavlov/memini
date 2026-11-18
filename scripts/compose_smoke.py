@@ -3,6 +3,7 @@
     MEMINI_SMOKE_TOKEN=... uv run python scripts/compose_smoke.py mcp http://127.0.0.1:6364
     MEMINI_SMOKE_TOKEN=... [MEMINI_SMOKE_ADMIN_TOKEN=...] \
         uv run python scripts/compose_smoke.py logs FILE
+    uv run python scripts/compose_smoke.py key FILE
 
 ``mcp``: liveness and readiness answer 200; the MCP endpoint refuses a request without a token and
 one with an unknown token (401); a real MCP client (the SDK's streamable HTTP client) connects with
@@ -11,12 +12,18 @@ the token and the ``status`` tool answers with the database reachable and fully 
 ``logs``: every line of FILE, the service log, is a JSON object, and none holds the token, nor the
 admin token in ``MEMINI_SMOKE_ADMIN_TOKEN`` if it is set.
 
+``key``: writes a new credential key to FILE, 32 random bytes in base64, and prints its key id (not
+secret) alone. The key is made for the check and protects nothing, so the file is readable by every
+user: the service's user in the container reads it through a bind mount, which keeps the file's
+owner and mode on Linux.
+
 The tokens are read from the environment, never from the command line (which other users can see),
 and are never printed. Prints one line per check; exits 1 at the first that fails.
 """
 
 import argparse
 import asyncio
+import base64
 import json
 import os
 import sys
@@ -27,6 +34,9 @@ from typing import Any, Final, cast
 import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
+
+from memini.config import CREDENTIAL_KEY_BYTES
+from memini.credentials import key_id
 
 TOKEN_VAR: Final = "MEMINI_SMOKE_TOKEN"  # noqa: S105 - the name of a variable, not a token
 ADMIN_TOKEN_VAR: Final = "MEMINI_SMOKE_ADMIN_TOKEN"  # noqa: S105 - the name of a variable
@@ -132,6 +142,14 @@ def check_logs(path: Path, tokens: tuple[str, ...]) -> None:
     ok(f"service log: {len(lines)} lines, each a JSON object, none holds a token")
 
 
+def write_key(path: Path) -> str:
+    """Write a new credential key to ``path``, readable by every user, and return its id."""
+    key = os.urandom(CREDENTIAL_KEY_BYTES)
+    path.write_text(base64.b64encode(key).decode("ascii") + "\n", encoding="ascii")
+    path.chmod(0o444)
+    return key_id(key)
+
+
 def describe(error: BaseException, tokens: tuple[str, ...]) -> str:
     """One line for an unexpected error: the first error inside task groups, tokens masked."""
     while isinstance(error, BaseExceptionGroup):
@@ -151,7 +169,13 @@ def main(argv: list[str] | None = None) -> int:
     mcp.add_argument("base_url", help="e.g. http://127.0.0.1:6364")
     logs = commands.add_parser("logs", help="check a file of service log lines")
     logs.add_argument("file", type=Path)
+    key = commands.add_parser("key", help="write a new credential key to a file, print its id")
+    key.add_argument("file", type=Path)
     args = parser.parse_args(argv)
+
+    if args.command == "key":
+        print(write_key(args.file), flush=True)
+        return 0
 
     tokens: tuple[str, ...] = ()
     try:
