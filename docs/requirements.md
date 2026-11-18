@@ -253,6 +253,19 @@ a trusted extension, so the owner of the database can create it. `vector` is not
 service role is not a superuser, an administrator runs `CREATE EXTENSION vector` once before the first
 migration. The compose database runs as a superuser and needs nothing extra.
 
+**Jobs** (decided 2026-11-18). Work the service starts on its own (syncs, retention, reindex) is a row in
+the `job` table; workers claim rows with `FOR UPDATE SKIP LOCKED`, and there is no broker. A job can be
+enqueued in the same transaction as the rows that call for it. A claim carries a lease that the worker
+renews while the job runs; a lease that runs out means the worker died or hung, and the job goes back to
+the queue with the lost attempt counted. A failed attempt is retried after an exponential backoff; after
+`max_attempts` the job is quarantined until a person looks at it. One job per source runs at a time: the
+worker holds a session advisory lock on the source (the two-key form, apart from the migration lock) on
+the connection that renews the lease, so the lock goes with a dead worker's connection, and a hung worker
+keeps the source until it finds its lease gone and stops. On shutdown a worker claims nothing more, lets
+running jobs finish within a grace period and returns the rest to the queue without counting the attempt.
+The scheduler enqueues a sync of each stream whose `schedule` is due, by the database clock; a dedupe key
+per stream keeps at most one sync of a stream queued or running, also with several service processes.
+
 ## 10. Quality
 
 - **Retrieval eval**: a question set per workspace with expected records; recall@k per kind. Run on every
