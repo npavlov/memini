@@ -11,7 +11,8 @@ byte in its first 8000 bytes, the chunker's rule). Every other file is skipped, 
 The built-in exclusions are generated files that are large, change with every dependency update and
 answer no question about how something is implemented: lock files, minified bundles, source maps,
 installed packages. They are few on purpose; vendored code, generated code and fixtures are left to
-the source's own ``exclude``. They cannot be switched off yet.
+the source's own ``exclude``. A source switches them off with ``"builtin_excludes": false`` in its
+configuration (:class:`memini.sources.GitConfig`); its ``exclude`` still applies.
 
 A Markdown file (:data:`DOCUMENT_SUFFIXES`, by the end of its name, in any case) becomes a
 ``document`` record, chunked by headings; every other file a ``code_file`` record
@@ -71,7 +72,8 @@ BUILTIN_EXCLUDE: Final[tuple[str, ...]] = (
     "**/composer.lock",
     "**/go.sum",
 )
-"""Path globs (:func:`memini.sources.path_matches`) that are never indexed, in any source."""
+"""Path globs (:func:`memini.sources.path_matches`) that are not indexed, in any source that does
+not switch them off (``builtin_excludes``)."""
 
 FILE_MODES: Final = frozenset({"100644", "100755"})
 """Tree entry modes of regular files: a plain and an executable file."""
@@ -116,7 +118,7 @@ class FileRules:
         if mode not in FILE_MODES or size is None:
             return "not_a_file"
         if not self.config.selects(path) or any(
-            path_matches(pattern, path) for pattern in BUILTIN_EXCLUDE
+            path_matches(pattern, path) for pattern in self.builtin_exclude
         ):
             return "excluded"
         if size > self.max_size:
@@ -124,16 +126,26 @@ class FileRules:
         return None
 
     @property
+    def builtin_exclude(self) -> tuple[str, ...]:
+        """The built-in exclusions that apply: :data:`BUILTIN_EXCLUDE`, or none when the source
+        switched them off."""
+        return BUILTIN_EXCLUDE if self.config.builtin_excludes else ()
+
+    @property
     def digest(self) -> str:
         """A digest of everything that decides which files are indexed, and as which kind of
-        record, besides their content."""
+        record, besides their content.
+
+        The built-in exclusions enter as the list that applies, so a source that keeps them has
+        the digest it had before they could be switched off, and switching them off or on changes
+        it: the next sync lists the ref in full once."""
         include, exclude = self.config.include, self.config.exclude
         return hash_fields(
             RULES_DOMAIN,
             str(self.max_size).encode(),
             *_counted(include),
             *_counted(exclude),
-            *_counted(BUILTIN_EXCLUDE),
+            *_counted(self.builtin_exclude),
             *_counted(DOCUMENT_SUFFIXES),
         )
 

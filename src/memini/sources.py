@@ -10,15 +10,20 @@ A **git source** (the only kind added here so far) is:
 
       {"location": "https://git.example.com/team/app.git",
        "include": ["src/**", "docs/**/*.md"],
-       "exclude": ["**/vendor/**"]}
+       "exclude": ["**/vendor/**"],
+       "builtin_excludes": false}
 
   ``location`` is a remote URL or an absolute local path, checked when the source is added with the
   rules the mirror enforces at every fetch (:func:`check_location`), and stored in the form the
   mirror is given: a canonical URL or the resolved path. It never holds a credential: a URL with
   a user name or password is refused, and credentials come from the settings. ``include`` and
   ``exclude`` are path globs, described at :func:`path_matches`; a file is indexed when
-  :meth:`GitConfig.selects` it. The location cannot change: a different repository is a different
-  source, and the mirror, the pinned commits and the index all belong to the old one.
+  :meth:`GitConfig.selects` it. ``builtin_excludes`` (true when left out, and only stored when
+  false) applies the connector's built-in exclusions of generated files
+  (:data:`memini.gitsync.BUILTIN_EXCLUDE`: lock files, minified bundles, source maps,
+  ``node_modules``); false indexes them too, unless ``exclude`` leaves them out. The location
+  cannot change: a different repository is a different source, and the mirror, the pinned commits
+  and the index all belong to the old one.
 - One stream per tracked ref. A ref is given as a branch name (``main``) or a full name under
   ``refs/heads/`` or ``refs/tags/``; the stream's key is the full name (``refs/heads/main``).
   Changing the refs adds and removes streams; removing one deletes its runs and jobs.
@@ -239,25 +244,32 @@ class GitConfig:
     location: str
     include: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
+    builtin_excludes: bool = True
+    """Apply the built-in exclusions of generated files (:mod:`memini.gitsync.rules`)."""
 
     def to_json(self) -> dict[str, Any]:
-        """The JSON object stored in ``source.config``."""
-        return {
+        """The JSON object stored in ``source.config``; ``builtin_excludes`` only when false."""
+        value: dict[str, Any] = {
             "location": self.location,
             "include": list(self.include),
             "exclude": list(self.exclude),
         }
+        if not self.builtin_excludes:
+            value["builtin_excludes"] = False
+        return value
 
     @classmethod
     def from_json(cls, config: Mapping[str, Any]) -> "GitConfig":
         """The configuration as stored. Not checked again: a setting that has changed since the
         source was added (local roots, plain http) is enforced by the mirror at the next fetch, and
-        reading a source must not fail on it."""
+        reading a source must not fail on it. Built-in exclusions apply unless the value is
+        ``false``."""
         location = config.get("location")
         return cls(
             location=location if isinstance(location, str) else "",
             include=_strings(config.get("include")),
             exclude=_strings(config.get("exclude")),
+            builtin_excludes=config.get("builtin_excludes") is not False,
         )
 
     def selects(self, path: str) -> bool:
@@ -384,6 +396,12 @@ def _check_retention(days: int | None) -> int | None:
     return days
 
 
+def _check_flag(setting: str, value: object) -> bool:
+    if not isinstance(value, bool):
+        raise InvalidSourceError(setting, "true or false")
+    return value
+
+
 # --- Values --------------------------------------------------------------------------------------
 
 
@@ -397,6 +415,7 @@ class NewGitSource:
     schedule: timedelta | None = None
     include: Sequence[str] = ()
     exclude: Sequence[str] = ()
+    builtin_excludes: bool = True
     visibility: Visibility = "private"
     retention_days: int | None = None
     llm_policy: LlmPolicy = "local"
@@ -425,6 +444,7 @@ class SourceUpdate:
     schedule: timedelta | Unset | None = UNSET
     include: Sequence[str] | Unset = UNSET
     exclude: Sequence[str] | Unset = UNSET
+    builtin_excludes: bool | Unset = UNSET
     visibility: Visibility | Unset = UNSET
     retention_days: int | Unset | None = UNSET
     llm_policy: LlmPolicy | Unset = UNSET
@@ -739,6 +759,7 @@ async def create_git_source(
         location=check_location(new.location, options),
         include=check_patterns("include", new.include),
         exclude=check_patterns("exclude", new.exclude),
+        builtin_excludes=_check_flag("builtin_excludes", new.builtin_excludes),
     )
     refs = check_refs(new.refs)
     schedule = check_schedule(new.schedule)
@@ -798,6 +819,16 @@ async def update_source(
     exclude = (
         UNSET if isinstance(changes.exclude, Unset) else check_patterns("exclude", changes.exclude)
     )
+    builtin_excludes = (
+        UNSET
+        if isinstance(changes.builtin_excludes, Unset)
+        else _check_flag("builtin_excludes", changes.builtin_excludes)
+    )
+    rules_changed = not (
+        isinstance(include, Unset)
+        and isinstance(exclude, Unset)
+        and isinstance(builtin_excludes, Unset)
+    )
     visibility = (
         UNSET
         if isinstance(changes.visibility, Unset)
@@ -817,14 +848,10 @@ async def update_source(
         async with conn.transaction():
             source = await _writable_source(conn, access, workspace, name)
             git = source.git
-            if git is None and not (
-                isinstance(refs, Unset)
-                and isinstance(include, Unset)
-                and isinstance(exclude, Unset)
-            ):
+            if git is None and (not isinstance(refs, Unset) or rules_changed):
                 raise InvalidSourceError(
                     "refs" if not isinstance(refs, Unset) else "include",
-                    f"refs and path patterns are settings of git sources, not of {source.kind}",
+                    f"refs and path rules are settings of git sources, not of {source.kind}",
                 )
             assignments: list[sql.Composable] = [sql.SQL("updated_at = now()")]
             params: list[Any] = []
@@ -835,11 +862,16 @@ async def update_source(
 
             if not isinstance(new_name, Unset):
                 assign("name", new_name)
-            if git is not None and not (isinstance(include, Unset) and isinstance(exclude, Unset)):
+            if git is not None and rules_changed:
                 config = GitConfig(
                     location=git.location,
                     include=git.include if isinstance(include, Unset) else include,
                     exclude=git.exclude if isinstance(exclude, Unset) else exclude,
+                    builtin_excludes=(
+                        git.builtin_excludes
+                        if isinstance(builtin_excludes, Unset)
+                        else builtin_excludes
+                    ),
                 )
                 assign("config", Jsonb(config.to_json()))
             if not isinstance(visibility, Unset):

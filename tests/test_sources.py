@@ -237,6 +237,21 @@ def test_the_config_round_trips_through_json_and_reads_leniently() -> None:
     )
 
 
+def test_builtin_excludes_are_stored_only_when_switched_off() -> None:
+    off = GitConfig(location="/srv/repos/app", builtin_excludes=False)
+    assert off.to_json() == {
+        "location": "/srv/repos/app",
+        "include": [],
+        "exclude": [],
+        "builtin_excludes": False,
+    }
+    assert GitConfig.from_json(off.to_json()) == off
+    assert GitConfig.from_json({"location": "/a"}).builtin_excludes is True
+    # Read leniently: only false switches them off.
+    assert GitConfig.from_json({"builtin_excludes": "false"}).builtin_excludes is True
+    assert GitConfig.from_json({"builtin_excludes": 0}).builtin_excludes is True
+
+
 # --- Schedule ------------------------------------------------------------------------------------
 
 

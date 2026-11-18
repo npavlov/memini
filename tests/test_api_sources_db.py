@@ -490,6 +490,41 @@ async def test_a_patch_changes_refs_name_and_settings(
     assert await scalar(db, "SELECT name FROM source WHERE id = %s", source_id) == "site2"
 
 
+async def test_the_builtin_excludes_are_switched_off_and_on_per_source(
+    client: httpx2.AsyncClient, db: Conn, admin: dict[str, str]
+) -> None:
+    await new_workspace(client, admin, "alpha")
+    config = "SELECT config FROM source WHERE name = %s"
+    kept = ok(await new_source(client, admin, "alpha", name="kept"), 201)
+    assert kept["builtin_excludes"] is True
+    assert "builtin_excludes" not in await scalar(db, config, "kept")  # the default is not stored
+
+    source = ok(await new_source(client, admin, "alpha", builtin_excludes=False), 201)
+    assert source["builtin_excludes"] is False
+    assert (await scalar(db, config, "site"))["builtin_excludes"] is False
+    path = "/v1/workspaces/alpha/sources/site"
+
+    # Another rule changes; the switch stays as it was.
+    changed = ok(await client.patch(path, json={"include": ["src/**"]}, headers=admin))
+    assert (changed["include"], changed["builtin_excludes"]) == (["src/**"], False)
+    assert (await scalar(db, config, "site"))["builtin_excludes"] is False
+
+    changed = ok(await client.patch(path, json={"builtin_excludes": True}, headers=admin))
+    assert (changed["include"], changed["builtin_excludes"]) == (["src/**"], True)
+    assert await scalar(db, config, "site") == {
+        "location": REMOTE,
+        "include": ["src/**"],
+        "exclude": [],
+    }
+    for body in ({"builtin_excludes": None}, {"builtin_excludes": "no"}, {"builtin_excludes": 0}):
+        refused(await client.patch(path, json=body, headers=admin), 422, "validation_error")
+    refused(
+        await new_source(client, admin, "alpha", name="third", builtin_excludes="false"),
+        422,
+        "validation_error",
+    )
+
+
 async def test_a_push_source_is_not_synced_and_has_no_refs(
     client: httpx2.AsyncClient, db: Conn, owner: uuid.UUID, admin: dict[str, str]
 ) -> None:
@@ -501,8 +536,14 @@ async def test_a_push_source_is_not_synced_and_has_no_refs(
     path = "/v1/workspaces/alpha/sources/inbox"
     shown = ok(await client.get(path, headers=admin))
     assert (shown["kind"], shown["location"], shown["refs"]) == ("push", None, [])
+    assert shown["builtin_excludes"] is None
     refused(await client.post(f"{path}/sync", headers=admin), 409, "not_syncable")
     refused(await client.patch(path, json={"refs": ["main"]}, headers=admin), 422, "invalid_source")
+    refused(
+        await client.patch(path, json={"builtin_excludes": False}, headers=admin),
+        422,
+        "invalid_source",
+    )
     assert (
         ok(await client.patch(path, json={"retention_days": 7}, headers=admin))["retention_days"]
         == 7

@@ -421,9 +421,10 @@ kinds change, the next sync lists the ref, writes each file as a record of its n
 its record of the old kind into a tombstone. A file is indexed when it is a regular file (not a
 symlink or submodule) with a UTF-8 path, the source's globs select it, no built-in exclusion matches
 it (lock files, minified bundles, source maps, `node_modules`; generated, large and of no use to
-search), it is at most `git_max_blob_size` and it is not binary. Every other file, and a deleted
-one, turns a live record into a tombstone whose chunks are deleted in the same transaction; a file
-that comes back revives its record. Files are written in batches, each in one transaction with its
+search; a source can switch them off with `"builtin_excludes": false` in its configuration, and the
+switch is part of the rules digest), it is at most `git_max_blob_size` and it is not binary. Every
+other file, and a deleted one, turns a live record into a tombstone whose chunks are deleted in the
+same transaction; a file that comes back revives its record. Files are written in batches, each in one transaction with its
 records and chunks, the last together with the tombstones and the move of the pin and
 `checked_until` (the database time before the fetch), so a small change is all or nothing (principle
 7). A larger one commits batch by batch and marks the pin partial first: a failure leaves the old

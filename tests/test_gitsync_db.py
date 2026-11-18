@@ -12,7 +12,7 @@ import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import anyio
 import pytest
@@ -55,6 +55,7 @@ from memini.runs import wait_for_run_writes
 from memini.search import SearchFilters, SearchQuery, search
 from memini.sources import (
     GitConfig,
+    InvalidSourceError,
     NewGitSource,
     SourceUpdate,
     create_git_source,
@@ -565,6 +566,52 @@ async def test_globs_select_files_and_a_change_of_them_lists_the_ref_again(env: 
 
     assert set(await live(env, src)) == {f"{MAIN}:scripts/deploy.py"}
     assert file_counts(run)["files_deleted"] == 2
+    await assert_consistent(env, src)
+
+
+async def test_switching_the_builtin_excludes_lists_the_ref_again_once(env: Env) -> None:
+    repo = env.repo
+    repo.commit(
+        {
+            "src/app.js": "export function run(items) {\n  return items.length;\n}\n",
+            "src/app.min.js": "export function run(n){return n.length}\n",
+            "web/yarn.lock": "# synthetic lock file\nleft-pad@1.0.0:\n  version 1.0.0\n",
+        }
+    )
+    src = await add_source(env)
+    run = await sync(env, src)
+    assert set(await live(env, src)) == {f"{MAIN}:src/app.js"}
+    assert file_counts(run)["files_skipped_excluded"] == 2
+    digest = (await stream_row(env, src))[0]["rules"]
+
+    with pytest.raises(InvalidSourceError, match="builtin_excludes"):
+        await update_source(
+            env.db, env.access, "acme", src.name, SourceUpdate(builtin_excludes=cast(Any, "no"))
+        )
+    await update_source(env.db, env.access, "acme", src.name, SourceUpdate(builtin_excludes=False))
+    run = await sync(env, src)
+
+    assert steps(run) == [("fetch", "succeeded"), ("list", "succeeded"), ("index", "succeeded")]
+    assert set(await live(env, src)) == {
+        f"{MAIN}:src/app.js",
+        f"{MAIN}:src/app.min.js",
+        f"{MAIN}:web/yarn.lock",
+    }
+    assert file_counts(run)["files_added"] == 2
+    off = (await stream_row(env, src))[0]["rules"]
+    assert off != digest
+
+    run = await sync(env, src)  # the rules are pinned: a diff, not another listing
+
+    assert steps(run) == [("fetch", "succeeded"), ("diff", "succeeded"), ("index", "succeeded")]
+
+    await update_source(env.db, env.access, "acme", src.name, SourceUpdate(builtin_excludes=True))
+    run = await sync(env, src)
+
+    assert steps(run) == [("fetch", "succeeded"), ("list", "succeeded"), ("index", "succeeded")]
+    assert set(await live(env, src)) == {f"{MAIN}:src/app.js"}
+    assert file_counts(run)["files_deleted"] == 2
+    assert (await stream_row(env, src))[0]["rules"] == digest
     await assert_consistent(env, src)
 
 

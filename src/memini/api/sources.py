@@ -81,6 +81,11 @@ _PATTERNS = (
     " indexed when it matches an include pattern (any file, when there is none) and no exclude"
     " pattern."
 )
+_BUILTIN_EXCLUDES = (
+    "Leave out generated files that no exclude pattern names: lock files, minified bundles"
+    " (*.min.js, *.min.css), source maps and node_modules. false indexes them too. A change lists"
+    " every tracked ref in full at its next sync."
+)
 _VISIBILITY = "private: only the owner may read the source; workspace: everyone in the workspace."
 _RETENTION = "Delete records older than this many days on every run; null: keep them."
 _LLM_POLICY = "Which LLM may read the source's content: none, the local one, or a cloud one too."
@@ -108,6 +113,7 @@ class NewSource(BaseModel):
     )
     include: _Patterns = Field(default_factory=list[str], description=_PATTERNS)
     exclude: _Patterns = Field(default_factory=list[str], description=_PATTERNS)
+    builtin_excludes: bool = Field(default=True, strict=True, description=_BUILTIN_EXCLUDES)
     visibility: Visibility = Field(default="private", description=_VISIBILITY)
     retention_days: int | None = Field(
         default=None, ge=1, le=MAX_RETENTION_DAYS, description=_RETENTION
@@ -122,6 +128,7 @@ class NewSource(BaseModel):
             schedule=_seconds(self.schedule_seconds),
             include=self.include,
             exclude=self.exclude,
+            builtin_excludes=self.builtin_excludes,
             visibility=self.visibility,
             retention_days=self.retention_days,
             llm_policy=self.llm_policy,
@@ -150,13 +157,16 @@ class SourceChanges(BaseModel):
     )
     include: _Patterns | None = Field(default=None, description=_PATTERNS)
     exclude: _Patterns | None = Field(default=None, description=_PATTERNS)
+    builtin_excludes: bool | None = Field(default=None, strict=True, description=_BUILTIN_EXCLUDES)
     visibility: Visibility | None = Field(default=None, description=_VISIBILITY)
     retention_days: int | None = Field(
         default=None, ge=1, le=MAX_RETENTION_DAYS, description=_RETENTION
     )
     llm_policy: LlmPolicy | None = Field(default=None, description=_LLM_POLICY)
 
-    @field_validator("name", "refs", "include", "exclude", "visibility", "llm_policy")
+    @field_validator(
+        "name", "refs", "include", "exclude", "builtin_excludes", "visibility", "llm_policy"
+    )
     @classmethod
     def _not_null(cls, value: object) -> object:
         # Runs only for a value that was sent: null here is a client error, not "unchanged".
@@ -173,6 +183,11 @@ class SourceChanges(BaseModel):
             schedule=_seconds(self.schedule_seconds) if "schedule_seconds" in given else unset,
             include=self.include if "include" in given and self.include is not None else unset,
             exclude=self.exclude if "exclude" in given and self.exclude is not None else unset,
+            builtin_excludes=(
+                self.builtin_excludes
+                if "builtin_excludes" in given and self.builtin_excludes is not None
+                else unset
+            ),
             visibility=(
                 self.visibility if "visibility" in given and self.visibility is not None else unset
             ),
@@ -204,6 +219,9 @@ class SourceInfo(BaseModel):
     )
     include: list[str] = Field(description=_PATTERNS)
     exclude: list[str]
+    builtin_excludes: bool | None = Field(
+        description=_BUILTIN_EXCLUDES + " null for other kinds than git."
+    )
     visibility: Visibility
     retention_days: int | None
     llm_policy: LlmPolicy
@@ -223,6 +241,7 @@ class SourceInfo(BaseModel):
             schedule_seconds=None if source.schedule is None else source.schedule.total_seconds(),
             include=[] if git is None else list(git.include),
             exclude=[] if git is None else list(git.exclude),
+            builtin_excludes=None if git is None else git.builtin_excludes,
             visibility=source.visibility,
             retention_days=source.retention_days,
             llm_policy=source.llm_policy,

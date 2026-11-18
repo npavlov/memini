@@ -31,7 +31,7 @@ from memini.gitsync import (
     split_code_external_id,
 )
 from memini.gitsync import rules as file_rules
-from memini.ids import record_id
+from memini.ids import hash_fields, record_id
 from memini.sources import GitConfig
 
 LIMIT = 1000
@@ -77,6 +77,38 @@ def test_the_source_globs_select_files() -> None:
     assert selected.skip_reason("src/test_app.py", "100644", 1) == "excluded"
     assert selected.skip_reason("scripts/run.py", "100644", 1) == "excluded"
     assert selected.skip_reason("docs/guide.md", "100644", 1) == "excluded"
+
+
+def test_builtin_excludes_can_be_switched_off_per_source() -> None:
+    off = FileRules(GitConfig(location="", builtin_excludes=False), LIMIT)
+    own = FileRules(
+        GitConfig(location="", exclude=("**/yarn.lock",), builtin_excludes=False), LIMIT
+    )
+
+    assert off.skip_reason("package-lock.json", "100644", 10) is None
+    assert off.skip_reason("web/node_modules/left/index.js", "100644", 10) is None
+    assert off.skip_reason("static/app.min.js", "100644", 10) is None
+    assert own.skip_reason("web/yarn.lock", "100644", 10) == "excluded"  # the source's own
+    assert own.skip_reason("go.sum", "100644", 10) is None
+    assert off.digest != rules().digest
+    assert off.digest == FileRules(GitConfig(location="/b", builtin_excludes=False), LIMIT).digest
+
+
+def test_a_source_that_keeps_the_builtin_excludes_keeps_its_rules_digest() -> None:
+    # The digest as it was before the switch existed: no full listing after an upgrade.
+    def counted(values: tuple[str, ...]) -> list[bytes]:
+        return [str(len(values)).encode(), *(value.encode() for value in values)]
+
+    before = hash_fields(
+        file_rules.RULES_DOMAIN,
+        str(LIMIT).encode(),
+        *counted(()),
+        *counted(()),
+        *counted(BUILTIN_EXCLUDE),
+        *counted(DOCUMENT_SUFFIXES),
+    )
+
+    assert rules().digest == before
 
 
 def test_the_rules_digest_changes_with_every_rule() -> None:
