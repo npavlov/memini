@@ -110,6 +110,10 @@ Optional reranking: Qwen3-Reranker 0.6B in the process, off by default. Install
 `memini[local-embeddings]` and set `MEMINI_SEARCH_RERANKER=local`; on the code suite it lifts hybrid
 R@1 from 0.61 to 0.78 for about 0.5 s per search. `memini eval --reranker local` measures it.
 
+Agent executor: bring an MCP source that Memini cannot reach on its own into Memini from a Claude Code
+session, with the `memini-intake` skill and capture hook in `integrations/claude-code`
+([docs/recipes.md](docs/recipes.md), Agent executor).
+
 ### Tools
 
 Over MCP, and over HTTP with the same arguments as query parameters. All need a token with the

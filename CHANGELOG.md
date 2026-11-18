@@ -123,6 +123,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Optional reranking with Qwen3-Reranker 0.6B in the process (`MEMINI_SEARCH_RERANKER=local`, needs the
   `local-embeddings` extra): on the code suite hybrid R@1 rises from 0.61 to 0.78 for about 0.5 s per
   search; off by default.
+- Agent executor for MCP sources reachable only inside an agent session: a run API
+  (`…/agent-runs`: start, next, responses, finish) and a Claude Code plugin with the `memini-intake`
+  skill and a capture hook (`integrations/claude-code`); the agent sees a receipt, not the payload.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
