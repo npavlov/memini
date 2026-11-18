@@ -290,7 +290,9 @@ async def test_a_growing_directory_is_stopped_at_the_size_limit(
         )
 
     assert caught.value.limit == 10_000
-    assert caught.value.size >= 100_000
+    # The watchdog may sample while `head` is still writing: it reports the size it saw, which is
+    # over the limit but not necessarily the whole file.
+    assert caught.value.size > caught.value.limit
     assert time.monotonic() - started < 10
 
 
