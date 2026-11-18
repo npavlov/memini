@@ -11,14 +11,22 @@
 2. **Rate limits**, for ``/v1`` and the MCP endpoint; the public routes (``/healthz``, ``/readyz``,
    ``/version``, ``/openapi.json``) are not counted. Counted in this process, in memory: one service
    process (principle 12), so the budgets start full again after a restart. A token has two
-   budgets, keyed by the token's id: reads (``GET``, ``HEAD``, ``OPTIONS``, and every MCP request:
-   the MCP tools read) and writes (every other method). A request whose token is not known to be
-   valid yet (no token, a malformed one, or one not seen to authenticate) is counted against its
-   client address instead (``http_rate_limit_unauthenticated``), before the token is looked up, so
+   budgets, keyed by the token's id: reads (``GET``, ``HEAD``, ``OPTIONS``, and every MCP request
+   but a call of a write tool) and writes (every other method, and an MCP call of a tool that is
+   not read-only, such as ``record_decision``). A request whose token is not known to be valid yet
+   (no token, a malformed one, or one not seen to authenticate) is counted against its client
+   address instead (``http_rate_limit_unauthenticated``), before the token is looked up, so
    guessing tokens is slow and costs no database work once the budget is spent. A token becomes
    known when a request with it authenticates, and is forgotten when one answers 401 or after
    :data:`KNOWN_TOKEN_TTL` idle. Over budget: 429 ``rate_limited`` with ``Retry-After`` in whole
    seconds, before anything else is done. ``http_rate_limit = false`` turns rate limits off.
+
+   Which tool an MCP request calls is in its body, which is not read here. So an MCP request is
+   counted as a read first, as every request is counted before its body arrives; the MCP endpoint
+   reads the body once the token has authenticated and, for a call of a write tool, counts the
+   request as a write instead (:func:`count_as_write`): the read is given back and a write taken,
+   or the request is refused with the 429 of the write budget. A token whose reads are spent is
+   refused before that, whatever its request calls.
 3. **Body size**: at most ``http_max_body_size``, refused by its ``Content-Length`` before it is
    read, or as soon as more of it arrives: 413 ``content_too_large``. The ingest route has its own
    limit (``ingest_max_body_size``) and is left to it.
@@ -38,7 +46,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 from uuid import UUID
 
 from starlette.datastructures import Headers
@@ -53,10 +61,12 @@ from memini.mcp import MCP_PATH
 __all__ = [
     "KNOWN_TOKEN_TTL",
     "MAX_KEYS",
+    "Admission",
     "RateLimiter",
     "Refusal",
     "RequestKind",
     "RequestLimitsMiddleware",
+    "count_as_write",
 ]
 
 MAX_KEYS: Final = 10_000
@@ -74,6 +84,9 @@ _V1_PREFIX: Final = "/v1"  # memini.api.app.V1_PREFIX, which imports this module
 _READ_METHODS: Final = frozenset({"GET", "HEAD", "OPTIONS"})
 _OWN_BODY_LIMIT: Final = re.compile(r"/v1/workspaces/[^/]+/sources/[^/]+/records")
 """The ingest route (``POST``), which reads its body up to ``ingest_max_body_size`` itself."""
+_COUNTED: Final = "rate_limit"
+"""The key of ``scope["state"]`` (``request.state``) where the middleware keeps how a request was
+counted, for :func:`count_as_write`."""
 
 _log = logging.getLogger(__name__)
 
@@ -121,6 +134,14 @@ class _Budget:
             wait = (1 - bucket.tokens) / self.rate
         self._evict(now)
         return wait, first
+
+    def give_back(self, key: Hashable, now: float) -> None:
+        """Give back one request :meth:`take` took for ``key``: it is counted elsewhere instead.
+        A bucket that is gone was full again."""
+        bucket = self._buckets.get(key)
+        if bucket is not None:
+            bucket.tokens = min(self.capacity, self._level(bucket, now) + 1)
+            bucket.updated = now
 
     def _level(self, bucket: _Bucket, now: float) -> float:
         return min(self.capacity, bucket.tokens + (now - bucket.updated) * self.rate)
@@ -181,6 +202,14 @@ class Refusal:
     """Whose budget, for the log: ``token <id>`` or ``address <host>``."""
 
 
+@dataclass(frozen=True, slots=True)
+class Admission:
+    """A request a budget admitted: which budget, and whose (a token id or a client address)."""
+
+    budget: Budget
+    key: Hashable
+
+
 class RateLimiter:
     """Per-token budgets of reads and writes, and per-address budgets for requests whose token is
     not known to be valid. In memory, for one process; see the module."""
@@ -234,17 +263,37 @@ class RateLimiter:
         ``token_digest`` is :func:`~memini.auth.hash_token` of the request's bearer token, ``None``
         without a well-formed one; ``client`` is the client address.
         """
+        counted = self.count(kind, token_digest, client)
+        return counted if isinstance(counted, Refusal) else None
+
+    def count(
+        self, kind: RequestKind, token_digest: bytes | None, client: str
+    ) -> Admission | Refusal:
+        """:meth:`admit`, with the budget that admitted the request, for :meth:`recount`."""
         now = self._clock()
         token_id = None if token_digest is None else self._known.get(token_digest, now)
-        budget: Budget
-        key: Hashable
         if token_id is None:
-            budget, key, subject = "unauthenticated", client, f"address {client}"
-        else:
-            budget, key, subject = kind, token_id, f"token {token_id}"
+            return self._take("unauthenticated", client, f"address {client}", now)
+        return self._take(kind, token_id, f"token {token_id}", now)
+
+    def recount(self, admission: Admission, kind: RequestKind) -> Admission | Refusal:
+        """Count a request ``admission`` admitted against the ``kind`` budget of its token
+        instead: what it took is given back, and that budget takes one. A request counted against
+        its client address, whose token was not known to be valid, stays there.
+
+        Refused, the request is counted against nothing, as a refused request takes nothing: it
+        is not served.
+        """
+        if admission.budget in ("unauthenticated", kind):
+            return admission
+        now = self._clock()
+        self._budgets[admission.budget].give_back(admission.key, now)
+        return self._take(kind, admission.key, f"token {admission.key}", now)
+
+    def _take(self, budget: Budget, key: Hashable, subject: str, now: float) -> Admission | Refusal:
         wait, first = self._budgets[budget].take(key, now)
         if wait <= 0:
-            return None
+            return Admission(budget, key)
         return Refusal(budget, max(1, math.ceil(wait)), first, subject)
 
     def authenticated(self, token_digest: bytes, token_id: UUID) -> None:
@@ -287,6 +336,35 @@ async def _answer(error: ApiError, scope: Scope, receive: Receive, send: Send) -
 
 def _log_refusal(refusal: Refusal) -> None:
     _log.info("requests refused: the %s budget of %s is spent", refusal.budget, refusal.subject)
+
+
+@dataclass(slots=True)
+class _Counted:
+    """How the middleware counted a request; kept in its scope for :func:`count_as_write`."""
+
+    limiter: RateLimiter
+    admission: Admission
+
+
+def count_as_write(scope: Scope) -> ApiError | None:
+    """Count the request of ``scope`` as a write from now on, for a layer that learns what a
+    request does only from its body: the MCP endpoint, for a call of a write tool.
+
+    Returns the 429 to answer when the token's write budget is spent; ``None`` when it has room,
+    when the request is counted against its client address (its token was not known to be valid
+    yet), and when rate limits are off or do not count the request.
+    """
+    state: object = scope.get("state")
+    counted = cast(dict[str, object], state).get(_COUNTED) if isinstance(state, dict) else None
+    if not isinstance(counted, _Counted):
+        return None
+    recounted = counted.limiter.recount(counted.admission, "write")
+    if isinstance(recounted, Refusal):
+        if recounted.first:
+            _log_refusal(recounted)
+        return _too_many_requests(recounted)
+    counted.admission = recounted
+    return None
 
 
 def _is_counted(path: str) -> bool:
@@ -351,16 +429,20 @@ class RequestLimitsMiddleware:
         method: str = scope["method"]
         headers = Headers(scope=scope)
 
+        # The authentication layers keep the principal here (request.state.principal), and this
+        # middleware how the request was counted.
+        state: dict[str, Any] = scope.setdefault("state", {})
         digest: bytes | None = None
         limiter = self.limiter if _is_counted(path) else None
         if limiter is not None:
             digest = _token_digest(headers)
-            refusal = limiter.admit(_kind(method, path), digest, _client(scope))
-            if refusal is not None:
-                if refusal.first:  # once per spent budget, not once per request
-                    _log_refusal(refusal)
-                await _answer(_too_many_requests(refusal), scope, receive, send)
+            counted = limiter.count(_kind(method, path), digest, _client(scope))
+            if isinstance(counted, Refusal):
+                if counted.first:  # once per spent budget, not once per request
+                    _log_refusal(counted)
+                await _answer(_too_many_requests(counted), scope, receive, send)
                 return
+            state[_COUNTED] = _Counted(limiter, counted)
 
         limit = None if method == "POST" and _OWN_BODY_LIMIT.fullmatch(path) else self.max_body_size
         if limit is not None:
@@ -369,8 +451,6 @@ class RequestLimitsMiddleware:
                 await _answer(_content_too_large(limit), scope, receive, send)
                 return
 
-        # The authentication layers keep the principal here (request.state.principal).
-        state: dict[str, Any] = scope.setdefault("state", {})
         received = 0
         too_large = False
         started = False

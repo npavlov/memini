@@ -71,6 +71,8 @@ class Tool[ArgumentsT: BaseModel, ResultT: BaseModel]:
     scope: Scope = "read"
     """The scope a token needs to see and call the tool."""
     read_only: bool = True
+    """False for a tool that changes data: ``tools/list`` says so, and a call is counted against
+    the write budget of the token (:mod:`memini.api.mcp`, :mod:`memini.api.limits`)."""
 
     def definition(self) -> ToolDefinition:
         """The tool as ``tools/list`` describes it."""

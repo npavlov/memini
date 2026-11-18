@@ -11,14 +11,27 @@ it. The check is the one the ``/v1`` routes make, with the same code and the sam
 The authenticated principal is attached to the request (``request.state.principal``); the MCP server
 reads it from there for each message. Tools then check their own scope and read through
 ``authorize_read``.
+
+Then :class:`CountWriteCalls` reads the body, which the request limits keep to
+``http_max_body_size``, and hands it on unchanged. A ``tools/call`` of a tool that is not
+read-only (:data:`WRITE_TOOLS`), alone or in a batch, is counted against the write budget of the
+token instead of the read budget every MCP request is counted against first
+(:func:`memini.api.limits.count_as_write`); over that budget it answers 429 ``rate_limited`` and the
+server never sees it. Which tool a request calls is known only from its body, so this is the first
+place it can be told. A body that is not JSON-RPC calls no tool here, and the server answers it.
 """
+
+import json
+from collections.abc import Collection
+from typing import Final, cast
 
 from starlette.datastructures import Headers
 from starlette.routing import Route
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from memini.api.auth import insufficient_scope_error, unauthorized_error
 from memini.api.errors import ApiError, error_response
+from memini.api.limits import count_as_write
 from memini.auth import (
     AuthenticationError,
     Authenticator,
@@ -27,9 +40,12 @@ from memini.auth import (
     bearer_token,
     ensure_scope,
 )
-from memini.mcp import MCP_PATH, McpEndpoint, bind_principal
+from memini.mcp import MCP_PATH, TOOLS, McpEndpoint, bind_principal
 
-__all__ = ["RequireReadToken", "mcp_route"]
+__all__ = ["WRITE_TOOLS", "CountWriteCalls", "RequireReadToken", "calls_a_tool", "mcp_route"]
+
+WRITE_TOOLS: Final = frozenset(tool.name for tool in TOOLS if not tool.read_only)
+"""The tools a call of which is counted as a write: those that are not read-only."""
 
 
 class RequireReadToken:
@@ -70,15 +86,84 @@ class RequireReadToken:
         return principal
 
 
-def mcp_route(endpoint: McpEndpoint, authenticator: Authenticator | None) -> Route:
-    """The route that serves ``endpoint`` at :data:`~memini.mcp.MCP_PATH`, behind the token check.
+class CountWriteCalls:
+    """ASGI wrapper: count a request that calls a write tool as a write; see the module."""
+
+    def __init__(self, app: ASGIApp, write_tools: Collection[str] = WRITE_TOOLS) -> None:
+        self.app = app
+        self.write_tools = frozenset(write_tools)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        messages = await _read_body(receive)
+        body = b"".join(m.get("body", b"") for m in messages if m["type"] == "http.request")
+        if calls_a_tool(body, self.write_tools):
+            refusal = count_as_write(scope)
+            if refusal is not None:
+                response = error_response(
+                    refusal.status_code, refusal.code, refusal.detail, headers=refusal.headers
+                )
+                await response(scope, _replay(messages, receive), send)
+                return
+        await self.app(scope, _replay(messages, receive), send)
+
+
+async def _read_body(receive: Receive) -> list[Message]:
+    """The messages of the request up to the end of its body, or up to a disconnect."""
+    messages: list[Message] = []
+    while True:
+        message = await receive()
+        messages.append(message)
+        if message["type"] != "http.request" or not message.get("more_body", False):
+            return messages
+
+
+def _replay(messages: list[Message], receive: Receive) -> Receive:
+    """``receive`` with ``messages`` first, as if they had not been read yet."""
+    pending = list(messages)
+
+    async def replayed() -> Message:
+        return pending.pop(0) if pending else await receive()
+
+    return replayed
+
+
+def calls_a_tool(body: bytes, names: Collection[str]) -> bool:
+    """Whether the JSON-RPC request in ``body``, or one in a batch, is a ``tools/call`` of a tool
+    named in ``names``. A body that is not JSON calls none."""
+    try:
+        parsed: object = json.loads(body)
+    except (ValueError, RecursionError):  # JSONDecodeError and UnicodeDecodeError are ValueErrors
+        return False
+    messages = cast(list[object], parsed) if isinstance(parsed, list) else [parsed]
+    return any(_tool_called(message) in names for message in messages)
+
+
+def _tool_called(message: object) -> str | None:
+    if not isinstance(message, dict):
+        return None
+    request = cast(dict[str, object], message)
+    params = request.get("params")
+    if request.get("method") != "tools/call" or not isinstance(params, dict):
+        return None
+    name = cast(dict[str, object], params).get("name")
+    return name if isinstance(name, str) else None
+
+
+def mcp_route(
+    endpoint: McpEndpoint,
+    authenticator: Authenticator | None,
+    *,
+    write_tools: Collection[str] = WRITE_TOOLS,
+) -> Route:
+    """The route that serves ``endpoint`` at :data:`~memini.mcp.MCP_PATH`, behind the token check;
+    a call of one of ``write_tools`` is counted as a write.
 
     A route, not a mount: a mount matches only below its path, so ``/mcp`` itself would be
     redirected to ``/mcp/``.
     """
     return Route(
         MCP_PATH,
-        RequireReadToken(endpoint, authenticator),
+        RequireReadToken(CountWriteCalls(endpoint, write_tools), authenticator),
         name="mcp",
         include_in_schema=False,
     )

@@ -534,14 +534,18 @@ endpoint included; every limit is a setting, and each error is in the API's erro
 
 - Rate limits, counted in the service process (principle 12: no shared store; the budgets start full
   again after a restart). A token has a budget of reads (`http_rate_limit_reads`, 600 a minute: `GET`
-  and every MCP request) and one of writes (`http_rate_limit_writes`, 120 a minute: every other
-  method), keyed by the token's id, over `/v1` and MCP alike. A request whose token is not known to be
-  valid yet (none, malformed, or not yet seen to authenticate) is counted against its client address
-  (`http_rate_limit_unauthenticated`, 60 a minute) before the token is looked up, so guessing tokens
-  is slow and costs no database work once that budget is spent. Each budget is a token bucket that
-  holds a minute's worth and refills steadily. Over budget: 429 `rate_limited` with `Retry-After` in
-  seconds. The public routes are not counted. Buckets that have refilled are forgotten and at most
-  10,000 are kept per budget, so memory stays bounded. `http_rate_limit = false` turns them off.
+  and every MCP request but a call of a write tool) and one of writes (`http_rate_limit_writes`, 120 a
+  minute: every other method, and a `tools/call` of an MCP tool that is not read-only, such as
+  `record_decision`), keyed by the token's id, over `/v1` and MCP alike. The tool is named in the
+  body, so an MCP request is counted as a read when it arrives and, once its token has authenticated
+  and its body names a write tool, as a write instead: the read is given back. A request whose token
+  is not known to be valid yet (none, malformed, or not yet seen to authenticate) is counted against
+  its client address (`http_rate_limit_unauthenticated`, 60 a minute) before the token is looked up,
+  so guessing tokens is slow and costs no database work once that budget is spent. Each budget is a
+  token bucket that holds a minute's worth and refills steadily. Over budget: 429 `rate_limited` with
+  `Retry-After` in seconds. The public routes are not counted. Buckets that have refilled are
+  forgotten and at most 10,000 are kept per budget, so memory stays bounded. `http_rate_limit = false`
+  turns them off. Compose passes every `MEMINI_HTTP_*` limit through to the service.
 - Body size: at most `http_max_body_size` (1 MiB) on every route but the batch route, which keeps
   `ingest_max_body_size` (16 MiB). A body over it is refused by its `Content-Length` before it is
   read, or as soon as more of it arrives: 413 `content_too_large`.

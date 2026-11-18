@@ -4,8 +4,11 @@ Tokens are generated here and resolved by a dictionary; every value is synthetic
 (statement and idle-transaction timeouts on pooled connections) is in tests/test_api_limits_db.py.
 """
 
+import json
+import re
 import uuid
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -17,11 +20,13 @@ from psycopg import errors
 from pydantic import SecretStr
 
 from memini.api import create_app
-from memini.api.limits import KNOWN_TOKEN_TTL, RateLimiter
+from memini.api.limits import KNOWN_TOKEN_TTL, Admission, RateLimiter, Refusal
+from memini.api.mcp import WRITE_TOOLS, calls_a_tool
 from memini.auth import AuthenticationError, Principal, Scope, generate_token, hash_token
-from memini.config import Settings
+from memini.config import Settings, load_settings
 from memini.db import SessionLimits, current_session_limits
 from memini.mcp import MCP_PATH
+from memini.mcp.decisions import DECISION_WRITE_TOOLS
 from memini.mcp.tools import NoArguments, Tool, ToolCall
 
 OWNER = uuid.UUID("00000000-0000-7000-8000-0000000000f0")
@@ -29,6 +34,14 @@ ADDRESS = "192.0.2.10"  # TEST-NET-1
 OTHER_ADDRESS = "192.0.2.20"
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 TOOLS_LIST = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+FAKE_URL = "postgresql://fake:fake@db.invalid:5432/memini"
+ROOT = Path(__file__).parent.parent
+
+
+def tools_call(name: str) -> dict[str, Any]:
+    """A call of the tool ``name`` with no arguments: refused by the tool, after it is counted."""
+    params: dict[str, Any] = {"name": name, "arguments": {}}
+    return {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": params}
 
 
 class FakeClock:
@@ -67,9 +80,7 @@ def authenticator() -> FakeAuthenticator:
 
 
 def limited(**values: Any) -> Settings:
-    return Settings(
-        database_url=SecretStr("postgresql://fake:fake@db.invalid:5432/memini"), **values
-    )
+    return Settings(database_url=SecretStr(FAKE_URL), **values)
 
 
 type MakeClient = Callable[..., TestClient]
@@ -228,6 +239,37 @@ def test_settings_build_the_limiter_or_turn_it_off() -> None:
         RateLimiter(reads=0, writes=1, unauthenticated=1)
 
 
+def test_a_request_counted_as_a_write_instead_gives_its_read_back() -> None:
+    clock = FakeClock()
+    limiter, digest, token_id = known_limiter(clock, reads=1, writes=1)
+    read = limiter.count("read", digest, ADDRESS)
+    assert isinstance(read, Admission)
+    assert read == Admission("read", token_id)
+    write = limiter.recount(read, "write")
+    assert isinstance(write, Admission)
+    assert write == Admission("write", token_id)
+    assert limiter.recount(write, "write") == write  # counted once
+    again = limiter.count("read", digest, ADDRESS)  # the read is back
+    assert isinstance(again, Admission)
+    refusal = limiter.recount(again, "write")
+    assert isinstance(refusal, Refusal)
+    assert (refusal.budget, refusal.retry_after, refusal.first) == ("write", 60, True)
+    assert refusal.subject == f"token {token_id}"
+    # Refused, the request took nothing: the read is back again.
+    assert limiter.admit("read", digest, ADDRESS) is None
+    assert limiter.admit("read", digest, ADDRESS) is not None
+
+
+def test_a_request_counted_against_its_address_stays_there() -> None:
+    clock = FakeClock()
+    limiter, _, _ = known_limiter(clock, writes=1)
+    guess = limiter.count("read", hash_token(generate_token()), ADDRESS)
+    assert isinstance(guess, Admission)
+    assert guess == Admission("unauthenticated", ADDRESS)
+    assert limiter.recount(guess, "write") == guess
+    assert limiter.keys("write") == 0
+
+
 # --- Rate limits in the application --------------------------------------------------------------
 
 
@@ -274,6 +316,126 @@ def test_the_mcp_endpoint_draws_on_the_same_read_budget(
     response = client.post(MCP_PATH, json=TOOLS_LIST, headers=headers)
     error_of(response, 429, "rate_limited")
     assert response.headers["Retry-After"] == "30"
+
+
+def test_an_mcp_call_of_a_write_tool_spends_the_write_budget(
+    make_client: MakeClient, authenticator: FakeAuthenticator
+) -> None:
+    client = make_client(http_rate_limit_reads=1, http_rate_limit_writes=2)
+    token = authenticator.issue("read", "ingest")
+    headers = {**bearer(token), **MCP_HEADERS}
+    # The first request is counted against the address; then the token is known.
+    assert client.post(MCP_PATH, json=TOOLS_LIST, headers=headers).status_code == 200
+    for name in ("record_decision", "supersede_decision"):
+        # Counted as a read on arrival, then as a write: the one read is given back each time.
+        response = client.post(MCP_PATH, json=tools_call(name), headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["result"]["isError"] is True  # called: its arguments are refused
+    response = client.post(MCP_PATH, json=tools_call("retract_decision"), headers=headers)
+    error = error_of(response, 429, "rate_limited")
+    assert error["message"] == "Too many writes for this token; retry after 30 s."
+    assert response.headers["Retry-After"] == "30"
+    # The writes over HTTP draw on the same budget; the read is still there, once.
+    alpha = {"name": "alpha"}
+    error_of(client.post("/v1/workspaces", json=alpha, headers=bearer(token)), 429, "rate_limited")
+    assert client.post(MCP_PATH, json=TOOLS_LIST, headers=headers).status_code == 200
+    response = client.post(MCP_PATH, json=TOOLS_LIST, headers=headers)
+    assert error_of(response, 429, "rate_limited")["message"].startswith("Too many reads")
+
+
+def test_an_mcp_call_of_a_read_tool_spends_the_read_budget(
+    make_client: MakeClient, authenticator: FakeAuthenticator
+) -> None:
+    client = make_client(http_rate_limit_reads=2, http_rate_limit_writes=1)
+    token = authenticator.issue("read", "ingest")
+    headers = {**bearer(token), **MCP_HEADERS}
+    assert client.post(MCP_PATH, json=TOOLS_LIST, headers=headers).status_code == 200
+    for name in ("status", "search"):
+        response = client.post(MCP_PATH, json=tools_call(name), headers=headers)
+        assert response.status_code == 200, response.text
+    response = client.post(MCP_PATH, json=tools_call("read_source"), headers=headers)
+    assert error_of(response, 429, "rate_limited")["message"].startswith("Too many reads")
+    # Every MCP request is counted as a read before its body is read: a write call too.
+    response = client.post(MCP_PATH, json=tools_call("record_decision"), headers=headers)
+    assert error_of(response, 429, "rate_limited")["message"].startswith("Too many reads")
+    # The write budget is untouched: its one write gets past it, to the scope check.
+    alpha = {"name": "alpha"}
+    response = client.post("/v1/workspaces", json=alpha, headers=bearer(token))
+    error_of(response, 403, "insufficient_scope")
+    error_of(client.post("/v1/workspaces", json=alpha, headers=bearer(token)), 429, "rate_limited")
+
+
+def test_an_mcp_write_call_with_a_token_not_yet_known_is_counted_against_the_address(
+    make_client: MakeClient, authenticator: FakeAuthenticator
+) -> None:
+    client = make_client(http_rate_limit_writes=1)
+    token = authenticator.issue("read", "ingest")
+    headers = {**bearer(token), **MCP_HEADERS}
+    response = client.post(MCP_PATH, json=tools_call("close_decision"), headers=headers)
+    assert response.status_code == 200, response.text
+    alpha = {"name": "alpha"}
+    response = client.post("/v1/workspaces", json=alpha, headers=bearer(token))
+    error_of(response, 403, "insufficient_scope")
+    error_of(client.post("/v1/workspaces", json=alpha, headers=bearer(token)), 429, "rate_limited")
+
+
+def test_an_mcp_write_call_passes_with_rate_limits_off(
+    make_client: MakeClient, authenticator: FakeAuthenticator
+) -> None:
+    client = make_client(http_rate_limit=False)
+    headers = {**bearer(authenticator.issue("read", "ingest")), **MCP_HEADERS}
+    for _ in range(3):
+        response = client.post(MCP_PATH, json=tools_call("record_decision"), headers=headers)
+        assert response.json()["result"]["isError"] is True
+
+
+def test_the_write_tools_are_the_decision_tools() -> None:
+    decision_tools = {tool.name for tool in DECISION_WRITE_TOOLS}
+    assert decision_tools == WRITE_TOOLS
+    assert len(WRITE_TOOLS) == 4
+
+
+def call(name: object, method: str = "tools/call") -> bytes:
+    return json.dumps(
+        {"jsonrpc": "2.0", "id": 7, "method": method, "params": {"name": name}}
+    ).encode()
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (call("record_decision"), True),
+        (call("search"), False),
+        (json.dumps([TOOLS_LIST, json.loads(call("close_decision"))]).encode(), True),
+        (json.dumps([TOOLS_LIST, json.loads(call("status"))]).encode(), False),
+        (call("record_decision", method="tools/list"), False),
+        (call(["record_decision"]), False),
+        (b'{"method": "tools/call", "params": ["record_decision"]}', False),
+        (b'{"method": "tools\\/call", "params": {"name": "record\\u005fdecision"}}', True),
+        (b'{"method": "tools/call", "params": {"name": "search", "name": "close_decision"}}', True),
+        (b"{", False),
+        (b"\xff\xfe\x00", False),
+        (b"[" * 100_000 + b"]" * 100_000, False),
+        (b"", False),
+    ],
+    ids=[
+        "write",
+        "read",
+        "batch-write",
+        "batch-read",
+        "other-method",
+        "name-not-text",
+        "params-not-object",
+        "escaped",
+        "duplicate-name",
+        "not-json",
+        "not-utf8",
+        "deep",
+        "empty",
+    ],
+)
+def test_a_call_of_a_write_tool_is_told_from_the_body(body: bytes, expected: bool) -> None:
+    assert calls_a_tool(body, WRITE_TOOLS) is expected
 
 
 def test_requests_without_a_valid_token_are_counted_by_address_before_the_lookup(
@@ -464,3 +626,32 @@ async def test_an_mcp_tool_stopped_by_a_time_limit_says_so() -> None:
 def test_session_limits_are_not_negative() -> None:
     with pytest.raises(ValueError, match="0 or more"):
         SessionLimits(statement_timeout=-1, idle_in_transaction_timeout=0)
+
+
+# --- Settings in the compose stack ---------------------------------------------------------------
+
+
+LIMIT_VARIABLES = {
+    f"MEMINI_{name.upper()}"
+    for name in Settings.model_fields
+    if name.startswith("http_") and name not in ("http_host", "http_port")
+}
+"""The request limits, as environment variables. The image sets the host and port."""
+
+
+def test_compose_passes_every_request_limit_through() -> None:
+    text = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    passed = re.findall(r"(?m)^ +(MEMINI_HTTP_[A-Z_]+): \$\{(MEMINI_HTTP_[A-Z_]+):-\}$", text)
+
+    assert all(name == default for name, default in passed)
+    assert {name for name, _ in passed} == LIMIT_VARIABLES
+
+
+def test_env_example_lists_the_request_limits_with_the_services_defaults() -> None:
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    listed = dict(re.findall(r"(?m)^# (MEMINI_HTTP_[A-Z_]+)=(.*)$", text))
+    del listed["MEMINI_HTTP_PORT"]  # the port on the host, which compose publishes
+
+    assert set(listed) == LIMIT_VARIABLES
+    url = {"MEMINI_DATABASE_URL": FAKE_URL}
+    assert load_settings(url | listed) == load_settings(url)

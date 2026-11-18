@@ -25,6 +25,11 @@
 #   http://host.docker.internal:11434/v1. Without embeddings the service starts and serves, but it
 #   does not sync git sources, and search answers that no embedding provider is configured. See
 #   .env.example.
+# - MEMINI_HTTP_MAX_BODY_SIZE, MEMINI_HTTP_STATEMENT_TIMEOUT,
+#   MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT, MEMINI_HTTP_RATE_LIMIT, MEMINI_HTTP_RATE_LIMIT_READS,
+#   MEMINI_HTTP_RATE_LIMIT_WRITES and MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED: the request limits of
+#   the service (body size, database time, requests a minute per token and per address); unset,
+#   the service's defaults. See .env.example.
 #
 # Data lives in named volumes: `memini-db` (the database) and `memini-mirrors` (the bare mirrors
 # of git sources, which can be re-cloned). `docker compose down` keeps them; only
@@ -82,6 +87,18 @@ services:
       MEMINI_EMBEDDING_DOCUMENT_PREFIX: ${MEMINI_EMBEDDING_DOCUMENT_PREFIX:-}
       MEMINI_EMBEDDING_BATCH_SIZE: ${MEMINI_EMBEDDING_BATCH_SIZE:-}
       MEMINI_EMBEDDING_TIMEOUT: ${MEMINI_EMBEDDING_TIMEOUT:-}
+      # Request limits (.env.example, docs/requirements.md section 7). Empty counts as not set, so
+      # the service's defaults apply: a body of at most 1M, 30 s per database statement, 300 s idle
+      # in a transaction, and a minute's budget of 600 reads and 120 writes per token, 60 requests
+      # per address without a valid token. MEMINI_HTTP_PORT is not among them: here it is the port
+      # on the host, and the image sets the one the service listens on.
+      MEMINI_HTTP_MAX_BODY_SIZE: ${MEMINI_HTTP_MAX_BODY_SIZE:-}
+      MEMINI_HTTP_STATEMENT_TIMEOUT: ${MEMINI_HTTP_STATEMENT_TIMEOUT:-}
+      MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT: ${MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT:-}
+      MEMINI_HTTP_RATE_LIMIT: ${MEMINI_HTTP_RATE_LIMIT:-}
+      MEMINI_HTTP_RATE_LIMIT_READS: ${MEMINI_HTTP_RATE_LIMIT_READS:-}
+      MEMINI_HTTP_RATE_LIMIT_WRITES: ${MEMINI_HTTP_RATE_LIMIT_WRITES:-}
+      MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED: ${MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED:-}
     # host.docker.internal is the host: Docker Desktop and OrbStack define it, and on Linux this
     # entry maps it to the host's address on the Docker bridge. Ollama on Linux listens on
     # 127.0.0.1 only by default; see .env.example for making it reachable from the container.

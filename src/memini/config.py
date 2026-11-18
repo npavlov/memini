@@ -493,8 +493,9 @@ class Settings(BaseModel):
     # read, or as soon as more of it arrives (the ingest route has its own, ingest_max_body_size).
     # The time of each database statement and of an idle transaction a request runs (search sets
     # its own statement limit, search_timeout); 0 leaves the database's default. Rate limits: per
-    # token, a budget of reads and one of writes; per client address, one for requests whose token
-    # is not known to be valid. Each budget is a minute's worth of requests, refilled steadily.
+    # token, a budget of reads and one of writes (an MCP call of a write tool is a write); per
+    # client address, one for requests whose token is not known to be valid. Each budget is a
+    # minute's worth of requests, refilled steadily.
     http_max_body_size: _ByteSize = Field(
         default=1024**2,
         ge=1024,
@@ -524,13 +525,15 @@ class Settings(BaseModel):
         default=600,
         ge=1,
         le=1_000_000,
-        description="reads (GET, and every MCP request) per minute per token, 1 to 1000000",
+        description="reads (GET, and every MCP request but a call of a write tool) per minute"
+        " per token, 1 to 1000000",
     )
     http_rate_limit_writes: int = Field(
         default=120,
         ge=1,
         le=1_000_000,
-        description="writes (POST, PUT, PATCH, DELETE) per minute per token, 1 to 1000000",
+        description="writes (POST, PUT, PATCH, DELETE, and MCP calls of write tools) per minute"
+        " per token, 1 to 1000000",
     )
     http_rate_limit_unauthenticated: int = Field(
         default=60,
