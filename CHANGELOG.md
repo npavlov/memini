@@ -25,6 +25,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   one error body for every error, without echoing request input; `X-Request-ID` on every response.
 - Bearer tokens (`memini_…`, stored as SHA-256 digests, shown once) with `read`, `ingest` and `admin`
   scopes; one authorization filter for every read; `GET /v1/workspaces`.
+- Job queue in Postgres: leases, retries with backoff, quarantine, one job per source at a time,
+  per-stream schedules and graceful shutdown.
+- JSON logs with request and run ids that mask tokens and secrets; a run report (steps, durations,
+  counts, LLM tokens) for every job attempt.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main

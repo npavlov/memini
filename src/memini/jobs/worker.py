@@ -47,6 +47,7 @@ from memini.jobs.queue import (
     renew_lease,
     unlock_source,
 )
+from memini.runs import record_run
 
 __all__ = [
     "Handler",
@@ -97,12 +98,25 @@ def describe_error(error: BaseException) -> str:
     return _URL_CREDENTIALS.sub("***@", text)[:_ERROR_LIMIT]
 
 
-async def execute_job(job: Job, handlers: Mapping[str, Handler]) -> None:
+async def execute_job(job: Job, handlers: Mapping[str, Handler], pool: Pool) -> None:
     """Run the handler of a claimed job: the one place every attempt goes through.
 
-    Returns when the handler returns and raises what it raises. The worker records the outcome.
+    Every attempt is recorded as a run (:func:`memini.runs.record_run`): a ``run`` row of the job's
+    kind, workspace, source and stream, with the report the handler fills through
+    :func:`memini.runs.current_run`. The row is written through ``pool``, outside the job's own
+    transactions. Returns when the handler returns and raises what it raises; the worker records
+    the outcome of the job.
     """
-    await handlers[job.kind](job)
+    handler = handlers[job.kind]
+    async with record_run(
+        pool,
+        workspace_id=job.workspace_id,
+        owner_id=job.owner_id,
+        kind=job.kind,
+        source_id=job.source_id,
+        stream_id=job.stream_id,
+    ):
+        await handler(job)
 
 
 class _Outcome(enum.Enum):
@@ -257,7 +271,7 @@ class Worker:
             watchers.start_soon(grace_on_stop)
             with handler_scope:
                 try:
-                    await execute_job(job, self._handlers)
+                    await execute_job(job, self._handlers, self._pool)
                     completed = True
                 except Exception as raised:
                     error = describe_error(raised)

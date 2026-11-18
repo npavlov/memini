@@ -65,7 +65,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from contextvars import Token
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, Final, Literal, NotRequired, TypedDict
@@ -89,11 +89,23 @@ __all__ = [
     "RunStatus",
     "StepReport",
     "StepStatus",
+    "current_run",
     "record_run",
     "wait_for_run_writes",
 ]
 
 log = logging.getLogger(__name__)
+
+_current_run: ContextVar["Run | None"] = ContextVar("memini_current_run", default=None)
+
+
+def current_run() -> "Run | None":
+    """The run being recorded in this task, if any: how a job handler reaches its report.
+
+    Set by :func:`record_run` for the duration of its block, like :data:`memini.logs.run_id_var`.
+    """
+    return _current_run.get()
+
 
 REPORT_VERSION: Final = 1
 MAX_STEPS: Final = 1000
@@ -423,6 +435,7 @@ class _RecordRun(AbstractAsyncContextManager[Run]):
         self._progress_interval = progress_interval
         self._run: Run | None = None
         self._token: Token[uuid.UUID | None] | None = None
+        self._run_token: Token[Run | None] | None = None
 
     async def __aenter__(self) -> Run:
         empty: RunReport = {
@@ -473,6 +486,7 @@ class _RecordRun(AbstractAsyncContextManager[Run]):
         )
         self._run = run
         self._token = run_id_var.set(run_id)
+        self._run_token = _current_run.set(run)
         log.info(
             "run started: %s",
             self._kind,
@@ -504,6 +518,8 @@ class _RecordRun(AbstractAsyncContextManager[Run]):
             await asyncio.shield(write)
         finally:
             run_id_var.reset(token)
+            if self._run_token is not None:
+                _current_run.reset(self._run_token)
         # None: the job's exception, if any, propagates.
 
 

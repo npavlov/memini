@@ -30,6 +30,7 @@ from memini.jobs import (
     stream_dedupe_key,
 )
 from memini.jobs.queue import claim, complete, fail, unlock_source
+from memini.runs import current_run
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
@@ -725,3 +726,59 @@ async def test_two_schedulers_enqueue_each_due_stream_once(
     cur = await db.execute("SELECT stream_id, count(*) FROM job GROUP BY stream_id")
     assert dict(await cur.fetchall()) == dict.fromkeys(streams, 3)
     assert sum(created) == 3 * len(streams)
+
+
+# --- Run reports --------------------------------------------------------------------------------
+
+
+async def runs_of(pool: Pool, seed: Seed) -> list[dict[str, Any]]:
+    async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "SELECT * FROM run WHERE workspace_id = %s ORDER BY started_at", (seed.workspace,)
+        )
+        return await cur.fetchall()
+
+
+async def test_every_attempt_writes_a_run_report(pool: Pool, seed: Seed) -> None:
+    async def handler(job: Job) -> None:
+        run = current_run()
+        assert run is not None
+        async with run.step("fetch"):
+            run.count("records_stored", 3)
+        run.llm_tokens(model="local-test-model", input=10, output=2)
+        if job.args.get("fail_first") and job.attempt == 1:
+            raise RuntimeError("synthetic failure on the first attempt")
+
+    ok = await add_job(pool, seed, seed.source_a, stream_id=seed.stream_a)
+    flaky = await add_job(
+        pool, seed, seed.source_b, stream_id=seed.stream_b, args={"fail_first": True}
+    )
+
+    async def both_succeeded() -> bool:
+        return await _is(pool, ok, "succeeded") and await _is(pool, flaky, "succeeded")
+
+    async with running(worker(pool, handler)):
+        await eventually(both_succeeded)
+
+    runs = await runs_of(pool, seed)
+    # One run per attempt: one for the job that succeeded at once, two for the flaky one.
+    assert sorted((run["source_id"], run["status"]) for run in runs) == sorted(
+        [
+            (seed.source_a, "succeeded"),
+            (seed.source_b, "failed"),
+            (seed.source_b, "succeeded"),
+        ]
+    )
+    streams = {seed.source_a: seed.stream_a, seed.source_b: seed.stream_b}
+    for run in runs:
+        assert run["kind"] == SYNC
+        assert run["finished_at"] is not None
+        assert run["stream_id"] == streams[run["source_id"]]
+        report = run["report"]
+        assert report["version"] == 1
+        assert [step["name"] for step in report["steps"]] == ["fetch"]
+        assert report["counts"] == {"records_stored": 3}
+        assert report["llm"]["input_tokens"] == 10
+    failed = next(run for run in runs if run["status"] == "failed")
+    assert "synthetic failure" in failed["error"]
+    assert current_run() is None
