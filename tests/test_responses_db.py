@@ -33,6 +33,7 @@ from memini.auth import WriteAccess
 from memini.db import connect
 from memini.ids import record_id
 from memini.ingest import Batch, RecordIn, ingest
+from memini.jobs import EXTRACT_KIND
 from memini.recipes import ParsedWindow, Recipe, WindowInput, recipe_digest
 from memini.removal import ForgetTarget, forget_record
 from memini.responses import (
@@ -658,3 +659,27 @@ async def test_forget_through_the_removal_core_removes_the_record_s_responses(en
     )
     assert "Who has the shelf keys?" not in bodies
     assert "They are in the drawer." not in bodies
+
+
+async def test_a_window_ingested_with_extraction_enqueues_extract_jobs(env: Env) -> None:
+    """An executor sets ``extract`` when an LLM provider is configured: the threads a window
+    stores get an ``extract`` job each, as pushed ones do; without it, none."""
+    server = FakeHearth()
+    await sync(env, FakeClient(server), extract=True)
+
+    records = await rows(env.db, "SELECT id FROM record WHERE kind = 'thread' ORDER BY id")
+    jobs = await rows(
+        env.db,
+        "SELECT record_id FROM (SELECT args->>'record_id' AS record_id FROM job"
+        " WHERE kind = %s) AS j ORDER BY record_id",
+        EXTRACT_KIND,
+    )
+    assert records
+    assert jobs == records
+
+
+async def test_a_window_ingested_without_extraction_enqueues_none(env: Env) -> None:
+    server = FakeHearth()
+    await sync(env, FakeClient(server))
+
+    assert await scalar(env.db, "SELECT count(*) FROM job WHERE kind = %s", EXTRACT_KIND) == 0

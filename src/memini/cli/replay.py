@@ -26,6 +26,7 @@ from memini.cli.common import EXIT_OK, EXIT_USAGE, CommandError, message, requir
 from memini.config import Settings
 from memini.db import connect
 from memini.embeddings import EmbeddingsNotConfiguredError, create_embedder
+from memini.extraction.job import extraction_enabled
 from memini.ingest import IngestLimits, PayloadIndexer
 from memini.recipes import (
     ParserNotFoundError,
@@ -114,6 +115,7 @@ async def replay_command(args: argparse.Namespace, settings: Settings) -> int:
                     limits=IngestLimits.from_settings(settings),
                     runs=runs,
                     indexer=None if embedder is None else PayloadIndexer(embedder),
+                    extract=extraction_enabled(settings),
                 )
             except NotFoundError as error:
                 raise CommandError(f"{error}: see `memini source list {args.workspace}`") from None

@@ -243,6 +243,7 @@ async def sync_window(
     access: WriteAccess,
     stream: str = CHANNEL,
     run_id: UUID | None = None,
+    extract: bool = False,
 ) -> WindowIngest:
     """Run one window of the hearth recipe against ``client``: list pages, then the detail call
     of each item with replies; store each result; then parse and ingest the window."""
@@ -299,7 +300,7 @@ async def sync_window(
             result=result,
             item_id=item["ts"],
         )
-    return await ingest_window(conn, access, raw.id, recipe=recipe, parser=parser)
+    return await ingest_window(conn, access, raw.id, recipe=recipe, parser=parser, extract=extract)
 
 
 # --- Executors driven by the missing calls -------------------------------------------------------

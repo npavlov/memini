@@ -773,6 +773,7 @@ async def finish_run(
     runs: _Database,
     limits: IngestLimits = DEFAULT_LIMITS,
     indexer: RecordIndexer | None = None,
+    extract: bool = False,
 ) -> FinishResult:
     """Finish the agent run ``run_id``: close it to calls, then parse and ingest its windows in the
     order of the plan (:func:`memini.responses.ingest_window`), each chain stopping at its first
@@ -807,7 +808,9 @@ async def finish_run(
                 (run.id,),
             )
             run = await _load_run(conn, found, run_id)
-        return await _finish(conn, access, found, run, recipe, parser, runs, limits, indexer)
+        return await _finish(
+            conn, access, found, run, recipe, parser, runs, limits, indexer, extract
+        )
     finally:
         await _unlock_source(conn, found.id)
 
@@ -822,6 +825,7 @@ async def _finish(
     runs: _Database,
     limits: IngestLimits,
     indexer: RecordIndexer | None,
+    extract: bool = False,
 ) -> FinishResult:
     outcomes: list[WindowOutcome] = []
     async with record_run(
@@ -882,6 +886,7 @@ async def _finish(
                         parser=parser,
                         limits=limits,
                         indexer=indexer,
+                        extract=extract,
                     )
             except WindowNotFoundError:
                 report.count("windows_gone")

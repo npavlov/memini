@@ -149,6 +149,7 @@ async def _send(
     runs: AsyncConnectionPool[Any] | AsyncConnection[Any] | None,
     indexer: RecordIndexer | None,
     gap_as_incomplete: bool,
+    extract: bool = False,
 ) -> list[IngestResult]:
     """Ingest ``records`` in batches of at most ``limits.max_records``, the last one claiming the
     window, so the checkpoint moves only after every record of the window is stored."""
@@ -168,6 +169,7 @@ async def _send(
                 limits=limits,
                 runs=runs,
                 indexer=indexer,
+                extract=extract,
             )
         except WindowGapError:
             if not gap_as_incomplete:
@@ -188,6 +190,7 @@ async def _send(
                 limits=limits,
                 runs=runs,
                 indexer=indexer,
+                extract=extract,
             )
         results.append(result)
     return results
@@ -256,6 +259,7 @@ async def ingest_window(
     limits: IngestLimits = DEFAULT_LIMITS,
     runs: AsyncConnectionPool[Any] | AsyncConnection[Any] | None = None,
     indexer: RecordIndexer | None = None,
+    extract: bool = False,
 ) -> WindowIngest:
     """Parse the stored responses of a window and ingest its records, claiming the window: what
     an executor does once the window's calls are stored (``store_response``).
@@ -293,6 +297,7 @@ async def ingest_window(
         runs=runs,
         indexer=indexer,
         gap_as_incomplete=False,
+        extract=extract,
     )
     done = _tally(window, parsed, complete, len(records), results, changed)
     _report_incomplete(window, done)
@@ -459,6 +464,7 @@ async def replay(
     limits: IngestLimits = DEFAULT_LIMITS,
     runs: AsyncConnectionPool[Any] | AsyncConnection[Any] | None = None,
     indexer: RecordIndexer | None = None,
+    extract: bool = False,
 ) -> ReplayResult:
     """Parse the stored responses of the source again and ingest what the parser builds, without
     calling the source: after a parser fix (see :mod:`memini.responses` for the rules).
@@ -484,7 +490,7 @@ async def replay(
     try:
         if runs is None:
             return await _replay(
-                conn, access, target, recipe, parser, run_id, limits, None, indexer
+                conn, access, target, recipe, parser, run_id, limits, None, indexer, extract
             )
         async with record_run(
             runs,
@@ -496,7 +502,7 @@ async def replay(
             progress_interval=None,
         ) as run:
             result = await _replay(
-                conn, access, target, recipe, parser, run_id, limits, run.id, indexer
+                conn, access, target, recipe, parser, run_id, limits, run.id, indexer, extract
             )
             if result.windows and result.windows_complete < result.windows:
                 run.set_outcome(
@@ -517,6 +523,7 @@ async def _replay(
     limits: IngestLimits,
     replay_run: UUID | None,
     indexer: RecordIndexer | None,
+    extract: bool = False,
 ) -> ReplayResult:
     listed = await _windows(conn, target.source_id)
     selected = [
@@ -603,6 +610,7 @@ async def _replay(
             runs=None,
             indexer=indexer,
             gap_as_incomplete=True,
+            extract=extract,
         )
         done = _tally(window, parsed, complete, len(records), results, changed)
         _report_incomplete(window, done)

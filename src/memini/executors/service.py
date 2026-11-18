@@ -82,6 +82,7 @@ from memini.executors.egress import EgressPolicy
 from memini.executors.oauth import token_refresher
 from memini.executors.source import McpConfig, McpConfigError, check_endpoint
 from memini.executors.transport import Resolver, system_resolver
+from memini.extraction.job import extraction_enabled
 from memini.ingest import DEFAULT_LIMITS, IngestLimits, RecordIndexer
 from memini.intake import Plan, PlannedWindow, pin_as_of, plan_stream, record_plan
 from memini.jobs import SYNC_KINDS, Handler, Job
@@ -132,6 +133,9 @@ class ServiceOptions:
     retry: RetryPolicy = field(default_factory=RetryPolicy)
     limits: IngestLimits = DEFAULT_LIMITS
     retention_batch: int = DEFAULT_RETENTION_BATCH
+    extract: bool = False
+    """Enqueue decision extraction for new or changed threads and meetings (an LLM provider is
+    configured: :func:`memini.extraction.job.extraction_enabled`)."""
     http_transport: Callable[[], httpx2.AsyncBaseTransport] | None = None
     """Makes the transport that reaches the network, instead of the network: tests serve an
     in-process MCP server with it. The egress guard still checks every request."""
@@ -148,6 +152,7 @@ class ServiceOptions:
             retry=RetryPolicy(attempts=settings.mcp_call_attempts),
             limits=IngestLimits.from_settings(settings),
             retention_batch=settings.retention_batch_size,
+            extract=extraction_enabled(settings),
         )
 
 
@@ -492,6 +497,7 @@ class _Sync:
                 parser=parser,
                 limits=self._options.limits,
                 indexer=self._indexer,
+                extract=self._options.extract,
             )
         except WindowNotFoundError:
             log.info("mcp window %s was deleted while it ran (forget)", raw.id)

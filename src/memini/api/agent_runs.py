@@ -44,6 +44,7 @@ from memini.api.ingest import BatchRoute, ingest_errors
 from memini.config import Settings
 from memini.db import Pool
 from memini.executors import agent
+from memini.extraction.job import extraction_enabled
 from memini.query import QueryServices
 from memini.recipes import ParserError
 from memini.responses import (
@@ -461,6 +462,7 @@ def build_agent_runs_router() -> APIRouter:
                 runs=pool,
                 limits=ingest.IngestLimits.from_settings(settings),
                 indexer=indexer,
+                extract=extraction_enabled(settings),
             )
         return FinishAnswer.of(result)
 
