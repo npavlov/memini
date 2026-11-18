@@ -304,6 +304,51 @@ got its detail call; checks of page numbers, reply counts and totals are declare
 without the values it needs is an error of the recipe. `recipe_digest`, a hash of what the recipe
 means rather than of its text, is recorded with each run.
 
+**Raw responses and replay** (decided 2026-11-18). One library, `memini.responses`, stores every
+tool result both executors receive, before anything parses it, and turns a window's stored
+results into records; replay runs the same function again over what is stored. A window
+(`raw_window`) is one window of a stream an executor ran, with its run, the planner's kind, the
+`recipe_digest` and the server's name and version. A response (`raw_response`) is one call of it:
+list or detail, the tool, the arguments as sent, the page, the listed item of a detail call, when
+it came. Its body (`raw_body`) is the MCP result object as the server returned it (content
+blocks, `structuredContent`, `isError`), secrets and card numbers redacted as at ingest and
+nothing else changed, stored as canonical JSON and hashed after redaction; the arguments are
+redacted too. A body is stored once per source by its hash, so a page fetched again unchanged (a
+later run's detail call of a thread that did not change, a retry) adds a row of a few hundred
+bytes and no body; in a window a call is known by its kind, tool and arguments, and the same call
+stored again writes nothing with the same result and replaces it with another (a retry). The first
+parse of a window deletes the stream's earlier attempts at the same window (a retried job with the
+same pinned `as_of`) and its earlier windows never parsed (a run that died). Each run's windows
+otherwise keep their calls until retention: bodies, not calls, are what dedup saves. The parser
+protocol is `memini.recipes.parsing`: a window's responses in, records and completeness out, each
+record naming the responses it was built from; memini-n74 adds the checks every recipe gets to
+the same `parse_window`. Each response keeps the ids of the records it was built into, written
+before the records are ingested. An executor ends a window with `ingest_window`: parse, record
+the attribution, ingest the records in batches of `ingest_max_records`, the last claiming the
+window (complete when every check passed, a snapshot when the recipe says so). `memini replay
+--workspace W --source S --recipe PATH [--stream K] [--run ID]` is an operator command, as
+`reindex` is: it re-derives stored data once a build with a fixed parser is deployed, works on the
+database and needs no token. It holds the source's job lock, parses every chosen window and every
+later window of the source before it writes anything (a parser that fails, a window from another
+server or a record ingest refuses stops it then), and finds for each record the last window that
+holds it, now or at its last parse. It then ingests each chosen window, oldest first, with only
+the records it is the last to hold: an older window's version of a thread a later window updated
+is not written over it, so a replay with an unchanged parser writes nothing. It never revives a
+tombstone (a deletion seen at the source is not undone from older responses), never inserts a
+record from a window forget pruned, and leaves out records older than the retention. Its claims
+are complete when the parse is and nothing of the window was forgotten, never snapshots (an older
+window's snapshot would delete what a later window found); a parser fix that makes an incomplete
+window complete moves the checkpoint, a claim behind it moves nothing, and a complete window that
+starts after the checkpoint while an earlier one is still incomplete is claimed incomplete.
+Retention deletes a source's windows that ended before its cutoff, with their responses and the
+bodies nothing references (`delete_raw_responses_before`); a record built from them may outlive
+them and is then no longer replayed. Forget (`delete_raw_responses_for_records`, in the
+transaction that deletes the records) removes the body of every response whose attribution names
+a forgotten record, the list page that held its item included, keeps the call and its
+attribution, marks the window pruned, and deletes the source's windows never parsed, which have
+no attribution yet. The capture hook's route belongs to the agent executor's session API
+(memini-2wl), which knows the call it handed out and stores only that.
+
 ### Scheduling and hygiene
 
 - Per-stream schedule, with an overlap margin behind the checkpoint to catch late replies.

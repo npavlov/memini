@@ -347,6 +347,16 @@ the arguments of each call) and returns records of the stream's `kind`: an `exte
 `occurred_at` and a payload with the fields the ingest contract requires (requirements, section
 4). It is a Python function, not a model, so the same responses give the same records.
 
+The protocol is `memini.recipes.parsing`. A parser takes a `WindowInput` (the recipe, the stream
+key, the window, and the window's responses in the order the calls were made, each a
+`RawResponse` with its call, tool, arguments, page, listed item and stored result;
+`RawResponse.decode` reads a result by `decode`) and returns a `ParsedWindow`: the records, each
+with the positions of every response it was built from (the list page that holds its item, each
+page of its detail call: forget removes those responses with the record), and whether the window
+is complete. A parser is registered under its name with `register_parser`; the executors and
+replay run it through `parse_window`, which checks its output and adds the checks every recipe
+gets.
+
 ## How the executors use a recipe
 
 **Service executor.** The built-in MCP client opens a session with the source's endpoint and
@@ -370,6 +380,13 @@ responses, and the records are a function of those responses and the parser: one
 both executors yields identical records (the check of milestone M3). Because raw responses are
 stored, a parser fix is replayed over them without calling the server again, and
 `recipe_digest` in each run records which recipe the calls were planned from.
+
+Both store through `memini.responses`: `begin_window` before a window's first call,
+`store_response` for each result (redacted, otherwise as it came; a body is kept once per source
+by its hash), and `ingest_window` to parse the window and ingest its records with its claim.
+`memini replay --workspace W --source S --recipe PATH` parses a source's stored windows again
+with the parser of the build and ingests what changed (requirements, section 4, Raw responses and
+replay).
 
 ## Validation
 

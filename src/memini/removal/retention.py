@@ -139,7 +139,11 @@ async def expire_source(
                 break
             flagged = await conn.execute(_FLAG_CITED, (ids,))
             step = await delete_records(
-                conn, workspace_id=workspace_id, source_id=source_id, record_ids=ids
+                conn,
+                workspace_id=workspace_id,
+                source_id=source_id,
+                record_ids=ids,
+                raw_responses=False,
             )
         # The batch has committed: only now do its counts go to the run report.
         batches += 1
@@ -154,6 +158,11 @@ async def expire_source(
                 run.count("raw_responses_deleted", step.raw_responses)
         if len(ids) < batch_size:
             break
+    # Raw responses expire by age: the windows that ended at or before the cutoff. Imported here:
+    # memini.responses imports memini.ingest, which imports this package.
+    from memini.responses import delete_raw_responses_before
+
+    await delete_raw_responses_before(conn, source_id=source_id, before=cutoff)
     return RetentionResult(source_id, days, cutoff, rule, removed, cited, batches)
 
 

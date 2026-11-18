@@ -43,6 +43,7 @@ below the API::
     memini bootstrap [--name LABEL] [--expires-in DURATION] [--force]
     memini workspace llm <name> [none|local|cloud]
     memini reindex --workspace <name>
+    memini replay --workspace <name> --source <name> --recipe PATH [--stream KEY] [--run ID]
     memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--margin M] [--k 1,5,10]
                 [--modes MODE,...] [--fake-embeddings] [--lexical NAME] [--reranker NAME]
                 [--json PATH] [--keep]
@@ -65,6 +66,10 @@ workspace in.
 ``reindex`` rebuilds a workspace's index from raw records under the configured embedding model and
 the chunker of this build (:func:`memini.index.reindex`); it is what a refused search names, and
 needs an embedding provider.
+
+``replay`` parses the stored raw responses of an mcp source again with its recipe's parser in this
+build and ingests the records, without calling the source (:mod:`memini.cli.replay`,
+:mod:`memini.responses`): after a parser fix. It holds the source's job lock while it runs.
 
 ``eval`` runs the retrieval eval (:mod:`memini.cli.evaluate`, :mod:`memini.evaluation`): it indexes
 the suite's fixture repositories into a scratch database it creates on the configured server and
@@ -92,10 +97,12 @@ Exit codes:
   succeed, a migration that failed or is pending, a server that did not start; for ``reindex`` also
   a rebuild that is running already, raw content that cannot be read, an embedding model that
   failed, or an index built with another fingerprint; for ``eval`` a search that failed, or an
-  expected result of the suite not in the index.
+  expected result of the suite not in the index; for ``replay`` a job of the source that is
+  running, a parser that failed or a window fetched from another server.
 - 2: wrong usage or invalid configuration: arguments, the service's settings, the service URL, no
   token or a malformed one; also no embedding provider for ``reindex`` and ``eval`` (without
-  ``--fake-embeddings``), and a suite or baseline file of ``eval`` that is not valid.
+  ``--fake-embeddings``), a suite or baseline file of ``eval`` that is not valid, and for
+  ``replay`` a recipe file that is not valid or a parser this build lacks.
 - 3: unreachable: the service (client commands) did not answer, or answered that it is unavailable;
   the database (operator commands) cannot be reached.
 - 4: ``eval`` only: a tracked metric fell below the baseline by more than the margin.
@@ -125,6 +132,7 @@ from memini.cli import (
     index,
     persons,
     recipes,
+    replay,
     runs,
     search,
     serve,
@@ -422,6 +430,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="the workspace whose index to rebuild",
     )
     reindex.set_defaults(command=index.reindex_command)
+
+    replay.configure_parser(
+        commands.add_parser("replay", help=replay.HELP, description=replay.DESCRIPTION)
+    )
 
     evaluation = commands.add_parser(
         "eval",

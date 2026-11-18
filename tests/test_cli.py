@@ -167,6 +167,8 @@ def test_python_dash_m_runs_main() -> None:
         (("bootstrap", "--expires-in", "0h"), "longer than zero"),
         (("reindex",), "--workspace"),
         (("reindex", "--workspace", "No Such"), "a workspace name"),
+        (("replay", "--workspace", "acme", "--source", "hearth"), "--recipe"),
+        (("replay", "--workspace", "acme", "--source", "x", "--recipe", "r", "--run", "1"), "UUID"),
         (("--token-f", "/dev/null", "workspace", "list"), "invalid choice"),
     ],
 )
@@ -221,6 +223,7 @@ def test_help_lists_client_and_operator_commands_apart(
         "migrate",
         "bootstrap",
         "reindex",
+        "replay",
         "eval",
         "credentials",
     }

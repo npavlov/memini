@@ -19,6 +19,8 @@ evaluate:
 - :mod:`memini.recipes.selectors`: paths and patterns.
 - :mod:`memini.recipes.templates`: argument placeholders and their rendering.
 - :mod:`memini.recipes.times`: durations, window bound formats, timestamp formats.
+- :mod:`memini.recipes.parsing`: the parser protocol (a window's raw responses in, records and
+  completeness out), the registry of parsers by name, and :func:`parse_window`.
 
 ``memini recipe validate`` and ``memini recipe schema`` (:mod:`memini.cli.recipes`) are the
 commands; both read files only.
@@ -44,6 +46,22 @@ from memini.recipes.model import (
     Stream,
     Window,
     recipe_json_schema,
+)
+from memini.recipes.parsing import (
+    CallKind,
+    ParsedRecord,
+    ParsedWindow,
+    ParserError,
+    ParserNotFoundError,
+    RawResponse,
+    ResponseDecodeError,
+    WindowInput,
+    WindowParser,
+    get_parser,
+    parse_window,
+    register_parser,
+    registered_parsers,
+    unregister_parser,
 )
 from memini.recipes.selectors import (
     JsonPath,
@@ -74,6 +92,7 @@ from memini.recipes.validate import (
 
 __all__ = [
     "RECIPE_FORMAT",
+    "CallKind",
     "Checks",
     "CursorPaging",
     "Decode",
@@ -86,13 +105,19 @@ __all__ = [
     "Order",
     "PagePaging",
     "Paging",
+    "ParsedRecord",
+    "ParsedWindow",
     "Parser",
+    "ParserError",
+    "ParserNotFoundError",
     "Placeholder",
     "Rate",
+    "RawResponse",
     "Recipe",
     "RecipeError",
     "RecipeFileError",
     "RecipeIssue",
+    "ResponseDecodeError",
     "SelectorSyntaxError",
     "Server",
     "Stream",
@@ -100,8 +125,11 @@ __all__ = [
     "TemplateError",
     "TextPattern",
     "Window",
+    "WindowInput",
+    "WindowParser",
     "check_recipe",
     "format_bound",
+    "get_parser",
     "load_recipe",
     "parse_duration",
     "parse_path",
@@ -109,9 +137,13 @@ __all__ = [
     "parse_recipe",
     "parse_template",
     "parse_timestamp",
+    "parse_window",
     "placeholders",
     "read_recipe",
     "recipe_digest",
     "recipe_json_schema",
+    "register_parser",
+    "registered_parsers",
     "render_arguments",
+    "unregister_parser",
 ]

@@ -44,20 +44,28 @@ _DELETE_RECORDS: Final = (
 async def delete_raw_responses(
     conn: Conn, *, workspace_id: UUID, source_id: UUID, record_ids: Sequence[str]
 ) -> int:
-    """Delete the stored raw responses the records were parsed from; return how many.
-
-    The hook for the raw response store of MCP recipes (memini-kdj, M3), which keeps every
-    response verbatim so that a parser fix can be replayed. It does not exist yet, so there is
-    nothing to delete. When it lands, its rows that hold a record's content are deleted here, in
-    the transaction that deletes the record, and the forget test (tests/test_forget_db.py, which
-    scans every text column of every table) covers them without a change.
+    """Remove the stored raw responses that hold content of the records; return how many lost
+    their body (:func:`memini.responses.delete_raw_responses_for_records`), in the transaction
+    that deletes the records. The forget test (tests/test_forget_db.py) scans every text column of
+    every table, the raw response store's included.
     """
-    del conn, workspace_id, source_id, record_ids
-    return 0
+    del workspace_id  # the store is keyed by source
+    # Imported here: memini.responses imports memini.ingest, which imports this package.
+    from memini.responses import delete_raw_responses_for_records
+
+    deletion = await delete_raw_responses_for_records(
+        conn, source_id=source_id, record_ids=record_ids
+    )
+    return deletion.pruned + deletion.responses
 
 
 async def delete_records(
-    conn: Conn, *, workspace_id: UUID, source_id: UUID, record_ids: Sequence[str]
+    conn: Conn,
+    *,
+    workspace_id: UUID,
+    source_id: UUID,
+    record_ids: Sequence[str],
+    raw_responses: bool = True,
 ) -> RemovalCounts:
     """Delete the records ``record_ids`` of one source with everything that holds their text:
     their symbols and chunks (counted), their stored raw responses (:func:`delete_raw_responses`)
@@ -65,7 +73,10 @@ async def delete_records(
     stays (see :mod:`memini.removal`).
 
     Runs in the caller's transaction, which must be open, so that a record and what derives from
-    it go together. Ids that name no record of the source are passed over.
+    it go together. Ids that name no record of the source are passed over. ``raw_responses=False``
+    leaves the raw response store alone: retention removes it by age instead
+    (:func:`memini.responses.delete_raw_responses_before`), since removing a record's responses
+    also drops the source's windows that were never parsed, which a running sync may be filling.
     """
     if conn.info.transaction_status == pq.TransactionStatus.IDLE:
         raise ValueError("delete_records runs in the caller's transaction: open one first")
@@ -75,8 +86,12 @@ async def delete_records(
     params = (workspace_id, source_id, ids)
     symbols = await conn.execute(_DELETE_SYMBOLS, params)
     chunks = await conn.execute(_DELETE_CHUNKS, params)
-    raw = await delete_raw_responses(
-        conn, workspace_id=workspace_id, source_id=source_id, record_ids=ids
+    raw = (
+        await delete_raw_responses(
+            conn, workspace_id=workspace_id, source_id=source_id, record_ids=ids
+        )
+        if raw_responses
+        else 0
     )
     records = await conn.execute(_DELETE_RECORDS, params)
     return RemovalCounts(
