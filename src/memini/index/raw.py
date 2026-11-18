@@ -8,9 +8,9 @@ again. Where the bytes are depends on the kind of record:
   (:class:`StoredPayload`).
 - A code file is not copied into the database: the service's mirror of the repository is the raw
   store, and the record's ``content_hash`` is the file's git blob id. Reading it is the git
-  connector's part (the mirror manager and incremental sync); until it is there,
-  :class:`MirrorNotAvailable` refuses, and a rebuild of a workspace with code records stops with a
-  message instead of deleting their chunks.
+  connector's part, :class:`memini.gitsync.MirrorContent`, which ``memini reindex`` passes as
+  ``code``. Without it, :class:`MirrorNotAvailable` refuses, and a rebuild of a workspace with code
+  records stops with a message instead of deleting their chunks.
 
 A provider returns ``None`` for a record that has nothing to index, so its chunks are deleted; it
 raises :class:`RawContentUnavailableError` when it cannot tell right now (a mirror not cloned yet,
@@ -134,17 +134,17 @@ class StoredPayload:
 
 
 class MirrorNotAvailable:
-    """Stands in for the repository mirror until the git connector provides the reader.
+    """Stands in for the repository mirrors where no reader of them is given.
 
-    The reader to come reads the blob ``record.content_hash`` from the mirror of
-    ``record.source_id`` and takes the path from ``record.external_id``. Until then every read
-    refuses, so that a rebuild does not take a missing mirror for deleted files.
+    The reader, :class:`memini.gitsync.MirrorContent`, needs the git settings, which this package
+    does not know. Every read here refuses, so that a rebuild without the reader does not take the
+    missing mirrors for deleted files.
     """
 
     async def read(self, record: RecordRef) -> RawDocument | None:
         raise RawContentUnavailableError(
-            f"code record {record.id} cannot be read: this build has no reader for repository"
-            " mirrors yet, so code cannot be rebuilt from raw"
+            f"code record {record.id} cannot be read: no reader for repository mirrors was"
+            " given, so code cannot be rebuilt from raw"
         )
 
 
@@ -160,7 +160,8 @@ class ByKind:
 
 
 def default_raw_content(conn: Conn, *, code: RawContent | None = None) -> RawContent:
-    """Payloads from the ``record`` table for every kind but code; code from ``code``, by default
+    """Payloads from the ``record`` table for every kind but code; code from ``code``
+    (:class:`memini.gitsync.MirrorContent` in ``memini reindex``), by default
     :class:`MirrorNotAvailable`."""
     stored = StoredPayload(conn)
     return ByKind(

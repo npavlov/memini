@@ -12,12 +12,14 @@ import stat
 import subprocess
 import uuid
 from collections.abc import AsyncIterator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import SecretStr
 
+from git_helpers import SourceRepo
 from memini.git import (
     INCOMING_NAMESPACE,
     BlobTooLarge,
@@ -47,73 +49,6 @@ pytestmark = [
 ]
 
 TOKEN = "fake-git-token-for-tests-only-3c9b"  # noqa: S105 - fake, for leak checks
-
-
-class SourceRepo:
-    """A repository a test writes to, as a user would: the source a mirror is made from."""
-
-    def __init__(self, path: Path, *, bare: bool = False) -> None:
-        self.path = path
-        self._commits = 0
-        path.mkdir(parents=True)
-        self.git("init", "--quiet", "--initial-branch=main", *(["--bare"] if bare else []))
-        # No background gc or maintenance: nothing may change the source behind the test's back.
-        self.git("config", "gc.auto", "0")
-        self.git("config", "maintenance.auto", "false")
-
-    def git(self, *args: str, stdin: bytes | None = None) -> str:
-        day = 1 + self._commits
-        date = f"2026-01-{day:02d}T12:00:00+00:00"
-        env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "HOME": "/nonexistent",
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_AUTHOR_NAME": "Test Author",
-            "GIT_AUTHOR_EMAIL": "author@example.invalid",
-            "GIT_AUTHOR_DATE": date,
-            "GIT_COMMITTER_NAME": "Test Committer",
-            "GIT_COMMITTER_EMAIL": "committer@example.invalid",
-            "GIT_COMMITTER_DATE": date,
-            "LC_ALL": "C",
-        }
-        done = subprocess.run(  # noqa: S603 - fixed git arguments in a test
-            ["git", *args],  # noqa: S607
-            cwd=self.path,
-            env=env,
-            input=stdin,
-            capture_output=True,
-            check=True,
-        )
-        return done.stdout.decode().strip()
-
-    def commit(self, files: Mapping[str, str | bytes | None], message: str = "change") -> str:
-        """Write (or, for ``None``, delete) ``files`` and commit them; returns the commit id."""
-        for name, content in files.items():
-            target = self.path / name
-            if content is None:
-                self.git("rm", "--quiet", "--", name)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.is_symlink():
-                target.unlink()
-            if isinstance(content, bytes):
-                target.write_bytes(content)
-            else:
-                target.write_text(content)
-            self.git("add", "--", name)
-        self._commits += 1
-        self.git("commit", "--quiet", "--allow-empty", "-m", message)
-        return self.head()
-
-    def head(self, ref: str = "HEAD") -> str:
-        return self.git("rev-parse", "--verify", f"{ref}^{{commit}}")
-
-    def refs(self) -> dict[str, str]:
-        listing = self.git(
-            "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads", "refs/tags"
-        )
-        return dict(line.split(" ") for line in listing.splitlines() if line)
 
 
 def snapshot(root: Path) -> dict[str, tuple[int, int, int, str]]:
@@ -736,6 +671,39 @@ async def test_read_blobs_reads_many_files_by_id(
     assert await manager.read_blobs(mirror, []) == {}
     with pytest.raises(InvalidRevision):
         await manager.read_blobs(mirror, ["HEAD"])
+
+
+@pytest.mark.anyio
+async def test_blob_sizes_sizes_blobs_by_id_and_leaves_out_the_rest(
+    tree: tuple[MirrorManager, Any, str],
+) -> None:
+    manager, mirror, commit = tree
+    entries = {entry.path: entry for entry in await manager.ls_tree(mirror, commit)}
+    big = entries["big.txt"].oid
+
+    sizes = await manager.blob_sizes(mirror, [big, entries["link"].oid, commit, "0" * 40])
+
+    assert sizes == {big: 5000, entries["link"].oid: len("README.md")}  # no commit, no missing id
+    assert await manager.blob_sizes(mirror, []) == {}
+    with pytest.raises(InvalidRevision):
+        await manager.blob_sizes(mirror, ["main"])
+
+
+@pytest.mark.anyio
+async def test_committed_at_is_the_committer_time_in_utc(
+    tree: tuple[MirrorManager, Any, str], source: SourceRepo
+) -> None:
+    manager, mirror, commit = tree
+
+    # The fixture's commits are dated a day apart from 2026-01-02, 12:00 UTC.
+    assert await manager.committed_at(mirror, commit) == datetime(2026, 1, 3, 12, tzinfo=UTC)
+    assert await manager.committed_at(mirror, source.head("v1")) == datetime(
+        2026, 1, 2, 12, tzinfo=UTC
+    )
+    with pytest.raises(RevisionNotFound):
+        await manager.committed_at(mirror, "f" * 40)
+    with pytest.raises(InvalidRevision):
+        await manager.committed_at(mirror, "main")
 
 
 @pytest.mark.anyio

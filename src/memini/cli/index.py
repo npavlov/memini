@@ -2,8 +2,11 @@
 
 A thin wrapper of :func:`memini.index.reindex`; the work and its rules are there. The command
 builds the embedder of the settings first, so that without an embedding provider it refuses before
-it touches the database. It records the rebuild as a ``reindex`` run, prints one line of counts
-when it is done, and is safe to run again after a failure: what was rebuilt is kept.
+it touches the database. Code records are read again from the repository mirrors under
+``git_mirror_dir`` (:class:`memini.gitsync.MirrorContent`); a source without a mirror stops the
+rebuild until its next sync has created one. It records the rebuild as a ``reindex`` run, prints
+one line of counts when it is done, and is safe to run again after a failure: what was rebuilt is
+kept.
 """
 
 import argparse
@@ -13,6 +16,8 @@ from memini.cli.common import EXIT_OK, CommandError, message, require_migrated
 from memini.config import Settings
 from memini.db import connect
 from memini.embeddings import create_embedder
+from memini.git import GitOptions, MirrorManager
+from memini.gitsync import MirrorContent
 from memini.index import (
     RawContentUnavailableError,
     ReindexInProgressError,
@@ -32,6 +37,7 @@ RUN_KIND: Final = "reindex"
 async def reindex_command(args: argparse.Namespace, settings: Settings) -> int:
     name: str = args.workspace
     embedder = create_embedder(settings)  # refuses without a provider, before the database
+    code = MirrorContent(MirrorManager(GitOptions.from_settings(settings)))
     url = settings.database_url.get_secret_value()
     try:
         async with connect(url, autocommit=True) as conn, connect(url, autocommit=True) as runs:
@@ -52,7 +58,10 @@ async def reindex_command(args: argparse.Namespace, settings: Settings) -> int:
                     runs, workspace_id=workspace.id, owner_id=owner_id, kind=RUN_KIND
                 ):
                     result = await reindex(
-                        conn, embedder, workspace_id=workspace.id, raw=default_raw_content(conn)
+                        conn,
+                        embedder,
+                        workspace_id=workspace.id,
+                        raw=default_raw_content(conn, code=code),
                     )
             except ReindexInProgressError as error:
                 raise CommandError(str(error)) from None

@@ -355,6 +355,34 @@ it commits. A rebuild that stopped resumes without embedding anything twice. Cod
 from the repository mirror (a code record's content hash is its blob id), other kinds from the
 stored payload.
 
+**Code sync** (decided 2026-11-18). Each tracked ref of a git source is a stream; its pin, kept in
+`stream.cursor`, is the commit its records are complete at and a digest of the rules that selected
+them. A sync (the `git_sync` job, one stream at a time) fetches the mirror, then diffs the pin
+against the commit the ref names now and writes only the files that differ; with no pin, a pin no
+longer in the mirror (a force push, then gc), changed rules, or after a sync that failed part way,
+it lists the ref in full and compares every file with its stored record instead. A file whose record
+already holds its blob id is not read, chunked or embedded. A code record is one file on one ref:
+its external id is `refs/heads/main:src/app.py`, its content hash the blob id, its time the
+committer time of the commit it was written at. A file is indexed when it is a regular file (not a
+symlink or submodule) with a UTF-8 path, the source's globs select it, no built-in exclusion matches
+it (lock files, minified bundles, source maps, `node_modules`; generated, large and of no use to
+search), it is at most `git_max_blob_size` and it is not binary. Every other file, and a deleted
+one, turns a live record into a tombstone whose chunks are deleted in the same transaction; a file
+that comes back revives its record. Files are written in batches, each in one transaction with its
+records and chunks, the last together with the tombstones and the move of the pin and
+`checked_until` (the database time before the fetch), so a small change is all or nothing (principle
+7). A larger one commits batch by batch and marks the pin partial first: a failure leaves the old
+pin, every record agrees with its chunks, and the next sync lists the ref in full and embeds nothing
+twice. One big transaction was not chosen: a first sync embeds for minutes to hours, and a failure
+at its end would throw all of that away. A stale index blocks the sync: after the fetch, a workspace
+whose fingerprint differs refuses it with the message that names `memini reindex`, no record
+changes and the pin stays; the rebuild reads code from the fetched mirror, and the next sync
+catches up from the pin. Writing records without their chunks meanwhile was not chosen: a sync
+writes only what changed, so records stored during a rebuild, or before embeddings were set, would
+stay out of the index. For the same reason `serve` syncs git sources only when an embedding provider
+is configured. A ref no longer tracked loses its stream; the next sync of the source turns its
+records into tombstones.
+
 ## 10. Quality
 
 - **Retrieval eval**: a question set per workspace with expected records; recall@k per kind. Run on every

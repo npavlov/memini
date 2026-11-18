@@ -50,6 +50,7 @@ import shutil
 import uuid
 from collections.abc import Generator, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal
 
@@ -630,6 +631,48 @@ class MirrorManager:
                 raise BlobTooLarge(oid, size, limit)
             blobs[oid] = content
         return blobs
+
+    async def blob_sizes(self, mirror: Mirror, oids: Sequence[str]) -> dict[str, int]:
+        """The sizes in bytes of many blobs by object id, in one ``git cat-file --batch-check``.
+
+        :meth:`diff_names` gives object ids without sizes; this sizes them before
+        :meth:`read_blobs`, so a file over the read limit can be left out. Ids that are missing or
+        not blobs are left out of the result.
+
+        Raises:
+            InvalidRevision: an id is malformed.
+        """
+        if not oids:
+            return {}
+        for oid in oids:
+            _check_oid(oid)
+        output = await self._git.run(
+            ["cat-file", "--batch-check"],
+            git_dir=mirror.path,
+            stdin="".join(f"{oid}\n" for oid in oids).encode("ascii"),
+            max_output=len(oids) * 128,
+        )
+        sizes: dict[str, int] = {}
+        for line in output.stdout.splitlines():
+            fields = line.split(b" ")
+            if len(fields) == 3 and fields[1] == b"blob":  # else "<oid> missing" or another type
+                sizes[fields[0].decode("ascii")] = int(fields[2])
+        return sizes
+
+    async def committed_at(self, mirror: Mirror, commit: str) -> datetime:
+        """The committer time of ``commit`` (an object id), in UTC.
+
+        Raises:
+            InvalidRevision: ``commit`` is not an object id.
+            RevisionNotFound: no such commit in the mirror.
+        """
+        await self._commit(mirror, commit)
+        output = await self._git.run(
+            ["show", "--no-patch", "--no-notes", "--format=%ct", commit],
+            git_dir=mirror.path,
+            max_output=_SMALL_OUTPUT,
+        )
+        return datetime.fromtimestamp(int(output.stdout.strip()), UTC)
 
     async def diff_names(self, mirror: Mirror, old: str, new: str) -> list[FileChange]:
         """The files that differ from commit ``old`` to commit ``new`` (object ids).

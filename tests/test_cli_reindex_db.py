@@ -4,6 +4,7 @@ FakeEmbedder; every value is synthetic."""
 import asyncio
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -45,13 +46,15 @@ class World:
 
 
 @pytest.fixture
-def world(monkeypatch: pytest.MonkeyPatch, empty_database_url: str) -> World:
+def world(monkeypatch: pytest.MonkeyPatch, empty_database_url: str, tmp_path: Path) -> World:
     """A migrated database in ``MEMINI_DATABASE_URL`` with a workspace ``acme``, owned by the CLI's
-    principal, holding a git and a push source; the FakeEmbedder in place of the configured one."""
+    principal, holding a git and a push source; the FakeEmbedder in place of the configured one;
+    an empty mirror directory."""
     for name in (*environment_variables(), "MEMINI_PRINCIPAL"):
         monkeypatch.delenv(name, raising=False)
     url = empty_database_url
     monkeypatch.setenv("MEMINI_DATABASE_URL", url)
+    monkeypatch.setenv("MEMINI_GIT_MIRROR_DIR", str(tmp_path / "mirrors"))
     fake = FakeEmbedder()
 
     def create_embedder(settings: Settings) -> Embedder:
@@ -97,7 +100,7 @@ def add(world: World, kind: str) -> str:
                     workspace_id=world.workspace,
                     owner_id=world.owner,
                     source_id=world.repo,
-                    external_id="main:src/greenhouse.py",
+                    external_id="refs/heads/main:src/greenhouse.py",
                     content=FILE_V1,
                 )
             return await add_record(
@@ -149,9 +152,9 @@ def test_reindex_of_code_stops_without_the_mirror_and_changes_no_fingerprint(
     assert result.code == EXIT_FAILURE
     assert result.out == ""
     assert result.err.endswith(
-        f"memini: code record {rid} cannot be read: this build has no reader for repository"
-        " mirrors yet, so code cannot be rebuilt from raw; the rebuild of workspace acme stopped"
-        " before it finished, and search stays as it was\n"
+        f"memini: code record {rid} cannot be read: source {world.repo} has no repository mirror"
+        " yet; its next sync creates it; the rebuild of workspace acme stopped before it"
+        " finished, and search stays as it was\n"
     )
     assert query(world.url, "SELECT count(*) FROM index_state") == [(0,)]
     assert query(world.url, "SELECT kind, status FROM run") == [("reindex", "failed")]

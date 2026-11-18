@@ -4,6 +4,7 @@
   (:meth:`~MirrorManager.fetch`, :meth:`~MirrorManager.sync`) and removes mirrors, and reads them:
   refs, :meth:`~MirrorManager.resolve`, :meth:`~MirrorManager.ls_tree`,
   :meth:`~MirrorManager.read_blob`, :meth:`~MirrorManager.read_blobs`,
+  :meth:`~MirrorManager.blob_sizes`, :meth:`~MirrorManager.committed_at`,
   :meth:`~MirrorManager.diff_names`. :mod:`memini.git.mirror` describes the layout, the atomic
   fetch and the locking.
 - :func:`parse_remote` checks a source location against the allowlist of transports before any

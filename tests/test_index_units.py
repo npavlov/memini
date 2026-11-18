@@ -144,7 +144,7 @@ def test_counts_without_a_run_go_nowhere() -> None:
 
 
 @pytest.mark.anyio
-async def test_code_is_refused_until_the_mirror_reader_exists() -> None:
+async def test_code_is_refused_without_a_mirror_reader() -> None:
     with pytest.raises(RawContentUnavailableError, match="no reader for repository mirrors"):
         await MirrorNotAvailable().read(record())
 

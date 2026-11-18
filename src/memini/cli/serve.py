@@ -1,11 +1,12 @@
 """``memini serve``: run the service until SIGINT or SIGTERM.
 
 Order of start: logging, migrations (refuse to start while any is pending, unless ``--migrate``
-applies them), the connection pool, the application, the job worker and scheduler, the HTTP server.
-Order of stop: the HTTP server finishes open requests (up to :data:`SHUTDOWN_GRACE` seconds) and
-runs the application's shutdown; the worker and scheduler stop (a running job finishes within the
-worker's grace period or goes back to the queue); pending run reports are written; then the pool
-closes. A stop by signal exits 0.
+applies them), the connection pool, the application, the job handlers (:func:`job_handlers`), the
+job worker and scheduler, the HTTP server. Order of stop: the HTTP server finishes open requests (up
+to :data:`SHUTDOWN_GRACE` seconds) and runs the application's shutdown; the worker and scheduler
+stop (a running job finishes within the worker's grace period or goes back to the queue); pending
+run reports are written; the handlers release what they hold (the embedder); then the pool closes.
+A stop by signal exits 0.
 
 Logs are JSON lines on stderr through :func:`memini.logs.configure_logging`, which masks tokens and
 secrets; the password of the database URL is registered as a secret at start.
@@ -34,14 +35,17 @@ from memini.api import create_app
 from memini.cli.common import EXIT_OK, CommandError, require_migrated
 from memini.config import Settings
 from memini.db import Pool, connect, database_check, migrate, open_pool
+from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_embedder
+from memini.git import GitOptions, MirrorManager
+from memini.gitsync import GIT_SYNC, git_sync_handler, mirrors_unusable
 from memini.jobs import SYNC_KINDS, Handler, Scheduler, Worker
 from memini.runs import wait_for_run_writes
 
 __all__ = [
-    "JOB_HANDLERS",
     "SHUTDOWN_GRACE",
     "background_jobs",
     "configure_logging",
+    "job_handlers",
     "run_http_server",
     "serve_command",
 ]
@@ -50,10 +54,6 @@ SHUTDOWN_GRACE: Final = 10
 """Seconds open requests and streams get to finish after a stop is asked for."""
 
 _STOP_SIGNALS: Final = (signal.SIGINT, signal.SIGTERM)
-
-JOB_HANDLERS: Final[Mapping[str, Handler]] = {}
-"""The job handlers ``serve`` runs, by job kind. Empty until the first connector registers one
-(``git_sync`` in M1); a connector adds its handler here."""
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +66,37 @@ def configure_logging(settings: Settings) -> None:
     """
     logs.configure_logging(settings.log_level)
     logs.register_url_secrets(settings.database_url.get_secret_value())
+
+
+@asynccontextmanager
+async def job_handlers(settings: Settings, pool: Pool) -> AsyncGenerator[Mapping[str, Handler]]:
+    """The job handlers ``serve`` runs, by job kind, for the duration of the block.
+
+    ``git_sync`` (:mod:`memini.gitsync`) is there when an embedding provider is configured and
+    mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
+    and written. Code is synced only into an index: without embeddings there is none to write, and
+    records synced without their chunks would be left out of the index once embeddings are set,
+    since a sync writes only what changed. Otherwise a warning says why git sources are not
+    synced, and the scheduler leaves their streams alone. The embedder is closed at the end.
+    """
+    handlers: dict[str, Handler] = {}
+    embedder: Embedder | None = None
+    try:
+        embedder = create_embedder(settings)
+    except EmbeddingsNotConfiguredError as error:
+        log.warning("git sources are not synced: %s", error)
+    try:
+        if embedder is not None:
+            options = GitOptions.from_settings(settings)
+            problem = mirrors_unusable(options)
+            if problem is None:
+                handlers[GIT_SYNC] = git_sync_handler(pool, MirrorManager(options), embedder)
+            else:
+                log.warning("git sources are not synced: %s", problem)
+        yield handlers
+    finally:
+        if embedder is not None:
+            await embedder.aclose()
 
 
 @asynccontextmanager
@@ -114,7 +145,7 @@ async def serve_command(args: argparse.Namespace, settings: Settings) -> int:
 
     async with open_pool(url) as pool:
         app = create_app(settings, pool=pool, readiness_checks={"database": database_check(pool)})
-        async with background_jobs(pool, JOB_HANDLERS):
+        async with job_handlers(settings, pool) as handlers, background_jobs(pool, handlers):
             started = await run_http_server(app, settings)
     if not started:
         raise CommandError("the HTTP server did not start; see the log above")
