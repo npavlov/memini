@@ -542,11 +542,17 @@ async def test_a_job_of_one_source_does_not_block_another(pool: Pool, seed: Seed
     async with running(worker(pool, handler, concurrency=2)):
         await a_started.wait()
         await eventually(lambda: _is(pool, job_b, "succeeded"))
-        # The free slot passed over the second job of a, which waits for the lock of a.
-        assert await status_of(pool, first_a) == "running"
-        assert await status_of(pool, second_a) == "queued"
+        # One job of a runs; the free slot passed over the other, which waits for the lock of a.
+        # Which of the two runs first is not part of the contract: jobs inserted from different
+        # connections in the same instant have ids (uuidv7) that need not follow insertion order.
+        statuses = sorted([await status_of(pool, first_a), await status_of(pool, second_a)])
+        assert statuses == ["queued", "running"]
         a_release.set()
-        await eventually(lambda: _is(pool, second_a, "succeeded"))
+
+        async def both_a_succeeded() -> bool:
+            return await _is(pool, first_a, "succeeded") and await _is(pool, second_a, "succeeded")
+
+        await eventually(both_a_succeeded)
 
 
 # --- Shutdown -----------------------------------------------------------------------------------
