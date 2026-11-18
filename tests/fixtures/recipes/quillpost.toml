@@ -1,0 +1,53 @@
+#:schema ../../../schemas/recipe.schema.json
+# Quillpost is an invented mail server whose tools answer in text for a model to read, so its
+# selectors are regular expressions. The window is part of the search query.
+format = 1
+name = "quillpost"
+description = "Mail threads that match a search query."
+
+[server]
+name = "quillpost-mail"
+versions = ["0.9.*", "1.*"]
+
+[stream]
+kind = "thread"
+key_description = "a search query, such as 'in:inbox -from:noreply'"
+
+[window]
+overlap = "3d"
+initial = "7d"
+backfill = "14d"
+
+[list]
+tool = "search_threads"
+decode = "text"
+arguments = { query = "{stream} after:{from:%Y/%m/%d} before:{to:%Y/%m/%d}", page_size = 50 }
+items = '(?m)^Thread \S+ .*$'
+
+[list.item]
+id = 'Thread (\S+)'
+timestamp = 'last activity (\S+)'
+reply_count = '(\d+) messages'
+fields = { mailbox = 'in (\w+):' }
+
+[list.paging]
+mode = "offset"
+argument = "offset"
+total = 'Total: (\d+) threads'
+
+[detail]
+tool = "read_thread"
+decode = "text"
+arguments = { thread_id = "{item.id}", mailbox = "{item.mailbox}" }
+items = '(?m)^--- message \d+ ---$'
+
+[checks]
+totals = true
+reply_counts = true
+
+[rate]
+calls_per_minute = 30
+timeout = "45s"
+
+[parser]
+name = "quillpost.thread"

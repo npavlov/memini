@@ -1,0 +1,65 @@
+#:schema ../../../schemas/recipe.schema.json
+# Hearth is an invented chat server, used as the example of docs/recipes.md.
+format = 1
+name = "hearth"
+description = "Channel messages and their threads from the Hearth chat server."
+
+[server]
+name = "hearth-mcp"            # serverInfo.name at initialize
+versions = ["2.*"]             # serverInfo.version this recipe was checked against
+
+[stream]
+kind = "thread"                # a root message and its replies become one thread record
+key_description = "a channel id, such as C0001"
+key_pattern = "C[0-9]{4,8}"
+
+[window]
+overlap = "2d"                 # replies to a thread arrive for days
+initial = "14d"                # the first sync of a channel loads two weeks
+backfill = "30d"               # each later run loads 30 more days of history
+max_span = "7d"                # one listing covers at most a week
+
+[list]
+tool = "channel_history"
+decode = "json"                # the text content is a JSON document
+arguments = { channel = "{stream}", oldest = "{from:unix}", latest = "{to:unix}", limit = 100 }
+items = "$.messages[*]"
+order = "newest_first"
+
+[list.item]
+id = "@.ts"
+timestamp = "@.ts"
+timestamp_format = "unix"      # "1731900000.000100": seconds, read exactly
+reply_count = "@.reply_count"
+
+[list.paging]
+mode = "cursor"
+argument = "cursor"            # sent back on the next call, left out of the first
+next = "$.next_cursor"         # missing, null or "" on the last page
+has_more = "$.has_more"
+max_pages = 200
+
+[detail]
+tool = "thread_replies"
+when = "has_replies"           # only items whose reply_count is above zero
+arguments = { channel = "{stream}", thread = "{item.id}" }
+items = "$.messages[*]"
+includes_root = true           # the first message is the root itself
+
+[detail.paging]
+mode = "cursor"
+argument = "cursor"
+next = "$.next_cursor"
+
+[checks]
+reply_counts = true            # replies fetched equal the reply_count listed
+
+[rate]
+calls_per_minute = 50
+concurrency = 2
+max_calls = 3000
+timeout = "30s"
+
+[parser]
+name = "hearth.thread"
+options = { message_url = "https://hearth.example/c/{stream}/m/{id}" }

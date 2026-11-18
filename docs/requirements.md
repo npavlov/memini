@@ -210,6 +210,24 @@ One recipe, two executors:
 Raw responses are stored verbatim in both cases, so a parser fix can be replayed without calling the
 source again.
 
+**Recipe format** (decided 2026-11-18). A recipe is a TOML file, `format = 1`, checked by `memini
+recipe validate` (offline: no database, no service) and described by `schemas/recipe.schema.json`,
+which is generated from the model in `memini.recipes`; [recipes.md](recipes.md) is the reference.
+TOML, as the settings and the eval suite are, for comments and for regular expressions in literal
+strings. One recipe covers one kind of stream of one server, whose records are of one kind; a
+server with two kinds of data gets two recipes. It holds no endpoint, credential or stream list:
+those belong to the source. Every value the executors read is found by a selector, never by a
+model (principle 5): a path (a subset of JSONPath without filters) into a result decoded as JSON
+(`json`, the text content parsed; `structured`, `structuredContent`), or a regular expression with
+one capturing group over a result in text. A window bound is rendered so that the call covers the
+window (`from` rounded down, `to` up to the unit of its format); the superset is harmless, as
+records are upserted. Paging is by cursor, page number, offset or none, and a listing that
+reaches `max_pages` is incomplete, never cut short silently. Every recipe gets the checks that each
+call succeeded, each listing reached its last page, each cursor was followed and each listed item
+got its detail call; checks of page numbers, reply counts and totals are declared, and one declared
+without the values it needs is an error of the recipe. `recipe_digest`, a hash of what the recipe
+means rather than of its text, is recorded with each run.
+
 ### Scheduling and hygiene
 
 - Per-stream schedule, with an overlap margin behind the checkpoint to catch late replies.

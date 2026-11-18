@@ -1,0 +1,53 @@
+#:schema ../../../schemas/recipe.schema.json
+# Millnotes is an invented meeting note-taker. Its list tool takes no dates: the listing is
+# read newest first until it reaches past the window's start.
+format = 1
+name = "millnotes"
+
+[server]
+name = "millnotes"
+
+[stream]
+kind = "meeting"
+key_description = "always 'meetings': the server has one list"
+key_pattern = "meetings"
+
+[window]
+overlap = "1d"
+initial = "30d"
+
+[list]
+tool = "list_meetings"
+decode = "structured"
+arguments = { include_shared = true }
+items = "$.meetings[*]"
+order = "newest_first"
+
+[list.item]
+id = "@.meeting_id"
+timestamp = "@['started at']"
+timestamp_format = "%Y-%m-%d %H:%M"
+timezone = "Europe/Lisbon"
+
+[list.paging]
+mode = "page"
+argument = "page"
+first = 1
+size_argument = "per_page"
+size = 25
+number = "$.page"
+total_pages = "$.pages"
+
+[detail]
+tool = "get_meeting"
+decode = "structured"
+arguments = { id = "{item.id}", sections = ["summary", "action_items", "transcript"] }
+
+[checks]
+page_numbers = true
+
+[rate]
+calls_per_minute = 20
+
+[parser]
+name = "millnotes.meeting"

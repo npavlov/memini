@@ -1,0 +1,731 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/npavlov/memini/main/schemas/recipe.schema.json",
+  "$defs": {
+    "Checks": {
+      "additionalProperties": false,
+      "description": "Completeness checks a window must pass before its checkpoint moves, besides those every\nrecipe gets: each call succeeded, each listing reached its stop condition, each cursor was\nfollowed and each listed item got its detail call.",
+      "properties": {
+        "page_numbers": {
+          "default": false,
+          "description": "Page numbers run from ``first`` without a gap or a repeat, and end at ``total_pages``\nwhen the response states it. Needs page paging with ``number``.",
+          "title": "Page Numbers",
+          "type": "boolean"
+        },
+        "reply_counts": {
+          "default": false,
+          "description": "The ``items`` a detail call returns, less the item itself with ``includes_root``, are as\nmany as the ``reply_count`` of the listed item. Needs ``list.item.reply_count`` and\n``detail.items``. A server whose count includes the item (``3 messages``) leaves\n``includes_root`` out, so both sides count it.",
+          "title": "Reply Counts",
+          "type": "boolean"
+        },
+        "totals": {
+          "default": false,
+          "description": "The items of a listing equal the ``total`` its responses state. Needs ``total``.",
+          "title": "Totals",
+          "type": "boolean"
+        }
+      },
+      "title": "Checks",
+      "type": "object"
+    },
+    "CursorPaging": {
+      "additionalProperties": false,
+      "description": "The response names the next page by a cursor, which the next call sends back.",
+      "properties": {
+        "mode": {
+          "const": "cursor",
+          "title": "Mode",
+          "type": "string"
+        },
+        "argument": {
+          "description": "The argument that carries the cursor; left out of the first call.",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Argument",
+          "type": "string"
+        },
+        "next": {
+          "description": "Where the next cursor is. Missing, null or empty: the last page.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Next",
+          "type": "string"
+        },
+        "has_more": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the response says whether more pages follow. When set, a page that says no is the\nlast, and a page that says yes without a cursor fails the run's completeness.",
+          "title": "Has More"
+        },
+        "max_pages": {
+          "default": 1000,
+          "description": "Pages one listing may take; a listing that reaches it is incomplete.",
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode",
+        "argument",
+        "next"
+      ],
+      "title": "CursorPaging",
+      "type": "object"
+    },
+    "DetailCall": {
+      "additionalProperties": false,
+      "description": "The call made for each listed item: the replies of a thread, the body of a meeting.",
+      "properties": {
+        "tool": {
+          "description": "The MCP tool.",
+          "pattern": "^[A-Za-z0-9_./-]{1,128}$",
+          "title": "Tool",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "description": "The tool's arguments; they name the item with ``{item.id}`` or another ``{item.NAME}``.",
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Arguments",
+          "type": "object"
+        },
+        "decode": {
+          "default": "json",
+          "description": "How the result is read: json, structured or text.",
+          "enum": [
+            "json",
+            "structured",
+            "text"
+          ],
+          "title": "Decode",
+          "type": "string"
+        },
+        "when": {
+          "default": "always",
+          "description": "For which items: every item, or those whose ``reply_count`` is above zero.",
+          "enum": [
+            "always",
+            "has_replies"
+          ],
+          "title": "When",
+          "type": "string"
+        },
+        "items": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the replies are, to count them (``checks.reply_counts``): a path with ``*``, or a\npattern that matches each reply. Counted over every page of the detail call.",
+          "title": "Items"
+        },
+        "includes_root": {
+          "default": false,
+          "description": "Whether ``items`` holds the item itself besides its replies; it is then not counted.",
+          "title": "Includes Root",
+          "type": "boolean"
+        },
+        "paging": {
+          "default": {
+            "mode": "none"
+          },
+          "description": "How the detail call pages, if it does; one call by default.",
+          "discriminator": {
+            "mapping": {
+              "cursor": "#/$defs/CursorPaging",
+              "none": "#/$defs/NoPaging",
+              "offset": "#/$defs/OffsetPaging",
+              "page": "#/$defs/PagePaging"
+            },
+            "propertyName": "mode"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CursorPaging"
+            },
+            {
+              "$ref": "#/$defs/PagePaging"
+            },
+            {
+              "$ref": "#/$defs/OffsetPaging"
+            },
+            {
+              "$ref": "#/$defs/NoPaging"
+            }
+          ],
+          "title": "Paging"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "DetailCall",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "ListCall": {
+      "additionalProperties": false,
+      "description": "The call that lists a stream's items in a window, page by page.",
+      "properties": {
+        "tool": {
+          "description": "The MCP tool.",
+          "pattern": "^[A-Za-z0-9_./-]{1,128}$",
+          "title": "Tool",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "description": "The tool's arguments, with placeholders (:mod:`memini.recipes.templates`).",
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Arguments",
+          "type": "object"
+        },
+        "decode": {
+          "default": "json",
+          "description": "How the result is read: json, structured or text.",
+          "enum": [
+            "json",
+            "structured",
+            "text"
+          ],
+          "title": "Decode",
+          "type": "string"
+        },
+        "items": {
+          "description": "Where the items are: a path with ``*``, or a pattern that matches each item.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Items",
+          "type": "string"
+        },
+        "order": {
+          "default": "any",
+          "description": "The order of the items. With ``newest_first`` a listing stops after the first page that\nreaches past the window's start; with ``oldest_first``, after one that reaches its end.\n``any``: every page is read.",
+          "enum": [
+            "newest_first",
+            "oldest_first",
+            "any"
+          ],
+          "title": "Order",
+          "type": "string"
+        },
+        "item": {
+          "$ref": "#/$defs/ListItem",
+          "description": "Where each item's values are."
+        },
+        "paging": {
+          "description": "How the next page is asked for and when the listing ends.",
+          "discriminator": {
+            "mapping": {
+              "cursor": "#/$defs/CursorPaging",
+              "none": "#/$defs/NoPaging",
+              "offset": "#/$defs/OffsetPaging",
+              "page": "#/$defs/PagePaging"
+            },
+            "propertyName": "mode"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CursorPaging"
+            },
+            {
+              "$ref": "#/$defs/PagePaging"
+            },
+            {
+              "$ref": "#/$defs/OffsetPaging"
+            },
+            {
+              "$ref": "#/$defs/NoPaging"
+            }
+          ],
+          "title": "Paging"
+        }
+      },
+      "required": [
+        "tool",
+        "items",
+        "item",
+        "paging"
+      ],
+      "title": "ListCall",
+      "type": "object"
+    },
+    "ListItem": {
+      "additionalProperties": false,
+      "description": "Where the values of one listed item are, relative to the item (``@`` paths, or patterns\nover the item's text).",
+      "properties": {
+        "id": {
+          "description": "The item's id at the server: what a detail call asks for.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "timestamp": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "The item's time, read in ``timestamp_format``. Needed for an ordered listing.",
+          "title": "Timestamp"
+        },
+        "timestamp_format": {
+          "default": "rfc3339",
+          "description": "rfc3339, unix, unix_ms, or a strptime pattern (%Y %m %d %H %M %S %f %z).",
+          "title": "Timestamp Format",
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "The IANA zone of a timestamp that carries none; UTC when not set.",
+          "title": "Timezone"
+        },
+        "reply_count": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "The number of replies the listing announces for the item.",
+          "title": "Reply Count"
+        },
+        "fields": {
+          "default": {},
+          "description": "Other values a detail call needs, by name: ``{item.NAME}`` in its arguments.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,62}$": {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "title": "Fields",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ListItem",
+      "type": "object"
+    },
+    "NoPaging": {
+      "additionalProperties": false,
+      "description": "One call returns the whole listing.",
+      "properties": {
+        "mode": {
+          "const": "none",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "NoPaging",
+      "type": "object"
+    },
+    "OffsetPaging": {
+      "additionalProperties": false,
+      "description": "The next call skips the items seen so far.",
+      "properties": {
+        "mode": {
+          "const": "offset",
+          "title": "Mode",
+          "type": "string"
+        },
+        "argument": {
+          "description": "The argument that carries the number of items to skip.",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Argument",
+          "type": "string"
+        },
+        "start": {
+          "default": 0,
+          "description": "The offset of the first item: 0 or 1.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "size_argument": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string",
+          "description": "The argument that carries the page size; needs ``size``.",
+          "title": "Size Argument"
+        },
+        "size": {
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer",
+          "description": "Items per page. A page with fewer is the last.",
+          "title": "Size"
+        },
+        "total": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the response states the number of items of the listing; the listing ends there.",
+          "title": "Total"
+        },
+        "has_more": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the response says whether more pages follow.",
+          "title": "Has More"
+        },
+        "max_pages": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode",
+        "argument"
+      ],
+      "title": "OffsetPaging",
+      "type": "object"
+    },
+    "PagePaging": {
+      "additionalProperties": false,
+      "description": "Pages are numbered; the next call asks for the next number.",
+      "properties": {
+        "mode": {
+          "const": "page",
+          "title": "Mode",
+          "type": "string"
+        },
+        "argument": {
+          "description": "The argument that carries the page number.",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Argument",
+          "type": "string"
+        },
+        "first": {
+          "default": 1,
+          "description": "The number of the first page: 1 or 0.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "First",
+          "type": "integer"
+        },
+        "size_argument": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string",
+          "description": "The argument that carries the page size; needs ``size``.",
+          "title": "Size Argument"
+        },
+        "size": {
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer",
+          "description": "Items per page. A page with fewer is the last.",
+          "title": "Size"
+        },
+        "number": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the response states its page number (for ``checks.page_numbers``).",
+          "title": "Number"
+        },
+        "total_pages": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the response states the number of pages. The page with that number is the last.",
+          "title": "Total Pages"
+        },
+        "total": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the response states the number of items of the listing (for ``checks.totals``).",
+          "title": "Total"
+        },
+        "has_more": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "Where the response says whether more pages follow.",
+          "title": "Has More"
+        },
+        "max_pages": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode",
+        "argument"
+      ],
+      "title": "PagePaging",
+      "type": "object"
+    },
+    "Parser": {
+      "additionalProperties": false,
+      "description": "The deterministic parser that turns the raw responses of a window into records.",
+      "properties": {
+        "name": {
+          "description": "A parser registered in the service, such as ``hearth.thread``.",
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "description": "Settings the parser reads, such as a URL pattern for records; it checks them.",
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Options",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Parser",
+      "type": "object"
+    },
+    "Rate": {
+      "additionalProperties": false,
+      "description": "The budget of calls to the server.",
+      "properties": {
+        "calls_per_minute": {
+          "description": "At most this many calls in any minute.",
+          "maximum": 6000,
+          "minimum": 1,
+          "title": "Calls Per Minute",
+          "type": "integer"
+        },
+        "concurrency": {
+          "default": 1,
+          "description": "Calls in flight at once.",
+          "maximum": 16,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "max_calls": {
+          "default": 5000,
+          "description": "Calls one run may make; a run that reaches it is incomplete.",
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Calls",
+          "type": "integer"
+        },
+        "timeout": {
+          "default": "PT1M",
+          "description": "How long one call may take.",
+          "pattern": "^([0-9]+[smhdw])+$",
+          "title": "Timeout",
+          "type": "string"
+        }
+      },
+      "required": [
+        "calls_per_minute"
+      ],
+      "title": "Rate",
+      "type": "object"
+    },
+    "Server": {
+      "additionalProperties": false,
+      "description": "The MCP server the recipe was written for. A server that reports another name or version\nhas drifted: the executor stops on another name and warns on another version.",
+      "properties": {
+        "name": {
+          "description": "The name the server reports when a session starts (``serverInfo.name``).",
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "versions": {
+          "default": [],
+          "description": "Versions (``serverInfo.version``) the recipe was checked against; ``*`` matches any\ncharacters, as in ``1.4.*``. Empty: any version.",
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Versions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Server",
+      "type": "object"
+    },
+    "Stream": {
+      "additionalProperties": false,
+      "description": "What one stream of a source is and what its records become.",
+      "properties": {
+        "kind": {
+          "description": "The kind of record the parser makes of the stream's items.",
+          "enum": [
+            "thread",
+            "meeting",
+            "document"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "key_description": {
+          "description": "What a stream key is, for the person who configures a source: \"a channel id, such as\nC0001\", \"a mailbox search query\".",
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Key Description",
+          "type": "string"
+        },
+        "key_pattern": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+          "description": "A regular expression a stream key must match in full.",
+          "title": "Key Pattern"
+        },
+        "snapshot": {
+          "default": false,
+          "description": "Whether a complete listing of a window holds every live item of the window, so an item\nleft out has been deleted at the source (an ingest snapshot).",
+          "title": "Snapshot",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "key_description"
+      ],
+      "title": "Stream",
+      "type": "object"
+    },
+    "Window": {
+      "additionalProperties": false,
+      "description": "How the planner cuts a stream's history into windows ``[from, to)``. A source may set its\nown values; these are the defaults for the server.",
+      "properties": {
+        "overlap": {
+          "description": "How far behind the checkpoint a window starts, to catch late replies and edits.",
+          "pattern": "^([0-9]+[smhdw])+$",
+          "title": "Overlap",
+          "type": "string"
+        },
+        "initial": {
+          "description": "How much recent history the first sync of a stream loads.",
+          "pattern": "^([0-9]+[smhdw])+$",
+          "title": "Initial",
+          "type": "string"
+        },
+        "backfill": {
+          "description": "How much older history each later run loads, until the source's retention start. Left\nout: no history beyond the initial window.",
+          "pattern": "^([0-9]+[smhdw])+$",
+          "type": "string",
+          "title": "Backfill"
+        },
+        "max_span": {
+          "description": "The longest window one listing covers; a longer window is split. Left out: no limit.",
+          "pattern": "^([0-9]+[smhdw])+$",
+          "type": "string",
+          "title": "Max Span"
+        }
+      },
+      "required": [
+        "overlap",
+        "initial"
+      ],
+      "title": "Window",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "How to sync one MCP server: a declarative file per server (docs/recipes.md).",
+  "properties": {
+    "format": {
+      "const": 1,
+      "description": "The version of the recipe format: 1.",
+      "title": "Format",
+      "type": "integer"
+    },
+    "name": {
+      "description": "The recipe's name: lowercase letters, digits, '-' and '_'.",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Description",
+      "type": "string"
+    },
+    "server": {
+      "$ref": "#/$defs/Server"
+    },
+    "stream": {
+      "$ref": "#/$defs/Stream"
+    },
+    "window": {
+      "$ref": "#/$defs/Window"
+    },
+    "list": {
+      "$ref": "#/$defs/ListCall",
+      "description": "The list call: ``[list]``."
+    },
+    "detail": {
+      "$ref": "#/$defs/DetailCall",
+      "description": "The call per listed item, if the listing alone does not hold what the parser needs."
+    },
+    "checks": {
+      "$ref": "#/$defs/Checks",
+      "default": {
+        "page_numbers": false,
+        "reply_counts": false,
+        "totals": false
+      }
+    },
+    "rate": {
+      "$ref": "#/$defs/Rate"
+    },
+    "parser": {
+      "$ref": "#/$defs/Parser"
+    }
+  },
+  "required": [
+    "format",
+    "name",
+    "server",
+    "stream",
+    "window",
+    "list",
+    "rate",
+    "parser"
+  ],
+  "title": "Memini MCP recipe",
+  "type": "object"
+}
