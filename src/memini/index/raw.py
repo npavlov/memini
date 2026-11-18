@@ -17,11 +17,16 @@ again. Where the bytes are depends on where the record came from:
 A provider returns ``None`` for a record that has nothing to index, so its chunks are deleted; it
 raises :class:`RawContentUnavailableError` when it cannot tell right now (a mirror not cloned yet,
 a fetch that failed), so the rebuild stops and nothing is lost.
+
+A provider that reads in batches is a :class:`Prefetcher` as well: before each page of records the
+rebuild tells it which records it is about to read, in order, and it may read them ahead, in
+batches of its choosing (the mirror reader reads many blobs per git process). :class:`ByKind` and
+:class:`BySourceKind` pass the page on to the providers they hold.
 """
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final, Protocol, get_args
+from typing import Any, Final, Protocol, get_args, runtime_checkable
 from uuid import UUID
 
 from psycopg import AsyncConnection, sql
@@ -34,6 +39,7 @@ __all__ = [
     "ByKind",
     "BySourceKind",
     "MirrorNotAvailable",
+    "Prefetcher",
     "RawContent",
     "RawContentUnavailableError",
     "RawDocument",
@@ -118,6 +124,26 @@ class RawContent(Protocol):
         ...
 
 
+@runtime_checkable
+class Prefetcher(Protocol):
+    """A :class:`RawContent` that reads ahead."""
+
+    async def prefetch(self, records: Sequence[RecordRef]) -> None:
+        """``records`` are read next, in this order, until the next call; earlier hints are
+        forgotten. The records it does not serve are ignored. Reads nothing that cannot wait:
+        reading ahead is the provider's choice, within a memory budget of its own."""
+        ...
+
+
+async def _prefetch(providers: Sequence[RawContent], records: Sequence[RecordRef]) -> None:
+    """Pass ``records`` to each distinct provider that reads ahead."""
+    seen: set[int] = set()
+    for provider in providers:
+        if id(provider) not in seen and isinstance(provider, Prefetcher):
+            seen.add(id(provider))
+            await provider.prefetch(records)
+
+
 class StoredPayload:
     """The payload kept in the ``record`` row: threads, meetings, documents of other sources than
     git.
@@ -170,6 +196,9 @@ class ByKind:
         provider = self._providers.get(record.kind)
         return None if provider is None else await provider.read(record)
 
+    async def prefetch(self, records: Sequence[RecordRef]) -> None:
+        await _prefetch(list(self._providers.values()), records)
+
 
 class BySourceKind:
     """Records of git sources from ``git``, records of other sources from ``other``.
@@ -195,6 +224,10 @@ class BySourceKind:
                 return None
             kind = self._kinds[record.source_id] = row[0]
         return await (self._git if kind == "git" else self._other).read(record)
+
+    async def prefetch(self, records: Sequence[RecordRef]) -> None:
+        # Each provider picks the records it serves; the mirror reader those of git sources.
+        await _prefetch([self._git, self._other], records)
 
 
 def default_raw_content(conn: Conn, *, code: RawContent | None = None) -> RawContent:

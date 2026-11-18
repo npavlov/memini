@@ -404,7 +404,9 @@ record by record through the same writer under the new fingerprint; one last tra
 the chunks of other embedding keys and records the new fingerprint, so search stays refused until
 it commits. A rebuild that stopped resumes without embedding anything twice. The files of git
 sources, code and Markdown documents, are read again from the repository mirror (their content
-hash is the blob id), other records from the stored payload.
+hash is the blob id), in batches: two git processes read the blobs of up to a page of records of
+one source, within a memory budget (8 MiB by default), not one process per file. Other records are
+read from the stored payload.
 
 **Code sync** (decided 2026-11-18). Each tracked ref of a git source is a stream; its pin, kept in
 `stream.cursor`, is the commit its records are complete at and a digest of the rules that selected

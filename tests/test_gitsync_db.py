@@ -1301,6 +1301,54 @@ async def test_a_stale_index_blocks_the_sync_until_reindex_reads_code_from_the_m
     await assert_consistent(env, src)
 
 
+async def test_a_rebuild_reads_the_files_of_a_repository_in_batches(env: Env) -> None:
+    repo = env.repo
+    files = {f"src/mod_{n:02d}.py": module(function(f"step_{n}", n)) for n in range(30)}
+    huge = "x" * (MAX_BLOB + 1)  # skipped by the sync; a record is pointed at it below
+    repo.commit({**files, "data/huge.txt": huge})
+    src = await add_source(env)
+    await sync(env, src)
+    before = await chunk_versions(env, src)
+    sizes = {blob(repo, path): len(content.encode()) for path, content in files.items()}
+
+    async def rebuild(content: MirrorContent) -> int:
+        env.mirrors.reads.clear()
+        async with connect(env.url, autocommit=True) as conn:
+            result = await reindex(
+                conn,
+                env.embedder,
+                workspace_id=env.workspace,
+                raw=default_raw_content(conn, code=content),
+            )
+        return result.records_indexed
+
+    # By count: one git read per window of eight, not one per file.
+    assert await rebuild(MirrorContent(env.mirrors, batch_files=8)) == 30
+    assert [len(batch) for batch in env.mirrors.reads] == [8, 8, 8, 6]
+    assert await chunk_versions(env, src) == before  # the same chunks, none written
+
+    # By bytes: no window holds more than the budget.
+    budget = 3 * max(sizes.values())
+    assert await rebuild(MirrorContent(env.mirrors, batch_bytes=budget)) == 30
+    assert sorted(oid for batch in env.mirrors.reads for oid in batch) == sorted(sizes)
+    assert all(sum(sizes[oid] for oid in batch) <= budget for batch in env.mirrors.reads)
+    assert len(env.mirrors.reads) >= 10
+
+    # A blob gone from the mirror, and one over the read limit, have nothing to index.
+    gone, large = f"{MAIN}:src/mod_00.py", f"{MAIN}:src/mod_01.py"
+    for external_id, oid in ((gone, "0" * 40), (large, blob(repo, "data/huge.txt"))):
+        await env.db.execute(
+            "UPDATE record SET content_hash = %s WHERE source_id = %s AND external_id = %s",
+            (oid, src.id, external_id),
+        )
+
+    assert await rebuild(MirrorContent(env.mirrors, batch_files=8)) == 28
+    assert sum(len(batch) for batch in env.mirrors.reads) == 28  # neither was read
+    assert await chunks_of(env, src, gone) == 0
+    assert await chunks_of(env, src, large) == 0
+    assert await chunks_of(env, src, f"{MAIN}:src/mod_02.py") > 0
+
+
 async def test_mirror_content_reads_blobs_and_refuses_without_a_mirror(env: Env) -> None:
     env.repo.commit({"src/a.py": module(function("alpha", 1))})
     src = await add_source(env)

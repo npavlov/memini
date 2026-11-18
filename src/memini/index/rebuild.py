@@ -11,7 +11,10 @@ the fingerprint the embedder and this chunker make (:func:`~memini.index.current
    written by the index writer (:func:`~memini.index.write_record_chunks`): rows whose text, vector
    key and place are unchanged are left alone, and only texts with no vector under the new key in
    the workspace are embedded. A tombstone, a record with nothing to index, or one of a kind without
-   a chunker loses its chunks.
+   a chunker loses its chunks. Records come a page at a time; a provider that reads ahead
+   (:class:`~memini.index.raw.Prefetcher`) is told each page's records to read before the first
+   of them, so the files of a repository are read from its mirror in batches, not one git
+   process per file.
 4. A last transaction locks the workspace's ``index_state`` row, deletes the chunks still under
    another embedding key and records the new fingerprint. Search under the new settings is refused
    (:func:`~memini.index.check_index`) until this transaction commits, and passes from then on.
@@ -51,7 +54,14 @@ from memini.index.fingerprint import (
     read_index_state,
     set_index_fingerprint,
 )
-from memini.index.raw import RECORD_COLUMNS, RawContent, RawDocument, RecordRef, record_ref
+from memini.index.raw import (
+    RECORD_COLUMNS,
+    Prefetcher,
+    RawContent,
+    RawDocument,
+    RecordRef,
+    record_ref,
+)
 from memini.index.vectors import VectorIndex, drop_unused_vector_indexes, ensure_vector_index
 from memini.index.writer import (
     IndexCounts,
@@ -190,12 +200,21 @@ async def reindex(
         totals = IndexCounts()
         records = indexed = 0
         async with _step("rebuild_records"):
-            async for record in _records(conn, workspace_id, page_size):
-                counts, wrote = await _rebuild_record(conn, embedder, record, raw, chunkers)
-                counts.report()  # the record's transaction has committed
-                totals += counts
-                records += 1
-                indexed += wrote
+            async for page in _pages(conn, workspace_id, page_size):
+                if isinstance(raw, Prefetcher):
+                    await raw.prefetch(
+                        [
+                            record
+                            for record in page
+                            if not record.deleted and record.kind in chunkers
+                        ]
+                    )
+                for record in page:
+                    counts, wrote = await _rebuild_record(conn, embedder, record, raw, chunkers)
+                    counts.report()  # the record's transaction has committed
+                    totals += counts
+                    records += 1
+                    indexed += wrote
 
         async with _step("finish"), conn.transaction():
             # Wait for writers that checked the old fingerprint, and keep new ones out until the
@@ -280,7 +299,7 @@ async def _step(name: str) -> AsyncGenerator[None]:
         yield
 
 
-async def _records(conn: Conn, workspace_id: UUID, page_size: int) -> AsyncIterator[RecordRef]:
+async def _pages(conn: Conn, workspace_id: UUID, page_size: int) -> AsyncIterator[list[RecordRef]]:
     """Every record of the workspace, by (source, kind, id), a page at a time."""
     after: tuple[UUID, str, str] | None = None
     while True:
@@ -302,8 +321,8 @@ async def _records(conn: Conn, workspace_id: UUID, page_size: int) -> AsyncItera
                 (workspace_id, *after, page_size),
             )
         page = [record_ref(row) for row in await cur.fetchall()]
-        for record in page:
-            yield record
+        if page:
+            yield page
         if len(page) < page_size:
             return
         last = page[-1]
