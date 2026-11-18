@@ -818,11 +818,11 @@ def test_parser_wiring(capsys: pytest.CaptureFixture[str]) -> None:
     parser = argparse.ArgumentParser(prog="memini recipe")
     recipe_cli.configure_parser(parser)
     args = parser.parse_args(["validate", str(RECIPES / "hearth.toml")])
-    assert asyncio.run(args.command(args, None)) == 0
+    assert asyncio.run(args.offline(args)) == 0
     assert capsys.readouterr().out.endswith("valid recipe hearth\n")
 
     args = parser.parse_args(["schema"])
-    assert asyncio.run(args.command(args, None)) == 0
+    assert asyncio.run(args.offline(args)) == 0
     assert json.loads(capsys.readouterr().out) == recipe_json_schema()
 
     with pytest.raises(SystemExit):

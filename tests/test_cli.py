@@ -550,3 +550,25 @@ def test_run_http_server_reports_a_failed_start(settings: Settings) -> None:
         started = asyncio.run(run_http_server(create_app(busy), busy))
 
     assert started is False
+
+
+# --- Offline commands ----------------------------------------------------------------------------
+
+
+def test_recipe_validate_runs_without_settings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    for name in ("MEMINI_DATABASE_URL", "MEMINI_DATABASE_URL_FILE", "MEMINI_URL", "MEMINI_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    valid = Path(__file__).parent / "fixtures" / "recipes" / "hearth.toml"
+    broken = tmp_path / "broken.toml"
+    broken.write_text('format = 1\nname = "x"\n', encoding="utf-8")
+
+    assert main(["recipe", "validate", str(valid)]) == 0
+    assert main(["recipe", "validate", str(broken)]) == 1
+    assert "server: required" in capsys.readouterr().out
+
+
+def test_offline_commands_refuse_the_global_service_options() -> None:
+    valid = Path(__file__).parent / "fixtures" / "recipes" / "hearth.toml"
+    assert main(["--url", "http://127.0.0.1:1", "recipe", "validate", str(valid)]) == 2

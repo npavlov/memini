@@ -54,7 +54,7 @@ def configure_parser(group: argparse.ArgumentParser) -> None:
         " recipe is not valid, 2 a file cannot be read as TOML.",
     )
     validate.add_argument("paths", nargs="+", type=Path, metavar="PATH", help="a recipe file")
-    validate.set_defaults(command=validate_command)
+    validate.set_defaults(offline=validate_command)
 
     schema = subcommands.add_parser(
         "schema",
@@ -62,7 +62,7 @@ def configure_parser(group: argparse.ArgumentParser) -> None:
         description="Print the JSON Schema of a recipe file to stdout. It checks the structure"
         " of a recipe; `memini recipe validate` also checks the rules that span keys.",
     )
-    schema.set_defaults(command=schema_command)
+    schema.set_defaults(offline=schema_command)
 
 
 async def validate_command(args: argparse.Namespace, settings: Settings | None = None) -> int:

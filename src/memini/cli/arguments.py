@@ -29,6 +29,7 @@ __all__ = [
     "HELP_WIDTH",
     "ClientCommand",
     "Commands",
+    "OfflineCommand",
     "OperatorCommand",
     "Parser",
     "format_duration",
@@ -44,6 +45,8 @@ type OperatorCommand = Callable[[argparse.Namespace, Settings], Coroutine[Any, A
 """An operator command: runs with the service's settings, on the database."""
 type ClientCommand = Callable[[argparse.Namespace, Api], int]
 """A client command: runs with a client of the service's HTTP API."""
+type OfflineCommand = Callable[[argparse.Namespace], Coroutine[Any, Any, int]]
+"""An offline command: reads files only; needs neither the service nor the database."""
 
 HELP_WIDTH: Final = 79
 """The width the hand-made parts of ``memini --help`` are wrapped to."""
@@ -174,10 +177,18 @@ class Commands:
         self._add = add_parser
         self._client: list[tuple[str, str]] = []
         self._operator: list[tuple[str, str]] = []
+        self._offline: list[tuple[str, str]] = []
 
     def add_client(self, name: str, *, help: str, **kwargs: Any) -> argparse.ArgumentParser:
         """Add a client command: an HTTP client of the running service."""
         self._client.append((name, help))
+        kwargs.setdefault("description", help[:1].upper() + help[1:] + ".")
+        return self._add(name, **kwargs)
+
+    def add_offline(self, name: str, *, help: str, **kwargs: Any) -> argparse.ArgumentParser:
+        """Add an offline command: it reads files only, with no service and no database. Its
+        subcommands set ``offline`` (an :data:`OfflineCommand`) as their default."""
+        self._offline.append((name, help))
         kwargs.setdefault("description", help[:1].upper() + help[1:] + ".")
         return self._add(name, **kwargs)
 
@@ -206,7 +217,7 @@ class Commands:
 
     def listing(self) -> str:
         """The commands in two groups, for the epilog of ``memini --help``."""
-        width = max(len(name) for name, _ in (*self._client, *self._operator)) + 2
+        width = max(len(name) for name, _ in (*self._client, *self._operator, *self._offline)) + 2
 
         def rows(commands: list[tuple[str, str]]) -> str:
             return "\n".join(f"  {name.ljust(width)}{text}" for name, text in commands)
@@ -221,7 +232,11 @@ class Commands:
             " (docker compose exec memini memini <command>):",
             HELP_WIDTH,
         )
-        return f"{client}\n{rows(self._client)}\n\n{operator}\n{rows(self._operator)}"
+        listing = f"{client}\n{rows(self._client)}\n\n{operator}\n{rows(self._operator)}"
+        if self._offline:
+            offline = "offline commands, on files only, with no service and no database:"
+            listing += f"\n\n{offline}\n{rows(self._offline)}"
+        return listing
 
 
 def _operator_description(command: str, help: str, description: str | None) -> str:

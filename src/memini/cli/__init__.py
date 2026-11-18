@@ -115,6 +115,7 @@ from memini.cli import (
     credentials,
     evaluate,
     index,
+    recipes,
     runs,
     search,
     serve,
@@ -125,6 +126,7 @@ from memini.cli.arguments import (
     HELP_WIDTH,
     ClientCommand,
     Commands,
+    OfflineCommand,
     OperatorCommand,
     Parser,
     parse_lifetime,
@@ -179,8 +181,22 @@ def main(
     client: ClientCommand | None = getattr(args, "client", None)
     if client is not None:
         return _run_client(args, client, transport)
+    offline: OfflineCommand | None = getattr(args, "offline", None)
+    if offline is not None:
+        return _run_offline(args, offline)
     command: OperatorCommand = args.command
     return _run_operator(args, command)
+
+
+def _run_offline(args: argparse.Namespace, command: OfflineCommand) -> int:
+    if args.url is not None or args.token_file is not None or args.config is not None:
+        message("--url, --token-file and --config are not used by an offline command")
+        return EXIT_USAGE
+    try:
+        return asyncio.run(command(args))
+    except KeyboardInterrupt:
+        message("interrupted")
+        return EXIT_INTERRUPTED
 
 
 def _run_client(
@@ -476,6 +492,11 @@ def build_parser() -> argparse.ArgumentParser:
         commands.add_parser(
             "credentials", help=credentials.HELP, description=credentials.DESCRIPTION
         )
+    )
+
+    # --- Offline commands: files only, no service and no database ---------------------------------
+    recipes.configure_parser(
+        commands.add_offline("recipe", help=recipes.HELP, description=recipes.DESCRIPTION)
     )
 
     parser.epilog = f"{commands.listing()}\n\n{textwrap.fill(EXIT_CODES, HELP_WIDTH)}"
