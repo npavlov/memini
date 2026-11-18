@@ -30,6 +30,17 @@ For the development compose stack, where Postgres listens on 127.0.0.1:55432::
 ``principal`` (``MEMINI_PRINCIPAL``, default ``owner``) names the principal the CLI acts as: it owns
 the workspaces and tokens the CLI creates, and is created on first use. v1 has one user, so the
 default fits; set it only to give that principal another name, and keep it the same afterwards.
+
+Embeddings (the ``embedding_*`` settings, :mod:`memini.embeddings`) are off until
+``embedding_provider`` is set: the service starts without them, and indexing that needs vectors
+refuses with a message naming the setting. ``openai_compatible`` sends chunk text to the API at
+``embedding_url`` (Ollama, llama.cpp, vLLM or a cloud service): which endpoint, on this machine or
+not, is the user's explicit choice (principle 8). ``local`` runs an ONNX model in the process; it
+needs the optional dependencies ``memini[local-embeddings]`` and pins the model files by
+``embedding_digest``, which is verified before they are loaded. A setting of the provider not
+chosen, or any ``embedding_*`` setting without a provider, is an error. The index fingerprint
+(:mod:`memini.index`) covers provider, model, digest, dimension, pooling, token limit and document
+prefix: a change of any of them blocks search until ``memini reindex`` rebuilds the index.
 """
 
 import os
@@ -43,9 +54,12 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, V
 
 __all__ = [
     "CONFIG_FILE_VAR",
+    "EMBEDDING_MAX_DIMENSION",
     "ENV_PREFIX",
     "HANDLE_REGEX",
     "ConfigError",
+    "EmbeddingPooling",
+    "EmbeddingProvider",
     "LogLevel",
     "Settings",
     "environment_variables",
@@ -57,6 +71,16 @@ CONFIG_FILE_VAR: Final = "MEMINI_CONFIG_FILE"
 _FILE_SUFFIX: Final = "_FILE"
 
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"]
+
+EmbeddingProvider = Literal["openai_compatible", "local"]
+"""Where vectors come from: an OpenAI-compatible HTTP API, or an ONNX model in the process."""
+
+EmbeddingPooling = Literal["mean", "cls"]
+"""How the local provider makes one vector of a text's token vectors: their mean, or the vector of
+the first token."""
+
+EMBEDDING_MAX_DIMENSION: Final = 16000
+"""The largest dimension a pgvector ``vector`` column holds."""
 
 HANDLE_REGEX: Final = r"^[a-z0-9][a-z0-9_-]{0,62}$"
 """A valid name of a principal, as :data:`memini.workspaces.HANDLE_PATTERN` and the database check
@@ -89,6 +113,69 @@ class Settings(BaseModel):
         pattern=HANDLE_REGEX,
         description="1 to 63 lowercase letters, digits, '-' or '_', starting with a letter"
         " or digit",
+    )
+
+    # --- Embeddings (memini.embeddings). Rules across these fields: _embedding_problems. ---------
+    embedding_provider: EmbeddingProvider | None = Field(
+        default=None, description="openai_compatible or local"
+    )
+    embedding_model: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="a model name; for local, a Hugging Face repository such as org/name",
+    )
+    embedding_dimension: int | None = Field(
+        default=None,
+        ge=1,
+        le=EMBEDDING_MAX_DIMENSION,
+        description=f"the model's vector size, an integer from 1 to {EMBEDDING_MAX_DIMENSION}",
+    )
+    embedding_digest: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="for local, sha256: and 64 lowercase hex digits; for openai_compatible, the"
+        " version of the served model, such as its Ollama digest",
+    )
+    embedding_batch_size: int = Field(
+        default=32, ge=1, le=2048, description="texts per batch, an integer from 1 to 2048"
+    )
+    embedding_timeout: float = Field(
+        default=60.0, gt=0, le=3600, description="seconds per request, more than 0, at most 3600"
+    )
+    embedding_query_prefix: str = Field(
+        default="", max_length=200, description="at most 200 characters, e.g. 'query: '"
+    )
+    embedding_document_prefix: str = Field(
+        default="", max_length=200, description="at most 200 characters, e.g. 'passage: '"
+    )
+    # openai_compatible only
+    embedding_url: str | None = Field(
+        default=None,
+        max_length=500,
+        pattern=r"^https?://[^\s/?#]+(/[^\s?#]*)?$",
+        description="the base URL of an OpenAI-compatible API, e.g. http://127.0.0.1:11434/v1",
+    )
+    embedding_api_key: SecretStr | None = Field(default=None, min_length=1)
+    # local only
+    embedding_model_dir: Path | None = Field(
+        default=None, description="a directory for the model files; created if missing"
+    )
+    embedding_model_file: str = Field(
+        default="onnx/model.onnx",
+        max_length=200,
+        pattern=r"^([A-Za-z0-9_][A-Za-z0-9._-]*/)*[A-Za-z0-9_][A-Za-z0-9._-]*\.onnx$",
+        description="the path of the ONNX file in the model repository, e.g. onnx/model.onnx",
+    )
+    embedding_revision: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{40}$",
+        description="a commit of the model repository, 40 lowercase hex digits",
+    )
+    embedding_pooling: EmbeddingPooling = Field(default="mean", description="mean or cls")
+    embedding_max_tokens: int = Field(
+        default=512, ge=1, le=32768, description="an integer from 1 to 32768"
     )
 
 
@@ -169,6 +256,9 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             if name not in failed:
                 problems.append(_describe(name, error["type"], origin))
 
+    if settings is not None:
+        problems.extend(_embedding_problems(settings, origin))
+
     # Raised outside the except block, so the ValidationError is not chained as __context__.
     if settings is None or problems:
         raise ConfigError(problems)
@@ -243,3 +333,76 @@ def _describe(name: str, error_type: str, origin: Mapping[str, str]) -> str:
     field = Settings.model_fields.get(name)
     expected = f"; expected {field.description}" if field is not None and field.description else ""
     return f"{where}: invalid value ({error_type}){expected}"
+
+
+# --- Embeddings: rules across settings -----------------------------------------------------------
+
+_EMBEDDING_ONLY: Final[Mapping[str, EmbeddingProvider]] = {
+    "embedding_url": "openai_compatible",
+    "embedding_api_key": "openai_compatible",
+    "embedding_model_dir": "local",
+    "embedding_model_file": "local",
+    "embedding_revision": "local",
+    "embedding_pooling": "local",
+    "embedding_max_tokens": "local",
+}
+"""Settings that apply to one provider only."""
+
+_EMBEDDING_REQUIRED: Final[Mapping[EmbeddingProvider, tuple[str, ...]]] = {
+    "openai_compatible": ("embedding_model", "embedding_dimension", "embedding_url"),
+    "local": ("embedding_model", "embedding_dimension", "embedding_digest", "embedding_model_dir"),
+}
+
+_LOCAL_MODEL: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
+_SHA256_DIGEST: Final = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def _embedding_problems(settings: Settings, origin: Mapping[str, str]) -> list[str]:
+    """Problems of the embedding settings taken together. Each names its key, never a value."""
+    provider = settings.embedding_provider
+    given = [
+        name
+        for name in Settings.model_fields
+        if name.startswith("embedding_") and name != "embedding_provider" and name in origin
+    ]
+    if provider is None:
+        return [
+            f"{origin[name]}: has no effect without embedding_provider;"
+            f" set {_env_var('embedding_provider')}, or remove it"
+            for name in given
+        ]
+
+    def where(name: str) -> str:
+        return origin.get(name, _env_var(name))
+
+    problems: list[str] = []
+    for name in _EMBEDDING_REQUIRED[provider]:
+        if getattr(settings, name) is None:
+            key = _env_var(name)
+            problems.append(
+                f"{key}: required when embedding_provider is {provider};"
+                f" set {key} or {name} in the config file"
+            )
+    for name in given:
+        only = _EMBEDDING_ONLY.get(name)
+        if only is not None and only != provider:
+            problems.append(f"{origin[name]}: applies only when embedding_provider is {only}")
+    if provider == "local":
+        model, digest = settings.embedding_model, settings.embedding_digest
+        if model is not None and _LOCAL_MODEL.fullmatch(model) is None:
+            problems.append(
+                f"{where('embedding_model')}: invalid value; expected a Hugging Face repository"
+                " such as org/name"
+            )
+        if digest is not None and _SHA256_DIGEST.fullmatch(digest) is None:
+            problems.append(
+                f"{where('embedding_digest')}: invalid value; expected sha256: and 64 lowercase hex"
+                " digits, the digest of the model files"
+            )
+    elif settings.embedding_url is not None and "@" in settings.embedding_url.split("/")[2]:
+        key = _env_var("embedding_api_key")
+        problems.append(
+            f"{where('embedding_url')}: holds credentials, but the URL is not a secret;"
+            f" set {key} or {key}{_FILE_SUFFIX} instead"
+        )
+    return problems

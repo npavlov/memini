@@ -286,3 +286,204 @@ def test_environment_variable_names_do_not_collide() -> None:
 
 def test_principal_names_follow_the_handle_pattern_of_the_database() -> None:
     assert f"^{HANDLE_PATTERN.pattern}$" == HANDLE_REGEX
+
+
+# --- Embeddings ----------------------------------------------------------------------------------
+
+FAKE_EMBEDDING_KEY = "sk-fake-embedding-key-canary-0042"
+LOCAL_DIGEST = "sha256:" + "ab" * 32
+OPENAI_ENV = {
+    "MEMINI_DATABASE_URL": FAKE_URL,
+    "MEMINI_EMBEDDING_PROVIDER": "openai_compatible",
+    "MEMINI_EMBEDDING_MODEL": "synthetic-embed:v1",
+    "MEMINI_EMBEDDING_DIMENSION": "768",
+    "MEMINI_EMBEDDING_URL": "http://127.0.0.1:11434/v1",
+}
+
+
+def test_embeddings_are_off_by_default() -> None:
+    settings = load_settings({"MEMINI_DATABASE_URL": FAKE_URL})
+
+    assert settings.embedding_provider is None
+    assert settings.embedding_model is None
+    assert settings.embedding_api_key is None
+    assert settings.embedding_batch_size == 32
+    assert settings.embedding_timeout == 60.0
+    assert settings.embedding_model_file == "onnx/model.onnx"
+    assert settings.embedding_pooling == "mean"
+    assert settings.embedding_max_tokens == 512
+
+
+def test_reads_an_openai_compatible_provider_from_the_environment(tmp_path: Path) -> None:
+    key = write(tmp_path / "embedding_key", FAKE_EMBEDDING_KEY + "\n")
+
+    settings = load_settings(
+        OPENAI_ENV
+        | {
+            "MEMINI_EMBEDDING_API_KEY_FILE": str(key),
+            "MEMINI_EMBEDDING_DIGEST": "synthetic-ollama-digest",
+            "MEMINI_EMBEDDING_BATCH_SIZE": "8",
+            "MEMINI_EMBEDDING_TIMEOUT": "2.5",
+            "MEMINI_EMBEDDING_QUERY_PREFIX": "search_query: ",
+            "MEMINI_EMBEDDING_DOCUMENT_PREFIX": "search_document: ",
+        }
+    )
+
+    assert settings.embedding_provider == "openai_compatible"
+    assert settings.embedding_dimension == 768
+    assert settings.embedding_api_key is not None
+    assert settings.embedding_api_key.get_secret_value() == FAKE_EMBEDDING_KEY
+    assert settings.embedding_batch_size == 8
+    assert settings.embedding_timeout == 2.5
+    assert settings.embedding_query_prefix == "search_query: "
+    assert FAKE_EMBEDDING_KEY not in repr(settings)
+
+
+def test_reads_a_local_provider_from_the_config_file(tmp_path: Path) -> None:
+    config = write(
+        tmp_path / "memini.toml",
+        'embedding_provider = "local"\n'
+        'embedding_model = "synthetic-org/synthetic-model"\n'
+        "embedding_dimension = 384\n"
+        f'embedding_digest = "{LOCAL_DIGEST}"\n'
+        f'embedding_model_dir = "{tmp_path / "models"}"\n'
+        'embedding_model_file = "onnx/model_quantized.onnx"\n'
+        f'embedding_revision = "{"0" * 40}"\n'
+        'embedding_pooling = "cls"\n'
+        "embedding_max_tokens = 256\n"
+        'embedding_document_prefix = "passage: "\n',
+    )
+
+    settings = load_settings({"MEMINI_DATABASE_URL": FAKE_URL, CONFIG_FILE_VAR: str(config)})
+
+    assert settings.embedding_provider == "local"
+    assert settings.embedding_model_dir == tmp_path / "models"
+    assert settings.embedding_model_file == "onnx/model_quantized.onnx"
+    assert settings.embedding_pooling == "cls"
+    assert settings.embedding_max_tokens == 256
+
+
+@pytest.mark.parametrize(
+    ("provider", "missing"),
+    [
+        ("openai_compatible", ["MODEL", "DIMENSION", "URL"]),
+        ("local", ["MODEL", "DIMENSION", "DIGEST", "MODEL_DIR"]),
+    ],
+)
+def test_what_a_provider_needs_is_named(provider: str, missing: list[str]) -> None:
+    error = config_error({"MEMINI_DATABASE_URL": FAKE_URL, "MEMINI_EMBEDDING_PROVIDER": provider})
+
+    assert error.problems == tuple(
+        f"MEMINI_EMBEDDING_{name}: required when embedding_provider is {provider};"
+        f" set MEMINI_EMBEDDING_{name} or embedding_{name.lower()} in the config file"
+        for name in missing
+    )
+
+
+def test_an_embedding_setting_without_a_provider_is_refused(tmp_path: Path) -> None:
+    config = write(tmp_path / "memini.toml", "embedding_dimension = 384\n")
+
+    error = config_error(
+        {
+            "MEMINI_DATABASE_URL": FAKE_URL,
+            CONFIG_FILE_VAR: str(config),
+            "MEMINI_EMBEDDING_API_KEY": FAKE_EMBEDDING_KEY,
+        }
+    )
+
+    assert error.problems == (
+        f"embedding_dimension (config file {config}): has no effect without embedding_provider;"
+        " set MEMINI_EMBEDDING_PROVIDER, or remove it",
+        "MEMINI_EMBEDDING_API_KEY: has no effect without embedding_provider;"
+        " set MEMINI_EMBEDDING_PROVIDER, or remove it",
+    )
+    assert FAKE_EMBEDDING_KEY not in str(error)
+
+
+def test_a_setting_of_the_other_provider_is_refused() -> None:
+    error = config_error(
+        OPENAI_ENV | {"MEMINI_EMBEDDING_POOLING": "cls", "MEMINI_EMBEDDING_REVISION": "0" * 40}
+    )
+
+    assert error.problems == (
+        "MEMINI_EMBEDDING_REVISION: applies only when embedding_provider is local",
+        "MEMINI_EMBEDDING_POOLING: applies only when embedding_provider is local",
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "problem"),
+    [
+        ("MEMINI_EMBEDDING_PROVIDER", "cloud", "invalid value (literal_error)"),
+        ("MEMINI_EMBEDDING_DIMENSION", "0", "invalid value (greater_than_equal)"),
+        ("MEMINI_EMBEDDING_DIMENSION", "16001", "invalid value (less_than_equal)"),
+        ("MEMINI_EMBEDDING_BATCH_SIZE", "0", "invalid value (greater_than_equal)"),
+        ("MEMINI_EMBEDDING_TIMEOUT", "0", "invalid value (greater_than)"),
+        ("MEMINI_EMBEDDING_URL", "127.0.0.1:11434", "invalid value (string_pattern_mismatch)"),
+        ("MEMINI_EMBEDDING_URL", "http://host/v1?key=1", "invalid value (string_pattern_mismatch)"),
+    ],
+)
+def test_an_invalid_embedding_value_is_named(key: str, value: str, problem: str) -> None:
+    error = config_error(OPENAI_ENV | {key: value})
+
+    assert len(error.problems) == 1
+    assert error.problems[0].startswith(f"{key}: {problem}")
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "problem"),
+    [
+        ("MEMINI_EMBEDDING_MODEL", "no-organization", "expected a Hugging Face repository"),
+        ("MEMINI_EMBEDDING_DIGEST", "sha256:short", "expected sha256: and 64 lowercase hex"),
+        ("MEMINI_EMBEDDING_REVISION", "main", "invalid value (string_pattern_mismatch)"),
+        ("MEMINI_EMBEDDING_MODEL_FILE", "../model.onnx", "invalid value (string_pattern_mismatch)"),
+        (
+            "MEMINI_EMBEDDING_MODEL_FILE",
+            "/abs/model.onnx",
+            "invalid value (string_pattern_mismatch)",
+        ),
+        ("MEMINI_EMBEDDING_POOLING", "max", "invalid value (literal_error)"),
+    ],
+)
+def test_an_invalid_local_value_is_named(key: str, value: str, problem: str) -> None:
+    local = {
+        "MEMINI_DATABASE_URL": FAKE_URL,
+        "MEMINI_EMBEDDING_PROVIDER": "local",
+        "MEMINI_EMBEDDING_MODEL": "synthetic-org/synthetic-model",
+        "MEMINI_EMBEDDING_DIMENSION": "384",
+        "MEMINI_EMBEDDING_DIGEST": LOCAL_DIGEST,
+        "MEMINI_EMBEDDING_MODEL_DIR": "/var/lib/memini/models",
+    }
+
+    error = config_error(local | {key: value})
+
+    assert len(error.problems) == 1
+    assert error.problems[0].startswith(f"{key}: ")
+    assert problem in error.problems[0]
+
+
+def test_credentials_in_the_embedding_url_are_refused_without_echoing_them() -> None:
+    error = config_error(
+        OPENAI_ENV | {"MEMINI_EMBEDDING_URL": f"https://user:{CANARY}@embeddings.example.test/v1"}
+    )
+
+    assert error.problems == (
+        "MEMINI_EMBEDDING_URL: holds credentials, but the URL is not a secret;"
+        " set MEMINI_EMBEDDING_API_KEY or MEMINI_EMBEDDING_API_KEY_FILE instead",
+    )
+    assert CANARY not in str(error)
+
+
+def test_the_embedding_key_is_a_secret(tmp_path: Path) -> None:
+    config = write(tmp_path / "memini.toml", f'embedding_api_key = "{CANARY}"\n')
+
+    error = config_error(OPENAI_ENV | {CONFIG_FILE_VAR: str(config)})
+
+    assert error.problems == (
+        f"embedding_api_key (config file {config}): a secret is not read from the config file;"
+        " set MEMINI_EMBEDDING_API_KEY or MEMINI_EMBEDDING_API_KEY_FILE",
+    )
+    assert CANARY not in str(error)
+    assert {"MEMINI_EMBEDDING_API_KEY", "MEMINI_EMBEDDING_API_KEY_FILE"} <= set(
+        environment_variables()
+    )

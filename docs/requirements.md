@@ -267,6 +267,22 @@ running jobs finish within a grace period and returns the rest to the queue with
 The scheduler enqueues a sync of each stream whose `schedule` is due, by the database clock; a dedupe key
 per stream keeps at most one sync of a stream queued or running, also with several service processes.
 
+**Embeddings and the index fingerprint** (decided 2026-11-18). One async interface, `memini.embeddings`,
+with two providers: an OpenAI-compatible `/embeddings` endpoint (Ollama, llama.cpp, vLLM or a cloud
+service; retries with backoff, a timeout per attempt) and an ONNX model in the process. The in-process
+provider needs the optional extra `memini[local-embeddings]` (onnxruntime, tokenizers, numpy: about 150 MB
+installed), so the base install and image go without it. Its model files are pinned by a digest over
+their paths and SHA-256, verified before they are loaded and fetched at a pinned commit when missing; files
+that do not match are never used. It runs the model once per text: in a padded batch a quantized model
+makes a text's vector depend on its neighbours. Every vector is L2-normalized and rounded to float32.
+Embeddings are off until a provider is set; the endpoint, local or cloud, is the user's explicit choice
+(principle 8). The fingerprint is a digest over the provider, model, digest, dimension, normalization,
+pooling, token limit, document prefix and chunker version; each workspace records the one its index was
+built with (`index_state`), and search or indexing under another one is refused with a message that names
+`memini reindex` (principle 9). A vector is reused by its text hash and the embedding part of the
+fingerprint, so an unchanged text is never embedded twice, also across chunker versions (principle 6).
+Which model ships as the default, and through which provider, is still open question 2.
+
 ## 10. Quality
 
 - **Retrieval eval**: a question set per workspace with expected records; recall@k per kind. Run on every

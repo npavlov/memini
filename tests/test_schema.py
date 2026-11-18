@@ -129,6 +129,7 @@ LOOKUPS: list[tuple[str, str, tuple[str, ...], bool]] = [
     ("runs of a workspace by time", "run", ("workspace_id", "started_at"), False),
     ("runs of a source by time", "run", ("source_id", "started_at"), False),
     ("runs of a stream by time: last result in status", "run", ("stream_id", "started_at"), False),
+    ("index state of a workspace: check before search", "index_state", ("workspace_id",), True),
 ]
 
 

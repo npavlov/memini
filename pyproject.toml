@@ -15,6 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "fastapi>=0.164.0",
+    "httpx2>=2.16.2",
     "mcp>=2.3.0",
     "pgvector>=0.5.1",
     "psycopg[binary,pool]>=3.3.9",
@@ -27,6 +28,13 @@ memini = "memini.cli:main"
 
 [project.urls]
 Repository = "https://github.com/npavlov/memini"
+
+[project.optional-dependencies]
+local-embeddings = [
+    "numpy>=2.5.5",
+    "onnxruntime>=1.32.0",
+    "tokenizers>=0.23.3",
+]
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11"]
