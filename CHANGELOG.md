@@ -59,6 +59,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Query tools over MCP and HTTP: `search`, `search_code` (semantic, exact, regex, symbol), `get_symbol`
   and `read_source` (from the mirror at the pinned commit, or a given ref or commit; path traversal
   refused).
+- Retrieval eval: `memini eval` runs a 101-question suite (English and Russian, code, documents,
+  symbols) over synthetic repositories in a scratch database, reports recall@k and MRR per mode, kind
+  and language, and fails when a metric drops below the baseline.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end.
 
