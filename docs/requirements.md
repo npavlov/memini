@@ -529,7 +529,10 @@ real model and are written by open question 2 with `--modes all --write-baseline
 2. Settled on 2026-11-18 by the owner: Qwen3-Embedding 0.6B (`qwen3-embedding:0.6b`, 1024 dimensions,
    multilingual, strong on code), served by Ollama through the OpenAI-compatible provider. The eval
    records its numbers as the baseline.
-3. Postgres in the same image (one container) or as a second compose service.
+3. Settled on 2026-11-18 by the owner: Postgres with pgvector is the only store, the vector database
+   included; no SQLite and no separate vector database such as Qdrant (see prior-art.md, Storage). It
+   runs as its own compose service from the official pgvector image, pinned by digest: it upgrades
+   and backs up on its own, and the service image stays one process.
 4. Settled on 2026-11-18: source configuration lives in the database, managed through the HTTP API and
    the CLI; an apply-from-file command is optional and not built (section 6).
 5. Smallest local model that extracts decisions well enough. Decided by the decision eval.

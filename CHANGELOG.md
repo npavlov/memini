@@ -62,6 +62,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Retrieval eval: `memini eval` runs a 101-question suite (English and Russian, code, documents,
   symbols) over synthetic repositories in a scratch database, reports recall@k and MRR per mode, kind
   and language, and fails when a metric drops below the baseline.
+- Git sync: a ref deleted at the remote is marked missing and its files tombstoned instead of failing;
+  `builtin_excludes` can be switched off per source; each file gets the time of the last commit that
+  changed it; reindex reads repository files in batches (about 5x faster).
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end.
 
