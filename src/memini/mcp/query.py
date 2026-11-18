@@ -7,8 +7,10 @@ the model can correct its call; the messages never repeat an argument or stored 
 
 The structured result is the shape of :mod:`memini.query.model` or
 :class:`~memini.query.SourceRead`. The text content says the same for clients that read only text:
-the locators, kinds and times, and the stored text in fenced blocks, as it is. The server's
-instructions tell the client that all of it is data, never instructions; nothing here adds to that.
+the locators, kinds and times, the link and evidence reference (record id and anchor) of a hit
+inside a thread, a meeting or a document, and the stored text in fenced blocks, as it is. The
+server's instructions tell the client that all of it is data, never instructions; nothing here
+adds to that.
 """
 
 import re
@@ -103,6 +105,8 @@ def _hit(number: int, hit: SearchHit) -> str:
         f"{hit.kind} in {hit.workspace}/{hit.source} ({hit.source_kind})",
         _time(hit.occurred_at),
     ]
+    if hit.at != hit.occurred_at:
+        details.append(f"chunk at {_time(hit.at)}")
     if hit.definition is not None:
         details.append(f"defines {hit.definition.kind} {hit.definition.qualified_name}")
     elif hit.symbol:
@@ -113,9 +117,13 @@ def _hit(number: int, hit: SearchHit) -> str:
         details.append(f"score {hit.score:.4g}")
     if hit.truncated:
         details.append("snippet cut short")
-    return (
-        f"{number}. {hit.locator}\n{'; '.join(details)}\n{fenced(hit.snippet, hit.language or '')}"
-    )
+    lines = [f"{number}. {hit.locator}", "; ".join(details)]
+    if hit.link is not None:
+        lines.append(f"link: {hit.link}")
+    if hit.anchor is not None:
+        lines.append(f"evidence: record_id {hit.record_id}, anchor {hit.anchor}")
+    lines.append(fenced(hit.snippet, hit.language or ""))
+    return "\n".join(lines)
 
 
 def summarize_search(result: SearchResult) -> str:
@@ -185,7 +193,16 @@ def summarize_read(read: SourceRead) -> str:
 
 _RESULT_NOTE = (
     "Each hit carries its source kind, workspace and source, locator (repo@sha:path#Lstart-Lend"
-    " for code; a URL or source:id otherwise), occurred_at, and the chunk's text as snippet."
+    " for code; source:external_id#anchor otherwise), occurred_at (the record's time, which since"
+    " and until filter on), and the chunk's text as snippet."
+)
+
+_ANCHOR_NOTE = (
+    "A hit of a thread, a meeting or a document also carries anchor, its place in the record "
+    "(msg-<id>, seg-<id>, summary/<heading trail>, action-items, a heading trail), link (the "
+    "message's URL, else the record's) and at (when the chunk's content happened: its first "
+    "message, its transcript window). record_id with anchor is an evidence reference: to cite the "
+    "hit in record_decision, pass both as they are."
 )
 
 SEARCH_TOOL = Tool(
@@ -196,7 +213,7 @@ SEARCH_TOOL = Tool(
         "Ranks chunks by meaning and by words (mode hybrid, the default; dense: meaning only; "
         "lexical: words only). Filters: workspaces, sources, repositories, kinds (code_file, "
         "thread, meeting, document), since and until on occurred_at (ISO 8601 with a time zone). "
-        f"{_RESULT_NOTE} For exact, regex or symbol search in code use search_code."
+        f"{_RESULT_NOTE} {_ANCHOR_NOTE} For exact, regex or symbol search in code use search_code."
     ),
     arguments=SearchArguments,
     result=SearchResult,

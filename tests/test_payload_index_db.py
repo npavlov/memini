@@ -1,6 +1,8 @@
 """Threads, meetings and documents through the push API into the index and back out of search,
 against a real Postgres. Acceptance of memini-8r2: fixtures of each kind ingest and are found by
-search with the right kind, time and locator. Also: a batch sent again embeds nothing, an edited
+search with the right kind, time and locator. Acceptance of memini-q1q: each hit carries its
+chunk's anchor, link and time, over the library, HTTP and MCP, and its record_id and anchor are
+taken as they are as evidence of a decision. Also: a batch sent again embeds nothing, an edited
 message re-embeds its group only, a batch without an embedding provider is stored without chunks
 and a rebuild indexes it, a stale index refuses the batch. Every value is synthetic; vectors come
 from the FakeEmbedder, so the searches here are lexical and exact."""
@@ -15,6 +17,9 @@ from typing import Any, LiteralString
 
 import httpx2
 import pytest
+from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
+from mcp_types import TextContent
 from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 from pydantic import SecretStr
@@ -28,6 +33,7 @@ from memini.embeddings import EmbeddingSpec, FakeEmbedder
 from memini.ids import record_id
 from memini.index import default_raw_content, reindex
 from memini.ingest import canonical_json, normalize
+from memini.mcp import MCP_PATH
 from memini.search import Hit, Mode, SearchFilters, SearchQuery, search
 from memini.workspaces import ensure_principal
 
@@ -238,11 +244,15 @@ async def test_each_kind_is_indexed_at_ingest_and_found_with_its_kind_time_and_p
     assert (hit.record_kind, hit.source_kind, hit.source) == ("thread", "push", "chat")
     assert hit.occurred_at == datetime(2026, 3, 3, 18, 1, tzinfo=UTC)
     assert hit.external_id == thread["external_id"]
-    assert hit.locator == thread["external_url"]
     assert hit.path is None
     assert hit.header.startswith("greenhouse · Watering schedule · ")
     anchor = stored[hit.chunk_id][3]
     assert anchor.startswith("msg-")
+    assert hit.anchor == anchor
+    assert hit.locator == f"chat:{thread['external_id']}#{anchor}"
+    # The group starts with the hose message, which has no URL: the link is the thread's.
+    assert hit.chunk_occurred_at == datetime(2026, 3, 2, 12, 10, tzinfo=UTC)
+    assert (hit.chunk_url, hit.link) == (None, thread["external_url"])
     assert hit.start_line is not None
 
     # Russian words in a Russian thread, lexically; its first message's URL is on the chunk.
@@ -250,40 +260,153 @@ async def test_each_kind_is_indexed_at_ingest_and_found_with_its_kind_time_and_p
     assert hits
     assert hits[0].external_id == "teplica/r-1"
     assert hits[0].occurred_at == datetime(2026, 3, 4, 6, 20, tzinfo=UTC)
-    assert hits[0].locator == "chat:teplica/r-1"
+    assert hits[0].locator == "chat:teplica/r-1#msg-r-1"
     assert stored[hits[0].chunk_id][3:5] == (
         "msg-r-1",
         "https://chat.example.invalid/archives/teplica/r-1",
     )
+    # The record has no URL; the link is the first message's, the time that message's.
+    assert hits[0].external_url is None
+    assert hits[0].link == "https://chat.example.invalid/archives/teplica/r-1"
+    assert hits[0].chunk_occurred_at == datetime(2026, 3, 4, 6, tzinfo=UTC)
 
     # A meeting: its summary, action items and transcript are found under its kind and start.
     hits = await find(db, fake, owner, "шланг", "lexical", kinds=("meeting",))
     assert {h.record_kind for h in hits} == {"meeting"}
     assert {h.occurred_at for h in hits} == {datetime(2026, 3, 3, 7, tzinfo=UTC)}
-    assert {h.locator for h in hits} == {"chat:meeting-2026-03-03"}
-    anchors = {stored[h.chunk_id][3] for h in hits}
+    assert {h.anchor for h in hits} == {stored[h.chunk_id][3] for h in hits}
+    assert {h.locator for h in hits} == {f"chat:meeting-2026-03-03#{h.anchor}" for h in hits}
+    assert {h.link for h in hits} == {None}
+    anchors = {h.anchor for h in hits}
     assert {"summary", "action-items"} <= anchors
-    assert any(anchor.startswith("seg-") for anchor in anchors)
+    assert any(anchor.startswith("seg-") for anchor in anchors if anchor)
     (spoken,) = await find(db, fake, owner, "Шланг куплю в субботу", "exact")
     assert spoken.chunk_kind == "transcript"
     assert "Transcript 00:04 to 03:10" in spoken.header
     assert stored[spoken.chunk_id][5] == datetime(2026, 3, 3, 7, 0, 4, tzinfo=UTC)
+    assert spoken.anchor is not None
+    assert spoken.anchor.startswith("seg-")
+    assert spoken.locator == f"chat:meeting-2026-03-03#{spoken.anchor}"
+    assert spoken.occurred_at == datetime(2026, 3, 3, 7, tzinfo=UTC)
+    assert spoken.chunk_occurred_at == datetime(2026, 3, 3, 7, 0, 4, tzinfo=UTC)
 
     # A document: found by a word under its heading, with its trail as the anchor.
     hits = await find(db, fake, owner, "journal", "lexical", kinds=("document",))
     assert [h.record_kind for h in hits] == ["document"]
-    assert hits[0].locator == "https://notes.example.invalid/handbook"
+    assert hits[0].locator == "chat:handbook#Journal"
+    assert hits[0].link == "https://notes.example.invalid/handbook"
     assert hits[0].occurred_at == datetime(2026, 2, 20, 10, tzinfo=UTC)
+    assert (hits[0].anchor, hits[0].chunk_occurred_at) == ("Journal", None)
     assert stored[hits[0].chunk_id][3] == "Journal"
     assert hits[0].header == "Greenhouse handbook: Journal"
     (winter,) = await find(db, fake, owner, "тёплой водой", "exact")
     assert winter.record_kind == "document"
+    # The text before the first heading has no anchor: the document is the place.
+    (opening,) = await find(db, fake, owner, "does not exist", "exact")
+    assert (opening.anchor, opening.locator) == (None, "chat:handbook")
 
-    # The time filter takes the record's time.
-    hits = await find(
-        db, fake, owner, "шланг", "lexical", since=datetime(2026, 3, 3, 8, tzinfo=UTC)
-    )
+    # The time filter takes the record's time, not the chunk's: every group of the thread that
+    # holds the word starts before the bound, its last message is after it.
+    since = datetime(2026, 3, 3, 8, tzinfo=UTC)
+    hits = await find(db, fake, owner, "шланг", "lexical", since=since)
     assert {h.record_kind for h in hits} == {"thread"}
+    assert all(h.chunk_occurred_at is not None and h.chunk_occurred_at < since for h in hits)
+    assert all(h.occurred_at >= since for h in hits)
+    hits = await find(db, fake, owner, "шланг", "lexical", until=since)
+    assert {h.record_kind for h in hits} == {"meeting"}
+
+
+# --- Hits over HTTP and MCP, cited as evidence --------------------------------------------------
+
+
+@asynccontextmanager
+async def mcp_client(
+    settings: Settings, pool: Pool, embedder: FakeEmbedder, headers: dict[str, str]
+) -> AsyncGenerator[Client]:
+    """An MCP client of the application, its lifespan running, as an agent connects."""
+    app = create_app(settings, pool=pool, embedder=embedder)
+    async with (
+        app.router.lifespan_context(app),
+        httpx2.AsyncClient(
+            transport=httpx2.ASGITransport(app=app), base_url="http://memini.test", headers=headers
+        ) as http,
+    ):
+        transport = streamable_http_client(f"http://memini.test{MCP_PATH}", http_client=http)
+        async with Client(transport, mode="legacy") as client:
+            yield client
+
+
+def instant(value: str) -> datetime:
+    return datetime.fromisoformat(value)
+
+
+async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cites_as_evidence(
+    db: Conn, owner: uuid.UUID, pool: Pool, settings: Settings, fake: FakeEmbedder
+) -> None:
+    admin = await bearer(db, owner, "read", "admin")
+    pusher = await bearer(db, owner, "ingest")
+    agent = await bearer(db, owner, "read", "ingest")
+    query = {"query": "пикировать рассаду", "mode": "lexical", "kinds": ["thread"]}
+    async with client_of(settings, pool, fake) as client:
+        source = await setup(client, admin)
+        ok(await client.post(RECORDS, json={"records": BATCH}, headers=pusher))
+        found = ok(await client.get("/v1/search", params=query, headers=agent))
+        sections = ok(
+            await client.get(
+                "/v1/search",
+                params={"query": "journal", "mode": "lexical", "kinds": ["document"]},
+                headers=agent,
+            )
+        )
+
+    # HTTP: the record's place and time, and the chunk's.
+    hit = found["hits"][0]
+    rid = record_id(source, "thread", "teplica/r-1")
+    assert hit["record_id"] == rid
+    assert (hit["locator"], hit["anchor"]) == ("chat:teplica/r-1#msg-r-1", "msg-r-1")
+    assert hit["link"] == "https://chat.example.invalid/archives/teplica/r-1"
+    assert hit["url"] is None
+    assert instant(hit["occurred_at"]) == datetime(2026, 3, 4, 6, 20, tzinfo=UTC)
+    assert instant(hit["at"]) == datetime(2026, 3, 4, 6, tzinfo=UTC)
+    journal = sections["hits"][0]
+    assert (journal["locator"], journal["anchor"]) == ("chat:handbook#Journal", "Journal")
+    assert journal["link"] == journal["url"] == "https://notes.example.invalid/handbook"
+    assert journal["at"] == journal["occurred_at"]
+
+    # MCP: the same hit, its output schema, and the text for clients that read only text.
+    async with mcp_client(settings, pool, fake, agent) as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+        result = await client.call_tool("search", query)
+    schema = tools["search"].output_schema
+    assert schema is not None
+    assert {"anchor", "link", "at"} <= set(schema["$defs"]["SearchHit"]["properties"])
+    assert result.is_error is False
+    assert result.structured_content == found
+    (content,) = result.content
+    assert isinstance(content, TextContent)
+    assert "1. chat:teplica/r-1#msg-r-1\n" in content.text
+    assert "chunk at 2026-03-04T06:00:00+00:00" in content.text
+    assert "link: https://chat.example.invalid/archives/teplica/r-1\n" in content.text
+    assert f"evidence: record_id {rid}, anchor msg-r-1\n" in content.text
+
+    # record_id and anchor are evidence as they are.
+    decision = {
+        "statement": "Seedlings are pricked out on Saturday.",
+        "decided_at": "2026-03-04T06:20:00Z",
+        "evidence": [
+            {"record_id": hit["record_id"], "anchor": hit["anchor"]},
+            {"record_id": journal["record_id"], "anchor": journal["anchor"]},
+        ],
+    }
+    async with client_of(settings, pool, fake) as client:
+        item = ok(
+            await client.post("/v1/workspaces/acme/decisions", json=decision, headers=pusher),
+            201,
+        )
+    assert [(e["record_id"], e["anchor"]) for e in item["evidence"]] == [
+        (rid, "msg-r-1"),
+        (journal["record_id"], "Journal"),
+    ]
 
 
 # --- Changes -------------------------------------------------------------------------------------

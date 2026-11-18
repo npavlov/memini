@@ -374,18 +374,69 @@ def test_a_code_hit_is_located_by_repository_commit_path_and_lines() -> None:
     assert hit(commit="0" * 40).locator == f"greenhouse@{'0' * 40}:src/greenhouse.py#L8-L15"
 
 
-def test_another_hit_is_located_by_its_url_or_external_id() -> None:
+def test_a_code_hit_has_no_anchor_and_its_link_is_the_records() -> None:
+    code = hit(commit="0" * 40)
+    assert (code.anchor, code.chunk_url, code.chunk_occurred_at, code.link) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    linked = hit(external_url="https://forge.example.invalid/greenhouse/blob/main/a.py")
+    assert linked.locator == "greenhouse:src/greenhouse.py#L8-L15"
+    assert linked.link == "https://forge.example.invalid/greenhouse/blob/main/a.py"
+
+
+def test_another_hit_is_located_by_its_record_and_anchor() -> None:
     document = hit(
         source="notes",
         source_kind="push",
         record_kind="document",
         external_id="decision-watering",
+        external_url="https://notes.example.invalid/1",
         path=None,
     )
     assert document.repository is None
+    # The text before a document's first heading has no anchor: the record is the place.
     assert document.locator == "notes:decision-watering"
-    linked = hit(source_kind="push", external_url="https://notes.example.invalid/1", path=None)
-    assert linked.locator == "https://notes.example.invalid/1"
+    assert document.link == "https://notes.example.invalid/1"
+    section = hit(
+        source="notes",
+        source_kind="push",
+        record_kind="document",
+        external_id="decision-watering",
+        path=None,
+        anchor="Watering > Peppers",
+    )
+    assert section.locator == "notes:decision-watering#Watering > Peppers"
+    assert section.link is None
+
+
+def test_a_message_hit_links_to_its_message_and_keeps_the_records_time() -> None:
+    record_time = datetime(2026, 3, 3, 18, 1, tzinfo=UTC)
+    message_time = datetime(2026, 3, 2, 12, 10, tzinfo=UTC)
+    message = hit(
+        source="chat",
+        source_kind="push",
+        record_kind="thread",
+        external_id="greenhouse/1772355600.000100",
+        external_url="https://chat.example.invalid/t/1772355600000100",
+        occurred_at=record_time,
+        path=None,
+        anchor="msg-1772440200.000300",
+        chunk_url="https://chat.example.invalid/m/1772440200000300",
+        chunk_occurred_at=message_time,
+    )
+    assert message.locator == "chat:greenhouse/1772355600.000100#msg-1772440200.000300"
+    assert message.link == "https://chat.example.invalid/m/1772440200000300"
+    assert (message.occurred_at, message.chunk_occurred_at) == (record_time, message_time)
+    # A message without a URL of its own: the thread's.
+    no_url = hit(**{**_fields(message), "chunk_url": None})
+    assert no_url.link == "https://chat.example.invalid/t/1772355600000100"
+
+
+def _fields(found: Hit) -> dict[str, Any]:
+    return {name: getattr(found, name) for name in Hit.__dataclass_fields__}
 
 
 # --- The pinned commit of a code hit -------------------------------------------------------------

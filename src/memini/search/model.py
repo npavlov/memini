@@ -287,6 +287,12 @@ class Hit:
     """One chunk found, with what a consumer needs to weigh and cite it (principle 3): the kind of
     source and record, a locator, the time, and for code the repository and commit.
 
+    A chunk of a thread, a meeting or a pushed document also says where it is inside its record
+    (docs/requirements.md, section 5, Chunks of pushed records): its :attr:`anchor`, a link to that
+    place when the source gave one (:attr:`chunk_url`), and when what it holds happened
+    (:attr:`chunk_occurred_at`). :attr:`record_id` with :attr:`anchor` is a knowledge item's
+    evidence as it is (:class:`memini.knowledge.EvidenceRef`).
+
     The snippet is the chunk's stored content as it is, cut to a length and nothing else: it is
     data, never instructions (principle 11). It may be anything a source held.
     """
@@ -303,8 +309,23 @@ class Hit:
     external_id: str
     """The record's id in its source: a ref and path for code, a thread key, a meeting id."""
     external_url: str | None
+    """The record's URL in its source, if it has one."""
     occurred_at: datetime
-    """Event time: the commit of a code file, the latest message of a thread, a meeting's start."""
+    """Event time of the record: the commit of a code file, the latest message of a thread, a
+    meeting's start. The ``since`` and ``until`` filters compare this one."""
+    anchor: str | None = None
+    """Where the chunk is in its record, in the form evidence names a place: ``msg-<id>`` (the
+    first message of a thread chunk), ``seg-<id>`` (the first segment of a transcript window),
+    ``summary``, ``summary/<trail>``, ``action-items`` or ``overview`` in a meeting, a heading
+    trail in a pushed document. ``None`` for code, for a file of a repository, and for the text
+    of a document before its first heading."""
+    chunk_url: str | None = None
+    """A link to the chunk's own place in the source, when the payload gave one (the ``url`` of
+    the first message of a thread chunk)."""
+    chunk_occurred_at: datetime | None = None
+    """When what the chunk holds happened, where the record says so: the first message of a
+    thread chunk, the start of a transcript window, or the start of the meeting for its summary
+    and action items. ``None`` for code and documents, which have their record's time."""
     commit: str | None
     """For code: the commit the record is pinned at, when the git connector has recorded it."""
     chunk_kind: str
@@ -341,15 +362,24 @@ class Hit:
 
     @property
     def locator(self) -> str:
-        """Where the hit is, in one string. Code: ``repo@sha:path#L12-L30`` (``repo:path#...``
-        while the commit is not known); anything else: its URL, or ``source:external_id``."""
+        """Where the hit is, in one string. A file of a repository (code or Markdown):
+        ``repo@sha:path#L12-L30`` (``repo:path#...`` while the commit is not known). Anything
+        else: ``source:external_id#anchor``, or ``source:external_id`` for a chunk without an
+        anchor. A link to the place is :attr:`link`."""
         if self.source_kind == "git" and self.path is not None:
             at = f"@{self.commit}" if self.commit else ""
             lines = ""
             if self.start_line is not None and self.end_line is not None:
                 lines = f"#L{self.start_line}-L{self.end_line}"
             return f"{self.source}{at}:{self.path}{lines}"
-        return self.external_url or f"{self.source}:{self.external_id}"
+        place = "" if self.anchor is None else f"#{self.anchor}"
+        return f"{self.source}:{self.external_id}{place}"
+
+    @property
+    def link(self) -> str | None:
+        """The best URL of the hit: the chunk's own (a message), else the record's; ``None``
+        when the source gave neither."""
+        return self.chunk_url or self.external_url
 
 
 class Reranker(Protocol):

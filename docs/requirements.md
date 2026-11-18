@@ -447,8 +447,13 @@ results: `GET /v1/search`, `GET /v1/search/code`, `GET /v1/symbols` and
 `GET /v1/workspaces/{workspace}/sources/{source}/files/{path}`. `search` ranks every kind of record
 (modes `hybrid`, `dense`, `lexical`); the person filter waits for M2. A hit carries its workspace,
 source and source kind, record kind, a locator (`repo@sha:path#L12-L30` for a file of a repository,
-code or Markdown), `occurred_at`, for such a file the repository, ref and commit, and the chunk's
-text. `search_code` and `get_symbol` look at code records only. `read_source` reads the service's
+code or Markdown; `source:external_id#anchor` for anything else), `occurred_at` (the record's
+time, which `since` and `until` compare), for such a file the repository, ref and commit, and the
+chunk's text. A chunk of a thread, a meeting or a pushed document adds its place in the record
+(section 5, Chunks of pushed records): `anchor`, `link` (the chunk's URL, else the record's) and
+`at` (the chunk's time, else the record's); `record_id` with `anchor` is an evidence reference as
+`record_decision` takes it, so a hit is cited without a lookup. `search_code` and `get_symbol`
+look at code records only. `read_source` reads the service's
 mirror and never clones or fetches: without a ref, at the pin of the tracked ref the mirror's `HEAD`
 names (else the first tracked ref); a tracked ref at its pin, so a read agrees with the commit of a
 hit; another branch or tag at the commit the mirror has; a full commit id if the mirror holds it;

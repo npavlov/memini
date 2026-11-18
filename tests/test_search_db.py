@@ -1050,6 +1050,7 @@ async def test_a_code_hit_carries_its_source_kind_time_and_place(
     assert hit.commit is None  # until the git connector records pins
     assert hit.repository == "greenhouse"
     assert hit.locator == f"greenhouse:{PATH}#L{water.start_line}-L{water.end_line}"
+    assert (hit.anchor, hit.chunk_url, hit.chunk_occurred_at, hit.link) == (None,) * 4
 
 
 async def test_a_document_hit_carries_its_url(db: Conn, fake: FakeEmbedder, corpus: Corpus) -> None:
@@ -1058,7 +1059,10 @@ async def test_a_document_hit_carries_its_url(db: Conn, fake: FakeEmbedder, corp
     assert (hit.source, hit.source_kind, hit.record_kind) == ("notes", "push", "document")
     assert (hit.path, hit.language, hit.start_line, hit.commit) == (None, None, 1, None)
     assert hit.external_url == "https://notes.example.invalid/watering"
-    assert hit.locator == hit.external_url
+    # A chunk without an anchor of its own: the record is the place, its URL the link.
+    assert (hit.anchor, hit.chunk_url, hit.chunk_occurred_at) == (None, None, None)
+    assert hit.locator == "notes:decision-watering"
+    assert hit.link == hit.external_url
     assert hit.occurred_at == at(3, 10)
     assert hit.snippet == WATERING  # stored text, as it is
 

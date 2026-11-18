@@ -1,9 +1,10 @@
 """``memini search``: a thin client of ``GET /v1/search`` and, with ``--code``, ``/v1/search/code``.
 
 The arguments are those of the MCP tools ``search`` and ``search_code``; the service checks them.
-Each hit prints as its locator, kind, place and time, then the first lines of its snippet. The
-snippet is the source's text: data, printed with control characters escaped. ``--json`` prints the
-API's answer as it is. Needs the ``read`` scope; useful to check an install end to end.
+Each hit prints as its locator, kind, place and time, its link when it has one, then the first
+lines of its snippet. The snippet is the source's text: data, printed with control characters
+escaped. ``--json`` prints the API's answer as it is. Needs the ``read`` scope; useful to check an
+install end to end.
 """
 
 import argparse
@@ -74,6 +75,9 @@ def search_command(args: argparse.Namespace, api: Api) -> int:
             f"{text(hit.get('locator'))}  ({text(hit.get('kind'))}, {place},"
             f" {when(hit.get('occurred_at'))})"
         )
+        link = hit.get("link")
+        if isinstance(link, str):
+            print(f"  link: {text(link)}")
         snippet = hit.get("snippet")
         lines = snippet.splitlines() if isinstance(snippet, str) else []
         for line in lines[:SNIPPET_LINES]:

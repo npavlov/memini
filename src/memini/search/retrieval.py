@@ -431,6 +431,9 @@ class ChunkRow:
     external_id: str
     external_url: str | None
     occurred_at: datetime
+    anchor: str | None
+    chunk_url: str | None
+    chunk_occurred_at: datetime | None
     commit: str | None
     chunk_kind: str
     language: str | None
@@ -465,6 +468,9 @@ class ChunkRow:
             external_id=self.external_id,
             external_url=self.external_url,
             occurred_at=self.occurred_at,
+            anchor=self.anchor,
+            chunk_url=self.chunk_url,
+            chunk_occurred_at=self.chunk_occurred_at,
             commit=self.commit,
             chunk_kind=self.chunk_kind,
             language=self.language,
@@ -487,7 +493,10 @@ async def chunk_rows(
     conn: Conn, scope: ChunkScope, chunk_ids: Sequence[str], *, snippet_chars: int
 ) -> dict[str, ChunkRow]:
     """The chunks ``chunk_ids`` with their record and source, by id, under the same conditions as
-    the retrievers. A chunk that does not pass them is left out."""
+    the retrievers. A chunk that does not pass them is left out.
+
+    Each row has the record's time (the one the time filter compares) and the chunk's own place:
+    its anchor, URL and time (migration 0011), ``NULL`` where the chunk has none."""
     if not chunk_ids:
         return {}
     param = Params()
@@ -497,7 +506,8 @@ async def chunk_rows(
         "SELECT c.id, c.record_id, c.workspace_id, c.source_id, src.name, src.kind,"
         " c.record_kind, r.external_id, r.external_url, r.occurred_at, st.cursor, c.kind,"
         " c.language, c.path, c.symbol, c.start_line, c.end_line, c.header,"
-        " left(c.content, {chars}), char_length(c.content) > {chars}"
+        " left(c.content, {chars}), char_length(c.content) > {chars},"
+        " c.anchor, c.url, c.occurred_at"
         " FROM {from_} JOIN source src ON src.id = c.source_id"
         " LEFT JOIN stream st ON st.source_id = r.source_id AND st.id = r.stream_id"
         " WHERE c.id = ANY({ids}) AND {where}"
@@ -516,6 +526,9 @@ async def chunk_rows(
             external_id=row[7],
             external_url=row[8],
             occurred_at=row[9],
+            anchor=row[20],
+            chunk_url=row[21],
+            chunk_occurred_at=row[22],
             commit=pinned_commit(kind, row[10]) if kind == "git" else None,
             chunk_kind=row[11],
             language=row[12],

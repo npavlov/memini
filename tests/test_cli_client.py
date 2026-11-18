@@ -795,6 +795,32 @@ def test_search_prints_hits_with_escaped_snippets(
     assert "\x1b" not in result.out
 
 
+def test_search_prints_the_link_of_a_hit_inside_a_thread(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    hit: Json = {
+        "workspace": "acme",
+        "source": "chat",
+        "kind": "thread",
+        "locator": "chat:greenhouse/1#msg-2",
+        "anchor": "msg-2",
+        "link": "https://chat.example.invalid/m/2\x1b[2J",
+        "occurred_at": "2026-03-03T18:01:00Z",
+        "at": "2026-03-02T12:10:00Z",
+        "snippet": "Bought the hose.",
+        "truncated": False,
+    }
+    service.answer(ok({"hits": [hit]}))
+
+    result = cli("search", "hose", "--kind", "thread")
+
+    assert result.out.splitlines() == [
+        "chat:greenhouse/1#msg-2  (thread, acme/chat, 2026-03-03T18:01Z)",
+        "  link: https://chat.example.invalid/m/2\\x1b[2J",
+        "    Bought the hose.",
+    ]
+
+
 @pytest.mark.parametrize(
     ("argv", "complaint"),
     [

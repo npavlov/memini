@@ -75,7 +75,10 @@ def build_query_router() -> APIRouter:
         conn: Connection,
     ) -> SearchResult:
         """Ranked search over code, threads, meetings and documents the token may read: the MCP
-        ``search`` tool. Each hit carries its source kind, locator, time and snippet."""
+        ``search`` tool. Each hit carries its source kind, locator, time and snippet; a hit of a
+        thread, a meeting or a document also its ``anchor`` in the record, a ``link`` to that
+        place and the chunk's time ``at``. ``record_id`` with ``anchor`` is a knowledge evidence
+        reference, as ``POST …/decisions`` takes it."""
         try:
             return await run_search(conn, services, access, arguments)
         except QueryError as error:

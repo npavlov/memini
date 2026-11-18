@@ -96,8 +96,9 @@ class EvidenceArgument(BaseModel):
         description="Where in the record: in a thread the id of the message; in a meeting a"
         " segment, a time offset or a section; in a code file the full commit id, optionally"
         " with '#' and a symbol or lines ('<sha>#Pump.start', '<sha>#L12-L30'); in a document a"
-        " heading trail or lines. A thread or a meeting needs one, a code file needs the commit;"
-        " null cites a whole document.",
+        " heading trail or lines. A search hit's anchor is one as it is (msg-<id>, seg-<id>,"
+        " summary/<trail>, a heading trail). A thread or a meeting needs one, a code file needs"
+        " the commit; null cites a whole document.",
     )
 
     @model_validator(mode="after")

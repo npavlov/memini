@@ -140,7 +140,8 @@ RECORD_DECISION_TOOL = Tool(
     description=(
         "Record a decision or an open question by hand in a workspace, with its evidence: one or "
         "more records it comes from, each by record_id or by source and external_id (as search "
-        "results give them), with an anchor (the message of a thread, the commit of a code file). "
+        "results give them), with an anchor (the message of a thread, the commit of a code file): "
+        "a search hit's record_id and anchor cite the place it found as they are. "
         "An item without evidence is not stored. Participants are person ids. supersedes links "
         "active items it replaces (relation replaces) or open questions a decision answers "
         "(answers): to correct an extracted item, record the correction with supersedes. An item "

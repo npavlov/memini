@@ -31,7 +31,13 @@ from memini.embeddings import (
 )
 from memini.gitsync import GIT_SYNC
 from memini.mcp import MCP_PATH
-from memini.mcp.query import fenced, summarize_read, summarize_search
+from memini.mcp.query import (
+    SEARCH_CODE_TOOL,
+    SEARCH_TOOL,
+    fenced,
+    summarize_read,
+    summarize_search,
+)
 from memini.query import (
     CodeSearchArguments,
     Definition,
@@ -152,6 +158,8 @@ def test_a_code_hit_carries_repository_ref_commit_and_locator() -> None:
     assert (found.repository, found.ref, found.commit) == ("shop", "refs/heads/main", SHA)
     assert found.locator == f"shop@{SHA}:src/lamp.py#L4-L19"
     assert (found.kind, found.source_kind, found.occurred_at) == ("code_file", "git", WHEN)
+    # No place inside the file but its lines: no anchor, no link, the commit's time.
+    assert (found.anchor, found.link, found.url, found.at) == (None, None, None, WHEN)
     unpinned = SearchHit.of(hit(commit=None))
     assert unpinned.locator == "shop:src/lamp.py#L4-L19"
 
@@ -187,7 +195,75 @@ def test_a_pushed_document_has_no_repository_or_ref() -> None:
         )
     )
     assert (found.repository, found.ref, found.commit) == (None, None, None)
-    assert found.locator == "https://notes.example.invalid/watering"
+    # Its text before the first heading: the record is the place, its URL the link.
+    assert found.locator == "notes:notes/watering.md"
+    assert (found.anchor, found.at) == (None, WHEN)
+    assert found.link == found.url == "https://notes.example.invalid/watering"
+
+
+THREAD_TIME = datetime(2026, 3, 3, 18, 1, tzinfo=UTC)
+"""The latest message of the synthetic thread: the record's time."""
+GROUP_TIME = datetime(2026, 3, 2, 12, 10, tzinfo=UTC)
+"""The first message of the group of messages a hit is."""
+MESSAGE_URL = "https://chat.example.invalid/m/1772440200000300"
+
+
+def thread_hit(**changes: Any) -> Hit:
+    values: dict[str, Any] = {
+        "source": "chat",
+        "source_kind": "push",
+        "record_kind": "thread",
+        "external_id": "greenhouse/1772355600.000100",
+        "external_url": "https://chat.example.invalid/t/1772355600000100",
+        "occurred_at": THREAD_TIME,
+        "commit": None,
+        "chunk_kind": "messages",
+        "language": None,
+        "path": None,
+        "symbol": None,
+        "start_line": 12,
+        "end_line": 20,
+        "header": "greenhouse · Watering schedule · Bo Sample",
+        "snippet": "Bought the hose: ten metres, green.",
+        "anchor": "msg-1772440200.000300",
+        "chunk_url": MESSAGE_URL,
+        "chunk_occurred_at": GROUP_TIME,
+    }
+    return hit(**{**values, **changes})
+
+
+def test_a_thread_hit_carries_its_anchor_link_and_time() -> None:
+    found = SearchHit.of(thread_hit())
+    assert found.locator == "chat:greenhouse/1772355600.000100#msg-1772440200.000300"
+    assert found.anchor == "msg-1772440200.000300"
+    assert found.link == MESSAGE_URL
+    assert found.url == "https://chat.example.invalid/t/1772355600000100"
+    # occurred_at stays the record's time, the one since and until compare; at is the group's.
+    assert (found.occurred_at, found.at) == (THREAD_TIME, GROUP_TIME)
+    assert (found.repository, found.ref, found.commit, found.path) == (None, None, None, None)
+    without_url = SearchHit.of(thread_hit(chunk_url=None))
+    assert without_url.link == "https://chat.example.invalid/t/1772355600000100"
+
+
+def test_a_meeting_hit_is_located_by_its_section_or_segment() -> None:
+    start = datetime(2026, 3, 3, 7, tzinfo=UTC)
+    window_start = datetime(2026, 3, 3, 7, 3, 11, tzinfo=UTC)
+    meeting: dict[str, Any] = {
+        "source": "notes",
+        "record_kind": "meeting",
+        "external_id": "meeting-2026-03-03",
+        "external_url": None,
+        "occurred_at": start,
+        "chunk_url": None,
+    }
+    summary = SearchHit.of(thread_hit(**meeting, anchor="summary/Risks", chunk_occurred_at=start))
+    assert summary.locator == "notes:meeting-2026-03-03#summary/Risks"
+    assert (summary.link, summary.at) == (None, start)
+    window = SearchHit.of(
+        thread_hit(**meeting, anchor="seg-2d55dec577cc4361", chunk_occurred_at=window_start)
+    )
+    assert window.locator == "notes:meeting-2026-03-03#seg-2d55dec577cc4361"
+    assert (window.occurred_at, window.at) == (start, window_start)
 
 
 def test_a_definition_is_located_by_its_own_lines() -> None:
@@ -264,6 +340,43 @@ def test_a_fence_is_longer_than_any_backticks_in_the_content() -> None:
 
 def test_the_summary_of_no_hits() -> None:
     assert summarize_search(SearchResult(hits=[])) == "0 hits."
+
+
+def test_the_summary_of_a_thread_hit_names_its_link_time_and_evidence() -> None:
+    summary = summarize_search(SearchResult(hits=[SearchHit.of(thread_hit(score=0.5))]))
+    assert summary.splitlines()[:6] == [
+        "1 hit.",
+        "",
+        "1. chat:greenhouse/1772355600.000100#msg-1772440200.000300",
+        "thread in acme/chat (push); 2026-03-03T18:01:00+00:00;"
+        " chunk at 2026-03-02T12:10:00+00:00; score 0.5",
+        f"link: {MESSAGE_URL}",
+        f"evidence: record_id {'r' * 64}, anchor msg-1772440200.000300",
+    ]
+    assert summary.endswith("```\nBought the hose: ten metres, green.\n```")
+
+
+def test_the_summary_of_a_code_hit_has_no_link_or_evidence_line() -> None:
+    summary = summarize_search(SearchResult(hits=[SearchHit.of(hit())]))
+    assert summary.splitlines()[2:4] == [
+        f"1. shop@{SHA}:src/lamp.py#L4-L19",
+        "code_file in acme/shop (git); 2026-01-02T12:00:00+00:00; in Lamp",
+    ]
+    assert "link:" not in summary
+    assert "evidence:" not in summary
+    assert "chunk at" not in summary
+
+
+def test_the_search_tools_describe_anchor_link_and_at() -> None:
+    schema = SEARCH_TOOL.definition().output_schema
+    assert schema is not None
+    properties = schema["$defs"]["SearchHit"]["properties"]
+    assert {"locator", "anchor", "link", "occurred_at", "at", "url", "record_id"} <= set(properties)
+    assert "record_decision" in properties["anchor"]["description"]
+    assert properties["at"]["format"] == "date-time"
+    assert "record_decision" in SEARCH_TOOL.description
+    assert "source:external_id#anchor" in SEARCH_TOOL.description
+    assert "source:external_id#anchor" in SEARCH_CODE_TOOL.description
 
 
 def read(**changes: Any) -> SourceRead:
