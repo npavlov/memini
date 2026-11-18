@@ -56,6 +56,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Markdown files in repositories (`.md`, `.markdown`, `.mdx`) are indexed as document records, chunked
   by heading, and searchable beside code. The chunker version changed: run `memini reindex` on
   existing workspaces.
+- Query tools over MCP and HTTP: `search`, `search_code` (semantic, exact, regex, symbol), `get_symbol`
+  and `read_source` (from the mirror at the pinned commit, or a given ref or commit; path traversal
+  refused).
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end.
 

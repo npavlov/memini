@@ -65,7 +65,31 @@ Day to day:
 | Check it end to end | `make smoke` |
 
 Health: `GET /healthz`; readiness, with the database: `GET /readyz`; the HTTP API schema:
-`GET /openapi.json`. The `status` MCP tool reports stream lag and whether the base is current.
+`GET /openapi.json`.
+
+### Tools
+
+Over MCP, and over HTTP with the same arguments as query parameters. All need a token with the
+`read` scope and see only the workspaces the token may read.
+
+| MCP tool | HTTP | What it does |
+|---|---|---|
+| `search` | `GET /v1/search` | Hybrid search over everything: code, and Markdown files of repositories |
+| `search_code` | `GET /v1/search/code` | Code search: `semantic`, `exact`, `regex` or `symbol`; filters by repository, path glob, language |
+| `get_symbol` | `GET /v1/symbols` | Definitions of a symbol, by name or qualified name |
+| `read_source` | `GET /v1/workspaces/{ws}/sources/{src}/files/{path}` | A file or line range, or a directory listing |
+| `status` | | Stream lag, last runs, and whether the base is current |
+
+Every hit carries its source, a timestamp and, for code, a locator such as `shop@3f2a…:src/app.py#L12-L30`.
+`read_source` reads the service's own mirror at the pinned commit by default, so it matches search
+results; `ref` takes a branch, a tag or a full commit id. Search needs an embedding provider
+(`MEMINI_EMBEDDING_*`); reading files does not. An `index_mismatch` error means the embedding model or
+the chunker changed: run `memini reindex --workspace NAME`. Over HTTP, send a time zone offset's `+` as
+`%2B`, or use `Z`.
+
+Repositories are added through the HTTP API: `POST /v1/workspaces/{ws}/sources` with an `admin` token
+(see `/openapi.json`); the service mirrors and indexes them on their schedule, or at
+`POST /v1/workspaces/{ws}/sources/{src}/sync`.
 
 ### Commands
 
