@@ -169,6 +169,7 @@ memini migrate
 memini bootstrap [--name LABEL] [--expires-in DURATION] [--force]   # the first admin token
 memini workspace llm <name> [none|local|cloud]   # which LLM may read a workspace; cloud is an opt-in
 memini reindex --workspace <name>
+memini replay --workspace <name> --source <name> --recipe PATH   # after a parser fix, no source calls
 memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--fake-embeddings] ...
 memini credentials set|list|delete|rotate-key ...   # credentials of sources, encrypted; secrets on stdin
 ```

@@ -96,6 +96,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and error line, failures, lag, how far history is loaded, unindexed records and stale indexes.
 - `memini decision record|supersede|close|retract`; an MCP call of a write tool counts against the write
   rate budget; compose passes the request-limit settings through.
+- Synthetic comms fixtures (`eval/comms/`): chat, mail and meetings of a fictional company, with answer
+  keys for M2 queries and labels for the decision eval.
+- `memini forget` deletes a record and everything derived from it, with an audit entry, and keeps it from
+  coming back; per-source retention removes expired records on a schedule.
+- Source filters for push sources (allowed channels and domains, excluded authors, titles, automated mail)
+  and `memini source prune`.
+- Persons: resolution by e-mail and chat id at ingest, aliases, reversible merge and split, "me";
+  `memini person ...`.
+- Raw MCP responses are stored (redacted) per window; `memini replay` re-runs a parser over them without
+  calling the source.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
