@@ -136,6 +136,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the service's container, so the host needs Docker only; a synthetic example batch in `docs/examples/`.
 - `memini sync --wait` says when a sync is still queued after 30 s, and that a git source syncs only
   while an embedding provider is set.
+- `memini extract` and `POST /v1/workspaces/{workspace}/extract`: enqueue decision extraction of stored
+  records the current extractor has not read (backfill after configuring a provider, re-run after a new
+  prompt or model); a new reading no longer brings back replaced, answered or retracted items.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.

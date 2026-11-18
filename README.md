@@ -182,6 +182,8 @@ memini decision record <ws> --statement TEXT [--kind decision|open_question] [--
                        [--supersedes ITEM_ID[:replaces|answers] ...]   # needs the ingest scope
 memini decision supersede <ws> <item-id> --supersedes ITEM_ID[:replaces|answers] [...]
 memini decision close|retract <ws> <item-id>
+memini extract <ws> [--source NAME ...] [--since TIME] [--dry-run]   # extract decisions from stored
+                    records the current extractor has not read (needs the admin scope)
 ```
 
 Operator commands work on the database directly, so they run inside the service's container:
