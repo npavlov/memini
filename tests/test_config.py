@@ -487,3 +487,113 @@ def test_the_embedding_key_is_a_secret(tmp_path: Path) -> None:
     assert {"MEMINI_EMBEDDING_API_KEY", "MEMINI_EMBEDDING_API_KEY_FILE"} <= set(
         environment_variables()
     )
+
+
+# --- Git connector settings ----------------------------------------------------------------------
+
+GIT_TOKEN = "fake-git-token-for-config-tests-41aa"  # noqa: S105 - fake, for leak checks
+
+
+def test_git_settings_default_to_the_safe_choice() -> None:
+    settings = load_settings({"MEMINI_DATABASE_URL": FAKE_URL})
+
+    assert settings.git_mirror_dir is None
+    assert settings.git_fetch_timeout == 600
+    assert settings.git_max_mirror_size == 5 * 1024**3
+    assert settings.git_max_blob_size == 1024**2
+    assert settings.git_allow_http is False
+    assert settings.git_local_roots == ()
+    assert settings.git_https_token is None
+    assert settings.git_https_token_hosts == ()
+    assert settings.git_ssh_key_path is None
+    assert settings.git_ssh_known_hosts_path is None
+
+
+def test_git_settings_from_the_environment(tmp_path: Path) -> None:
+    token_file = write(tmp_path / "git_token", GIT_TOKEN + "\n")
+
+    settings = load_settings(
+        {
+            "MEMINI_DATABASE_URL": FAKE_URL,
+            "MEMINI_GIT_MIRROR_DIR": "/var/lib/memini/mirrors",
+            "MEMINI_GIT_FETCH_TIMEOUT": "120",
+            "MEMINI_GIT_MAX_MIRROR_SIZE": "2G",
+            "MEMINI_GIT_MAX_BLOB_SIZE": "512 KiB",
+            "MEMINI_GIT_ALLOW_HTTP": "true",
+            "MEMINI_GIT_LOCAL_ROOTS": "/srv/repos, /home/someone/src,",
+            "MEMINI_GIT_HTTPS_TOKEN_FILE": str(token_file),
+            "MEMINI_GIT_HTTPS_TOKEN_HOSTS": "Git.Example.test,code.example.test",
+            "MEMINI_GIT_SSH_KEY_PATH": "/run/secrets/git_ssh_key",
+            "MEMINI_GIT_SSH_KNOWN_HOSTS_PATH": "/etc/memini/known_hosts",
+        }
+    )
+
+    assert settings.git_mirror_dir == Path("/var/lib/memini/mirrors")
+    assert settings.git_fetch_timeout == 120
+    assert settings.git_max_mirror_size == 2 * 1024**3
+    assert settings.git_max_blob_size == 512 * 1024
+    assert settings.git_allow_http is True
+    assert settings.git_local_roots == (Path("/srv/repos"), Path("/home/someone/src"))
+    assert settings.git_https_token is not None
+    assert settings.git_https_token.get_secret_value() == GIT_TOKEN
+    assert settings.git_https_token_hosts == ("git.example.test", "code.example.test")
+    assert settings.git_ssh_key_path == Path("/run/secrets/git_ssh_key")
+    assert GIT_TOKEN not in repr(settings)
+
+
+def test_git_lists_and_sizes_from_the_config_file(tmp_path: Path) -> None:
+    config = write(
+        tmp_path / "memini.toml",
+        'git_local_roots = ["/srv/repos"]\ngit_max_mirror_size = 1048576\n'
+        'git_max_blob_size = "2M"\n',
+    )
+
+    settings = load_settings({"MEMINI_DATABASE_URL": FAKE_URL, CONFIG_FILE_VAR: str(config)})
+
+    assert settings.git_local_roots == (Path("/srv/repos"),)
+    assert settings.git_max_mirror_size == 1024**2
+    assert settings.git_max_blob_size == 2 * 1024**2
+
+
+def test_git_token_is_never_read_from_the_config_file(tmp_path: Path) -> None:
+    config = write(tmp_path / "memini.toml", f'git_https_token = "{GIT_TOKEN}"\n')
+
+    error = config_error({"MEMINI_DATABASE_URL": FAKE_URL, CONFIG_FILE_VAR: str(config)})
+
+    assert error.problems[0].startswith("git_https_token (config file")
+    assert GIT_TOKEN not in str(error)
+
+
+def test_git_token_needs_the_hosts_it_may_go_to() -> None:
+    error = config_error({"MEMINI_DATABASE_URL": FAKE_URL, "MEMINI_GIT_HTTPS_TOKEN": GIT_TOKEN})
+
+    assert len(error.problems) == 1
+    assert error.problems[0].startswith("MEMINI_GIT_HTTPS_TOKEN_HOSTS: invalid value (")
+    assert GIT_TOKEN not in str(error)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("MEMINI_GIT_MIRROR_DIR", "relative/mirrors"),
+        ("MEMINI_GIT_FETCH_TIMEOUT", "0"),
+        ("MEMINI_GIT_MAX_MIRROR_SIZE", "5 parsecs"),
+        ("MEMINI_GIT_MAX_MIRROR_SIZE", "0"),
+        ("MEMINI_GIT_MAX_BLOB_SIZE", "-1"),
+        ("MEMINI_GIT_ALLOW_HTTP", "perhaps"),
+        ("MEMINI_GIT_LOCAL_ROOTS", "/srv/repos,relative"),
+        ("MEMINI_GIT_HTTPS_TOKEN", "fake token with spaces"),
+        ("MEMINI_GIT_HTTPS_USERNAME", "fake login"),
+        ("MEMINI_GIT_HTTPS_TOKEN_HOSTS", "-bad.example.test"),
+        ("MEMINI_GIT_HTTPS_TOKEN_HOSTS", "host.example.test:443"),
+        ("MEMINI_GIT_SSH_KEY_PATH", "id_ed25519"),
+        ("MEMINI_GIT_SSH_KNOWN_HOSTS_PATH", "~/.ssh/known_hosts"),
+    ],
+)
+def test_invalid_git_value_is_named_without_the_value(key: str, value: str) -> None:
+    error = config_error({"MEMINI_DATABASE_URL": FAKE_URL, key: value})
+
+    assert len(error.problems) == 1
+    assert error.problems[0].startswith(f"{key}: invalid value (")
+    if len(value) > 2:
+        assert value not in str(error)

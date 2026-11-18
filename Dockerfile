@@ -2,9 +2,10 @@
 #
 # - build: uv installs the locked dependencies, then the project, into a virtualenv (no dev group,
 #   bytecode compiled). Dependencies come first, so a change to src/ reuses their layer.
-# - runtime: the same Python base with that virtualenv only; no uv, no compiler, no source tree.
-#   It runs as a non-root user (UID/GID 10001) and holds no secret: the database URL comes from the
-#   environment (MEMINI_DATABASE_URL) or a mounted file (MEMINI_DATABASE_URL_FILE) at run time.
+# - runtime: the same Python base with that virtualenv only, plus git and ssh from Debian for the
+#   git connector; no uv, no compiler, no source tree. It runs as a non-root user (UID/GID 10001)
+#   and holds no secret: the database URL comes from the environment (MEMINI_DATABASE_URL) or a
+#   mounted file (MEMINI_DATABASE_URL_FILE) at run time.
 #
 #   docker build -t memini:dev .          # or: docker compose build
 #
@@ -54,6 +55,18 @@ RUN groupadd --system --gid 10001 memini \
  && useradd --system --uid 10001 --gid memini --no-create-home --home-dir /nonexistent \
         --shell /usr/sbin/nologin memini
 
+# git runs the git connector: the service keeps a bare mirror of every repository source and
+# reads code from it (memini.git); openssh-client is its ssh transport. Both come from the Debian
+# release of the base image, which the digest pins; no recommended packages, no apt lists kept.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git openssh-client \
+ && rm -rf /var/lib/apt/lists/*
+
+# The mirrors live on a volume mounted here (compose.yaml), writable while the root filesystem is
+# read-only. The directory belongs to the service user with mode 0700, and a new named volume
+# takes its owner and mode from it.
+RUN install -d -o 10001 -g 10001 -m 0700 /var/lib/memini/mirrors
+
 # Owned by root and not writable by the service user: the service cannot change its own code.
 COPY --from=build /opt/memini/venv /opt/memini/venv
 
@@ -64,7 +77,8 @@ ENV PATH=/opt/memini/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MEMINI_HTTP_HOST=0.0.0.0 \
-    MEMINI_HTTP_PORT=6364
+    MEMINI_HTTP_PORT=6364 \
+    MEMINI_GIT_MIRROR_DIR=/var/lib/memini/mirrors
 
 USER 10001:10001
 WORKDIR /opt/memini

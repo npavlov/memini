@@ -41,6 +41,12 @@ needs the optional dependencies ``memini[local-embeddings]`` and pins the model 
 chosen, or any ``embedding_*`` setting without a provider, is an error. The index fingerprint
 (:mod:`memini.index`) covers provider, model, digest, dimension, pooling, token limit and document
 prefix: a change of any of them blocks search until ``memini reindex`` rebuilds the index.
+
+The ``git_*`` settings configure the git connector (:mod:`memini.git`): where the mirrors live, the
+limits, which transports a source may use and the credentials for remotes. A list setting is a
+TOML array in the config file, or comma-separated in the environment
+(``MEMINI_GIT_LOCAL_ROOTS=/srv/repos,/home/me/src``). A size is a number of bytes, or a number with
+a binary unit: ``512M``, ``5G``, ``1GiB``.
 """
 
 import os
@@ -50,7 +56,17 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, ValidationError
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 
 __all__ = [
     "CONFIG_FILE_VAR",
@@ -89,6 +105,57 @@ it. Repeated here so that this module imports no database code; a test keeps the
 
 def _upper(value: object) -> object:
     return value.upper() if isinstance(value, str) else value
+
+
+# --- Git connector: value types ------------------------------------------------------------------
+
+_BYTE_SIZE: Final = re.compile(r"(?i)\s*(\d+)\s*(?:([kmgt])(?:i?b)?|b)?\s*")
+_BYTE_UNITS: Final = {"k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
+_HOSTNAME: Final = re.compile(
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*"
+)
+
+
+def _byte_size(value: object) -> object:
+    """``1048576``, ``512M``, ``5G``, ``1GiB`` as a number of bytes; anything else as it is, for
+    the integer check to refuse."""
+    if isinstance(value, str) and (match := _BYTE_SIZE.fullmatch(value)):
+        number, unit = match.groups()
+        return int(number) * (_BYTE_UNITS[unit.lower()] if unit else 1)
+    return value
+
+
+def _comma_list(value: object) -> object:
+    """A comma-separated string as a tuple of its non-empty, stripped items; a list as it is."""
+    if isinstance(value, str):
+        return tuple(item.strip() for item in value.split(",") if item.strip())
+    return value
+
+
+def _absolute(path: Path | None) -> Path | None:
+    if path is not None and not path.is_absolute():
+        raise ValueError("not an absolute path")
+    return path
+
+
+def _hostname(value: str) -> str:
+    host = value.lower()
+    if len(host) > 253 or _HOSTNAME.fullmatch(host) is None:
+        raise ValueError("not a host name")
+    return host
+
+
+def _single_line(secret: SecretStr | None) -> SecretStr | None:
+    if secret is not None and any(
+        c.isspace() or not c.isprintable() for c in secret.get_secret_value()
+    ):
+        raise ValueError("holds whitespace or control characters")
+    return secret
+
+
+type _ByteSize = Annotated[int, BeforeValidator(_byte_size)]
+type _AbsolutePath = Annotated[Path, AfterValidator(_absolute)]
+type _Hostname = Annotated[str, AfterValidator(_hostname)]
 
 
 class Settings(BaseModel):
@@ -177,6 +244,73 @@ class Settings(BaseModel):
     embedding_max_tokens: int = Field(
         default=512, ge=1, le=32768, description="an integer from 1 to 32768"
     )
+
+    # --- Git connector (memini.git) --------------------------------------------------------------
+    # The service keeps a bare mirror of every git source and reads code from it. Remote sources
+    # use https or ssh; plain http and local paths are refused unless allowed here. Credentials
+    # are global for now, one https token and one ssh key; per-source credentials come later.
+    git_mirror_dir: Annotated[Path | None, AfterValidator(_absolute)] = Field(
+        default=None,
+        description="an absolute directory path; unset: $XDG_DATA_HOME/memini/mirrors, or"
+        " ~/.local/share/memini/mirrors (the image sets /var/lib/memini/mirrors)",
+    )
+    git_fetch_timeout: int = Field(
+        default=600,
+        ge=1,
+        le=86400,
+        description="seconds a clone or fetch may take, 1 to 86400",
+    )
+    git_max_mirror_size: _ByteSize = Field(
+        default=5 * 1024**3,
+        ge=1,
+        description="the largest size of one mirror on disk: bytes, or a number with K, M, G or T",
+    )
+    git_max_blob_size: _ByteSize = Field(
+        default=1024**2,
+        ge=1,
+        description="the largest file read from a mirror: bytes, or a number with K, M, G or T",
+    )
+    git_allow_http: bool = Field(
+        default=False,
+        description="true or false: allow plain http:// remotes (no TLS)",
+    )
+    git_local_roots: Annotated[tuple[_AbsolutePath, ...], BeforeValidator(_comma_list)] = Field(
+        default=(),
+        description="absolute directory paths, comma-separated, under which local repositories"
+        " may be sources; empty: no local sources",
+    )
+    git_https_token: Annotated[SecretStr | None, AfterValidator(_single_line)] = Field(
+        default=None,
+        description="a token for https remotes, without whitespace",
+    )
+    git_https_username: str = Field(
+        default="x-access-token",
+        pattern=r"^[!-~]{1,256}$",
+        description="the user name sent with git_https_token: printable ASCII, no spaces",
+    )
+    git_https_token_hosts: Annotated[tuple[_Hostname, ...], BeforeValidator(_comma_list)] = Field(
+        default=(),
+        validate_default=True,
+        description="host names, comma-separated, that git_https_token is sent to; required"
+        " when the token is set",
+    )
+    git_ssh_key_path: Annotated[Path | None, AfterValidator(_absolute)] = Field(
+        default=None,
+        description="the absolute path of the private key for ssh remotes",
+    )
+    git_ssh_known_hosts_path: Annotated[Path | None, AfterValidator(_absolute)] = Field(
+        default=None,
+        description="the absolute path of the known_hosts file that ssh remotes are checked"
+        " against",
+    )
+
+    @field_validator("git_https_token_hosts")
+    @classmethod
+    def _token_has_hosts(cls, hosts: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:
+        # A token without hosts would go to whatever https host a source names.
+        if info.data.get("git_https_token") is not None and not hosts:
+            raise ValueError("git_https_token is set without the hosts it may be sent to")
+        return hosts
 
 
 class ConfigError(Exception):

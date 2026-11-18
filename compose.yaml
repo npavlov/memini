@@ -20,8 +20,9 @@
 #   created with.
 # - MEMINI_LOG_LEVEL: CRITICAL, ERROR, WARNING, INFO (default) or DEBUG.
 #
-# Data lives in the named volume `memini-db`. `docker compose down` keeps it; only
-# `docker compose down --volumes` deletes it.
+# Data lives in named volumes: `memini-db` (the database) and `memini-mirrors` (the bare mirrors
+# of git sources, which can be re-cloned). `docker compose down` keeps them; only
+# `docker compose down --volumes` deletes them.
 
 name: memini
 
@@ -69,10 +70,15 @@ services:
     # On stop: open requests get 10 s, a running job 30 s, recording its end 10 s more. Docker's
     # default of 10 s before SIGKILL would cut that short.
     stop_grace_period: 60s
-    # The service writes nothing to its own filesystem.
+    # The service writes nothing to its own filesystem, only to the mirror volume.
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # The bare mirrors of git sources (MEMINI_GIT_MIRROR_DIR in the image), owned by the service
+      # user. A local repository becomes a source only if it is mounted into the container too, and
+      # its directory is listed in MEMINI_GIT_LOCAL_ROOTS.
+      - memini-mirrors:/var/lib/memini/mirrors
     cap_drop:
       - ALL
     security_opt:
@@ -86,3 +92,4 @@ services:
 
 volumes:
   memini-db:
+  memini-mirrors:

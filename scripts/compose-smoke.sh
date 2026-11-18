@@ -9,6 +9,7 @@
 # a workspace and a read token with the CLI inside the container, then checks from the host:
 #
 # - the service port is published on 127.0.0.1 only, and the service does not run as root;
+# - git and ssh are installed, the mirror volume is writable and the root filesystem is not;
 # - /healthz and /readyz answer 200;
 # - /mcp refuses a request without a token, and one with an unknown token (401);
 # - a real MCP client with the token lists the tools and calls `status`, which answers with the
@@ -124,6 +125,18 @@ ok "published on $binding only"
 uid="$(docker compose exec -T memini id -u)"
 [ "$uid" != "0" ] || fail "the service runs as root"
 ok "runs as uid $uid, not root"
+
+step "git, ssh and the mirror volume"
+git_version="$(docker compose exec -T memini git --version)" || fail "git is not installed in the image"
+docker compose exec -T memini sh -c 'command -v ssh' >/dev/null || fail "ssh is not installed in the image"
+ok "$git_version, ssh"
+# shellcheck disable=SC2016 # expanded inside the container
+docker compose exec -T memini sh -c 'test -d "$MEMINI_GIT_MIRROR_DIR" && test -w "$MEMINI_GIT_MIRROR_DIR"' \
+  || fail "the mirror directory is missing or not writable by the service user"
+if docker compose exec -T memini sh -c 'touch /opt/memini/write-test' >/dev/null 2>&1; then
+  fail "the root filesystem of the service is writable"
+fi
+ok "the mirror volume is writable; the root filesystem is not"
 
 step "workspace and token, with the CLI in the container"
 if out="$(docker compose exec -T memini memini workspace create "$WORKSPACE" 2>&1)"; then

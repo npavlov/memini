@@ -295,6 +295,26 @@ built with (`index_state`), and search or indexing under another one is refused 
 fingerprint, so an unchanged text is never embedded twice, also across chunker versions (principle 6).
 Which model ships as the default, and through which provider, is still open question 2.
 
+**Git mirrors** (decided 2026-11-18). The service runs the `git` CLI as a subprocess, not pygit2 or
+dulwich: the CLI is the reference for every transport and for fetch negotiation, it has documented
+switches to harden it, and a process that hangs can be killed with everything it started. pygit2 runs
+libgit2 inside the service process, where a hang cannot be killed and a crash takes the service down;
+dulwich is pure Python and slow on large packs. Each source has a bare mirror in its own directory,
+named by the source id, under `git_mirror_dir` (a volume in the image). Only branches and tags are
+mirrored. A fetch writes to a namespace readers never look at, then the size of the mirror is checked,
+then branches and tags move in one ref transaction: a fetch that fails, times out or grows the mirror
+past `git_max_mirror_size` changes nothing a reader sees. Every git command runs without user or system
+config, hooks, prompts or submodule recursion, with only the transport of its remote allowed. Sources
+are `https` and `ssh` URLs; plain `http` and local paths are refused unless a setting allows them
+(`git_allow_http`, `git_local_roots`): plain http exposes code and credentials on the network, and an
+unrestricted local path would let whoever configures sources read any repository the service user can
+read, the mirrors of other workspaces included (principle 11). A local repository is fetched through
+`upload-pack` like a remote one, never cloned with `--local`, so nothing is written to it.
+Credentials are global for now: one https token, sent only to the hosts listed with it, through a
+credential helper that reads it from the environment of the git process (never in a URL, in process
+arguments or on disk), and one ssh key with a known_hosts file and strict host key checking.
+Per-source credentials come with the credential store (M3).
+
 ## 10. Quality
 
 - **Retrieval eval**: a question set per workspace with expected records; recall@k per kind. Run on every
