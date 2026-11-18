@@ -5,6 +5,8 @@ Database fixtures are for tests marked `integration`. They need a Postgres serve
 allowed to create databases. Each test gets a new, empty database, which is dropped afterwards.
 """
 
+import io
+import logging
 import os
 import uuid
 from collections.abc import Iterator
@@ -17,6 +19,13 @@ from pydantic import SecretStr
 
 from memini.config import Settings
 from memini.db import migrate
+from memini.logs import (
+    ROUTED_LOGGERS,
+    JsonFormatter,
+    TextFormatter,
+    clear_secrets,
+    configure_logging,
+)
 
 TEST_DATABASE_URL_ENV = "MEMINI_TEST_DATABASE_URL"
 DEFAULT_TEST_DATABASE_URL = "postgresql://memini:memini@127.0.0.1:55432/memini"
@@ -26,6 +35,36 @@ DEFAULT_TEST_DATABASE_URL = "postgresql://memini:memini@127.0.0.1:55432/memini"
 def settings() -> Settings:
     """Valid settings whose database URL points nowhere; for tests that never connect."""
     return Settings(database_url=SecretStr("postgresql://fake:fake@db.invalid:5432/memini"))
+
+
+@pytest.fixture
+def log_output() -> Iterator[io.StringIO]:
+    """What `configure_logging` writes during the test, JSON at level DEBUG.
+
+    The logging setup of the process, and the registered secrets, are restored afterwards.
+    """
+    root = logging.getLogger()
+    root_level = root.level
+    routed = {
+        name: (list(logger.handlers), logger.propagate, logger.level)
+        for name in ROUTED_LOGGERS
+        for logger in [logging.getLogger(name)]
+    }
+    stream = io.StringIO()
+    configure_logging("DEBUG", stream=stream)
+    try:
+        yield stream
+    finally:
+        for handler in list(root.handlers):
+            if isinstance(handler.formatter, JsonFormatter | TextFormatter):
+                root.removeHandler(handler)
+        root.setLevel(root_level)
+        for name, (handlers, propagate, level) in routed.items():
+            logger = logging.getLogger(name)
+            logger.handlers[:] = handlers
+            logger.propagate = propagate
+            logger.setLevel(level)
+        clear_secrets()
 
 
 @pytest.fixture(scope="session")
