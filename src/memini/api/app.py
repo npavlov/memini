@@ -9,9 +9,10 @@ Layout of the application :func:`create_app` builds:
   needs a valid token and the public routes above do not. A route asks for a scope, a read route
   for the authorization filter and a write route for its write access, through
   :mod:`memini.api.auth`. Administration: workspaces (:mod:`memini.api.workspaces`), sources and
-  streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`). Intake: batches of records
-  for push sources (:mod:`memini.api.ingest`). Queries: search, code search, symbols and reading
-  files (:mod:`memini.api.query`), the same calls as the MCP tools.
+  streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`), tokens
+  (:mod:`memini.api.tokens`). Intake: batches of records for push sources
+  (:mod:`memini.api.ingest`). Queries: search, code search, symbols and reading files
+  (:mod:`memini.api.query`), the same calls as the MCP tools.
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
   bearer tokens, the ``read`` scope for every request. It is an ASGI app of its own: it gets request
   ids from the outer middleware, and its session manager runs in the application's lifespan.
@@ -46,6 +47,7 @@ from memini.api.query import build_query_router
 from memini.api.request_id import RequestIdMiddleware
 from memini.api.runs import build_runs_router
 from memini.api.sources import build_sources_router
+from memini.api.tokens import build_tokens_router
 from memini.api.workspaces import build_workspaces_router
 from memini.auth import Authenticator, pool_authenticator
 from memini.config import Settings
@@ -171,6 +173,7 @@ def create_app(
     v1.include_router(build_sources_router())
     v1.include_router(build_ingest_router())
     v1.include_router(build_runs_router())
+    v1.include_router(build_tokens_router())
     v1.include_router(build_query_router())
     app.include_router(v1)
 

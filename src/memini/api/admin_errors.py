@@ -1,10 +1,10 @@
 """From the errors of the administration library to the API's error shape.
 
-Wrap a call into :mod:`memini.workspaces`, :mod:`memini.sources` or the run reads of
-:mod:`memini.runs` in :func:`admin_errors`. What each error becomes:
+Wrap a call into :mod:`memini.workspaces`, :mod:`memini.sources`, :mod:`memini.token_admin` or
+the run reads of :mod:`memini.runs` in :func:`admin_errors`. What each error becomes:
 
-- :class:`~memini.workspaces.NotFoundError`: 404 ``not_found``. A workspace, source, stream or run
-  the token may not see is reported like one that does not exist.
+- :class:`~memini.workspaces.NotFoundError`: 404 ``not_found``. A workspace, source, stream, run or
+  token the token may not see is reported like one that does not exist.
 - :class:`~memini.auth.WorkspaceLimitError`: 403 ``workspace_limited``: the token is limited to
   one workspace and the write would reach beyond it.
 - :class:`~memini.workspaces.WorkspaceExistsError`, :class:`~memini.sources.SourceExistsError`:

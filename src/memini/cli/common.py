@@ -1,9 +1,9 @@
-"""What the commands share: exit codes, expected errors, keeping the database URL out of output, and
-a database session that acts as the configured principal."""
+"""What the commands share: exit codes, expected errors, output, keeping the database URL out of
+output, and a database session that acts as the configured principal."""
 
 import sys
 import traceback
-from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from typing import Final
@@ -20,6 +20,7 @@ from memini.db import connect, pending_migrations
 from memini.workspaces import ensure_principal
 
 __all__ = [
+    "EXIT_DENIED",
     "EXIT_FAILURE",
     "EXIT_INTERRUPTED",
     "EXIT_OK",
@@ -29,20 +30,29 @@ __all__ = [
     "Conn",
     "DatabaseUrl",
     "format_time",
+    "format_traceback",
     "message",
     "principal_session",
     "print_table",
+    "printable",
     "require_migrated",
 ]
 
 EXIT_OK: Final = 0
 EXIT_FAILURE: Final = 1
-"""The command could not do what was asked: no such workspace or token, a name already taken, a
-failed or pending migration, a server that did not start."""
+"""The command could not do what was asked: no such workspace, source or token, a name already
+taken, a request the service refused as not valid, a failed run waited for, a failed or pending
+migration, a server that did not start."""
 EXIT_USAGE: Final = 2
-"""Wrong arguments, or invalid configuration. argparse exits with 2 as well."""
+"""Wrong arguments, or invalid configuration: of the service for an operator command, the service
+URL or the token for a client command. argparse exits with 2 as well."""
 EXIT_UNAVAILABLE: Final = 3
-"""The database cannot be reached, or was lost while the command ran."""
+"""The service (client commands) or the database (operator commands) cannot be reached, did not
+answer in time, or answered that it is unavailable."""
+EXIT_DENIED: Final = 5
+"""The service refused the token of a client command: unknown, revoked or expired (HTTP 401), or
+without the scope or the workspace the command needs (HTTP 403). 4 is ``eval``'s regression
+(:data:`memini.cli.evaluate.EXIT_REGRESSION`)."""
 EXIT_INTERRUPTED: Final = 130
 """Interrupted by Ctrl-C (128 + SIGINT), as shells report it. ``serve`` exits 0 instead."""
 
@@ -116,25 +126,30 @@ class DatabaseUrl:
         return f"cannot use the database at {self.target}: {self.redact(_reason(error))}"
 
     def format_traceback(self, error: BaseException) -> str:
-        """The traceback of ``error`` and the errors it chains, with each error's text redacted.
+        """The traceback of ``error`` and the errors it chains, with each error's text redacted."""
+        return format_traceback(error, self.redact)
 
-        Frames show file names and source lines, never values, so they are kept as they are.
-        """
-        chain: list[BaseException] = []
-        current: BaseException | None = error
-        while current is not None and all(current is not seen for seen in chain):
-            chain.append(current)
-            current = current.__cause__ or (
-                None if current.__suppress_context__ else current.__context__
-            )
-        parts: list[str] = []
-        for link in reversed(chain):
-            if parts:
-                parts.append("\nThe error above led to the one below:\n\n")
-            parts.append("Traceback (most recent call last):\n")
-            parts.extend(traceback.format_tb(link.__traceback__))
-            parts.extend(self.redact(line) for line in traceback.format_exception_only(link))
-        return "".join(parts)
+
+def format_traceback(error: BaseException, redact: Callable[[str], str]) -> str:
+    """The traceback of ``error`` and the errors it chains, each error's text through ``redact``.
+
+    Frames show file names and source lines, never values, so they are kept as they are.
+    """
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    parts: list[str] = []
+    for link in reversed(chain):
+        if parts:
+            parts.append("\nThe error above led to the one below:\n\n")
+        parts.append("Traceback (most recent call last):\n")
+        parts.extend(traceback.format_tb(link.__traceback__))
+        parts.extend(redact(line) for line in traceback.format_exception_only(link))
+    return "".join(parts)
 
 
 def _reason(error: psycopg.OperationalError) -> str:
@@ -180,6 +195,17 @@ def format_time(value: datetime | None, none: str = "never") -> str:
     if value is None:
         return none
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%MZ")
+
+
+def printable(text: str) -> str:
+    """``text`` safe to print on a terminal: control characters, line breaks included, escaped.
+
+    For text that comes from elsewhere, such as a path in a repository or an error message: an
+    escape sequence in it could rewrite what the terminal shows.
+    """
+    if text.isprintable():
+        return text
+    return "".join(c if c.isprintable() else repr(c)[1:-1] for c in text)
 
 
 def print_table(header: Sequence[str], rows: Iterable[Sequence[str]]) -> None:

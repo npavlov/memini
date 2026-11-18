@@ -35,11 +35,26 @@ returns once both are healthy. The containers restart on failure and with Docker
 them. The service is published on `127.0.0.1:6364` only; the database on `127.0.0.1:55432`. Data lives
 in the `memini-db` volume.
 
-Create a workspace and a token with the CLI inside the container. The token is printed once:
+Get the first admin token from inside the container, once. It is printed once, on stdout; keep it in
+a file only you can read:
 
 ```sh
-docker compose exec memini memini workspace create demo
-TOKEN=$(docker compose exec -T memini memini token create --scope read --name laptop)
+mkdir -p ~/.config/memini
+(umask 077; docker compose exec -T memini memini bootstrap > ~/.config/memini/admin.token)
+```
+
+Everything else is the CLI on the host, a client of the service's HTTP API: from the checkout, run it
+with `uv run memini …`. It needs the service URL, `MEMINI_URL` (default `http://127.0.0.1:6364`), and a
+token, in `MEMINI_TOKEN` or in the file `MEMINI_TOKEN_FILE` names; it never takes a token on the command
+line. Create a workspace, add a repository, sync it and see the run, then make a read token for agents:
+
+```sh
+export MEMINI_TOKEN_FILE=~/.config/memini/admin.token
+uv run memini workspace create demo
+uv run memini source add demo shop --location https://git.example.com/team/shop.git --ref main --schedule 1h
+uv run memini sync demo shop --wait
+uv run memini runs demo
+TOKEN=$(uv run memini token create --scope read --name laptop)
 ```
 
 Connect an MCP client, for example Claude Code:
@@ -84,27 +99,64 @@ Every hit carries its source, a timestamp and, for code, a locator such as `shop
 `read_source` reads the service's own mirror at the pinned commit by default, so it matches search
 results; `ref` takes a branch, a tag or a full commit id. Search needs an embedding provider
 (`MEMINI_EMBEDDING_*`); reading files does not. An `index_mismatch` error means the embedding model or
-the chunker changed: run `memini reindex --workspace NAME`. Over HTTP, send a time zone offset's `+` as
-`%2B`, or use `Z`.
+the chunker changed: run `docker compose exec memini memini reindex --workspace NAME`. Over HTTP, send
+a time zone offset's `+` as `%2B`, or use `Z`.
 
-Repositories are added through the HTTP API: `POST /v1/workspaces/{ws}/sources` with an `admin` token
-(see `/openapi.json`); the service mirrors and indexes them on their schedule, or at
-`POST /v1/workspaces/{ws}/sources/{src}/sync`.
+Repositories are added with `memini source add`, which calls `POST /v1/workspaces/{ws}/sources` with an
+`admin` token (see `/openapi.json`); the service mirrors and indexes them on their schedule, or at
+`memini sync` (`POST /v1/workspaces/{ws}/sources/{src}/sync`).
 
 ### Commands
 
-Run them with `docker compose exec memini memini …`.
+Client commands call the HTTP API of the running service. Run them from the host (`uv run memini …` in
+the checkout) with `MEMINI_URL` and `MEMINI_TOKEN` or `MEMINI_TOKEN_FILE`; `--url URL` and
+`--token-file FILE` override them for one run. Reading needs a token with the `read` scope, changing
+anything `admin`. Read commands take `--json` for the API's answer as it is.
 
 ```
-memini [--config FILE] [--debug] <command>
+memini workspace create <name> | list
+memini source add <ws> <name> --location URL_OR_PATH --ref REF [--ref ...] [--schedule DURATION]
+                  [--include GLOB ...] [--exclude GLOB ...] [--no-builtin-excludes] [--visibility V]
+                  [--retention-days N] [--llm-policy P]
+memini source add <ws> <name> --kind push [--visibility V] [--retention-days N] [--llm-policy P]
+memini source list <ws> | show <ws> <source> | remove <ws> <source>
+memini source edit <ws> <source> [--name NEW] [--ref REF ...] [--schedule DURATION | --no-schedule] ...
+memini streams <ws> <source>                     # lag, last run and queued sync of each ref
+memini sync <ws> <source> [--stream KEY ...] [--wait]
+memini runs <ws> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
+memini run <run-id>                              # one run with its report
+memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME] [--name LABEL]
+                    [--expires-in DURATION]      # prints the token alone, once
+memini token list | revoke <id-or-prefix>
+memini search <query> [--code] [--mode MODE] [--workspace NAME] [--repository NAME] [--limit N]
+```
+
+Operator commands work on the database directly, so they run inside the service's container:
+`docker compose exec memini memini …`. They come before a token exists, or below the API.
+
+```
 memini serve [--migrate]
 memini migrate
-memini workspace create <name> | list
-memini token create --scope {read,ingest,admin} [--scope ...] [--workspace <name>] [--name <label>]
-                    [--expires-in <duration>]
-memini token list | revoke <id-or-prefix>
+memini bootstrap [--name LABEL] [--expires-in DURATION] [--force]   # the first admin token
+memini workspace llm <name> [none|local|cloud]   # which LLM may read a workspace; cloud is an opt-in
 memini reindex --workspace <name>
+memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--fake-embeddings] ...
+memini credentials set|list|delete|rotate-key ...   # credentials of sources, encrypted; secrets on stdin
 ```
+
+`workspace llm` sits in the `workspace` group but is an operator command: no token, an admin one
+included, may opt a workspace in to a cloud LLM, so the HTTP API has no route for it.
+
+`bootstrap` gives the principal `MEMINI_PRINCIPAL` (default `owner`) a token with the `read` and `admin`
+scopes for every workspace. It refuses while that principal has such a token that is active; with
+`--force` it makes another one, for an operator who lost theirs (revoke the old one with
+`memini token revoke`).
+
+Exit codes: 0 done; 1 failed (no such thing, refused by the service, a failed run waited for); 2 wrong
+usage or configuration (no token, a bad URL); 3 the service or the database cannot be reached; 4 `eval`
+only: a metric fell below the baseline; 5 the service refused the token (unknown, revoked, expired, or
+without the scope or workspace); 130 interrupted. Errors are one line on stderr, with the API's error
+code and request id.
 
 ### Settings
 

@@ -27,9 +27,11 @@ For the development compose stack, where Postgres listens on 127.0.0.1:55432::
 
     MEMINI_DATABASE_URL=postgresql://memini:memini@127.0.0.1:55432/memini
 
-``principal`` (``MEMINI_PRINCIPAL``, default ``owner``) names the principal the CLI acts as: it owns
-the workspaces and tokens the CLI creates, and is created on first use. v1 has one user, so the
-default fits; set it only to give that principal another name, and keep it the same afterwards.
+``principal`` (``MEMINI_PRINCIPAL``, default ``owner``) names the principal the operator commands
+act as: ``memini bootstrap`` creates its first admin token, so it owns what is made with that
+token, and it is created on first use. v1 has one user, so the default fits; set it only to give
+that principal another name, and keep it the same afterwards. The CLI's client commands do not read
+these settings: see :mod:`memini.cli.client`.
 
 Embeddings (the ``embedding_*`` settings, :mod:`memini.embeddings`) are off until
 ``embedding_provider`` is set: the service starts without them, and indexing that needs vectors

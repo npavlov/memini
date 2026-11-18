@@ -1,19 +1,41 @@
-"""The ``memini`` command: start the service, migrate the database, manage workspaces and tokens.
+"""The ``memini`` command: a client of the running service, and the operator commands below it.
 
 Usage::
 
-    memini [--config FILE] [--debug] <command> ...
+    memini [--url URL] [--token-file FILE] [--config FILE] [--debug] <command> ...
     memini --version
+
+Client commands are HTTP clients of the running service (requirements, section 7): they need its
+URL and a token, and nothing else. The service checks scopes and workspace limits, touches the
+mirrors and writes run reports; no database credentials leave it::
+
+    memini workspace create <name> | list
+    memini source add <workspace> <name> --location URL_OR_PATH --ref REF [--ref ...]
+                      [--schedule DURATION] [--include GLOB ...] [--exclude GLOB ...]
+                      [--no-builtin-excludes]
+    memini source add <workspace> <name> --kind push
+    memini source list <workspace> | show|edit|remove <workspace> <source>
+    memini streams <workspace> <source>
+    memini sync <workspace> <source> [--stream KEY ...] [--wait]
+    memini runs <workspace> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
+    memini run <run-id>
+    memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME]
+                        [--name LABEL] [--expires-in DURATION]
+    memini token list | revoke <id-or-prefix>
+    memini search <query> [--code] [--mode MODE] [--workspace NAME ...] ...
+
+They read ``MEMINI_URL`` (default ``http://127.0.0.1:6364``) and the token from ``MEMINI_TOKEN`` or
+``MEMINI_TOKEN_FILE`` (:mod:`memini.cli.client`); ``--url`` and ``--token-file`` override them.
+No option takes the token itself. Read commands take ``--json`` for the API's answer as it is.
+
+Operator commands work on the database directly, with the service's settings, inside the service's
+container (``docker compose exec memini memini <command>``): they run before a token exists, or
+below the API::
 
     memini serve [--migrate]
     memini migrate
-    memini workspace create <name>
-    memini workspace list
+    memini bootstrap [--name LABEL] [--expires-in DURATION] [--force]
     memini workspace llm <name> [none|local|cloud]
-    memini token create --scope {read,ingest,admin} [--scope ...] [--workspace <name>]
-                        [--name <label>] [--expires-in <duration>]
-    memini token list
-    memini token revoke <id-or-prefix>
     memini reindex --workspace <name>
     memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--margin M] [--k 1,5,10]
                 [--modes MODE,...] [--fake-embeddings] [--lexical NAME] [--reranker NAME]
@@ -23,30 +45,20 @@ Usage::
     memini credentials delete --workspace <name> --source <name>
     memini credentials rotate-key [--batch-size N]
 
-Global options go before the command. ``--config FILE`` sets ``MEMINI_CONFIG_FILE`` for this run;
-every other setting comes from the environment and that file, as for the service
-(:mod:`memini.config`). ``--debug`` adds the traceback to an error.
+``--config FILE`` sets ``MEMINI_CONFIG_FILE`` for an operator command; every other setting comes
+from the environment and that file, as for the service (:mod:`memini.config`). ``bootstrap``
+creates the first admin token (:mod:`memini.cli.admin`).
 
-The commands work on the database directly, not through the HTTP API: the first token cannot come
-from an API that asks for one. They act as the principal named by the ``principal`` setting
-(``MEMINI_PRINCIPAL``, default ``owner``), which is created on first use. v1 has one user, and that
-principal owns every workspace and token the CLI creates.
-
-Results go to stdout, messages to stderr. ``token create`` prints the token alone on stdout, so
-``TOKEN=$(memini token create --scope read)`` captures it. It is shown this once: only its digest
-is stored.
-
-An error is one line on stderr, ``memini: ...``, without a traceback. No output holds the database
-URL or its password; the server is named as ``host:port``.
-
-``workspace llm`` shows a workspace's ``llm_policy`` and the LLM providers the settings configure,
-or sets it: ``none`` (no LLM reads anything in it), ``local`` (the default) or ``cloud``, the
+``workspace llm`` is an operator command in the ``workspace`` group, whose other commands are
+clients: it shows a workspace's ``llm_policy`` and the LLM providers the settings configure, or
+sets it: ``none`` (no LLM reads anything in it), ``local`` (the default) or ``cloud``, the
 workspace's opt-in to the cloud provider for sources whose own ``llm_policy`` is ``cloud``
-(:mod:`memini.llm`). Only this command sets it; the HTTP API cannot.
+(:mod:`memini.llm`). Only this command sets it; the HTTP API cannot, so no token can opt a
+workspace in.
 
 ``reindex`` rebuilds a workspace's index from raw records under the configured embedding model and
-the chunker of this build (:func:`memini.index.reindex`); it is what a refused search names. It
-needs an embedding provider (``MEMINI_EMBEDDING_PROVIDER``).
+the chunker of this build (:func:`memini.index.reindex`); it is what a refused search names, and
+needs an embedding provider.
 
 ``eval`` runs the retrieval eval (:mod:`memini.cli.evaluate`, :mod:`memini.evaluation`): it indexes
 the suite's fixture repositories into a scratch database it creates on the configured server and
@@ -59,19 +71,30 @@ A secret is read from stdin, never from an argument, and never printed. ``rotate
 while credentials are left under another key; without ``MEMINI_CREDENTIAL_KEY`` the commands that
 need it exit 2.
 
+Results go to stdout, messages to stderr. ``bootstrap`` and ``token create`` print the token alone
+on stdout, so ``TOKEN=$(memini token create --scope read)`` captures it. It is shown this once:
+only its digest is stored. No other output holds a token.
+
+An error is one line on stderr, ``memini: ...``, without a traceback; ``--debug`` adds it. No output
+holds the database URL, its password or the token; the database is named as ``host:port``.
+
 Exit codes:
 
 - 0: done; also ``serve`` stopped by SIGINT or SIGTERM.
-- 1: the command failed: no such workspace or token, a name already taken, a migration that failed
-  or is pending, a server that did not start; for ``reindex`` also a rebuild of the workspace that
-  is running already, raw content that cannot be read, an embedding model that failed, or an index
-  built with another fingerprint.
-  For ``eval``: a search that failed, or an expected result of the suite not in the index.
-- 2: wrong usage or invalid configuration, including no embedding provider for ``reindex`` and
-  ``eval`` (without ``--fake-embeddings``), and a suite or baseline file of ``eval`` that is not
-  valid.
-- 3: the database cannot be reached.
+- 1: the command failed: no such workspace, source, run or token, a name already taken, a request
+  the service refused (an error of the API other than those below), a sync waited for that did not
+  succeed, a migration that failed or is pending, a server that did not start; for ``reindex`` also
+  a rebuild that is running already, raw content that cannot be read, an embedding model that
+  failed, or an index built with another fingerprint; for ``eval`` a search that failed, or an
+  expected result of the suite not in the index.
+- 2: wrong usage or invalid configuration: arguments, the service's settings, the service URL, no
+  token or a malformed one; also no embedding provider for ``reindex`` and ``eval`` (without
+  ``--fake-embeddings``), and a suite or baseline file of ``eval`` that is not valid.
+- 3: unreachable: the service (client commands) did not answer, or answered that it is unavailable;
+  the database (operator commands) cannot be reached.
 - 4: ``eval`` only: a tracked metric fell below the baseline by more than the margin.
+- 5: client commands: the service refused the token: unknown, revoked or expired (401), or without
+  the scope or the workspace the command needs (403).
 - 130: interrupted by Ctrl-C.
 """
 
@@ -79,15 +102,43 @@ import argparse
 import asyncio
 import os
 import sys
-from collections.abc import Callable, Coroutine, Sequence
+import textwrap
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
+import httpx2
 import psycopg
 
 from memini import __version__
-from memini.auth import SCOPES
-from memini.cli import admin, credentials, evaluate, index, serve
+from memini.cli import (
+    admin,
+    credentials,
+    evaluate,
+    index,
+    runs,
+    search,
+    serve,
+    sources,
+    tokens,
+)
+from memini.cli.arguments import (
+    HELP_WIDTH,
+    ClientCommand,
+    Commands,
+    OperatorCommand,
+    Parser,
+    parse_lifetime,
+    parse_token_name,
+    parse_workspace_name,
+)
+from memini.cli.client import (
+    TOKEN_FILE_VAR,
+    URL_VAR,
+    Api,
+    ClientConfigError,
+    load_client_settings,
+    quiet_http_logs,
+)
 from memini.cli.common import (
     EXIT_FAILURE,
     EXIT_INTERRUPTED,
@@ -95,9 +146,11 @@ from memini.cli.common import (
     EXIT_USAGE,
     CommandError,
     DatabaseUrl,
+    format_traceback,
     message,
+    printable,
 )
-from memini.config import CONFIG_FILE_VAR, ConfigError, Settings, load_settings
+from memini.config import CONFIG_FILE_VAR, ConfigError, load_settings
 from memini.db import MigrationError
 from memini.embeddings import EmbeddingError, EmbeddingsNotConfiguredError
 from memini.evaluation import (
@@ -108,22 +161,71 @@ from memini.evaluation import (
     RERANKERS,
 )
 from memini.index import IndexMismatchError
-from memini.llm import LLM_POLICIES
 
 __all__ = ["build_parser", "main"]
 
-type Command = Callable[[argparse.Namespace, Settings], Coroutine[Any, Any, int]]
 
+def main(
+    argv: Sequence[str] | None = None, *, transport: httpx2.BaseTransport | None = None
+) -> int:
+    """Run the ``memini`` command with ``argv`` (default ``sys.argv[1:]``); return the exit code.
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the ``memini`` command with ``argv`` (default ``sys.argv[1:]``); return the exit code."""
+    ``transport`` replaces the HTTP transport of client commands, for tests.
+    """
     try:
         args = build_parser().parse_args(argv)
     except SystemExit as exit_:  # --help, --version, or a usage error argparse has printed
         return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
-    command: Command = args.command
-    debug: bool = args.debug
+    client: ClientCommand | None = getattr(args, "client", None)
+    if client is not None:
+        return _run_client(args, client, transport)
+    command: OperatorCommand = args.command
+    return _run_operator(args, command)
 
+
+def _run_client(
+    args: argparse.Namespace, command: ClientCommand, transport: httpx2.BaseTransport | None
+) -> int:
+    debug: bool = args.debug
+    if args.config is not None:
+        message(
+            "--config is for operator commands; a client command reads"
+            f" {URL_VAR} and the token from the environment"
+        )
+        return EXIT_USAGE
+    try:
+        settings = load_client_settings(os.environ, url=args.url, token_file=args.token_file)
+    except ClientConfigError as error:  # its text names settings, never values
+        message(str(error))
+        return EXIT_USAGE
+    quiet_http_logs()
+    try:
+        with Api(settings, transport=transport) as api:
+            return command(args, api)
+    except KeyboardInterrupt:
+        message("interrupted")
+        return EXIT_INTERRUPTED
+    except CommandError as error:
+        message(error.text)
+        return error.exit_code
+    except Exception as error:
+        message(
+            f"unexpected error: {type(error).__name__}: {printable(settings.redact(str(error)))}"
+            " (run with --debug for the traceback)"
+        )
+        if debug:
+            print(format_traceback(error, settings.redact), file=sys.stderr, end="", flush=True)
+        return EXIT_FAILURE
+
+
+def _run_operator(args: argparse.Namespace, command: OperatorCommand) -> int:
+    debug: bool = args.debug
+    if args.url is not None or args.token_file is not None:
+        message(
+            "--url and --token-file are for client commands; an operator command works on the"
+            " database with the service's settings"
+        )
+        return EXIT_USAGE
     environ = dict(os.environ)
     if args.config is not None:
         environ[CONFIG_FILE_VAR] = args.config
@@ -173,23 +275,61 @@ def _describe(error: Exception, database: DatabaseUrl) -> tuple[int, str]:
             )
 
 
+EXIT_CODES = (
+    "exit codes: 0 done; 1 failed; 2 wrong usage or configuration; 3 the service or the database"
+    " cannot be reached; 4 eval: a metric fell below the baseline; 5 the service refused the"
+    " token; 130 interrupted"
+)
+DESCRIPTION = (
+    "Memini: a self-hosted knowledge service. Client commands call the HTTP API of a running"
+    " service; operator commands work on its database, inside its container."
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = Parser(
         prog="memini",
-        description="Memini: a self-hosted knowledge service. Settings come from MEMINI_*"
-        " environment variables and an optional TOML file.",
+        usage="memini [options] <command> ...",
+        description=textwrap.fill(DESCRIPTION, HELP_WIDTH),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"memini {__version__}")
     parser.add_argument(
+        "--url",
+        metavar="URL",
+        help=f"client commands: the service's URL; default: {URL_VAR}, or http://127.0.0.1:6364",
+    )
+    parser.add_argument(
+        "--token-file",
+        metavar="FILE",
+        type=Path,
+        help=f"client commands: a file that holds the token; default: {TOKEN_FILE_VAR} or"
+        " MEMINI_TOKEN. No option takes the token itself.",
+    )
+    parser.add_argument(
         "--config",
         metavar="FILE",
-        help=f"a TOML settings file; sets {CONFIG_FILE_VAR} for this run",
+        help=f"operator commands: a TOML settings file; sets {CONFIG_FILE_VAR} for this run",
     )
     parser.add_argument(
         "--debug", action="store_true", help="show the traceback when a command fails"
     )
-    commands = parser.add_subparsers(title="commands", metavar="<command>", required=True)
+    subparsers = parser.add_subparsers(
+        title="commands",
+        metavar="<command>",
+        prog="memini",
+        required=True,
+        help=argparse.SUPPRESS,
+    )
+    commands = Commands(subparsers.add_parser)
 
+    # --- Client commands: HTTP clients of the running service ------------------------------------
+    sources.add_commands(commands)
+    runs.add_commands(commands)
+    tokens.add_commands(commands)
+    search.add_commands(commands)
+
+    # --- Operator commands: on the database, inside the service's container ----------------------
     serve_parser = commands.add_parser(
         "serve",
         help="run the service until SIGINT or SIGTERM",
@@ -208,80 +348,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_parser.set_defaults(command=admin.migrate_command)
 
-    workspace = commands.add_parser("workspace", help="create and list workspaces")
-    workspace_commands = workspace.add_subparsers(metavar="<command>", required=True)
-    create_workspace = workspace_commands.add_parser("create", help="create a workspace")
-    create_workspace.add_argument(
-        "name",
-        type=admin.parse_workspace_name,
-        help="1 to 63 lowercase letters, digits, '-' or '_', starting with a letter or digit",
+    bootstrap = commands.add_parser(
+        "bootstrap",
+        help="create the first admin token and print it once",
+        description="Create a token with the read and admin scopes for every workspace, for the"
+        " principal MEMINI_PRINCIPAL names, and print it alone on stdout, this once. Refused while"
+        " that principal has an active admin token for every workspace, unless --force.",
     )
-    create_workspace.set_defaults(command=admin.create_workspace_command)
-    list_workspaces = workspace_commands.add_parser("list", help="list workspaces")
-    list_workspaces.set_defaults(command=admin.list_workspaces_command)
-    workspace_llm = workspace_commands.add_parser(
-        "llm",
-        help="show or set which LLM may read a workspace's content",
-        description="Without a policy, show the workspace's llm_policy and the configured"
-        " providers. With one, set it: none (no LLM), local (the local provider only; the"
-        " default) or cloud (opt in to the cloud provider for sources whose llm_policy is"
-        " cloud). A source's own llm_policy can narrow it, never widen it.",
-    )
-    workspace_llm.add_argument(
-        "name",
-        type=admin.parse_workspace_name,
-        help="the workspace",
-    )
-    workspace_llm.add_argument(
-        "policy",
-        nargs="?",
-        choices=LLM_POLICIES,
-        help="none, local or cloud; leave out to show the current one",
-    )
-    workspace_llm.set_defaults(command=admin.workspace_llm_command)
-
-    token = commands.add_parser("token", help="create, list and revoke bearer tokens")
-    token_commands = token.add_subparsers(metavar="<command>", required=True)
-    create_token = token_commands.add_parser(
-        "create",
-        help="create a token and print it once",
-        description="Create a bearer token. The token alone goes to stdout, and is shown only"
-        " this once; details go to stderr.",
-    )
-    create_token.add_argument(
-        "--scope",
-        action="append",
-        required=True,
-        choices=SCOPES,
-        help="what the token may do; repeat for more than one",
-    )
-    create_token.add_argument(
-        "--workspace",
-        metavar="NAME",
-        type=admin.parse_workspace_name,
-        help="limit the token to this workspace (default: every workspace)",
-    )
-    create_token.add_argument(
+    bootstrap.add_argument(
         "--name",
         metavar="LABEL",
-        type=admin.parse_token_name,
-        default=admin.DEFAULT_TOKEN_NAME,
-        help=f"what the token is for, e.g. 'laptop agent' (default: {admin.DEFAULT_TOKEN_NAME})",
+        type=parse_token_name,
+        default=admin.DEFAULT_BOOTSTRAP_NAME,
+        help=f"what the token is for (default: {admin.DEFAULT_BOOTSTRAP_NAME})",
     )
-    create_token.add_argument(
+    bootstrap.add_argument(
         "--expires-in",
         metavar="DURATION",
-        type=admin.parse_duration,
+        type=parse_lifetime,
         help="e.g. 90d, 12h or 1w2d (units: s, m, h, d, w); default: never expires",
     )
-    create_token.set_defaults(command=admin.create_token_command)
-    list_tokens = token_commands.add_parser("list", help="list tokens, without secrets")
-    list_tokens.set_defaults(command=admin.list_tokens_command)
-    revoke_token = token_commands.add_parser("revoke", help="revoke a token")
-    revoke_token.add_argument(
-        "token", metavar="id-or-prefix", help="the token's id or prefix, as `token list` shows"
+    bootstrap.add_argument(
+        "--force",
+        action="store_true",
+        help="create the token even though an active admin token exists",
     )
-    revoke_token.set_defaults(command=admin.revoke_token_command)
+    bootstrap.set_defaults(command=admin.bootstrap_command)
 
     reindex = commands.add_parser(
         "reindex",
@@ -295,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--workspace",
         metavar="NAME",
         required=True,
-        type=admin.parse_workspace_name,
+        type=parse_workspace_name,
         help="the workspace whose index to rebuild",
     )
     reindex.set_defaults(command=index.reindex_command)
@@ -386,4 +478,5 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
 
+    parser.epilog = f"{commands.listing()}\n\n{textwrap.fill(EXIT_CODES, HELP_WIDTH)}"
     return parser

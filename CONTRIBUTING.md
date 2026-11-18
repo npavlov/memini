@@ -45,13 +45,26 @@ To run the service from source instead of in its container, stop the container f
 make db
 export MEMINI_DATABASE_URL=postgresql://memini:memini@127.0.0.1:55432/memini
 uv run memini migrate
-uv run memini workspace create demo
-TOKEN=$(uv run memini token create --scope read --name dev)   # shown once
+mkdir -p ~/.config/memini
+(umask 077; uv run memini bootstrap > ~/.config/memini/dev-admin.token)   # the first admin token
 uv run memini serve                       # http://127.0.0.1:6364, MCP at /mcp
 ```
 
+`migrate`, `bootstrap` and `serve` are operator commands: they work on the database. `bootstrap`
+refuses while the database has an active admin token for every workspace, for example one made for
+the compose stack, which uses the same database volume; `--force` makes another. Every other command
+is a client of the running service. In a second shell:
+
+```sh
+export MEMINI_TOKEN_FILE=~/.config/memini/dev-admin.token   # MEMINI_URL defaults to http://127.0.0.1:6364
+uv run memini workspace create demo
+TOKEN=$(uv run memini token create --scope read --name dev)   # shown once
+```
+
 `make smoke` builds the image, starts both services with compose and checks the service end to end
-from the host: health, the localhost-only port, a non-root user, a token, MCP `status`, JSON logs.
+from the host: health, the localhost-only port, a non-root user, the first admin token from
+`memini bootstrap` in the container, the CLI on the host as a client of the API, a read token, MCP
+`status`, JSON logs.
 
 ## Test
 

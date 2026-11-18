@@ -171,8 +171,8 @@ def test_openapi_documents_the_bearer_scheme_on_v1_only(client: TestClient) -> N
         "bearer": {
             "type": "http",
             "scheme": "bearer",
-            "description": "A Memini token: memini_ followed by 43 characters. Created with the "
-            "CLI.",
+            "description": "A Memini token: memini_ followed by 43 characters. The first comes"
+            " from `memini bootstrap`; others from POST /v1/tokens (`memini token create`).",
         }
     }
     for path, operations in schema["paths"].items():

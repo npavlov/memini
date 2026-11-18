@@ -16,6 +16,7 @@ from memini.cli.common import EXIT_FAILURE, EXIT_OK, EXIT_USAGE
 from memini.config import environment_variables
 from memini.credentials import CredentialKey, Keyring, key_id, read_api_key, read_oauth
 from memini.db import connect
+from memini.workspaces import create_workspace, ensure_principal
 
 pytestmark = pytest.mark.integration
 
@@ -42,10 +43,13 @@ def migrated(
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("MEMINI_DATABASE_URL", empty_database_url)
     assert invoke(capsys, monkeypatch, "migrate").code == EXIT_OK
-    assert invoke(capsys, monkeypatch, "workspace", "create", "acme").code == EXIT_OK
 
     async def add_sources() -> None:
         async with connect(empty_database_url) as conn:
+            # The CLI's principal; the workspace comes from the library, as `workspace create`
+            # is a client of the API, and these operator commands run without the service.
+            owner = await ensure_principal(conn, "owner")
+            await create_workspace(conn, owner_id=owner, name="acme")
             for name in ("chat", "mail"):
                 await conn.execute(
                     "INSERT INTO source (workspace_id, owner_id, name, kind)"

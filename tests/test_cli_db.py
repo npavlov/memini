@@ -1,7 +1,8 @@
-"""The ``memini`` command against a real Postgres: run with `make test-integration`.
+"""The operator commands of ``memini`` against a real Postgres: run with `make test-integration`.
 
 Commands run in this process through ``main``, except ``serve``, which runs in a child process so
-that it can be stopped with a signal. Names are synthetic; tokens are generated per test.
+that it can be stopped with a signal; client commands talk to it over HTTP. Names are synthetic;
+tokens are generated per test.
 """
 
 import asyncio
@@ -13,16 +14,20 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID
 
 import httpx2
 import pytest
 
-from memini.auth import AuthenticationError, Principal, authenticate
+from memini.auth import Principal, authenticate, create_token, revoke_token
 from memini.cli import main
-from memini.cli.common import EXIT_FAILURE, EXIT_OK
+from memini.cli.client import CLIENT_VARIABLES
+from memini.cli.common import EXIT_DENIED, EXIT_FAILURE, EXIT_OK
 from memini.config import environment_variables
 from memini.db import connect, load_migrations
+from memini.workspaces import create_workspace, ensure_principal
 
 pytestmark = pytest.mark.integration
 
@@ -37,7 +42,7 @@ class Run:
 @pytest.fixture
 def cli_env(monkeypatch: pytest.MonkeyPatch, empty_database_url: str) -> str:
     """The test database in ``MEMINI_DATABASE_URL``; no other MEMINI_* setting from the shell."""
-    for name in (*environment_variables(), "MEMINI_PRINCIPAL"):
+    for name in (*environment_variables(), *CLIENT_VARIABLES, "MEMINI_PRINCIPAL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("MEMINI_DATABASE_URL", empty_database_url)
     return empty_database_url
@@ -57,12 +62,6 @@ def invoke(capsys: pytest.CaptureFixture[str], *argv: str) -> Run:
     return Run(code, captured.out, captured.err)
 
 
-def create_token(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
-    result = invoke(capsys, "token", "create", *argv)
-    assert result.code == EXIT_OK, result.err
-    return result.out.strip()
-
-
 def authenticate_token(url: str, token: str) -> Principal:
     async def resolve() -> Principal:
         async with connect(url) as conn:
@@ -71,13 +70,25 @@ def authenticate_token(url: str, token: str) -> Principal:
     return asyncio.run(resolve())
 
 
-def workspace_id(url: str, name: str) -> UUID:
+def principal_id(url: str, name: str) -> UUID:
     async def find() -> UUID:
         async with connect(url) as conn:
-            cur = await conn.execute("SELECT id FROM workspace WHERE name = %s", (name,))
+            cur = await conn.execute("SELECT id FROM principal WHERE name = %s", (name,))
             row = await cur.fetchone()
             assert row is not None
             found: UUID = row[0]
+            return found
+
+    return asyncio.run(find())
+
+
+def token_expiry(url: str, token_id: UUID) -> datetime | None:
+    async def find() -> datetime | None:
+        async with connect(url) as conn:
+            cur = await conn.execute("SELECT expires_at FROM token WHERE id = %s", (token_id,))
+            row = await cur.fetchone()
+            assert row is not None
+            found: datetime | None = row[0]
             return found
 
     return asyncio.run(find())
@@ -101,8 +112,7 @@ def test_migrate_applies_every_migration_then_has_nothing_to_do(
 @pytest.mark.parametrize(
     ("argv", "hint"),
     [
-        (("workspace", "list"), "run `memini migrate` first"),
-        (("token", "create", "--scope", "read"), "run `memini migrate` first"),
+        (("bootstrap",), "run `memini migrate` first"),
         (("serve",), "run `memini migrate`, or start with `memini serve --migrate`"),
     ],
 )
@@ -118,186 +128,109 @@ def test_commands_refuse_a_database_with_pending_migrations(
     assert result.err.endswith(f"{hint}\n")
 
 
-# --- workspace -----------------------------------------------------------------------------------
+# --- bootstrap -----------------------------------------------------------------------------------
 
 
-def test_workspace_create_and_list(migrated: str, capsys: pytest.CaptureFixture[str]) -> None:
-    empty = invoke(capsys, "workspace", "list")
-    created = [invoke(capsys, "workspace", "create", name) for name in ("beta", "alpha")]
-    listed = invoke(capsys, "workspace", "list")
-
-    assert empty.code == EXIT_OK
-    assert empty.out == ""
-    assert "no workspaces yet" in empty.err
-    assert [r.code for r in created] == [EXIT_OK, EXIT_OK]
-    assert created[0].out == f"created workspace beta ({workspace_id(migrated, 'beta')})\n"
-    assert listed.code == EXIT_OK
-    lines = listed.out.splitlines()
-    assert lines[0].split() == ["NAME", "CREATED", "ID"]
-    assert [line.split()[0] for line in lines[1:]] == ["alpha", "beta"]
-    assert lines[1].split()[2] == str(workspace_id(migrated, "alpha"))
+def bootstrap(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
+    result = invoke(capsys, "bootstrap", *argv)
+    assert result.code == EXIT_OK, result.err
+    return result.out.strip()
 
 
-def test_workspace_create_refuses_a_taken_name(
+def test_bootstrap_prints_the_first_admin_token_alone_and_once(
     migrated: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    invoke(capsys, "workspace", "create", "alpha")
-
-    again = invoke(capsys, "workspace", "create", "alpha")
-
-    assert again.code == EXIT_FAILURE
-    assert again.err == "memini: a workspace named alpha exists\n"
-
-
-def test_workspaces_and_tokens_belong_to_the_configured_principal(
-    migrated: str, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    invoke(capsys, "workspace", "create", "alpha")
-    create_token(capsys, "--scope", "read")
-
-    monkeypatch.setenv("MEMINI_PRINCIPAL", "someone-else")
-    other_workspaces = invoke(capsys, "workspace", "list")
-    other_tokens = invoke(capsys, "token", "list")
-    limited = invoke(capsys, "token", "create", "--scope", "read", "--workspace", "alpha")
-
-    assert (other_workspaces.out, other_tokens.out) == ("", "")
-    assert limited.code == EXIT_FAILURE
-    assert limited.err == "memini: no workspace named alpha; see `memini workspace list`\n"
-
-
-# --- token ---------------------------------------------------------------------------------------
-
-
-def test_token_create_prints_the_token_alone_and_once(
-    migrated: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    result = invoke(capsys, "token", "create", "--scope", "read")
+    result = invoke(capsys, "bootstrap")
 
     token = result.out.removesuffix("\n")
     assert result.code == EXIT_OK
     assert result.out == f"{token}\n"
     assert token.startswith("memini_")
-    assert token not in result.err
     assert token[15:] not in result.err
+    assert "named 'bootstrap' for principal owner" in result.err
+    assert f"prefix {token[:15]}, scopes read, admin, every workspace, expires never" in result.err
     assert "cannot be shown again" in result.err
-    assert f"prefix {token[:15]}" in result.err
 
     principal = authenticate_token(migrated, token)
-    assert principal.scopes == frozenset({"read"})
+    assert principal.scopes == frozenset({"read", "admin"})
     assert principal.workspace_id is None
+    assert principal.principal_id == principal_id(migrated, "owner")
 
 
-def test_token_create_with_workspace_scopes_name_and_expiry(
+def test_bootstrap_refuses_while_an_admin_token_exists_unless_forced(
     migrated: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    invoke(capsys, "workspace", "create", "alpha")
+    first = bootstrap(capsys)
 
-    result = invoke(
-        capsys,
-        "token",
-        "create",
-        "--scope",
-        "ingest",
-        "--scope",
-        "read",
-        "--workspace",
-        "alpha",
-        "--name",
-        "test agent",
-        "--expires-in",
-        "1d12h",
+    again = invoke(capsys, "bootstrap")
+    forced = invoke(capsys, "bootstrap", "--force", "--name", "second operator")
+
+    assert again.code == EXIT_FAILURE
+    assert again.out == ""
+    assert again.err == (
+        f"memini: an active admin token exists ({first[:15]}); manage tokens with `memini token`"
+        " through the API, or pass --force to create another one\n"
+    )
+    assert forced.code == EXIT_OK
+    second = forced.out.strip()
+    assert second != first
+    assert authenticate_token(migrated, second).scopes == frozenset({"read", "admin"})
+    assert (
+        authenticate_token(migrated, first).token_id
+        != authenticate_token(migrated, second).token_id
     )
 
-    assert result.code == EXIT_OK
-    assert "named 'test agent'" in result.err
-    assert "scopes read, ingest" in result.err
-    assert "workspace alpha" in result.err
+
+def test_bootstrap_counts_only_active_admin_tokens_for_every_workspace(
+    migrated: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A revoked or expired admin token, one limited to a workspace, a read token or another
+    principal's token does not stand in the way: none of them can set up what the first token is
+    for."""
+
+    async def tokens() -> None:
+        async with connect(migrated) as conn:
+            owner = await ensure_principal(conn, "owner")
+            alpha = await create_workspace(conn, owner_id=owner, name="alpha")
+            revoked = await create_token(conn, owner_id=owner, name="old", scopes=["admin"])
+            await revoke_token(conn, owner_id=owner, token_id=revoked.info.id)
+            await create_token(
+                conn, owner_id=owner, name="alpha admin", scopes=["admin"], workspace_id=alpha.id
+            )
+            await create_token(conn, owner_id=owner, name="agent", scopes=["read", "ingest"])
+            await create_token(
+                conn,
+                owner_id=owner,
+                name="expiring",
+                scopes=["admin"],
+                expires_at=datetime.now(UTC) + timedelta(seconds=1),
+            )
+            other = await ensure_principal(conn, "someone-else")
+            await create_token(conn, owner_id=other, name="theirs", scopes=["admin"])
+
+    asyncio.run(tokens())
+    time.sleep(1.5)  # the expiring token expires
+
+    result = invoke(capsys, "bootstrap")
+
+    assert result.code == EXIT_OK, result.err
+
+
+def test_bootstrap_acts_as_the_configured_principal_with_an_expiry(
+    migrated: str, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap(capsys)
+    monkeypatch.setenv("MEMINI_PRINCIPAL", "ops")
+
+    result = invoke(capsys, "bootstrap", "--expires-in", "1d")
+
+    assert result.code == EXIT_OK, result.err
+    assert "for principal ops" in result.err
     principal = authenticate_token(migrated, result.out.strip())
-    assert principal.scopes == frozenset({"read", "ingest"})
-    assert principal.workspace_id == workspace_id(migrated, "alpha")
-
-
-def test_token_list_shows_tokens_without_secrets(
-    migrated: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    invoke(capsys, "workspace", "create", "alpha")
-    every = create_token(capsys, "--scope", "read", "--scope", "admin")
-    limited = create_token(
-        capsys, "--scope", "read", "--workspace", "alpha", "--name", "test agent"
-    )
-    authenticate_token(migrated, every)
-
-    result = invoke(capsys, "token", "list")
-
-    assert result.code == EXIT_OK
-    lines = result.out.splitlines()
-    assert lines[0].split() == [
-        "ID",
-        "PREFIX",
-        "NAME",
-        "SCOPES",
-        "WORKSPACE",
-        "STATUS",
-        "CREATED",
-        "EXPIRES",
-        "LAST",
-        "USED",
-    ]
-    first, second = lines[1].split(), lines[2].split()
-    assert first[1:6] == [every[:15], "cli", "read,admin", "*", "active"]
-    assert first[7] == "never"  # expires
-    assert first[8] != "never"  # last used: authenticated once, above
-    assert second[1:7] == [limited[:15], "test", "agent", "read", "alpha", "active"]
-    for token in (every, limited):
-        assert token not in result.out + result.err
-        assert token[15:] not in result.out + result.err
-
-
-@pytest.mark.parametrize("by", ["prefix", "id", "whole token"])
-def test_token_revoke(migrated: str, capsys: pytest.CaptureFixture[str], by: str) -> None:
-    token = create_token(capsys, "--scope", "read")
-    kept = create_token(capsys, "--scope", "read")
-    token_id = authenticate_token(migrated, token).token_id
-    reference = {"prefix": token[:15], "id": str(token_id), "whole token": token}[by]
-
-    result = invoke(capsys, "token", "revoke", reference)
-
-    assert result.code == EXIT_OK
-    assert result.out == f"revoked token {token_id} ({token[:15]}, 'cli')\n"
-    assert token[15:] not in result.out + result.err
-    with pytest.raises(AuthenticationError) as refused:
-        authenticate_token(migrated, token)
-    assert refused.value.reason == "revoked"
-    assert authenticate_token(migrated, kept).token_id != token_id
-
-    again = invoke(capsys, "token", "revoke", reference)
-    listed = invoke(capsys, "token", "list")
-
-    assert again.code == EXIT_OK
-    assert again.out.startswith(f"token {token_id} ({token[:15]}) was revoked already, at ")
-    assert listed.out.splitlines()[1].split()[5] == "revoked"
-
-
-def test_token_revoke_refuses_an_unknown_token(
-    migrated: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    create_token(capsys, "--scope", "read")
-
-    by_prefix = invoke(capsys, "token", "revoke", "memini_zzzzzzzz")
-    by_id = invoke(capsys, "token", "revoke", "00000000-0000-7000-8000-0000000000e0")
-
-    assert (by_prefix.code, by_id.code) == (EXIT_FAILURE, EXIT_FAILURE)
-    assert by_prefix.err == "memini: no token memini_zzzzzzzz; see `memini token list`\n"
-
-
-def test_token_create_refuses_an_unknown_workspace(
-    migrated: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    result = invoke(capsys, "token", "create", "--scope", "read", "--workspace", "alpha")
-
-    assert result.code == EXIT_FAILURE
-    assert result.out == ""
-    assert result.err == "memini: no workspace named alpha; see `memini workspace list`\n"
+    assert principal.principal_id == principal_id(migrated, "ops")
+    expires_at = token_expiry(migrated, principal.token_id)
+    assert expires_at is not None
+    assert timedelta(hours=23) < expires_at - datetime.now(UTC) <= timedelta(days=1)
 
 
 # --- serve ---------------------------------------------------------------------------------------
@@ -356,24 +289,36 @@ def start_service(url: str, *argv: str) -> Service:
 
 
 def test_serve_migrates_answers_and_stops_on_sigterm(
-    cli_env: str, capsys: pytest.CaptureFixture[str]
+    cli_env: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     service = start_service(cli_env, "--migrate")
     try:
-        invoke(capsys, "workspace", "create", "alpha")
-        token = create_token(capsys, "--scope", "read")
+        admin = bootstrap(capsys)
+        token_file = tmp_path / "admin.token"
+        token_file.write_text(f"{admin}\n", encoding="utf-8")
+        # The client commands need the service's URL and a token, and no database URL.
+        monkeypatch.delenv("MEMINI_DATABASE_URL")
+        monkeypatch.setenv("MEMINI_URL", service.base_url)
+        monkeypatch.setenv("MEMINI_TOKEN_FILE", str(token_file))
+        created = invoke(capsys, "workspace", "create", "alpha")
+        token = invoke(capsys, "token", "create", "--scope", "read", "--name", "agent").out.strip()
+        listed = invoke(capsys, "workspace", "list")
+        monkeypatch.delenv("MEMINI_TOKEN_FILE")
+        monkeypatch.setenv("MEMINI_TOKEN", token)
+        read_only = invoke(capsys, "workspace", "create", "beta")
 
-        listed = httpx2.get(
-            f"{service.base_url}/v1/workspaces",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5,
-        )
         anonymous = httpx2.get(f"{service.base_url}/v1/workspaces", timeout=5)
     finally:
         code, err = service.stop(signal.SIGTERM)
 
-    assert listed.status_code == 200
-    assert [w["name"] for w in listed.json()["workspaces"]] == ["alpha"]
+    assert created.code == EXIT_OK, created.err
+    assert created.out.startswith("created workspace alpha (")
+    assert [line.split()[0] for line in listed.out.splitlines()] == ["NAME", "alpha"]
+    assert read_only.code == EXIT_DENIED
+    assert "(insufficient_scope, HTTP 403" in read_only.err
     assert anonymous.status_code == 401
     assert code == 0, err
     assert "Traceback" not in err
@@ -382,6 +327,7 @@ def test_serve_migrates_answers_and_stops_on_sigterm(
     lines = [json.loads(line) for line in err.splitlines() if line.strip()]
     assert all({"timestamp", "level", "logger", "message"} <= line.keys() for line in lines)
     assert token not in err
+    assert admin not in err
 
 
 def test_serve_stops_on_sigint(migrated: str) -> None:

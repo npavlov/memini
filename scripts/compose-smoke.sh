@@ -5,18 +5,22 @@
 #
 #   scripts/compose-smoke.sh [--down]        # or: make smoke
 #
-# Builds the image and starts the database and the service, waits until both are healthy, creates
-# a workspace and a read token with the CLI inside the container, then checks from the host:
+# Builds the image and starts the database and the service, waits until both are healthy, gets an
+# admin token with `memini bootstrap` inside the container (an operator command), then uses the CLI
+# from the host as a client of the HTTP API (`uv run memini`, with MEMINI_URL and MEMINI_TOKEN_FILE)
+# to create a workspace and a read token, and checks from the host:
 #
 # - the service port is published on 127.0.0.1 only, and the service does not run as root;
 # - git and ssh are installed, the mirror volume is writable and the root filesystem is not;
+# - the CLI on the host creates and lists a workspace and tokens, and no listing holds a token;
 # - /healthz and /readyz answer 200;
 # - /mcp refuses a request without a token, and one with an unknown token (401);
-# - a real MCP client with the token lists the tools and calls `status`, which answers with the
+# - a real MCP client with the read token lists the tools and calls `status`, which answers with the
 #   database reachable and every migration applied;
-# - every line of the service log is JSON, and none holds the token.
+# - every line of the service log is JSON, and none holds a token.
 #
-# The token is never printed and is revoked at the end. Exits non-zero at the first failure.
+# The tokens are never printed, never on a command line, and are revoked at the end; the admin token
+# expires within the hour should that fail. Exits non-zero at the first failure.
 #
 #   --down   remove the containers afterwards (`docker compose down`, database included). The data
 #            volume stays: volumes are never removed here. Without it the stack keeps running.
@@ -34,6 +38,7 @@ set -euo pipefail
 
 readonly WORKSPACE=smoke
 readonly TOKEN_NAME=compose-smoke
+readonly ADMIN_TOKEN_NAME=compose-smoke-admin
 readonly CONTAINER_PORT=6364
 readonly WAIT_TIMEOUT=180
 
@@ -73,22 +78,44 @@ done
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
+# The tokens live in this directory (mode 700) and in variables, never on a command line.
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/memini-smoke.XXXXXX")"
+admin_file="$tmp/admin.token"
+service_url=""
+admin_token=""
+admin_id=""
 token=""
 token_id=""
+
+# The CLI on the host, as a client of the service: the URL and the admin token's file, and no
+# MEMINI_TOKEN from the caller's shell, which would clash with the file.
+memini_cli() {
+  env -u MEMINI_TOKEN MEMINI_URL="$service_url" MEMINI_TOKEN_FILE="$admin_file" \
+    uv run --quiet memini "$@"
+}
+
+revoke() { # <what> <token id>
+  if memini_cli token revoke "$2" >/dev/null 2>"$tmp/revoke.err"; then
+    ok "revoked the $1 $2"
+  else
+    printf 'WARN  could not revoke the %s %s: %s\n' "$1" "$2" "$(cat "$tmp/revoke.err")" >&2
+    printf 'WARN  revoke it with: memini token revoke %s\n' "$2" >&2
+  fi
+}
 
 cleanup() {
   local status=$?
   set +e
   if [ -n "$token_id" ]; then
-    if docker compose exec -T memini memini token revoke "$token_id" >/dev/null 2>&1; then
-      ok "revoked the smoke token $token_id"
-    else
-      printf 'WARN  could not revoke the smoke token %s; run: docker compose exec memini memini token revoke %s\n' \
-        "$token_id" "$token_id" >&2
-    fi
+    revoke "smoke token" "$token_id"
   elif [ -n "$token" ]; then
-    printf 'WARN  the smoke token id is unknown; revoke it: docker compose exec memini memini token list\n' >&2
+    printf 'WARN  the smoke token id is unknown; find it with: memini token list\n' >&2
+  fi
+  # Last: the admin token revokes itself. It expires within the hour should this fail.
+  if [ -n "$admin_id" ]; then
+    revoke "admin token" "$admin_id"
+  elif [ -n "$admin_token" ]; then
+    printf 'WARN  the admin token id is unknown; it expires within the hour\n' >&2
   fi
   if [ "$down" -eq 1 ]; then
     step "docker compose down (the data volume stays)"
@@ -128,6 +155,7 @@ for ip in $host_ips; do
   [ "$ip" = "127.0.0.1" ] || fail "a port of memini is published on $ip, not on 127.0.0.1 only"
 done
 ok "published on $binding only"
+service_url="http://$binding"
 
 uid="$(docker compose exec -T memini id -u)"
 [ "$uid" != "0" ] || fail "the service runs as root"
@@ -145,19 +173,40 @@ if docker compose exec -T memini sh -c 'touch /opt/memini/write-test' >/dev/null
 fi
 ok "the mirror volume is writable; the root filesystem is not"
 
-step "workspace and token, with the CLI in the container"
-if out="$(docker compose exec -T memini memini workspace create "$WORKSPACE" 2>&1)"; then
+step "the first admin token, with memini bootstrap in the container"
+# --force: on a stack that is in use, its own admin token stays where it is. The token alone goes to
+# stdout, here into a file; the details, with the token id, to stderr.
+if ! docker compose exec -T memini memini bootstrap --force --name "$ADMIN_TOKEN_NAME" \
+  --expires-in 1h >"$admin_file" 2>"$tmp/bootstrap.err"; then
+  fail "bootstrap: $(cat "$tmp/bootstrap.err")"
+fi
+admin_token="$(cat "$admin_file")"
+admin_id="$(sed -n 's/^memini: created token \([0-9a-f-]*\) .*/\1/p' "$tmp/bootstrap.err")"
+case "$admin_token" in
+  memini_*) ;;
+  *) fail "bootstrap printed no token" ;;
+esac
+case "$admin_token" in
+  *[[:space:]]*) fail "bootstrap printed more than the token" ;;
+esac
+ok "created admin token ${admin_id:-?} (not shown; expires within the hour)"
+
+step "workspace and read token, with the CLI on the host: $service_url"
+if out="$(memini_cli workspace create "$WORKSPACE" 2>&1)"; then
   ok "$out"
 else
   case "$out" in
-    *"named $WORKSPACE exists"*) ok "workspace $WORKSPACE exists already" ;;
+    *"(conflict, HTTP 409"*) ok "workspace $WORKSPACE exists already" ;;
     *) fail "workspace create: $out" ;;
   esac
 fi
+memini_cli workspace list >"$tmp/workspaces.txt" 2>"$tmp/cli.err" \
+  || fail "workspace list: $(cat "$tmp/cli.err")"
+grep -q "^$WORKSPACE " "$tmp/workspaces.txt" || fail "workspace list does not show $WORKSPACE"
+ok "workspace list shows $WORKSPACE"
 
 # The token alone goes to stdout; the details, with the token id, to stderr.
-if ! token="$(docker compose exec -T memini memini token create --scope read --name "$TOKEN_NAME" \
-  2>"$tmp/token.err")"; then
+if ! token="$(memini_cli token create --scope read --name "$TOKEN_NAME" 2>"$tmp/token.err")"; then
   fail "token create: $(cat "$tmp/token.err")"
 fi
 token_id="$(sed -n 's/^memini: created token \([0-9a-f-]*\) .*/\1/p' "$tmp/token.err")"
@@ -166,9 +215,19 @@ case "$token" in
 esac
 ok "created read token ${token_id:-?} (not shown)"
 
+memini_cli token list >"$tmp/tokens.txt" 2>"$tmp/cli.err" || fail "token list: $(cat "$tmp/cli.err")"
+for id in "$admin_id" "$token_id"; do
+  [ -z "$id" ] || grep -q "^$id " "$tmp/tokens.txt" || fail "token list does not show token $id"
+done
+if grep -qF -e "$token" -e "$admin_token" "$tmp/tokens.txt" "$tmp/token.err" "$tmp/bootstrap.err"; then
+  fail "a listing or a message holds a token"
+fi
+ok "token list shows both tokens, by prefix only"
+
 step "MCP from the host: http://$binding/mcp"
 MEMINI_SMOKE_TOKEN="$token" uv run --quiet python scripts/compose_smoke.py mcp "http://$binding"
 
 step "service log"
 docker compose logs --no-color --no-log-prefix memini >"$tmp/memini.log" 2>&1
-MEMINI_SMOKE_TOKEN="$token" uv run --quiet python scripts/compose_smoke.py logs "$tmp/memini.log"
+MEMINI_SMOKE_TOKEN="$token" MEMINI_SMOKE_ADMIN_TOKEN="$admin_token" \
+  uv run --quiet python scripts/compose_smoke.py logs "$tmp/memini.log"

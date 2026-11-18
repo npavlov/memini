@@ -5,9 +5,10 @@ runs :func:`ensure_principal` first, then :func:`create_workspace` and
 :func:`memini.auth.create_token`. Reads made for a request take the
 :class:`~memini.auth.ReadFilter` of the caller, so they cannot bypass the authorization filter.
 
-The CLI is the exception: it acts for a principal with the database's own credentials, not with a
-token, so there is no token to filter by. It lists what that principal owns,
-:func:`list_owned_workspaces`, as :func:`memini.auth.list_tokens` lists their tokens.
+The operator commands of the CLI (``memini bootstrap``, ``memini reindex``) are the exception: they
+act for a principal with the database's own credentials, not with a token, so there is no token to
+filter by. They list what that principal owns, :func:`list_owned_workspaces`, as
+:func:`memini.auth.list_tokens` lists their tokens.
 
 Writes made for a request take the caller's :class:`~memini.auth.WriteAccess`:
 :func:`create_workspace_as` creates a workspace only for an access that is not limited to one, and
@@ -208,7 +209,8 @@ async def list_owned_workspaces(
 ) -> list[Workspace]:
     """The workspaces ``owner_id`` owns, by name.
 
-    For the CLI. A read made for a request uses :func:`list_workspaces` with the caller's filter.
+    For operator commands. A read made for a request uses :func:`list_workspaces` with the
+    caller's filter.
     """
     query = sql.SQL("SELECT {} FROM workspace w WHERE w.owner_id = %s ORDER BY w.name").format(
         _WORKSPACE_COLUMNS

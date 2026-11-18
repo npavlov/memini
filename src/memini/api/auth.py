@@ -73,7 +73,8 @@ REALM: Final = "memini"
 # by memini.auth.bearer_token, the same parser the MCP endpoint uses.
 _BEARER_SCHEME: Final = HTTPBearer(
     scheme_name="bearer",
-    description="A Memini token: memini_ followed by 43 characters. Created with the CLI.",
+    description="A Memini token: memini_ followed by 43 characters. The first comes from"
+    " `memini bootstrap`; others from POST /v1/tokens (`memini token create`).",
     auto_error=False,
 )
 

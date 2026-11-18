@@ -1,8 +1,8 @@
 """Sources and their streams: add, read, change and delete them, and trigger their syncs.
 
 Source configuration lives in the database and is managed through these functions; the HTTP API
-(:mod:`memini.api.sources`) and the CLI are thin layers over them (requirements, section 6 and open
-question 4). There is no configuration file to apply.
+(:mod:`memini.api.sources`) is a thin layer over them, and the CLI a client of that API
+(requirements, sections 6 and 7). There is no configuration file to apply.
 
 A **push source** is a name and the shared settings below (``visibility``, ``retention_days``,
 ``llm_policy``), nothing else: clients send its records through the ingest API

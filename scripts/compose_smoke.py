@@ -1,16 +1,18 @@
 """Checks for scripts/compose-smoke.sh, run on the host against the running compose stack.
 
     MEMINI_SMOKE_TOKEN=... uv run python scripts/compose_smoke.py mcp http://127.0.0.1:6364
-    MEMINI_SMOKE_TOKEN=... uv run python scripts/compose_smoke.py logs FILE
+    MEMINI_SMOKE_TOKEN=... [MEMINI_SMOKE_ADMIN_TOKEN=...] \
+        uv run python scripts/compose_smoke.py logs FILE
 
 ``mcp``: liveness and readiness answer 200; the MCP endpoint refuses a request without a token and
 one with an unknown token (401); a real MCP client (the SDK's streamable HTTP client) connects with
 the token and the ``status`` tool answers with the database reachable and fully migrated.
 
-``logs``: every line of FILE, the service log, is a JSON object, and none holds the token.
+``logs``: every line of FILE, the service log, is a JSON object, and none holds the token, nor the
+admin token in ``MEMINI_SMOKE_ADMIN_TOKEN`` if it is set.
 
-The token is read from the environment, never from the command line (which other users can see),
-and is never printed. Prints one line per check; exits 1 at the first that fails.
+The tokens are read from the environment, never from the command line (which other users can see),
+and are never printed. Prints one line per check; exits 1 at the first that fails.
 """
 
 import argparse
@@ -27,6 +29,7 @@ from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
 TOKEN_VAR: Final = "MEMINI_SMOKE_TOKEN"  # noqa: S105 - the name of a variable, not a token
+ADMIN_TOKEN_VAR: Final = "MEMINI_SMOKE_ADMIN_TOKEN"  # noqa: S105 - the name of a variable
 TIMEOUT: Final = 15.0
 
 
@@ -115,26 +118,28 @@ async def check_mcp(base_url: str, token: str) -> None:
     )
 
 
-def check_logs(path: Path, token: str) -> None:
+def check_logs(path: Path, tokens: tuple[str, ...]) -> None:
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not lines:
         raise CheckFailed(f"{path}: the service log is empty")
     for number, line in enumerate(lines, start=1):
-        if token in line:
-            raise CheckFailed(f"{path}:{number}: the log holds the token")
+        if any(token in line for token in tokens):
+            raise CheckFailed(f"{path}:{number}: the log holds a token")
         try:
             as_mapping(json.loads(line), f"{path}:{number}")
         except json.JSONDecodeError:
             raise CheckFailed(f"{path}:{number}: not a JSON line") from None
-    ok(f"service log: {len(lines)} lines, each a JSON object, none holds the token")
+    ok(f"service log: {len(lines)} lines, each a JSON object, none holds a token")
 
 
-def describe(error: BaseException, token: str) -> str:
-    """One line for an unexpected error: the first error inside task groups, the token masked."""
+def describe(error: BaseException, tokens: tuple[str, ...]) -> str:
+    """One line for an unexpected error: the first error inside task groups, tokens masked."""
     while isinstance(error, BaseExceptionGroup):
         error = cast("BaseExceptionGroup[BaseException]", error).exceptions[0]
     text = f"{type(error).__name__}: {error}"
-    return text.replace(token, "<token>") if token else text
+    for token in tokens:
+        text = text.replace(token, "<token>")
+    return text
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -148,18 +153,20 @@ def main(argv: list[str] | None = None) -> int:
     logs.add_argument("file", type=Path)
     args = parser.parse_args(argv)
 
-    token = ""
+    tokens: tuple[str, ...] = ()
     try:
         token = token_from_env()
+        admin_token = os.environ.get(ADMIN_TOKEN_VAR, "").strip()
+        tokens = (token, admin_token) if admin_token else (token,)
         if args.command == "mcp":
             asyncio.run(check_mcp(str(args.base_url).rstrip("/"), token))
         else:
-            check_logs(args.file, token)
+            check_logs(args.file, tokens)
     except CheckFailed as failure:
         print(f"FAIL  {failure}", file=sys.stderr, flush=True)
         return 1
-    except Exception as error:  # a connection error, an MCP error: one line, never the token
-        print(f"FAIL  {describe(error, token)}", file=sys.stderr, flush=True)
+    except Exception as error:  # a connection error, an MCP error: one line, never a token
+        print(f"FAIL  {describe(error, tokens)}", file=sys.stderr, flush=True)
         return 1
     return 0
 

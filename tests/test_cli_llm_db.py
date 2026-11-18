@@ -3,6 +3,7 @@
 Names and URLs are synthetic; no provider is ever called.
 """
 
+import asyncio
 from dataclasses import dataclass
 
 import pytest
@@ -10,6 +11,8 @@ import pytest
 from memini.cli import main
 from memini.cli.common import EXIT_FAILURE, EXIT_OK, EXIT_USAGE
 from memini.config import environment_variables
+from memini.db import connect
+from memini.workspaces import create_workspace, ensure_principal
 
 pytestmark = pytest.mark.integration
 
@@ -37,7 +40,15 @@ def alpha(
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("MEMINI_DATABASE_URL", empty_database_url)
     assert invoke(capsys, "migrate").code == EXIT_OK
-    assert invoke(capsys, "workspace", "create", "alpha").code == EXIT_OK
+
+    async def create_alpha() -> None:
+        # The CLI's principal; the workspace comes from the library, as `workspace create` is a
+        # client of the API, and `workspace llm` is an operator command that runs without it.
+        async with connect(empty_database_url) as conn:
+            owner = await ensure_principal(conn, "owner")
+            await create_workspace(conn, owner_id=owner, name="alpha")
+
+    asyncio.run(create_alpha())
 
 
 def with_providers(monkeypatch: pytest.MonkeyPatch, *, cloud: bool = True) -> None:

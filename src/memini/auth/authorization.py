@@ -143,9 +143,9 @@ class WriteAccess:
     """What a principal may change: what :func:`authorize_write` decided.
 
     Write functions take one and use :meth:`where` in the query that finds the rows they change,
-    so a row outside the access cannot be found, let alone changed. The CLI, which acts for a
-    principal with the database's own credentials and holds no token, builds one with
-    :meth:`for_owner`.
+    so a row outside the access cannot be found, let alone changed. Code that acts for a principal
+    with the database's own credentials and holds no token, such as an operator command or a test,
+    builds one with :meth:`for_owner`.
     """
 
     owner_id: UUID
@@ -155,7 +155,7 @@ class WriteAccess:
 
     @classmethod
     def for_owner(cls, owner_id: UUID) -> "WriteAccess":
-        """Unlimited writes as ``owner_id``: for the CLI, which acts without a token."""
+        """Unlimited writes as ``owner_id``: for code that acts without a token."""
         return cls(owner_id=owner_id, workspace_ids=None)
 
     def allows(self, workspace_id: UUID) -> bool:

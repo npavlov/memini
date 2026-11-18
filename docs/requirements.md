@@ -294,9 +294,9 @@ status and evidence links.
 
 ### HTTP API
 
-Mirrors the MCP tools and adds administration: workspaces, sources, streams, runs, ingest, recipe plans,
-persons and aliases, reindex, forget (hard delete of a record, its raw responses and its index;
-knowledge items that cite it stay and keep their reference, section 3).
+Mirrors the MCP tools and adds administration: workspaces, sources, streams, runs, tokens, ingest,
+recipe plans, persons and aliases, reindex, forget (hard delete of a record, its raw responses and
+its index; knowledge items that cite it stay and keep their reference, section 3).
 
 **Source administration** (decided 2026-11-18, open question 4). Source configuration lives in the
 database and is managed through the HTTP API and the CLI; there is no configuration file applied on
@@ -315,6 +315,15 @@ now. A triggered sync enqueues one job per stream with the stream's dedupe key, 
 scheduled one. Deleting a source deletes its streams, runs, jobs and records and removes its mirror in
 the same request, under the source's job lock; while a job of the source runs, the deletion is refused
 and can be retried.
+
+**Token administration** (decided 2026-11-18). `POST /v1/tokens` creates a token for the caller's
+principal and returns it once: only its digest is stored, and the answer is not cached.
+`GET /v1/tokens` lists tokens without secrets, and `DELETE /v1/tokens/{id}` revokes one; revoking
+again keeps the first time. All three need the `admin` scope. That scope manages tokens, so it may
+give a new token any scope; what bounds the new token is the caller's workspace limit: a token
+limited to one workspace creates only tokens limited to it (one for every workspace is refused,
+another workspace is not found) and sees and revokes only those. The first admin token cannot come
+from the API; `memini bootstrap` makes it (section 7).
 
 **Query tools** (decided 2026-11-18). `search`, `search_code`, `read_source` and `get_symbol` are
 one library, `memini.query`, behind the MCP tools and their HTTP routes, with the same arguments and
@@ -349,7 +358,13 @@ search and sync, so a local model is loaded once.
   applies the authorization filter, touches the mirrors and writes run reports, and no database
   credentials leave the service. A few operator commands work on the database directly, inside the
   service's container, because they run before a token exists or below the API: migrations, the first
-  admin token (bootstrap), key rotation and a full reindex.
+  admin token (bootstrap), the credentials of sources and key rotation, a workspace's opt-in to a cloud
+  LLM (`memini workspace llm`, which no token may give), a full reindex and the eval. A client command reads the service URL
+  from `MEMINI_URL` (default `http://127.0.0.1:6364`) and the token from `MEMINI_TOKEN` or the file
+  `MEMINI_TOKEN_FILE` names; no option takes the token itself, which shell history and the process
+  list would keep. `memini bootstrap` gives the configured principal a token with the `read` and
+  `admin` scopes for every workspace and prints it once; while that principal has an active admin
+  token for every workspace it refuses, unless forced.
 - Secrets come from the environment or a secrets file, never from the database in clear text.
   The credentials of sources are stored encrypted, under a key from the environment (section 9).
 - Health and status endpoints, structured logs, run reports.
