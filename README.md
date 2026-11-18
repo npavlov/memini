@@ -177,6 +177,8 @@ memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME]
                     [--expires-in DURATION]      # prints the token alone, once
 memini token list | revoke <id-or-prefix>
 memini search <query> [--code] [--mode MODE] [--workspace NAME] [--repository NAME] [--limit N]
+memini push --workspace NAME --source NAME [--stream KEY] [--batch-size N] [--dry-run] [--json] FILE|-
+                    # records from JSON or JSON lines (ingest scope); docs/intake.md
 memini decision record <ws> --statement TEXT [--kind decision|open_question] [--decided-at TIME]
                        --evidence SOURCE:EXTERNAL_ID[#ANCHOR] [--participant PERSON_ID ...]
                        [--supersedes ITEM_ID[:replaces|answers] ...]   # needs the ingest scope

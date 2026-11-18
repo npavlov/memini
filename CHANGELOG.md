@@ -142,6 +142,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Failure tests: a worker killed mid-sync, the database crashed mid-batch, MCP and git sources that
   hang, with a reusable consistency check; `make test-integration` starts a throwaway Postgres container
   for them (they skip without Docker).
+- `memini push`: chat and mail threads, meetings, documents and tombstones from a JSON or JSON-lines file
+  or stdin into a push source; each record is checked first, bad ones are reported while the rest are
+  stored, batches stay under the service limits, and 429/503 are retried. `docs/intake.md` has the record
+  shapes and the agent rules; the `memini-push` skill is for agents.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.

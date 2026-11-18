@@ -271,7 +271,10 @@ export format. Besides `git` and the MCP recipes, data comes in through the one 
 one of two ways:
 
 1. **The command line.** `memini push` sends records from a file or stdin (JSON or JSON lines, the
-   push contract's record shape); a record pushed again with the same external id is updated.
+   push contract's record shape); a record pushed again with the same external id is updated. It
+   checks each record with the service's rules first and sends the others when one fails, batches
+   under the service limits, retries 429, 503 and `ingest_conflict`, and claims no window, so it moves
+   no checkpoint. A record is replaced whole; a tombstone deletes it.
 2. **Another agent.** An agent connected to the person's tools (any chat, mailbox or note-taker it
    can read) pushes what it reads with the same command or the HTTP API; a Claude Code skill tells
    it how. The agent is a transport: it copies field values as it read them and never summarises or
@@ -1020,7 +1023,8 @@ way, and `memini status` exits 0: the answer is in the output.
   LLM (`memini workspace llm`, which no token may give), a full reindex and the eval. A client command reads the service URL
   from `MEMINI_URL` (default `http://127.0.0.1:6364`) and the token from `MEMINI_TOKEN` or the file
   `MEMINI_TOKEN_FILE` names; no option takes the token itself, which shell history and the process
-  list would keep. `memini bootstrap` gives the configured principal a token with the `read` and
+  list would keep. Data comes in through the client command `memini push` (the `ingest` scope;
+  section 4, "Intake modes"). `memini bootstrap` gives the configured principal a token with the `read` and
   `admin` scopes for every workspace and prints it once; while that principal has an active admin
   token for every workspace it refuses, unless forced. For a host with Docker only (decided
   2026-11-19, the install guide), `bin/memini` runs the CLI inside the service's container with
