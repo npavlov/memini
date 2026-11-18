@@ -1,0 +1,31 @@
+# Development database: Postgres 18 with pgvector. pg_trgm ships with Postgres.
+# Bound to localhost only. Data lives in the named volume `memini-db`.
+#
+#   docker compose up -d --wait db    # or: make db
+#
+# MEMINI_DB_PORT changes the host port (default 55432, to stay clear of a local Postgres on 5432).
+# MEMINI_DB_PASSWORD changes the password of the development role (default: memini).
+
+name: memini
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg18
+    environment:
+      POSTGRES_USER: memini
+      POSTGRES_PASSWORD: ${MEMINI_DB_PASSWORD:-memini}
+      POSTGRES_DB: memini
+    ports:
+      - "127.0.0.1:${MEMINI_DB_PORT:-55432}:5432"
+    volumes:
+      # Postgres 18 images keep data under /var/lib/postgresql/<major>/; mount the parent.
+      - memini-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memini -d memini"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  memini-db:

@@ -17,6 +17,16 @@ Design stage. Nothing runs yet.
 - [Implementation plan](docs/plan.md)
 - [Prior art](docs/prior-art.md)
 
+## Development database
+
+Postgres 18 with pgvector, bound to `127.0.0.1:55432`:
+
+```sh
+docker compose up -d --wait db    # or: make db
+```
+
+The data stays in the `memini-db` volume across restarts. `MEMINI_DB_PORT` changes the host port.
+
 ## Contributing
 
 Issues and pull requests are welcome. Setup, checks and project rules: [CONTRIBUTING.md](CONTRIBUTING.md).

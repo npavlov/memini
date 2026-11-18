@@ -26,8 +26,7 @@ Prerequisites:
 - Python 3.12 or newer.
 - [uv](https://docs.astral.sh/uv/).
 - `make`.
-
-Docker with compose will be needed once the Postgres-backed service lands in M0.
+- Docker with compose, for the development database.
 
 ```sh
 git clone https://github.com/npavlov/memini.git
@@ -35,7 +34,8 @@ cd memini
 uv sync
 ```
 
-`uv sync` installs the dependencies into `.venv`.
+`uv sync` installs the dependencies into `.venv`. `make db` starts Postgres with pgvector on
+`127.0.0.1:55432` and `make db-down` stops it; the data stays in a named volume.
 
 ## Test
 

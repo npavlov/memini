@@ -4,7 +4,7 @@ SHELL := /bin/bash
 # `uv run` syncs the environment from uv.lock before each command.
 UV_RUN := uv run
 
-.PHONY: help sync lint format typecheck test check
+.PHONY: help sync lint format typecheck test check db db-down
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
@@ -27,3 +27,9 @@ test: ## Run tests (pytest)
 	$(UV_RUN) pytest
 
 check: lint typecheck test ## Everything a pull request must pass
+
+db: ## Start the development database (Postgres with pgvector) and wait until healthy
+	docker compose up -d --wait db
+
+db-down: ## Stop the development database; the data volume stays
+	docker compose down
