@@ -79,6 +79,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   enforced by the database.
 - Qwen3-Embedding 0.6B served by Ollama is the default embedding model; setting
   `MEMINI_EMBEDDING_PROVIDER=openai_compatible` is enough (`.env.example`).
+- Redaction at ingest: keys, tokens, private keys, credentials in URLs and Luhn-valid card numbers are
+  replaced before anything is stored, in payloads, normalized text, chunks and `read_source` output.
+- Threads, meetings and pushed documents are chunked (message groups, summary sections, transcript
+  windows, headings) and indexed on ingest.
+- Full-text search with Russian and English stemming and code identifiers split into words; hybrid
+  fusion weights the dense ranks (open question 1).
+- Intake planner for MCP sources: forward windows with an overlap, an initial load and history backfill
+  down to the retention start.
+- Per-token rate limits, a request body limit and a time limit on every query a request runs.
+- Configuration reference generated from the settings model (`docs/configuration.md`).
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
