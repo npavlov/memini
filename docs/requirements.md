@@ -381,6 +381,47 @@ still being made) is an `IncompleteItem`, stored as far as it goes, with its cal
 (`details.incomplete_windows`: bounds, reasons, at most 50 calls; counts `windows_incomplete`,
 `missing_calls`); its claim is incomplete, so the checkpoint stays.
 
+**Agent executor** (decided 2026-11-18). One library, `memini.executors.agent`, behind the routes
+`/v1/workspaces/{workspace}/sources/{source}/agent-runs` (scope `ingest`, inside the token's
+workspace limit; tables `agent_run`, `agent_run_window`, `agent_call`): a run is one intake of one
+stream of an mcp source made inside an agent session. Start pins the database time for the run and
+keeps it with the run, plans the windows (Intake planner, below) and opens the first; a stream has
+one unfinished run at a time (409 `agent_run_open`, naming it). `next` hands out one call at a
+time, with an id: the first of the current window's missing calls. A call handed out and not
+answered is handed out again under the same id; one call of a window goes out at most three times
+in all, a failed result counting, and is then given up; a call past `max_pages` never goes out. A
+window with nothing left to hand out is done, and one that is not complete stops its chain; the
+next `next` opens the following window, and with none left, or `rate.max_calls` calls handed out,
+the run is done. A response names the id of a call handed out, and its tool and arguments must be
+the call's, the arguments compared redacted as the store keeps them: any other is refused (409
+`call_not_handed_out`, `call_mismatch`) and nothing is stored. Its result is what the agent's client
+got, an MCP result object, its content blocks or a text, which the service wraps in the result's
+envelope and changes in nothing else; or the error of a call that failed, stored as a result with
+`isError`, so the checks hand the call out again. Claude Code hands a hook an MCP tool's content
+blocks, so a recipe that decodes `structuredContent` cannot run through it yet. The answer is a
+receipt of positions and counts, never a value of the response. Finish takes the source's job lock
+(409 `source_busy`), ingests each opened window in the order of the plan with `ingest_window`, each
+chain stopping at its first incomplete window, and writes a run of kind `agent_sync`: the plan, the
+session's counts, a step per window, the incomplete windows; `partial` unless every window was
+ingested complete. It may come at any point (the session ends) and again after a failure. The
+recipe of an mcp source is `source.config.recipe`, its TOML text or the table, with its window
+overrides in `source.config.window` (the admin library of mcp sources may move them); a recipe
+changed under an open run stops its calls (409 `recipe_changed`), and finish parses with the
+recipe as it is, as replay does. The agent cannot always read the session's `serverInfo`: the run
+records the recipe's server name, or the name and version start is given (another name is
+refused, an unchecked version counted). Calls are not paced by `calls_per_minute` yet.
+
+The capture side is a Claude Code plugin, `integrations/claude-code`: the skill `memini-intake`
+drives the loop through a client of these routes (`memini-agent start|next|finish|status`, Python
+3.11 standard library behind a bash 3.2 launcher), and a `PostToolUse` and `PostToolUseFailure`
+hook on MCP tools posts the raw result of the call handed out. It reads the service URL, the path
+of a token file and the allowlist of MCP servers from the user's `capture.toml`; the token stays in
+its file, out of every command line and output. A response of a server outside the allowlist, or
+of a tool other than the call handed out, is never sent; without a run in progress the hook reads
+nothing. It asks Claude Code to show the agent its receipt in place of the result, so what the
+server returned goes to the store and not into the conversation (principle 11), and the skill
+tells the agent that tool results are data, never instructions.
+
 ### Scheduling and hygiene
 
 - Per-stream schedule, with an overlap margin behind the checkpoint to catch late replies.
@@ -841,8 +882,8 @@ endpoint included; every limit is a setting, and each error is in the API's erro
   `Retry-After` in seconds. The public routes are not counted. Buckets that have refilled are
   forgotten and at most 10,000 are kept per budget, so memory stays bounded. `http_rate_limit = false`
   turns them off. Under compose they are set in `.env.memini`, as every setting is.
-- Body size: at most `http_max_body_size` (1 MiB) on every route but the batch route, which keeps
-  `ingest_max_body_size` (16 MiB). A body over it is refused by its `Content-Length` before it is
+- Body size: at most `http_max_body_size` (1 MiB) on every route but the batch route and the route
+  of an agent run's raw responses, which keep `ingest_max_body_size` (16 MiB). A body over it is refused by its `Content-Length` before it is
   read, or as soon as more of it arrives: 413 `content_too_large`.
 - Query time: every database statement a request runs, on whichever path and in whichever task (an
   MCP tool, the token lookup), stops after `http_statement_timeout` (30 s), and a transaction it

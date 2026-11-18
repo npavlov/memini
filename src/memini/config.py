@@ -565,8 +565,8 @@ class Settings(BaseModel):
         default=16 * 1024**2,
         ge=1024,
         le=1024**3,
-        description="the largest request body of an ingest batch, 1K to 1G: bytes, or a number"
-        " with K, M or G",
+        description="the largest request body of an ingest batch or of an agent run's raw"
+        " response, 1K to 1G: bytes, or a number with K, M or G",
     )
     ingest_max_records: int = Field(
         default=1000,
@@ -602,7 +602,8 @@ class Settings(BaseModel):
 
     # --- HTTP request limits (memini.api.limits, memini.db.limits) -------------------------------
     # Limits of every HTTP and MCP request. The body: refused by its Content-Length before it is
-    # read, or as soon as more of it arrives (the ingest route has its own, ingest_max_body_size).
+    # read, or as soon as more of it arrives (the ingest route and the route of an agent run's raw
+    # responses have their own, ingest_max_body_size).
     # The time of each database statement and of an idle transaction a request runs (search sets
     # its own statement limit, search_timeout); 0 leaves the database's default. Rate limits: per
     # token, a budget of reads and one of writes (an MCP call of a write tool is a write); per
@@ -612,8 +613,8 @@ class Settings(BaseModel):
         default=1024**2,
         ge=1024,
         le=1024**3,
-        description="the largest request body outside the ingest route, 1K to 1G: bytes, or a"
-        " number with K, M or G",
+        description="the largest request body outside the ingest and raw response routes, 1K to"
+        " 1G: bytes, or a number with K, M or G",
     )
     http_statement_timeout: float = Field(
         default=30.0,

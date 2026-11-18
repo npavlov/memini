@@ -29,8 +29,9 @@
    or the request is refused with the 429 of the write budget. A token whose reads are spent is
    refused before that, whatever its request calls.
 3. **Body size**: at most ``http_max_body_size``, refused by its ``Content-Length`` before it is
-   read, or as soon as more of it arrives: 413 ``content_too_large``. The ingest route has its own
-   limit (``ingest_max_body_size``) and is left to it.
+   read, or as soon as more of it arrives: 413 ``content_too_large``. The ingest route and the
+   route that takes an agent run's raw responses have their own limit (``ingest_max_body_size``)
+   and are left to it.
 
 Each budget is a token bucket that holds a minute's worth of requests and refills steadily, so a
 burst of up to that many passes at once. A bucket that has refilled is forgotten, since a new one
@@ -84,8 +85,11 @@ Budget = Literal["read", "write", "unauthenticated"]
 
 _V1_PREFIX: Final = "/v1"  # memini.api.app.V1_PREFIX, which imports this module
 _READ_METHODS: Final = frozenset({"GET", "HEAD", "OPTIONS"})
-_OWN_BODY_LIMIT: Final = re.compile(r"/v1/workspaces/[^/]+/sources/[^/]+/records")
-"""The ingest route (``POST``), which reads its body up to ``ingest_max_body_size`` itself."""
+_OWN_BODY_LIMIT: Final = re.compile(
+    r"/v1/workspaces/[^/]+/sources/[^/]+/(?:records|agent-runs/[^/]+/responses)"
+)
+"""The ingest route and the route of an agent run's raw responses (``POST``), which read their
+bodies up to ``ingest_max_body_size`` themselves."""
 _COUNTED: Final = "rate_limit"
 """The key of ``scope["state"]`` (``request.state``) where the middleware keeps how a request was
 counted, for :func:`count_as_write`."""

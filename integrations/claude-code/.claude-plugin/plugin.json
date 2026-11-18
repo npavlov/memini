@@ -1,0 +1,7 @@
+{
+  "name": "memini",
+  "version": "0.0.0",
+  "description": "Take MCP sources that Memini cannot reach on its own into Memini from a Claude Code session: the memini-intake skill drives an agent run, and a hook captures each raw response.",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/npavlov/memini"
+}

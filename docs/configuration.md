@@ -49,7 +49,7 @@ Where the server listens, and the limits of every HTTP and MCP request. A body o
 | --- | --- | --- | --- | --- |
 | `http_host`<br>`MEMINI_HTTP_HOST` | string, not empty | `127.0.0.1`; in the image: `0.0.0.0` | restart | The address the HTTP server binds to. |
 | `http_port`<br>`MEMINI_HTTP_PORT` | integer, 1 to 65535 | `6364`; in the image: `6364` | restart | A TCP port from 1 to 65535. The HTTP API and MCP (`/mcp`) listen on it. |
-| `http_max_body_size`<br>`MEMINI_HTTP_MAX_BODY_SIZE` | size, 1K to 1G | `1M` | restart | The largest request body outside the ingest route, 1K to 1G: bytes, or a number with K, M or G. |
+| `http_max_body_size`<br>`MEMINI_HTTP_MAX_BODY_SIZE` | size, 1K to 1G | `1M` | restart | The largest request body outside the ingest and raw response routes, 1K to 1G: bytes, or a number with K, M or G. |
 | `http_statement_timeout`<br>`MEMINI_HTTP_STATEMENT_TIMEOUT` | number, 0 to 86400 | `30` | restart | Seconds one database statement of a request may run, 0 to 86400; 0: the database's default. |
 | `http_idle_in_transaction_timeout`<br>`MEMINI_HTTP_IDLE_IN_TRANSACTION_TIMEOUT` | number, 0 to 86400 | `300` | restart | Seconds a request's transaction may stay idle, 0 to 86400; 0: the database's default. |
 | `http_rate_limit`<br>`MEMINI_HTTP_RATE_LIMIT` | boolean | `true` | restart | True or false: limit requests per token and per client address. |
@@ -160,7 +160,7 @@ The limits of one batch of records sent to the ingest API: the request body, the
 
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
-| `ingest_max_body_size`<br>`MEMINI_INGEST_MAX_BODY_SIZE` | size, 1K to 1G | `16M` | restart | The largest request body of an ingest batch, 1K to 1G: bytes, or a number with K, M or G. |
+| `ingest_max_body_size`<br>`MEMINI_INGEST_MAX_BODY_SIZE` | size, 1K to 1G | `16M` | restart | The largest request body of an ingest batch or of an agent run's raw response, 1K to 1G: bytes, or a number with K, M or G. |
 | `ingest_max_records`<br>`MEMINI_INGEST_MAX_RECORDS` | integer, 1 to 100000 | `1000` | restart | The most records and tombstones in one ingest batch, 1 to 100000. |
 | `ingest_max_payload_size`<br>`MEMINI_INGEST_MAX_PAYLOAD_SIZE` | size, 1K to 1G | `1M` | restart | The largest payload of one record as stored, 1K to 1G: bytes, or a number with K, M or G. |
 

@@ -440,6 +440,41 @@ makes the call; a hook posts the raw result verbatim to the service, which store
 out the next missing call. The agent never rewrites a response. When nothing is missing, or the
 session ends, the same checks and the same parser run on the server side.
 
+Its routes are under `/v1/workspaces/{workspace}/sources/{source}/agent-runs`, with the `ingest`
+scope (requirements, section 4, Agent executor): `POST` starts a run of a stream, `GET
+/{id}/next` answers `call` (a tool, its arguments and an id), `window_done` or `run_done`, `POST
+/{id}/responses` takes the raw result of a call handed out under its id, and `POST /{id}/finish`
+parses and ingests the windows and writes the run report. A response for a call that was not
+handed out, or with other arguments, is refused. The source's recipe is in its configuration,
+`config.recipe` (the TOML text), and its parser is registered under `parser.name`.
+
+`integrations/claude-code` is a Claude Code plugin that runs it: the skill `memini-intake` drives
+the loop, and a hook after each MCP tool call posts the result of the call handed out and shows
+the agent a short receipt in its place. To use it:
+
+1. An mcp source in Memini with the recipe and its streams, and a token with the `ingest` scope
+   (`memini token create --scope ingest --workspace W`), saved in a file only you can read.
+2. `~/.config/memini/capture.toml` (or the file `MEMINI_CAPTURE_CONFIG` names):
+
+   ```toml
+   url = "http://127.0.0.1:6364"
+   token_file = "~/.config/memini/capture.token"
+   servers = ["hearth"]          # MCP servers whose responses may be captured: mcp__hearth__*
+   ```
+
+   A response of a server not listed is never sent.
+3. The plugin: `claude --plugin-dir integrations/claude-code`, or copy
+   `integrations/claude-code/skills/memini-intake` to `~/.claude/skills/` and add the two hooks of
+   `integrations/claude-code/hooks/hooks.json` to `~/.claude/settings.json`, with the path of
+   `memini-agent` in place of `${CLAUDE_PLUGIN_ROOT}/skills/memini-intake/scripts/memini-agent`.
+   The client needs Python 3.11 or later: `uv` runs it when it is installed, else `python3`, or
+   the interpreter `MEMINI_CAPTURE_PYTHON` names.
+4. In a session: ask to take a stream of the source into Memini ("take channel C0042 of hearth
+   into Memini"); the skill starts the run, makes the calls and finishes it.
+
+Claude Code hands a hook an MCP tool's content blocks, not its `structuredContent`: a recipe that
+decodes `structured` cannot be run through it yet.
+
 An incomplete window keeps the stream's checkpoint, and the run report lists, for each such
 window, its bounds, why it is incomplete and the calls that would complete it
 (`details.incomplete_windows`, at most 50 calls a window); the next run plans the window again.

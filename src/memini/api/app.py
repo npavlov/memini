@@ -15,7 +15,8 @@ Layout of the application :func:`create_app` builds:
   (:mod:`memini.api.tokens`), forgetting a record (:mod:`memini.api.forget`), persons and
   aliases (:mod:`memini.api.persons`). Freshness:
   ``GET /v1/status`` (:mod:`memini.api.status`), the same answer as the MCP ``status`` tool.
-  Intake: batches of records for push sources (:mod:`memini.api.ingest`). Queries: search, code
+  Intake: batches of records for push sources (:mod:`memini.api.ingest`), and the agent
+  executor's runs of mcp sources (:mod:`memini.api.agent_runs`). Queries: search, code
   search, symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools;
   meetings, messages, threads and adding a document (:mod:`memini.api.comms`), the same calls as
   the MCP comms tools. Knowledge: recording, superseding, closing and retracting decisions by hand
@@ -52,6 +53,7 @@ from fastapi.telemetry import TelemetryConfig
 from starlette.types import ASGIApp
 
 from memini import __version__
+from memini.api.agent_runs import build_agent_runs_router
 from memini.api.auth import authenticate_request
 from memini.api.comms import build_comms_router
 from memini.api.decisions import build_decisions_router
@@ -249,6 +251,7 @@ def create_app(
         build_workspaces_router(),
         build_sources_router(),
         build_ingest_router(),
+        build_agent_runs_router(),
         build_runs_router(),
         build_status_router(),
         build_tokens_router(),
