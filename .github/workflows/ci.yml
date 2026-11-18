@@ -117,3 +117,49 @@ jobs:
         env:
           MEMINI_TEST_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
         run: make test-integration
+
+  # The image and the supported install, end to end: a Dockerfile that does not build, or a service
+  # that does not start, serve MCP or log JSON, fails the run. No secrets: the smoke test creates
+  # its token in the stack and revokes it. No layer cache: a cold build takes a few minutes, while
+  # the GitHub Actions cache for a compose build needs more actions and the runtime token exposed.
+  smoke:
+    name: Image and compose smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # For the MCP client that the smoke test runs on the host; Python from .python-version.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: smoke
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Docker and compose versions
+        run: |
+          docker version
+          docker compose version
+
+      # Builds the image, starts the database and the service (compose.yaml, default ports), waits
+      # until both are healthy (at most 180 s), then checks them; see scripts/compose-smoke.sh.
+      - name: Smoke test (make smoke)
+        run: make smoke
+
+      - name: Show the stack after a failure
+        if: failure()
+        run: |
+          docker compose ps --all
+          docker compose logs --no-color --timestamps
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down

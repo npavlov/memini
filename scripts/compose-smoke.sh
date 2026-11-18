@@ -21,7 +21,14 @@
 #   --down   remove the containers afterwards (`docker compose down`, database included). The data
 #            volume stays: volumes are never removed here. Without it the stack keeps running.
 #
-# Needs docker with compose v2, and uv. Runs on bash 3.2 (macOS) and later.
+# Beside a running stack, use another compose project and other host ports; its containers and
+# volumes are separate (<project>_memini-db, <project>_memini-mirrors), the image tag is shared:
+#
+#   COMPOSE_PROJECT_NAME=memini-smoke MEMINI_HTTP_PORT=16364 MEMINI_DB_PORT=15432 \
+#     scripts/compose-smoke.sh --down
+#
+# Needs docker with compose v2, and uv. Runs on bash 3.2 (macOS) and later, and on Linux with GNU
+# tools (CI runs it with `make smoke` on ubuntu-latest).
 
 set -euo pipefail
 
@@ -99,7 +106,7 @@ step "docker compose up -d --build --wait"
 if ! docker compose up -d --build --wait --wait-timeout "$WAIT_TIMEOUT"; then
   docker compose ps --all >&2 || true
   docker compose logs --no-color --tail 40 memini >&2 || true
-  fail "the stack did not become healthy within ${WAIT_TIMEOUT}s"
+  fail "the image did not build, or the stack did not become healthy within ${WAIT_TIMEOUT}s"
 fi
 
 container="$(docker compose ps --quiet memini)"
