@@ -42,6 +42,7 @@ from memini.git.mirror import (
     RefUpdate,
     TreeEntry,
     check_path,
+    check_tracked_ref,
 )
 from memini.git.options import GitOptions, default_mirror_dir
 from memini.git.remote import Remote, Transport, parse_remote
@@ -78,6 +79,7 @@ __all__ = [
     "Transport",
     "TreeEntry",
     "check_path",
+    "check_tracked_ref",
     "default_mirror_dir",
     "directory_size",
     "parse_remote",

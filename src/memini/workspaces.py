@@ -8,6 +8,10 @@ runs :func:`ensure_principal` first, then :func:`create_workspace` and
 The CLI is the exception: it acts for a principal with the database's own credentials, not with a
 token, so there is no token to filter by. It lists what that principal owns,
 :func:`list_owned_workspaces`, as :func:`memini.auth.list_tokens` lists their tokens.
+
+Writes made for a request take the caller's :class:`~memini.auth.WriteAccess`:
+:func:`create_workspace_as` creates a workspace only for an access that is not limited to one, and
+:func:`get_writable_workspace` finds a workspace only if the access may change it.
 """
 
 import re
@@ -17,18 +21,22 @@ from datetime import datetime
 from typing import Any, Final
 from uuid import UUID
 
-from psycopg import AsyncConnection, sql
+from psycopg import AsyncConnection, errors, sql
 from psycopg.rows import TupleRow
 
-from memini.auth import ReadFilter
+from memini.auth import ReadFilter, WriteAccess
 
 __all__ = [
     "HANDLE_PATTERN",
+    "NotFoundError",
     "Workspace",
+    "WorkspaceExistsError",
     "check_handle",
     "create_workspace",
+    "create_workspace_as",
     "ensure_principal",
     "get_workspace",
+    "get_writable_workspace",
     "list_owned_workspaces",
     "list_workspaces",
 ]
@@ -46,6 +54,21 @@ def check_handle(kind: str, value: str) -> str:
             " starting with a letter or digit"
         )
     return value
+
+
+class NotFoundError(LookupError):
+    """No such workspace, source, stream or run, or none the caller may see: the two look the same.
+
+    ``what`` names the kind of thing that was not found, e.g. ``"workspace"``.
+    """
+
+    def __init__(self, what: str) -> None:
+        super().__init__(f"no such {what}")
+        self.what = what
+
+
+class WorkspaceExistsError(Exception):
+    """A workspace of that name exists."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +127,49 @@ async def create_workspace(
     row = await cur.fetchone()
     if row is None:  # INSERT ... RETURNING always returns the row
         raise RuntimeError("INSERT INTO workspace returned no row")
+    return _workspace(row)
+
+
+async def create_workspace_as(
+    conn: AsyncConnection[TupleRow], access: WriteAccess, name: str
+) -> Workspace:
+    """Create the workspace ``name``, owned by the principal of ``access``.
+
+    Runs in a transaction of its own, or a savepoint of the caller's: a refused name leaves the
+    caller's transaction usable.
+
+    Raises:
+        WorkspaceLimitError: ``access`` is limited to some workspaces; it creates none.
+        ValueError: ``name`` is not a valid handle.
+        WorkspaceExistsError: a workspace of that name exists.
+    """
+    access.ensure_unlimited()
+    check_handle("workspace", name)
+    try:
+        async with conn.transaction():
+            return await create_workspace(conn, owner_id=access.owner_id, name=name)
+    except errors.UniqueViolation:
+        raise WorkspaceExistsError(f"a workspace named {name} exists") from None
+
+
+async def get_writable_workspace(
+    conn: AsyncConnection[TupleRow], access: WriteAccess, name: str
+) -> Workspace:
+    """The workspace ``name``, if ``access`` may change what is in it.
+
+    Raises:
+        NotFoundError: there is no such workspace, or ``access`` may not change it.
+    """
+    condition = access.where(
+        workspace_id=sql.Identifier("w", "id"), owner_id=sql.Identifier("w", "owner_id")
+    )
+    query = sql.SQL("SELECT {} FROM workspace w WHERE w.name = %s AND {}").format(
+        _WORKSPACE_COLUMNS, condition
+    )
+    cur = await conn.execute(query, (name,))
+    row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("workspace")
     return _workspace(row)
 
 

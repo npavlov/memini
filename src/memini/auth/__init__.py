@@ -2,8 +2,8 @@
 
 - :mod:`memini.auth.tokens`: the token format and digest; create, revoke and list tokens.
 - :mod:`memini.auth.authentication`: from an ``Authorization`` header to a :class:`Principal`.
-- :mod:`memini.auth.authorization`: scopes, and :func:`authorize_read`, which every read goes
-  through.
+- :mod:`memini.auth.authorization`: scopes, :func:`authorize_read`, which every read goes
+  through, and :func:`authorize_write`, which every write goes through.
 """
 
 from memini.auth.authentication import (
@@ -18,7 +18,10 @@ from memini.auth.authentication import (
 from memini.auth.authorization import (
     InsufficientScopeError,
     ReadFilter,
+    WorkspaceLimitError,
+    WriteAccess,
     authorize_read,
+    authorize_write,
     ensure_scope,
 )
 from memini.auth.principal import SCOPES, Principal, Scope, is_scope
@@ -51,8 +54,11 @@ __all__ = [
     "TokenInfo",
     "TokenNotFoundError",
     "TokenStatus",
+    "WorkspaceLimitError",
+    "WriteAccess",
     "authenticate",
     "authorize_read",
+    "authorize_write",
     "bearer_token",
     "create_token",
     "ensure_scope",

@@ -208,6 +208,23 @@ status and evidence links.
 Mirrors the MCP tools and adds administration: workspaces, sources, streams, runs, ingest, recipe plans,
 persons and aliases, reindex, forget (hard delete of a record and everything derived from it).
 
+**Source administration** (decided 2026-11-18, open question 4). Source configuration lives in the
+database and is managed through the HTTP API and the CLI; there is no configuration file applied on
+start. An apply-from-file command can come later on top of the same calls; it is not built. The routes
+are under `/v1`: create a workspace; list, add, read, change and delete the sources of a workspace;
+list the streams of a source with their lag, last run and queued sync; trigger a sync; list the runs of
+a workspace, a source or a stream, newest first and paged; read one run with its report. Reads need
+the `read` scope, changes the `admin` scope. A git source is a location, the refs it tracks and path
+globs: `source.config` holds `{"location", "include", "exclude"}`, each tracked ref is a stream keyed
+by its full name (`refs/heads/main`), and the schedule is set on all its streams at once. The location
+is checked when the source is added, by the rules the mirror enforces at every fetch (section 9, git
+mirrors), so a bad one is refused at once with a message that never repeats it; it never holds a
+credential, and it cannot change: another repository is another source. A changed schedule starts
+now. A triggered sync enqueues one job per stream with the stream's dedupe key, so it merges with a
+scheduled one. Deleting a source deletes its streams, runs, jobs and records and removes its mirror in
+the same request, under the source's job lock; while a job of the source runs, the deletion is refused
+and can be retried.
+
 ## 7. Service and deployment
 
 - One process: HTTP API, MCP over streamable HTTP, scheduler and workers. One Postgres database.
@@ -226,6 +243,8 @@ v1 has one user. The design keeps the door open without building the feature:
 - Tokens resolve to a principal.
 - Every read goes through one authorization filter. In v1 it lets everything through except what the
   token itself limits: a token limited to one workspace reads only that workspace.
+- Every write checks its scope and the same limit: a token limited to one workspace changes nothing
+  outside it and creates no workspace.
 
 Adding users later means adding login, filling the filter and capturing source permissions at ingest. It
 does not mean migrating data.
@@ -360,7 +379,8 @@ stored payload.
    ranking quality on the eval set.
 2. Default embedding model and how it ships: in-process ONNX (no extra service) or Ollama.
 3. Postgres in the same image (one container) or as a second compose service.
-4. Source configuration: database managed through CLI and API, or a declarative file applied on start.
+4. Settled on 2026-11-18: source configuration lives in the database, managed through the HTTP API and
+   the CLI; an apply-from-file command is optional and not built (section 6).
 5. Smallest local model that extracts decisions well enough. Decided by the decision eval.
 6. Settled on 2026-11-18: the license is Apache-2.0.
 7. Default retention for messages and meetings.

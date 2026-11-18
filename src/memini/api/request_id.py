@@ -3,16 +3,18 @@
 An incoming ``X-Request-ID`` is kept when it is 1 to 64 characters from ``A-Z a-z 0-9 . _ -``;
 anything else is replaced by a fresh id, so a client cannot put control characters or long text into
 logs through it. While a request is handled, its id is in :data:`request_id_var`; logging reads it
-from there.
+from there. The variable is defined in :mod:`memini.logs`, which must not import the HTTP
+application, and is re-exported here.
 """
 
 import re
 import uuid
-from contextvars import ContextVar
 from typing import Final
 
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from memini.logs import request_id_var
 
 __all__ = [
     "REQUEST_ID_HEADER",
@@ -26,9 +28,6 @@ __all__ = [
 REQUEST_ID_HEADER: Final = "X-Request-ID"
 
 _VALID_REQUEST_ID: Final = re.compile(r"[A-Za-z0-9._-]{1,64}")
-
-request_id_var: ContextVar[str | None] = ContextVar("memini_request_id", default=None)
-"""The id of the HTTP request being handled, or ``None`` outside a request."""
 
 
 def current_request_id() -> str | None:

@@ -13,8 +13,8 @@ A line in JSON mode (the default)::
      "extra": {"kind": "sync"}, "exception": {"type": "…", "message": "…", "traceback": "…"}}
 
 (one line in the output; wrapped here). ``timestamp`` is UTC, ISO 8601, in milliseconds.
-``request_id`` is present while an HTTP request is handled (:data:`memini.api.request_id.
-request_id_var`), ``run_id`` while a run is recorded (:data:`run_id_var`), ``extra`` when the call
+``request_id`` is present while an HTTP request is handled (:data:`request_id_var`), ``run_id``
+while a run is recorded (:data:`run_id_var`), ``extra`` when the call
 passed ``extra={...}``, ``exception`` when it passed ``exc_info``, ``stack`` when it passed
 ``stack_info``. A message with line breaks stays on one line: JSON escapes them.
 
@@ -52,8 +52,6 @@ from types import TracebackType
 from typing import Final, TextIO, cast, override
 from urllib.parse import unquote, urlsplit
 
-from memini.api.request_id import request_id_var
-
 __all__ = [
     "MIN_SECRET_LENGTH",
     "REDACTED",
@@ -66,6 +64,7 @@ __all__ = [
     "redact",
     "register_secret",
     "register_url_secrets",
+    "request_id_var",
     "run_id_var",
 ]
 
@@ -89,6 +88,12 @@ through the root handler like every other logger."""
 
 run_id_var: ContextVar[uuid.UUID | None] = ContextVar("memini_run_id", default=None)
 """The id of the run being recorded (:func:`memini.runs.record_run`), or ``None`` outside a run."""
+
+# Defined here, where it is read, and set by memini.api.request_id: this module imports nothing of
+# memini, so any module may import it without pulling in the HTTP application.
+request_id_var: ContextVar[str | None] = ContextVar("memini_request_id", default=None)
+"""The id of the HTTP request being handled (:class:`memini.api.request_id.RequestIdMiddleware`),
+or ``None`` outside a request."""
 
 
 def current_run_id() -> uuid.UUID | None:

@@ -8,6 +8,9 @@ needs a valid token and the public routes do not. A route then asks for what it 
 - for a read, a parameter typed :data:`ReadAccess`: the ``read`` scope plus the authorization
   filter, to pass to the read function. Declare it before a database connection, so a refused
   request never borrows one.
+- for an administrative write, a parameter typed :data:`AdminAccess`: the ``admin`` scope plus the
+  :class:`~memini.auth.WriteAccess` to pass to the write function, which keeps a token limited to
+  one workspace inside it. Declare it before a database connection too.
 
 Responses follow RFC 6750:
 
@@ -37,6 +40,7 @@ from memini.auth import (
     Principal,
     ReadFilter,
     Scope,
+    WriteAccess,
     authorization,
     bearer_token,
     ensure_scope,
@@ -44,11 +48,13 @@ from memini.auth import (
 )
 
 __all__ = [
+    "AdminAccess",
     "AdminPrincipal",
     "CurrentPrincipal",
     "IngestPrincipal",
     "ReadAccess",
     "ReadPrincipal",
+    "admin_access",
     "authenticate_request",
     "insufficient_scope_challenge",
     "insufficient_scope_error",
@@ -160,3 +166,13 @@ async def read_access(principal: ReadPrincipal) -> ReadFilter:
 
 ReadAccess = Annotated[ReadFilter, Depends(read_access)]
 """What a read route takes: the caller's :class:`~memini.auth.ReadFilter`, after the read scope."""
+
+
+async def admin_access(principal: AdminPrincipal) -> WriteAccess:
+    """The ``admin`` scope and what the caller may change, for an administrative write route."""
+    return authorization.authorize_write(principal, "admin")
+
+
+AdminAccess = Annotated[WriteAccess, Depends(admin_access)]
+"""What an administrative write route takes: the caller's :class:`~memini.auth.WriteAccess`, after
+the admin scope."""

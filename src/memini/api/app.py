@@ -6,8 +6,10 @@ Layout of the application :func:`create_app` builds:
   :mod:`memini.api.health`) and the OpenAPI schema at ``GET /openapi.json``.
 - Resource routes live under :data:`V1_PREFIX`. The bearer-token dependency
   (:func:`memini.api.auth.authenticate_request`) is on that one router, so every resource route
-  needs a valid token and the public routes above do not. A route asks for a scope, and a read
-  route for the authorization filter, through :mod:`memini.api.auth`.
+  needs a valid token and the public routes above do not. A route asks for a scope, a read route
+  for the authorization filter and a write route for its write access, through
+  :mod:`memini.api.auth`. Administration: workspaces (:mod:`memini.api.workspaces`), sources and
+  streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`).
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
   bearer tokens, the ``read`` scope for every request. It is an ASGI app of its own: it gets request
   ids from the outer middleware, and its session manager runs in the application's lifespan.
@@ -31,6 +33,8 @@ from memini.api.errors import ERROR_RESPONSES, install_error_handlers
 from memini.api.health import DEFAULT_READINESS_TIMEOUT, ReadinessCheck, build_health_router
 from memini.api.mcp import mcp_route
 from memini.api.request_id import RequestIdMiddleware
+from memini.api.runs import build_runs_router
+from memini.api.sources import build_sources_router
 from memini.api.workspaces import build_workspaces_router
 from memini.auth import Authenticator, pool_authenticator
 from memini.config import Settings
@@ -126,6 +130,8 @@ def create_app(
     # include_router copies the routes it finds at that moment.
     v1 = APIRouter(prefix=V1_PREFIX, dependencies=[Depends(authenticate_request)])
     v1.include_router(build_workspaces_router())
+    v1.include_router(build_sources_router())
+    v1.include_router(build_runs_router())
     app.include_router(v1)
 
     app.router.routes.append(mcp_route(mcp, authenticator))

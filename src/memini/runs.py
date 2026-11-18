@@ -56,40 +56,57 @@ The report, version 1 (:class:`RunReport`)::
 A step's ``status`` is ``running``, ``succeeded``, ``failed`` or ``cancelled``; a running step has
 ``duration_ms`` null. Durations are in milliseconds from a monotonic clock. A later version adds
 keys or bumps ``version``; readers check ``version`` first.
+
+Reading runs: :func:`list_runs` pages through the runs of a workspace, a source or a stream,
+newest first; :func:`get_run` returns one with its report. Both take the caller's
+:class:`~memini.auth.ReadFilter`.
 """
 
 import asyncio
+import base64
+import binascii
 import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, Final, Literal, NotRequired, TypedDict
 
-from psycopg import AsyncConnection, errors, pq
+from psycopg import AsyncConnection, errors, pq, sql
+from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
+from memini.auth import ReadFilter
 from memini.logs import redact, run_id_var
+from memini.workspaces import NotFoundError
 
 __all__ = [
+    "DEFAULT_RUN_PAGE",
     "MAX_ERROR_LENGTH",
+    "MAX_RUN_PAGE",
     "MAX_STEPS",
     "REPORT_VERSION",
     "LlmReport",
     "ModelUsage",
     "Outcome",
     "Run",
+    "RunCursor",
     "RunError",
+    "RunInfo",
+    "RunPage",
     "RunReport",
     "RunStatus",
     "StepReport",
     "StepStatus",
     "current_run",
+    "get_run",
+    "list_runs",
     "record_run",
     "wait_for_run_writes",
 ]
@@ -560,3 +577,201 @@ def record_run(
         stream_id=stream_id,
         progress_interval=progress_interval,
     )
+
+
+# --- Reading runs --------------------------------------------------------------------------------
+
+DEFAULT_RUN_PAGE: Final = 50
+MAX_RUN_PAGE: Final = 200
+
+
+@dataclass(frozen=True, slots=True)
+class RunInfo:
+    """A run as :func:`list_runs` and :func:`get_run` read it."""
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    workspace: str
+    source_id: uuid.UUID | None
+    source: str | None
+    """The name of the source the run worked on, if any."""
+    stream_id: uuid.UUID | None
+    stream: str | None
+    """The key of the stream the run worked on, if any."""
+    kind: str
+    status: RunStatus
+    started_at: datetime
+    finished_at: datetime | None
+    error: str | None
+    report: Mapping[str, Any] | None
+    """The report (see the module); only from :func:`get_run`."""
+
+
+@dataclass(frozen=True, slots=True)
+class RunCursor:
+    """Where a page of :func:`list_runs` ended: the runs after it are older than this one.
+
+    Handed to clients as an opaque string (:meth:`encode`). It holds the start time and id of the
+    last run of the page, not a reference to it, so the next page follows even if that run has
+    been deleted since.
+    """
+
+    started_at: datetime
+    id: uuid.UUID
+
+    def encode(self) -> str:
+        text = f"{self.started_at.isoformat()}|{self.id}"
+        return base64.urlsafe_b64encode(text.encode()).decode().rstrip("=")
+
+    @classmethod
+    def decode(cls, value: str) -> "RunCursor":
+        """The cursor that :meth:`encode` gave; ``ValueError`` for anything else."""
+        try:
+            raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode()
+            when, _, ident = raw.partition("|")
+            started_at = datetime.fromisoformat(when)
+            run_id = uuid.UUID(ident)
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            raise ValueError("not a cursor of a run listing") from None
+        if started_at.tzinfo is None:
+            raise ValueError("not a cursor of a run listing")
+        return cls(started_at=started_at, id=run_id)
+
+
+@dataclass(frozen=True, slots=True)
+class RunPage:
+    runs: list[RunInfo]
+    """Newest first: by start time, then id."""
+    next: RunCursor | None
+    """Pass it as ``before`` for the next page; ``None`` on the last page."""
+
+
+def _readable(access: ReadFilter, alias: str, *, source: str = "source_id") -> sql.Composable:
+    return access.where(
+        workspace_id=sql.Identifier(alias, "workspace_id"),
+        owner_id=sql.Identifier(alias, "owner_id"),
+        source_id=sql.Identifier(alias, source),
+    )
+
+
+_RUN_COLUMNS: Final = sql.SQL(
+    "r.id, r.workspace_id, w.name, r.source_id, s.name, r.stream_id, st.key, r.kind, r.status,"
+    " r.started_at, r.finished_at, r.error"
+)
+
+
+def _run_info(row: Sequence[Any], report: Mapping[str, Any] | None = None) -> RunInfo:
+    return RunInfo(*row[:12], report=report)
+
+
+# The workspace, and the source and stream when they are asked for, in one round trip.
+_SCOPE: Final = sql.SQL("""
+SELECT w.id, s.id, st.id
+FROM workspace w
+LEFT JOIN source s ON s.workspace_id = w.id AND s.name = %(source)s AND {source_readable}
+LEFT JOIN stream st ON st.source_id = s.id AND st.key = %(stream)s AND {stream_readable}
+WHERE w.name = %(workspace)s AND {workspace_readable}
+""")
+
+_RUNS: Final = sql.SQL("""
+SELECT {columns}
+FROM run r
+JOIN workspace w ON w.id = r.workspace_id
+LEFT JOIN source s ON s.id = r.source_id
+LEFT JOIN stream st ON st.id = r.stream_id
+WHERE {conditions}
+ORDER BY r.started_at DESC, r.id DESC
+LIMIT %(limit)s
+""")
+
+_RUN: Final = sql.SQL("""
+SELECT {columns}, r.report
+FROM run r
+JOIN workspace w ON w.id = r.workspace_id
+LEFT JOIN source s ON s.id = r.source_id
+LEFT JOIN stream st ON st.id = r.stream_id
+WHERE r.id = %s AND {readable}
+""")
+
+
+async def list_runs(
+    conn: AsyncConnection[TupleRow],
+    access: ReadFilter,
+    workspace: str,
+    *,
+    source: str | None = None,
+    stream: str | None = None,
+    limit: int = DEFAULT_RUN_PAGE,
+    before: RunCursor | None = None,
+) -> RunPage:
+    """The runs of the workspace ``workspace``, newest first, a page at a time.
+
+    Args:
+        source: only the runs of the source of this name.
+        stream: only the runs of the stream with this key (``refs/heads/main``); needs ``source``.
+        limit: runs per page, 1 to :data:`MAX_RUN_PAGE`.
+        before: the ``next`` of the previous page.
+
+    Raises:
+        ValueError: ``stream`` without ``source``, or ``limit`` out of range.
+        NotFoundError: no such workspace, source or stream that ``access`` may read.
+    """
+    if stream is not None and source is None:
+        raise ValueError("a stream is named within its source: pass source with stream")
+    if not 1 <= limit <= MAX_RUN_PAGE:
+        raise ValueError(f"limit is from 1 to {MAX_RUN_PAGE}")
+    scope = _SCOPE.format(
+        source_readable=_readable(access, "s", source="id"),
+        stream_readable=_readable(access, "st"),
+        workspace_readable=access.where(
+            workspace_id=sql.Identifier("w", "id"), owner_id=sql.Identifier("w", "owner_id")
+        ),
+    )
+    cur = await conn.execute(scope, {"workspace": workspace, "source": source, "stream": stream})
+    row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("workspace")
+    workspace_id, source_id, stream_id = row
+    if source is not None and source_id is None:
+        raise NotFoundError("source")
+    if stream is not None and stream_id is None:
+        raise NotFoundError("stream")
+
+    conditions: list[sql.Composable] = [
+        sql.SQL("r.workspace_id = %(workspace_id)s"),
+        _readable(access, "r"),
+    ]
+    params: dict[str, Any] = {"workspace_id": workspace_id, "limit": limit + 1}
+    if source_id is not None:
+        conditions.append(sql.SQL("r.source_id = %(source_id)s"))
+        params["source_id"] = source_id
+    if stream_id is not None:
+        conditions.append(sql.SQL("r.stream_id = %(stream_id)s"))
+        params["stream_id"] = stream_id
+    if before is not None:
+        conditions.append(sql.SQL("(r.started_at, r.id) < (%(before_at)s, %(before_id)s)"))
+        params["before_at"] = before.started_at
+        params["before_id"] = before.id
+    query = _RUNS.format(columns=_RUN_COLUMNS, conditions=sql.SQL(" AND ").join(conditions))
+    cur = await conn.execute(query, params)
+    rows = await cur.fetchall()
+    runs = [_run_info(row) for row in rows[:limit]]
+    last = runs[-1] if runs and len(rows) > limit else None
+    return RunPage(runs=runs, next=None if last is None else RunCursor(last.started_at, last.id))
+
+
+async def get_run(
+    conn: AsyncConnection[TupleRow], access: ReadFilter, run_id: uuid.UUID
+) -> RunInfo:
+    """The run ``run_id`` with its report.
+
+    Raises:
+        NotFoundError: no such run that ``access`` may read.
+    """
+    query = _RUN.format(columns=_RUN_COLUMNS, readable=_readable(access, "r"))
+    cur = await conn.execute(query, (run_id,))
+    row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("run")
+    report: Mapping[str, Any] = row[12]
+    return _run_info(row, report)

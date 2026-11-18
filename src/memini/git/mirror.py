@@ -78,6 +78,7 @@ __all__ = [
     "RefUpdate",
     "TreeEntry",
     "check_path",
+    "check_tracked_ref",
 ]
 
 log = logging.getLogger(__name__)
@@ -192,6 +193,22 @@ def check_path(path: str) -> str:
             " and without control characters"
         )
     return path
+
+
+def check_tracked_ref(ref: str) -> str:
+    """``ref`` if it is a full branch or tag name that a mirror keeps, otherwise
+    :class:`InvalidRevision`.
+
+    A tracked ref is under ``refs/heads/`` or ``refs/tags/`` (nothing else is mirrored) and follows
+    git's rules for ref names; like ``git branch``, it refuses a name ``HEAD`` or one that starts
+    with ``-``. For checking what a source tracks before anything is fetched.
+    """
+    name = ref.removeprefix("refs/heads/").removeprefix("refs/tags/")
+    if name == ref or not name or name == "HEAD" or name.startswith("-"):
+        raise InvalidRevision(
+            "a tracked ref is a branch or tag: refs/heads/<name> or refs/tags/<name>"
+        )
+    return _check_ref_name(ref)
 
 
 def _check_oid(oid: str) -> str:
