@@ -716,11 +716,15 @@ retriever and the reranker are chosen by name from registries of the eval (`--le
 `--reranker`), and `memini.search.search` takes the lexical statement as a parameter: open question
 1 adds its candidates there and measures them against `tsvector-simple`. The committed baseline,
 `eval/code/baseline-fake.json`, covers the modes the FakeEmbedder does not take part in (lexical,
-exact, regex, symbol) and is what CI compares with. `eval/code/baseline-qwen3.json` covers every
-mode, dense and hybrid included, with the default model (open question 2). It needs Ollama on the
-machine that runs the eval, with `qwen3-embedding:0.6b` pulled, so CI does not run it. Rerun it
-after a change of the model, the chunker, the lexical retriever or the fusion, and write it again
-when a change is meant to move it (about 10 s):
+exact, regex, symbol) and is what CI compares with on every pull request (`make eval` in the `eval`
+job of `ci.yml`): a change that lowers a recall or an MRR below it by more than the margin fails the
+check. `eval/code/baseline-qwen3.json` covers every mode, dense and hybrid included, with the
+default model (open question 2). It needs Ollama on the machine that runs the eval, with
+`qwen3-embedding:0.6b` pulled; CI runs it nightly and on demand (`eval-nightly.yml`): Ollama at a
+pinned release, its archive checked by SHA-256, the model checked against its pinned digest
+(manifest and blobs) and cached between runs, the JSON report kept as an artifact. Rerun it after a
+change of the model, the chunker, the lexical retriever or the fusion, and write it again when a
+change is meant to move it (about 10 s):
 
     make eval-qwen3                     # every mode, compared with the baseline
     MEMINI_EMBEDDING_PROVIDER=openai_compatible memini eval --modes all \
@@ -729,7 +733,8 @@ when a change is meant to move it (about 10 s):
 Dense results are the same on every run. Hybrid results move by up to about 0.03 in a group from
 run to run (one of four reruns flagged a drop of 0.021): lexical ties are broken by chunk id, and
 chunk ids derive from the source ids, which are new in every scratch database. Until that is fixed,
-a hybrid regression of that size is noise; compare with `--margin 0.05` to be sure.
+a hybrid regression of that size is noise, so `make eval-qwen3` and the nightly run compare with a
+margin of 0.05 (`QWEN3_MARGIN` in the Makefile).
 
 ## 11. Later
 

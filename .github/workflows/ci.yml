@@ -118,6 +118,60 @@ jobs:
           MEMINI_TEST_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
         run: make test-integration
 
+  # The small retrieval eval, on every pull request: lexical, exact, regex and symbol search on the
+  # code suite with the FakeEmbedder, compared with eval/code/baseline-fake.json (make eval). A
+  # change that lowers a recall or the MRR of a group by more than the margin (0.02) exits 4 and
+  # fails this check; a change meant to move them writes the baseline again and commits it
+  # (docs/requirements.md, section 10). Dense and hybrid search with the default model run
+  # nightly (eval-nightly.yml). The decision eval joins this job with memini-f9a (M4).
+  eval:
+    name: Retrieval eval (fake embeddings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        # The image of compose.yaml, pinned by the same index digest; update both together.
+        image: pgvector/pgvector:0.8.7-pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
+        env:
+          POSTGRES_USER: memini
+          POSTGRES_PASSWORD: memini
+          POSTGRES_DB: memini
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U memini -d memini"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No python-version: the interpreter comes from .python-version, as it does locally.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: eval
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # The eval creates a scratch database on this server and drops it afterwards; the role of
+      # the service container is a superuser, so it has CREATEDB. Exit codes: 1 a search failed or
+      # an expected result is not in the index, 2 an invalid suite or baseline, 3 no database,
+      # 4 a regression; make reports any of them as its own exit code 2 ("Error 4").
+      - name: Retrieval eval against the committed baseline (make eval)
+        env:
+          MEMINI_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
+        run: make eval
+
   # The image and the supported install, end to end: a Dockerfile that does not build, or a service
   # that does not start, serve MCP or log JSON, fails the run. No secrets: the smoke test creates
   # its token in the stack and revokes it. No layer cache: a cold build takes a few minutes, while

@@ -4,6 +4,12 @@ SHELL := /bin/bash
 # `uv run` syncs the environment from uv.lock before each command.
 UV_RUN := uv run
 
+# Extra arguments of `memini eval` for the eval targets, e.g. EVAL_ARGS="--json report.json".
+EVAL_ARGS ?=
+# The margin of eval-qwen3. Hybrid results move by up to about 0.03 from run to run until tied
+# lexical results are ordered by something stable across runs (docs/requirements.md, section 10).
+QWEN3_MARGIN ?= 0.05
+
 .PHONY: help sync lint format typecheck test test-integration check eval eval-qwen3 db db-down smoke
 
 help: ## List targets
@@ -32,11 +38,11 @@ test-integration: ## Run integration tests against Postgres (make db, or MEMINI_
 check: lint typecheck test ## Everything a pull request must pass
 
 eval: ## Retrieval eval, FakeEmbedder, against the committed baseline (MEMINI_DATABASE_URL, CREATEDB)
-	$(UV_RUN) memini eval --fake-embeddings --baseline eval/code/baseline-fake.json
+	$(UV_RUN) memini eval --fake-embeddings --baseline eval/code/baseline-fake.json $(EVAL_ARGS)
 
 eval-qwen3: ## Retrieval eval, every mode, default model from local Ollama, against its baseline
 	MEMINI_EMBEDDING_PROVIDER=openai_compatible $(UV_RUN) memini eval --modes all \
-		--baseline eval/code/baseline-qwen3.json
+		--baseline eval/code/baseline-qwen3.json --margin $(QWEN3_MARGIN) $(EVAL_ARGS)
 
 db: ## Start the development database (Postgres with pgvector) and wait until healthy
 	docker compose up -d --wait db
