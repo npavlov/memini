@@ -1,9 +1,14 @@
 """``memini serve``: run the service until SIGINT or SIGTERM.
 
 Order of start: logging, migrations (refuse to start while any is pending, unless ``--migrate``
-applies them), the connection pool, the application, the HTTP server. Order of stop: the HTTP
-server finishes open requests (up to :data:`SHUTDOWN_GRACE` seconds) and runs the application's
-shutdown, then the pool closes. A stop by signal exits 0.
+applies them), the connection pool, the application, the job worker and scheduler, the HTTP server.
+Order of stop: the HTTP server finishes open requests (up to :data:`SHUTDOWN_GRACE` seconds) and
+runs the application's shutdown; the worker and scheduler stop (a running job finishes within the
+worker's grace period or goes back to the queue); pending run reports are written; then the pool
+closes. A stop by signal exits 0.
+
+Logs are JSON lines on stderr through :func:`memini.logs.configure_logging`, which masks tokens and
+secrets; the password of the database URL is registered as a secret at start.
 
 uvicorn runs without its ``[standard]`` extras: its pure-Python HTTP parser (h11) is enough for a
 service bound to localhost, and the extras (uvloop, httptools, websockets, watchfiles) serve nothing
@@ -15,36 +20,82 @@ import argparse
 import logging
 import signal
 import threading
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator, Generator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from types import FrameType
 from typing import Final
 
+import anyio
 import uvicorn
 from starlette.types import ASGIApp
 
+from memini import logs
 from memini.api import create_app
 from memini.cli.common import EXIT_OK, CommandError, require_migrated
 from memini.config import Settings
-from memini.db import connect, database_check, migrate, open_pool
+from memini.db import Pool, connect, database_check, migrate, open_pool
+from memini.jobs import SYNC_KINDS, Handler, Scheduler, Worker
+from memini.runs import wait_for_run_writes
 
-__all__ = ["SHUTDOWN_GRACE", "configure_logging", "run_http_server", "serve_command"]
+__all__ = [
+    "JOB_HANDLERS",
+    "SHUTDOWN_GRACE",
+    "background_jobs",
+    "configure_logging",
+    "run_http_server",
+    "serve_command",
+]
 
 SHUTDOWN_GRACE: Final = 10
 """Seconds open requests and streams get to finish after a stop is asked for."""
 
 _STOP_SIGNALS: Final = (signal.SIGINT, signal.SIGTERM)
 
+JOB_HANDLERS: Final[Mapping[str, Handler]] = {}
+"""The job handlers ``serve`` runs, by job kind. Empty until the first connector registers one
+(``git_sync`` in M1); a connector adds its handler here."""
+
 log = logging.getLogger(__name__)
 
 
 def configure_logging(settings: Settings) -> None:
-    """Send log records to stderr at ``settings.log_level``. The one place ``serve`` sets up
-    logging; replace the body to change how the service logs."""
-    logging.basicConfig(
-        level=settings.log_level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    """Send every log record to stderr as a JSON line at ``settings.log_level``, redacted.
+
+    The one place ``serve`` sets up logging. The password of the database URL is registered as a
+    secret, so it is masked wherever it would appear.
+    """
+    logs.configure_logging(settings.log_level)
+    logs.register_url_secrets(settings.database_url.get_secret_value())
+
+
+@asynccontextmanager
+async def background_jobs(pool: Pool, handlers: Mapping[str, Handler]) -> AsyncGenerator[None]:
+    """Run the job worker and the stream scheduler on ``pool`` for the duration of the block.
+
+    The worker runs the kinds in ``handlers``; the scheduler enqueues syncs only for the source
+    kinds whose sync job has a handler, so nothing piles up that no worker could run. With no
+    handlers, neither starts. At the end of the block both are stopped and awaited, and pending
+    run reports are written.
+    """
+    sync_kinds = {source: kind for source, kind in SYNC_KINDS.items() if kind in handlers}
+    services: list[Worker | Scheduler] = []
+    if handlers:
+        services.append(Worker(pool, handlers))
+    if sync_kinds:
+        services.append(Scheduler(pool, sync_kinds=sync_kinds))
+    if not services:
+        log.info("no job handlers yet: the job worker and the scheduler are not started")
+    try:
+        async with anyio.create_task_group() as group:
+            for service in services:
+                group.start_soon(service.run)
+            try:
+                yield
+            finally:
+                for service in services:
+                    service.stop()
+    finally:
+        await wait_for_run_writes()
 
 
 async def serve_command(args: argparse.Namespace, settings: Settings) -> int:
@@ -63,9 +114,8 @@ async def serve_command(args: argparse.Namespace, settings: Settings) -> int:
 
     async with open_pool(url) as pool:
         app = create_app(settings, pool=pool, readiness_checks={"database": database_check(pool)})
-        # Background work (the job worker, the scheduler) starts here, beside the HTTP server, on
-        # the same pool, and is stopped and awaited once run_http_server returns.
-        started = await run_http_server(app, settings)
+        async with background_jobs(pool, JOB_HANDLERS):
+            started = await run_http_server(app, settings)
     if not started:
         raise CommandError("the HTTP server did not start; see the log above")
     log.info("memini stopped")

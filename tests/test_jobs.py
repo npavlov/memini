@@ -18,6 +18,7 @@ import pytest
 from psycopg import AsyncConnection, errors, sql
 from psycopg.rows import TupleRow, dict_row
 
+from memini.cli.serve import background_jobs
 from memini.db import Pool, connect, open_pool
 from memini.jobs import (
     Job,
@@ -782,3 +783,32 @@ async def test_every_attempt_writes_a_run_report(pool: Pool, seed: Seed) -> None
     failed = next(run for run in runs if run["status"] == "failed")
     assert "synthetic failure" in failed["error"]
     assert current_run() is None
+
+
+async def test_serve_runs_the_worker_and_the_scheduler_for_registered_handlers(
+    pool: Pool, seed: Seed, db: Conn
+) -> None:
+    await db.execute(
+        "UPDATE stream SET schedule = interval '1 hour' WHERE id = %s", (seed.stream_a,)
+    )
+    synced: list[uuid.UUID | None] = []
+    done = anyio.Event()
+
+    async def handler(job: Job) -> None:
+        synced.append(job.stream_id)
+        done.set()
+
+    async with background_jobs(pool, {SYNC: handler}):
+        with anyio.fail_after(15):
+            await done.wait()
+
+    assert synced == [seed.stream_a]  # the scheduled stream only; stream_b has no schedule
+    assert [(run["stream_id"], run["status"]) for run in await runs_of(pool, seed)] == [
+        (seed.stream_a, "succeeded")
+    ]
+
+
+async def test_serve_starts_no_job_services_without_handlers(pool: Pool, seed: Seed) -> None:
+    async with background_jobs(pool, {}):
+        pass
+    assert await runs_of(pool, seed) == []

@@ -5,6 +5,7 @@ that it can be stopped with a signal. Names are synthetic; tokens are generated 
 """
 
 import asyncio
+import json
 import os
 import signal
 import socket
@@ -378,6 +379,9 @@ def test_serve_migrates_answers_and_stops_on_sigterm(
     assert "Traceback" not in err
     assert "memini stopped" in err  # logged after the pool closed
     assert "migrations applied" in err
+    lines = [json.loads(line) for line in err.splitlines() if line.strip()]
+    assert all({"timestamp", "level", "logger", "message"} <= line.keys() for line in lines)
+    assert token not in err
 
 
 def test_serve_stops_on_sigint(migrated: str) -> None:

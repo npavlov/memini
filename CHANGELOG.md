@@ -32,6 +32,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - MCP endpoint at `/mcp` (streamable HTTP, stateless, JSON), behind the same bearer tokens, with the
   `status` tool: version, schema, readable workspaces, stream lag and last run, and whether the base
   is current.
+- `memini` command: `serve` (HTTP API, MCP, job worker and scheduler; JSON logs), `migrate`,
+  `workspace create|list`, `token create|list|revoke`.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
