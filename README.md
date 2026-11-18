@@ -82,6 +82,24 @@ Day to day:
 Health: `GET /healthz`; readiness, with the database: `GET /readyz`; the HTTP API schema:
 `GET /openapi.json`.
 
+### Embeddings
+
+Search and git sync need an embedding model. The default is Qwen3-Embedding 0.6B, served by
+[Ollama](https://ollama.com) on your machine; no text leaves it.
+
+1. Install Ollama and pull the model (about 640 MB): `ollama pull qwen3-embedding:0.6b`
+2. Copy `.env.example` to `.env`, uncomment `MEMINI_EMBEDDING_PROVIDER=openai_compatible`, then
+   `docker compose up -d --wait`.
+
+That one setting implies the rest: the model, 1024 dimensions, the pinned Ollama digest and the
+query instruction. In compose the service reaches Ollama at `http://host.docker.internal:11434/v1`;
+a service run from source uses `http://127.0.0.1:11434/v1`. `.env.example` lists every value. On
+Linux, Ollama listens on 127.0.0.1 only: set `OLLAMA_HOST=0.0.0.0:11434` for its service and keep
+port 11434 closed to other machines. Without a provider the service still starts, but it does not
+sync git sources and search answers `embeddings_not_configured`. Changing the model, dimension,
+digest or document prefix changes the index fingerprint: run `memini reindex --workspace NAME`
+afterwards.
+
 ### Tools
 
 Over MCP, and over HTTP with the same arguments as query parameters. All need a token with the

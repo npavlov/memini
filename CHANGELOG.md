@@ -32,8 +32,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - MCP endpoint at `/mcp` (streamable HTTP, stateless, JSON), behind the same bearer tokens, with the
   `status` tool: version, schema, readable workspaces, stream lag and last run, and whether the base
   is current.
-- `memini` command: `serve` (HTTP API, MCP, job worker and scheduler; JSON logs), `migrate`,
-  `workspace create|list`, `token create|list|revoke`.
+- `memini` command. Client commands call the running service over HTTP with `MEMINI_URL` and a token
+  (`MEMINI_TOKEN` or `MEMINI_TOKEN_FILE`): `workspace`, `source`, `streams`, `sync [--wait]`, `runs`,
+  `run`, `token`, `search`. Operator commands work on the database inside the container: `serve`
+  (HTTP API, MCP, job worker and scheduler; JSON logs), `migrate`, `bootstrap` (the first admin token),
+  `reindex`, `eval`, `credentials`, `workspace llm`. Token administration over HTTP: `/v1/tokens`.
 - Service image (non-root, read-only root filesystem, healthcheck on `/readyz`) and a compose stack
   that runs the service and the database, published on localhost only; `make smoke` runs the M0 check.
 - Embedding providers (an OpenAI-compatible endpoint; an in-process ONNX model with the optional
