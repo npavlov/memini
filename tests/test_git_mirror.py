@@ -811,6 +811,55 @@ async def test_diff_names_lists_added_modified_deleted_and_type_changed_files(
 
 
 @pytest.mark.anyio
+async def test_change_times_walks_the_first_parent_history_once(
+    manager: MirrorManager, source: SourceRepo, source_id: uuid.UUID
+) -> None:
+    def day(number: int) -> datetime:
+        return datetime(2026, 1, number, 12, tzinfo=UTC)
+
+    # The fixture's first commit (day 2) added README.md and src/app.py.
+    second = source.commit({"a.txt": "a\n"})  # day 3
+    source.git("checkout", "--quiet", "-b", "feature")
+    source.commit({"feat.txt": "f\n", "a.txt": "a2\n"})  # day 4, on the feature branch
+    source.git("checkout", "--quiet", "main")
+    source.commit({"b.txt": "b\n", "\nlead.txt": "an odd name\n"})  # day 5
+    source.git("merge", "--quiet", "--no-ff", "--no-commit", "feature")
+    source.commit({}, "merge feature")  # day 6
+    head = source.commit({"README.md": "# Fixture, edited\n"})  # day 7
+    mirror = await manager.ensure_mirror(source_id, str(source.path))
+
+    walk = await manager.change_times(mirror, head, max_commits=100)
+
+    # Changes merged from the feature branch have the time they reached main: the merge's.
+    assert walk.times == {
+        "README.md": day(7),
+        "a.txt": day(6),
+        "feat.txt": day(6),
+        "b.txt": day(5),
+        "\nlead.txt": day(5),
+        "src/app.py": day(2),  # from the root commit
+    }
+    assert (walk.commits, walk.complete, walk.oldest) == (5, True, day(2))
+
+    after = await manager.change_times(mirror, head, since=second, max_commits=100)
+
+    assert set(after.times) == {"README.md", "a.txt", "feat.txt", "b.txt", "\nlead.txt"}
+    assert (after.commits, after.complete, after.oldest) == (3, True, day(5))
+
+    cut = await manager.change_times(mirror, head, max_commits=2)
+
+    assert cut.times == {"README.md": day(7), "a.txt": day(6), "feat.txt": day(6)}
+    assert (cut.commits, cut.complete, cut.oldest) == (2, False, day(6))
+
+    with pytest.raises(InvalidRevision):
+        await manager.change_times(mirror, "main", max_commits=1)
+    with pytest.raises(ValueError, match="at least one commit"):
+        await manager.change_times(mirror, head, max_commits=0)
+    with pytest.raises(GitCommandError):
+        await manager.change_times(mirror, "f" * 40, max_commits=1)
+
+
+@pytest.mark.anyio
 async def test_open_and_remove(
     manager: MirrorManager, source: SourceRepo, source_id: uuid.UUID
 ) -> None:

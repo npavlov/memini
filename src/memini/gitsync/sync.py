@@ -38,6 +38,20 @@ Transactions
     The pin moves by compare-and-set on the cursor the sync started from; a stream changed by
     anyone else in between rolls the last transaction back.
 
+Times
+    A file written gets as ``occurred_at`` the committer time of the last commit that changed it
+    on the ref, from one walk of the ref's first-parent history
+    (:meth:`~memini.git.MirrorManager.change_times`): a diff walks the commits after the pin, a
+    listing the newest :attr:`SyncLimits.history_commits` (1000). A merge counts with its changes
+    against its first parent, so a change merged from another branch has the time it reached the
+    ref. A file the walk did not reach changed earlier: it gets the time of the oldest commit
+    walked when the walk was cut short (on a first sync of a long history), else that of the
+    commit synced. Measured on a synthetic history, a diff walk costs one process of about 10 to
+    16 ms; asking ``git log -1 -- <path>`` per file cost about 11 ms per file, 3 s for 300 files
+    and over a minute for a first sync of 5000. Records of files not written keep their time.
+    Reading the history is not worth failing the sync for: if it fails, the files take the time of
+    the commit.
+
 Untracked refs
     The last transaction also turns into tombstones the live records of the source whose ref is no
     longer tracked: removing a ref deletes its stream and leaves its records without one.
@@ -68,7 +82,7 @@ from psycopg.types.json import Jsonb
 
 from memini.chunking import FileChunks, chunk_file, chunk_markdown
 from memini.embeddings import Embedder
-from memini.git import Mirror, MirrorManager, RevisionNotFound
+from memini.git import GitError, Mirror, MirrorManager, RevisionNotFound
 from memini.gitsync.model import (
     Pin,
     code_external_id,
@@ -98,14 +112,18 @@ type Conn = AsyncConnection[TupleRow]
 
 @dataclass(frozen=True, slots=True)
 class SyncLimits:
-    """How many files, and how many bytes of them, one transaction writes at most."""
+    """How many files, and how many bytes of them, one transaction writes at most; how many
+    commits back a sync looks for the time each file last changed."""
 
     batch_files: int = 100
     batch_bytes: int = 8 * 1024**2
+    history_commits: int = 1000
 
     def __post_init__(self) -> None:
         if self.batch_files < 1 or self.batch_bytes < 1:
             raise ValueError("a batch holds at least one file and one byte")
+        if self.history_commits < 1:
+            raise ValueError("a sync looks at least one commit back")
 
 
 DEFAULT_LIMITS: Final = SyncLimits()
@@ -456,7 +474,7 @@ async def _apply(
     stream: GitStream,
     plan: _Plan,
     pin: Pin,
-    occurred_at: datetime,
+    occurred_at: Mapping[str, datetime],
     checked_until: datetime,
     limits: SyncLimits,
 ) -> _Tally:
@@ -488,7 +506,7 @@ async def _apply(
                         file.kind,
                         code_external_id(stream.key, file.path),
                         file.oid,
-                        occurred_at,
+                        occurred_at[file.path],
                     ),
                 )
                 step.index += await index_record(
@@ -550,6 +568,37 @@ async def _step(name: str) -> AsyncGenerator[None]:
         return
     async with run.step(name):
         yield
+
+
+async def _change_times(
+    mirrors: MirrorManager,
+    mirror: Mirror,
+    writes: Sequence[_File],
+    *,
+    commit: str,
+    since: str | None,
+    limits: SyncLimits,
+) -> dict[str, datetime]:
+    """The ``occurred_at`` of each file to write, by path: when it last changed on the ref (see
+    the module). Two git processes, none when there is nothing to write."""
+    if not writes:
+        return {}
+    committed = await mirrors.committed_at(mirror, commit)
+    try:
+        walk = await mirrors.change_times(
+            mirror, commit, since=since, max_commits=limits.history_commits
+        )
+    except GitError as error:  # the times are worth a warning, not the sync
+        log.warning(
+            "the history of %s in the mirror of source %s could not be read (%s); its files take"
+            " the time of the commit",
+            commit,
+            mirror.source_id,
+            error,
+        )
+        return {file.path: committed for file in writes}
+    fallback = committed if walk.complete or walk.oldest is None else walk.oldest
+    return {file.path: walk.times.get(file.path, fallback) for file in writes}
 
 
 async def _sync_missing(
@@ -664,8 +713,15 @@ async def sync_stream(
         for reason, count in plan.skipped.items():
             run.count(f"files_skipped_{reason}", count)
 
-    occurred_at = await mirrors.committed_at(mirror, commit)
     async with _step("index"):
+        occurred_at = await _change_times(
+            mirrors,
+            mirror,
+            plan.writes,
+            commit=commit,
+            since=None if listed or previous is None else previous.commit,
+            limits=limits,
+        )
         tally = await _apply(
             conn,
             mirrors,

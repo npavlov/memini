@@ -5,7 +5,8 @@
   refs, :meth:`~MirrorManager.resolve`, :meth:`~MirrorManager.ls_tree`,
   :meth:`~MirrorManager.list_directory`, :meth:`~MirrorManager.read_blob`,
   :meth:`~MirrorManager.read_blobs`, :meth:`~MirrorManager.blob_sizes`,
-  :meth:`~MirrorManager.committed_at`, :meth:`~MirrorManager.diff_names`.
+  :meth:`~MirrorManager.committed_at`, :meth:`~MirrorManager.diff_names`,
+  :meth:`~MirrorManager.change_times`.
   :mod:`memini.git.mirror` describes the layout, the atomic fetch and the locking.
 - :func:`parse_remote` checks a source location against the allowlist of transports before any
   process starts (:mod:`memini.git.remote`).
@@ -36,6 +37,7 @@ from memini.git.errors import (
 )
 from memini.git.mirror import (
     INCOMING_NAMESPACE,
+    ChangeTimes,
     FetchResult,
     FileChange,
     Mirror,
@@ -52,6 +54,7 @@ __all__ = [
     "INCOMING_NAMESPACE",
     "MIN_GIT_VERSION",
     "BlobTooLarge",
+    "ChangeTimes",
     "Command",
     "FetchResult",
     "FileChange",

@@ -7,8 +7,9 @@ File records
     records, and the ref and path can be read back (:func:`split_code_external_id`): git does not
     allow ``:`` in a ref name. The kind is part of the record id, so a file whose kind changed is
     another record. ``content_hash`` is the file's git blob id, ``occurred_at`` the committer time
-    of the commit the file was last written at, ``stream_id`` the stream of the ref, ``payload``
-    NULL: the file itself stays in the mirror (requirements, section 3).
+    of the last commit that changed the file on the ref, as far as the sync looked back
+    (:mod:`memini.gitsync.sync`, "Times"), ``stream_id`` the stream of the ref, ``payload`` NULL:
+    the file itself stays in the mirror (requirements, section 3).
 
 Pins
     ``stream.cursor`` of a git stream is a :class:`Pin`::

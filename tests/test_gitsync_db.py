@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -510,6 +511,62 @@ async def test_a_new_commit_processes_only_the_files_it_changed(env: Env) -> Non
     assert pin is not None
     assert (pin.commit, pin.partial) == (head, False)
     await assert_consistent(env, src)
+
+
+def day(number: int) -> datetime:
+    """The committer time of the fixture's commit of that day: one a day from 2026-01-02."""
+    return datetime(2026, 1, number, 12, tzinfo=UTC)
+
+
+async def times(env: Env, src: Src) -> dict[str, datetime]:
+    """path on main -> occurred_at, of the live records."""
+    cur = await env.db.execute(
+        "SELECT external_id, occurred_at FROM record WHERE source_id = %s AND deleted_at IS NULL",
+        (src.id,),
+    )
+    return {split_code_external_id(row[0])[1]: row[1] for row in await cur.fetchall()}
+
+
+async def test_a_file_has_the_time_of_the_last_commit_that_changed_it(env: Env) -> None:
+    repo = env.repo
+    repo.commit(
+        {
+            "src/a.py": module(function("alpha", 1)),
+            "src/b.py": module(function("beta", 2)),
+            "src/c.py": module(function("gamma", 3)),
+        }
+    )  # day 2
+    repo.commit({"src/b.py": module(function("beta", 20))})  # day 3
+    repo.commit({"src/c.py": module(function("gamma", 30))})  # day 4
+    src = await add_source(env)
+
+    await sync(env, src)
+
+    assert await times(env, src) == {"src/a.py": day(2), "src/b.py": day(3), "src/c.py": day(4)}
+
+    repo.commit({"src/d.py": module(function("delta", 4))})  # day 5
+    repo.commit({"src/a.py": module(function("alpha", 10))})  # day 6
+    run = await sync(env, src)
+
+    assert steps(run) == [("fetch", "succeeded"), ("diff", "succeeded"), ("index", "succeeded")]
+    assert await times(env, src) == {
+        "src/a.py": day(6),
+        "src/b.py": day(3),
+        "src/c.py": day(4),
+        "src/d.py": day(5),
+    }
+
+    # A first sync looks back a bounded number of commits: the files changed before them get
+    # the time of the oldest commit it looked at (they changed then or earlier).
+    bounded = await add_source(env, name="bounded")
+    await sync(env, bounded, limits=SyncLimits(history_commits=2))
+
+    assert await times(env, bounded) == {
+        "src/a.py": day(6),
+        "src/b.py": day(5),
+        "src/c.py": day(5),
+        "src/d.py": day(5),
+    }
 
 
 async def test_a_file_deleted_and_added_again_is_one_record_brought_back(env: Env) -> None:

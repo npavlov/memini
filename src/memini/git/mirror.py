@@ -72,6 +72,7 @@ from memini.git.remote import Remote, parse_remote
 
 __all__ = [
     "INCOMING_NAMESPACE",
+    "ChangeTimes",
     "FetchResult",
     "FileChange",
     "Mirror",
@@ -150,6 +151,25 @@ class TreeEntry:
     def is_file(self) -> bool:
         """A regular file: a blob that is not a symlink."""
         return self.kind == "blob" and self.mode in ("100644", "100755")
+
+
+@dataclass(frozen=True, slots=True)
+class ChangeTimes:
+    """When files last changed along the first-parent history of a commit: one walk of it
+    (:meth:`MirrorManager.change_times`)."""
+
+    times: Mapping[str, datetime]
+    """Path to the committer time of the newest commit walked that added, changed or deleted it,
+    in UTC. A merge counts with its changes against its first parent: the time a change reached
+    the branch."""
+    commits: int
+    """Commits walked."""
+    complete: bool
+    """The walk reached its end (the root commit, or the commit it started after) within its
+    limit; a path not in ``times`` was not changed in the range."""
+    oldest: datetime | None
+    """The committer time of the last commit walked; ``None`` if none was. When the walk is not
+    complete, a path not in ``times`` last changed at that commit or before."""
 
 
 type ChangeStatus = Literal["added", "modified", "deleted", "type_changed"]
@@ -699,6 +719,67 @@ class MirrorManager:
             max_output=_SMALL_OUTPUT,
         )
         return datetime.fromtimestamp(int(output.stdout.strip()), UTC)
+
+    async def change_times(
+        self, mirror: Mirror, commit: str, *, since: str | None = None, max_commits: int
+    ) -> ChangeTimes:
+        """When each file last changed on the first-parent line of ``commit`` (an object id),
+        from one ``git log`` walk of at most ``max_commits`` commits, newest first: the commits
+        after ``since`` (an object id, excluded with its ancestors), or back to the root.
+
+        One process whatever the number of files; its cost grows with the commits walked and the
+        files they touched, so ``max_commits`` bounds it on a long history.
+
+        Raises:
+            InvalidRevision: an id is malformed.
+            ValueError: ``max_commits`` is less than 1.
+            GitCommandError: a commit is not in the mirror.
+            OutputTooLarge: the walk listed more than the output limit.
+        """
+        _check_oid(commit)
+        if since is not None:
+            _check_oid(since)
+        if max_commits < 1:
+            raise ValueError("a walk takes at least one commit")
+        output = await self._git.run(
+            [
+                "log",
+                "--first-parent",
+                "--diff-merges=first-parent",
+                "--root",
+                "--no-renames",
+                "--name-only",
+                "-z",
+                "--format=%x00%ct",
+                f"--max-count={max_commits}",
+                "--end-of-options",
+                commit,
+                *([] if since is None else [f"^{since}"]),
+                "--",
+            ],
+            git_dir=mirror.path,
+        )
+        # Each commit is "\0<time>\0", then its paths, each ended by "\0", the first after a
+        # "\n". A path is never empty, so an empty field always comes before a commit's time.
+        times: dict[str, datetime] = {}
+        commits = 0
+        current: datetime | None = None
+        header = first_path = False
+        for field in output.stdout.split(b"\0"):
+            if not field:
+                header = True
+            elif header:
+                if not field.isdigit():
+                    raise GitCommandError("log", 0, "unexpected output of git log")
+                current = datetime.fromtimestamp(int(field), UTC)
+                commits += 1
+                header, first_path = False, True
+            elif current is not None:
+                if first_path:
+                    field = field.removeprefix(b"\n")
+                    first_path = False
+                times.setdefault(_decode(field), current)
+        return ChangeTimes(times, commits, commits < max_commits, current)
 
     async def diff_names(self, mirror: Mirror, old: str, new: str) -> list[FileChange]:
         """The files that differ from commit ``old`` to commit ``new`` (object ids).
