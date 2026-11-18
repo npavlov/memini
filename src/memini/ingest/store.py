@@ -2,7 +2,7 @@
 transaction. See :mod:`memini.ingest` for the contract."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
 from uuid import UUID
@@ -14,7 +14,8 @@ from psycopg_pool import AsyncConnectionPool
 
 from memini.auth import WriteAccess
 from memini.ids import record_id
-from memini.index import delete_record_chunks
+from memini.index import IndexCounts, delete_record_chunks
+from memini.index.writer import RUN_COUNTS
 from memini.ingest.model import (
     DEFAULT_LIMITS,
     INGESTIBLE_SOURCE_KINDS,
@@ -152,16 +153,22 @@ class _Tally:
     reconciled: int = 0
     checkpoint: Checkpoint | None = None
     moved: bool = False
+    index: IndexCounts = field(default_factory=IndexCounts)
+    """Chunks and symbols deleted with tombstones; reported only after the batch commits."""
 
 
-async def _tombstone(conn: Conn, source_id: UUID, ids: Sequence[str]) -> int:
-    """Turn the live records among ``ids`` into tombstones and delete their chunks and symbols."""
+async def _tombstone(conn: Conn, tally: _Tally, source_id: UUID, ids: Sequence[str]) -> int:
+    """Turn the live records among ``ids`` into tombstones and delete their chunks and symbols.
+
+    Runs in the batch's transaction, so :func:`delete_record_chunks` does not report its counts:
+    they go into ``tally.index`` and reach the run report once the batch commits.
+    """
     if not ids:
         return 0
     cur = await conn.execute(_TOMBSTONE, (source_id, list(ids)))
     deleted: list[str] = sorted(row[0] for row in await cur.fetchall())
     for rid in deleted:
-        await delete_record_chunks(conn, record_id=rid)
+        tally.index += await delete_record_chunks(conn, record_id=rid)
     return len(deleted)
 
 
@@ -262,7 +269,7 @@ async def _store(
             tally.unchanged += len(records) - len(written)
 
         tombstone_ids = [ids[item.index] for item in batch.tombstones]
-        tally.deleted = await _tombstone(conn, target.source_id, tombstone_ids)
+        tally.deleted = await _tombstone(conn, tally, target.source_id, tombstone_ids)
         tally.unchanged += len(tombstone_ids) - tally.deleted
 
         if window is not None and window.snapshot:
@@ -277,7 +284,7 @@ async def _store(
                 ),
             )
             absent = [row[0] for row in await cur.fetchall()]
-            tally.reconciled = await _tombstone(conn, target.source_id, absent)
+            tally.reconciled = await _tombstone(conn, tally, target.source_id, absent)
 
         if indexer is not None and written:
             # The indexing hook: the parsers of the kinds chunk and index the records here, so a
@@ -319,6 +326,8 @@ def _count(run: Run | None, tally: _Tally) -> None:
         ("records_reconciled", tally.reconciled),
     ):
         run.count(name, value)
+    for attribute, name in RUN_COUNTS.items():
+        run.count(name, getattr(tally.index, attribute))
 
 
 async def _store_once(
