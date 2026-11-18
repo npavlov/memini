@@ -5,6 +5,8 @@ CLAUDE.local.md
 # that is not set.
 /secrets/*
 !/secrets/unset
+# Local additions to compose.yaml, such as the mount of local repositories (docs/install.md).
+/compose.override.yaml
 .venv/
 __pycache__/
 .DS_Store

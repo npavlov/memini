@@ -130,7 +130,8 @@ services:
       # The bare mirrors of git sources (MEMINI_GIT_MIRROR_DIR), owned by the service user.
       - memini-mirrors:/var/lib/memini/mirrors
       # Local repositories as sources: mount the directory that holds them, read-only (the service
-      # only clones from them), and list its path in the container in MEMINI_GIT_LOCAL_ROOTS in
+      # only clones from them), here or in compose.override.yaml, which git ignores
+      # (docs/install.md), and list its path in the container in MEMINI_GIT_LOCAL_ROOTS in
       # .env.memini; a source then names a repository by that path, e.g. /srv/repos/app. On Linux
       # the files must be readable by the service user, uid 10001. For example, with
       # MEMINI_GIT_LOCAL_ROOTS=/srv/repos:

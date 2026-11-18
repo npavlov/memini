@@ -1,9 +1,10 @@
 """Fixture data is marked synthetic, and its addresses and links use reserved names only.
 
 Acceptance of memini-3va: a test fails when a fixture directory lacks the synthetic marker. A
-fixture set is every directory directly under ``eval/`` and ``tests/fixtures/``; its root holds a
-``SYNTHETIC.md`` that starts with ``# SYNTHETIC DATA`` and says the content is invented, and covers
-the subdirectories. A data file outside a set fails too, so new fixtures land in a marked set.
+fixture set is every directory directly under ``eval/`` and ``tests/fixtures/``, and the examples
+of the docs, ``docs/examples/``; its root holds a ``SYNTHETIC.md`` that starts with
+``# SYNTHETIC DATA`` and says the content is invented, and covers the subdirectories. A data file
+outside a set fails too, so new fixtures land in a marked set.
 
 A cheap lint for real data on top: every e-mail address and every link host in a fixture uses a
 reserved name (RFC 2606, RFC 6761) or a private or loopback address. The secret scan
@@ -17,6 +18,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 BASES = (ROOT / "eval", ROOT / "tests" / "fixtures")
+# Sets that are a directory of their own, not one under a base: the example data of the docs.
+SETS = (ROOT / "docs" / "examples",)
 MARKER = "SYNTHETIC.md"
 
 
@@ -29,10 +32,13 @@ def is_data(path: Path) -> bool:
 
 def fixture_sets() -> list[Path]:
     return sorted(
-        path
-        for base in BASES
-        for path in base.iterdir()
-        if path.is_dir() and not path.name.startswith((".", "__"))
+        [
+            path
+            for base in BASES
+            for path in base.iterdir()
+            if path.is_dir() and not path.name.startswith((".", "__"))
+        ]
+        + list(SETS)
     )
 
 
@@ -46,7 +52,13 @@ def name(path: Path) -> str:
 
 def test_the_fixture_sets_are_found() -> None:
     names = {name(path) for path in fixture_sets()}
-    assert {"eval/code", "eval/comms", "tests/fixtures/chunking", "tests/fixtures/recipes"} <= names
+    assert {
+        "docs/examples",
+        "eval/code",
+        "eval/comms",
+        "tests/fixtures/chunking",
+        "tests/fixtures/recipes",
+    } <= names
     assert all(data_files(path) for path in fixture_sets())
 
 

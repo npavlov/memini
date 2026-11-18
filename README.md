@@ -22,45 +22,44 @@ code search is M1.
 ## Run the service
 
 Memini runs as a long-lived service: one process (HTTP API, MCP endpoint, job worker and scheduler)
-and one Postgres database, started by Docker Compose. It needs Docker with compose.
+and one Postgres database, started by Docker Compose and published on `127.0.0.1` only.
+**[docs/install.md](docs/install.md)** goes from nothing to a search over a repository and a pushed
+chat thread, step by step, with what each step shows and what to do when one fails.
+
+Quickstart, with Docker (Compose 2.24.0 or later) and [Ollama](https://ollama.com) with
+`qwen3-embedding:0.6b` pulled; on Linux, Ollama must listen beyond 127.0.0.1 (the guide says how):
 
 ```sh
 git clone https://github.com/npavlov/memini.git
 cd memini
+cp .env.memini.example .env.memini
+cat >> .env.memini <<'EOF'
+
+# Embeddings: Ollama on this machine (docs/install.md)
+MEMINI_EMBEDDING_PROVIDER=openai_compatible
+MEMINI_EMBEDDING_URL=http://host.docker.internal:11434/v1
+EOF
 docker compose up -d --wait
-```
 
-This builds the image from the checkout, starts Postgres and the service, applies the migrations and
-returns once both are healthy. The containers restart on failure and with Docker, unless you stop
-them. The service is published on `127.0.0.1:6364` only; the database on `127.0.0.1:55432`. Data lives
-in the `memini-db` volume.
-
-Get the first admin token from inside the container, once. It is printed once, on stdout; keep it in
-a file only you can read:
-
-```sh
+export PATH="$PWD/bin:$PATH"     # bin/memini: the CLI, run inside the service's container
 mkdir -p ~/.config/memini
-(umask 077; docker compose exec -T memini memini bootstrap > ~/.config/memini/admin.token)
-```
-
-Everything else is the CLI on the host, a client of the service's HTTP API: from the checkout, run it
-with `uv run memini …`. It needs the service URL, `MEMINI_URL` (default `http://127.0.0.1:6364`), and a
-token, in `MEMINI_TOKEN` or in the file `MEMINI_TOKEN_FILE` names; it never takes a token on the command
-line. Create a workspace, add a repository, sync it and see the run, then make a read token for agents:
-
-```sh
+(umask 077; memini bootstrap > ~/.config/memini/admin.token)
 export MEMINI_TOKEN_FILE=~/.config/memini/admin.token
-uv run memini workspace create demo
-uv run memini source add demo shop --location https://git.example.com/team/shop.git --ref main --schedule 1h
-uv run memini sync demo shop --wait
-uv run memini runs demo
-TOKEN=$(uv run memini token create --scope read --name laptop)
+memini workspace create demo
+memini source add demo memini --location https://github.com/npavlov/memini.git --ref main \
+  --include 'docs/**' --include 'src/memini/cli/**' --schedule 1h
+memini sync demo memini --wait
+memini search "how is the first admin token created" --limit 3
 ```
 
-Connect an MCP client, for example Claude Code:
+`memini bootstrap` prints the first admin token once; every other command here is a client of the
+HTTP API and reads its token from `MEMINI_TOKEN_FILE` (or `MEMINI_TOKEN`), never from the command
+line. Give agents a token with the `read` scope only, for example in Claude Code:
 
 ```sh
-claude mcp add --transport http memini http://127.0.0.1:6364/mcp --header "Authorization: Bearer $TOKEN"
+(umask 077; memini token create --scope read --name claude-code > ~/.config/memini/read.token)
+claude mcp add --scope user --transport http memini http://127.0.0.1:6364/mcp \
+  --header "Authorization: Bearer $(cat ~/.config/memini/read.token)"
 ```
 
 Or, in a client's JSON configuration:
@@ -69,6 +68,9 @@ Or, in a client's JSON configuration:
 {"mcpServers": {"memini": {"type": "http", "url": "http://127.0.0.1:6364/mcp",
                            "headers": {"Authorization": "Bearer <token>"}}}}
 ```
+
+Pushing messages and meeting notes, your own repositories, status and troubleshooting:
+[docs/install.md](docs/install.md).
 
 Backup and restore: `scripts/backup.sh` writes a pg_dump archive of the database, `scripts/restore.sh FILE`
 restores it into an empty stack; mirrors are cloned again and the credential key is kept apart. See
@@ -152,9 +154,11 @@ Repositories are added with `memini source add`, which calls `POST /v1/workspace
 
 ### Commands
 
-Client commands call the HTTP API of the running service. Run them from the host (`uv run memini …` in
-the checkout) with `MEMINI_URL` and `MEMINI_TOKEN` or `MEMINI_TOKEN_FILE`; `--url URL` and
-`--token-file FILE` override them for one run. Reading needs a token with the `read` scope, changing
+Client commands call the HTTP API of the running service. Run them with `bin/memini …`, the CLI inside
+the service's container, with the token from `MEMINI_TOKEN_FILE` or `MEMINI_TOKEN` on the host
+([docs/install.md](docs/install.md)); or on the host with `uv run memini …` in the checkout, with
+`MEMINI_URL` and `MEMINI_TOKEN` or `MEMINI_TOKEN_FILE`, where `--url URL` and `--token-file FILE`
+override them for one run. Reading needs a token with the `read` scope, changing
 anything `admin`. Read commands take `--json` for the API's answer as it is.
 
 ```
@@ -181,7 +185,8 @@ memini decision close|retract <ws> <item-id>
 ```
 
 Operator commands work on the database directly, so they run inside the service's container:
-`docker compose exec memini memini …`. They come before a token exists, or below the API.
+`docker compose exec memini memini …`, or `bin/memini …`. They come before a token exists, or below
+the API.
 
 ```
 memini serve [--migrate]

@@ -131,6 +131,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Decision extraction: with an LLM provider configured, new or changed threads and meetings get an
   `extract` job (record text isolated as data, items need a valid anchor, supersession checked against
   similar active items); `memini eval decisions --extractor llm` measures a model.
+- Install guide (`docs/install.md`): from a clone to a search over a repository and a pushed chat thread
+  with compose, Claude Code connected, and the errors a newcomer meets; `bin/memini` runs the CLI inside
+  the service's container, so the host needs Docker only; a synthetic example batch in `docs/examples/`.
+- `memini sync --wait` says when a sync is still queued after 30 s, and that a git source syncs only
+  while an embedding provider is set.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.

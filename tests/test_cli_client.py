@@ -11,6 +11,7 @@ import secrets
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -922,6 +923,32 @@ def test_sync_wait_gives_up_after_its_timeout(
 
     assert result.code == EXIT_FAILURE
     assert "still syncing after 1s: refs/heads/main" in result.err
+
+
+def test_sync_wait_says_why_a_sync_may_not_start(
+    cli: Callable[..., Run], service: FakeService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A git sync waits in the queue while the service has no embedding provider: no worker takes
+    # it. The wait says so once, and goes on.
+    monkeypatch.setattr(source_commands, "POLL_INTERVAL", 0.0)
+    monkeypatch.setattr(source_commands, "QUEUED_HINT_AFTER", timedelta(0))
+    queued = {**PENDING, "status": "queued", "attempts": 0}
+    service.answer(
+        ok({"jobs": [{"stream": "refs/heads/main", "job_id": JOB, "created": True}]}, 202),
+        ok({"streams": [stream(queued, None)]}),
+        ok({"streams": [stream(queued, None)]}),
+        ok({"streams": [stream(None, LAST_RUN)]}),
+    )
+
+    result = cli("sync", "acme", "shop", "--wait")
+
+    assert result.code == EXIT_OK
+    assert result.err.count("still queued after") == 1
+    assert (
+        "refs/heads/main: still queued after 0s, not started; a git source syncs only while an"
+        " embedding provider is set (MEMINI_EMBEDDING_PROVIDER)" in result.err
+    )
+    assert result.out.splitlines()[-1] == f"refs/heads/main: run {RUN_ID} succeeded"
 
 
 def body_of(request: httpx2.Request) -> object:

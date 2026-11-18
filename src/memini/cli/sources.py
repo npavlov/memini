@@ -50,12 +50,23 @@ from memini.executors.source import MAX_RECIPE_TEXT
 from memini.intake import OVERRIDABLE
 from memini.sources import MAX_RETENTION_DAYS, LlmPolicy, Visibility
 
-__all__ = ["FILTER_LISTS", "POLL_INTERVAL", "add_commands", "source_path", "sync_command"]
+__all__ = [
+    "FILTER_LISTS",
+    "POLL_INTERVAL",
+    "QUEUED_HINT_AFTER",
+    "add_commands",
+    "source_path",
+    "sync_command",
+]
 
 POLL_INTERVAL: Final = 1.0
 """Seconds between two looks at the streams while ``sync --wait`` waits."""
 
 DEFAULT_WAIT: Final = timedelta(minutes=10)
+
+QUEUED_HINT_AFTER: Final = timedelta(seconds=30)
+"""How long ``sync --wait`` waits for a sync that no worker has started before it says why it may
+wait: the service runs a git sync only with an embedding provider, and leaves the job queued."""
 
 FILTER_LISTS: Final = (
     ("allow_channel", "allow_channels", "GLOB", "store only threads posted in a matching channel"),
@@ -583,19 +594,24 @@ def _wait_for_syncs(
 ) -> dict[str, Mapping[str, Any]]:
     """Wait until no stream in ``waiting`` (key to job id) has that job queued or running; return
     the newest run of each, ``{}`` for a stream that has none."""
-    deadline = time.monotonic() + timeout.total_seconds()
+    started = time.monotonic()
+    deadline = started + timeout.total_seconds()
     finished: dict[str, Mapping[str, Any]] = {}
     path = f"{source_path(workspace, source)}/streams"
     reported_attempts: dict[str, int] = {}
+    hinted = False
     while True:
         streams = {
             str(s.get("key")): s
             for s in (as_mapping(item) for item in as_list(api.get(path).get("streams")))
         }
+        never_started: list[str] = []
         for key, job_id in list(waiting.items()):
             stream = as_mapping(streams.get(key))
             pending = as_mapping(stream.get("pending_sync"))
             if pending and str(pending.get("id")) == job_id:
+                if pending.get("status") == "queued" and pending.get("attempts") == 0:
+                    never_started.append(key)
                 attempts = pending.get("attempts")
                 last_error = pending.get("last_error")
                 if (
@@ -611,7 +627,16 @@ def _wait_for_syncs(
             del waiting[key]
         if not waiting:
             return finished
-        if time.monotonic() >= deadline:
+        now = time.monotonic()
+        if not hinted and never_started and now - started >= QUEUED_HINT_AFTER.total_seconds():
+            hinted = True
+            keys = ", ".join(text(key) for key in never_started)
+            message(
+                f"{keys}: still queued after {format_duration(QUEUED_HINT_AFTER.total_seconds())},"
+                " not started; a git source syncs only while an embedding provider is set"
+                " (MEMINI_EMBEDDING_PROVIDER): see the index line of `memini status`"
+            )
+        if now >= deadline:
             keys = ", ".join(text(key) for key in waiting)
             raise CommandError(
                 f"still syncing after {format_duration(timeout.total_seconds())}: {keys}; see"

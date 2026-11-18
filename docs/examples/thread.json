@@ -1,0 +1,46 @@
+{
+  "stream": "chat/platform",
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "platform/1793610720.000100",
+      "occurred_at": "2026-11-02T09:12:00Z",
+      "external_url": "https://chat.example.invalid/archives/platform/p1793610720000100",
+      "payload": {
+        "channel": "platform",
+        "people": [
+          {"name": "Ana Example", "email": "ana@example.test"},
+          {"name": "Ben Sample", "email": "ben@example.test"},
+          {"name": "Chloe Placeholder", "email": "chloe@example.test"}
+        ],
+        "messages": [
+          {
+            "id": "1793610720.000100",
+            "author": "Ana Example",
+            "sent_at": "2026-11-02T09:12:00Z",
+            "text": "The nightly export to the archive bucket timed out again at 03:00 UTC. The vacuum job runs at the same hour. Shall we move the export to 04:30 UTC?"
+          },
+          {
+            "id": "1793611200.000200",
+            "author": "Ben Sample",
+            "sent_at": "2026-11-02T09:20:00Z",
+            "text": "Fine with me. The reporting dashboard reads the export at 06:00 UTC, so 04:30 still leaves time."
+          },
+          {
+            "id": "1793611860.000300",
+            "author": "Chloe Placeholder",
+            "sent_at": "2026-11-02T09:31:00Z",
+            "text": "Agreed. Let's also raise the export's timeout from 20 to 45 minutes, and page the on-call person when it fails twice in a row."
+          },
+          {
+            "id": "1793612400.000400",
+            "author": "Ana Example",
+            "sent_at": "2026-11-02T09:40:00Z",
+            "mentions": ["Ben Sample"],
+            "text": "Decided: the export runs at 04:30 UTC with a 45-minute timeout, and two failures in a row page the on-call person. I'll change the schedule today. @Ben Sample, can you update the note on the dashboard?"
+          }
+        ]
+      }
+    }
+  ]
+}

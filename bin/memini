@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#
+# The memini command for a host with Docker only: runs the CLI inside the service's container of
+# this checkout's compose stack, so the host needs no Python and no uv (docs/install.md).
+#
+#   bin/memini <command> ...                    # e.g. bin/memini workspace list
+#   export PATH="/path/to/memini/bin:$PATH"     # then: memini <command> ...
+#
+# It runs `docker compose exec memini memini <command> ...` from the checkout, wherever it is
+# called from: the CLI of the image, the same build as the service.
+#
+# - Client commands (workspace, source, sync, search, token, status ...) call the service's HTTP API
+#   from inside its container, at http://127.0.0.1:6364, whatever port the host publishes.
+# - Operator commands (bootstrap, reindex, credentials ...) work on the database with the service's
+#   settings, as `docker compose exec memini memini ...` does.
+#
+# The token is read on the host, from the file MEMINI_TOKEN_FILE names or from MEMINI_TOKEN, and
+# reaches the command in its environment (`docker compose exec -e MEMINI_TOKEN`), never on a
+# command line. MEMINI_URL, --url and --token-file are not for this wrapper: inside the container
+# the service is at the default URL, and a path given to the CLI is read inside the container. A
+# command that reads a file of the host (`source add --recipe PATH`) needs the CLI on the host:
+# `uv run memini ...` in the checkout (CONTRIBUTING.md).
+#
+# The stack is chosen as for docker compose itself: COMPOSE_PROJECT_NAME, and .env in the checkout.
+# On a terminal the command gets a terminal; otherwise stdin, stdout and stderr pass through as
+# they are, so `TOKEN=$(memini token create ...)` and `memini credentials set ... < FILE` work.
+#
+# Exit codes: the command's (memini --help lists them); 2 when the token file cannot be read; 1
+# from docker compose when the service is not running (start it: docker compose up -d --wait).
+# Runs on bash 3.2 (macOS) and later.
+
+set -euo pipefail
+
+fail() {
+  printf 'memini: %s\n' "$*" >&2
+  exit 2
+}
+
+command -v docker >/dev/null 2>&1 || fail "docker is not installed"
+
+# The checkout: two levels up from this file, following symlinks (one in ~/.local/bin, say).
+self="$0"
+while [ -L "$self" ]; do
+  dir="$(cd -P "$(dirname "$self")" && pwd)"
+  self="$(readlink "$self")"
+  case "$self" in
+    /*) ;;
+    *) self="$dir/$self" ;;
+  esac
+done
+root="$(cd -P "$(dirname "$self")/.." && pwd)"
+[ -f "$root/compose.yaml" ] || fail "no compose.yaml in $root; run bin/memini from a Memini checkout"
+
+# The token, as the CLI reads it, but on the host; the CLI checks its form.
+if [ -n "${MEMINI_TOKEN_FILE:-}" ]; then
+  [ -z "${MEMINI_TOKEN:-}" ] || fail "MEMINI_TOKEN, MEMINI_TOKEN_FILE: both are set; set only one"
+  [ -f "$MEMINI_TOKEN_FILE" ] && [ -r "$MEMINI_TOKEN_FILE" ] \
+    || fail "MEMINI_TOKEN_FILE: cannot read $MEMINI_TOKEN_FILE"
+  MEMINI_TOKEN="$(cat -- "$MEMINI_TOKEN_FILE")"
+  export MEMINI_TOKEN
+fi
+
+args=(compose exec)
+if ! { [ -t 0 ] && [ -t 1 ] && [ -t 2 ]; }; then
+  args+=(-T)
+fi
+if [ -n "${MEMINI_TOKEN:-}" ]; then
+  args+=(-e MEMINI_TOKEN)
+fi
+args+=(memini memini)
+
+cd "$root"
+exec docker "${args[@]}" "$@"

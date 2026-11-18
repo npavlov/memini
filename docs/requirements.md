@@ -977,7 +977,12 @@ way, and `memini status` exits 0: the answer is in the output.
   `MEMINI_TOKEN_FILE` names; no option takes the token itself, which shell history and the process
   list would keep. `memini bootstrap` gives the configured principal a token with the `read` and
   `admin` scopes for every workspace and prints it once; while that principal has an active admin
-  token for every workspace it refuses, unless forced.
+  token for every workspace it refuses, unless forced. For a host with Docker only (decided
+  2026-11-19, the install guide), `bin/memini` runs the CLI inside the service's container with
+  `docker compose exec`: client commands reach the service at its address in the container, and the
+  token, read on the host from `MEMINI_TOKEN_FILE` or `MEMINI_TOKEN`, reaches the command in the
+  environment of the exec, never on a command line. A command that reads a file of the host needs
+  the CLI on the host.
 - Secrets come from the environment or a secrets file, never from the database in clear text.
   The credentials of sources are stored encrypted, under a key from the environment (section 9).
 - Health and status endpoints, structured logs, run reports, metrics for Prometheus, a log of slow
