@@ -80,6 +80,8 @@ Notes:
   start and end, participants, summary, action items and transcript.
 - Person resolution uses deterministic keys first (email, chat user id). Unmatched names stay as separate
   persons until the user merges them.
+- "Stored verbatim" means that no model rewrites a payload. It does not exempt redaction: secrets and
+  card numbers are replaced before a record is stored (principle 11; **Redaction**, section 9).
 
 ### Index layer (derived)
 
@@ -455,7 +457,8 @@ revision expressions are refused. A path is relative to the repository root; abs
 commit's tree, so it names nothing outside the repository and no symlink is followed: a symlink
 reads as its target text, a submodule as the commit it pins, a directory as a listing, a binary file
 as its size. A file over `git_max_blob_size` is refused; a read returns at most 2000 lines and
-100,000 characters and says where to continue. A refusal is a tool error with a message for the
+100,000 characters and says where to continue; its text has secrets and card numbers redacted,
+as chunks have (**Redaction**, section 9). A refusal is a tool error with a message for the
 model and, over HTTP, the API's error shape: 422 for a query, path, ref or range that is not valid
 and for a search past `search_timeout` (the query's to narrow), 404 for anything the token may not
 read, 409 for a repository not synced yet, 503 for a stale index (the message names
@@ -862,6 +865,43 @@ setting, and a managed Postgres an administrator, against open question 3 (the s
 image) and principle 12, for no gain on the eval. ParadeDB `pg_search` was not measured: AGPL-3.0
 (prior-art.md). The `bm25-textsearch-*` variants stay in the eval's registry, to measure again on
 a larger suite, where inverse document frequency has more to work with.
+
+**Redaction** (decided 2026-11-18; principle 11). One library, `memini.redaction`, finds secrets
+and card numbers by pattern and check, without a model, and replaces each with a marker that names
+its kind, `[REDACTED:card]`. No digit of a card is kept, the last four included: nothing needs
+them; in a URL, where brackets cannot stand, the user information becomes `REDACTED`
+(`https://REDACTED@host/`), so the URL still parses. The detectors: PEM private keys (also with
+`\n` escapes as in code, and cut short); the user information of a URL (a password, or a token in
+the place of the user); Slack webhooks; Memini, GitHub, GitLab, Slack and Stripe tokens; AWS access
+key ids, and a 40-character secret key after its name or in a text that holds a key id; Google API
+keys; LLM provider, npm and PyPI keys; JWTs; the credentials of an Authorization header and a long
+Bearer value; the value assigned to a name that ends in `password`, `secret`, `api_key`,
+`access_token` and the like, quoted or, when bare, holding a digit or a symbol, so that names in
+code (`api_key = settings.api_key`) stay; and card numbers: 13 to 19 digits, in a row or in
+groups, with an issuer's prefix and a valid Luhn digit, not inside a longer token (a path, a
+decimal, an id with letters, a phone number). Timestamps, snowflake ids and ISBNs start with digits
+no card starts with. The same text always gives the same result, and redacting it again changes
+nothing. Redaction runs in three places. **Ingest**, before anything is stored or derived: every
+string of a payload, keys included, every string under a key that names a secret, an integer that
+is a card number, the external URL and the window's cursor. The content hash is of the redacted
+bytes, so a resend changes nothing; the parser of the kind reads the redacted payload, the
+normalized text it renders is redacted again, and every hook of the batch (indexing, persons) gets
+the payload as stored. An external id or a stream key is not rewritten, as two ids redacted to one
+would make two records one: one that holds a key or a token is refused (422, naming the field,
+never the value). For the same reason a value under a key that names an id (`id`, `message_id`) is
+not looked at as a card number. Each batch's run counts what it redacted by
+kind (`redacted_card`), never a value. **Chunks**, of every kind, in the index writer: header,
+content, URL and anchor. The files of a repository are not copied into the database, but their
+chunks are, and chunks are embedded and returned by search; the chunks of a pushed record come from
+the redacted payload, so for them this is a second line. Redaction keeps the lines of a chunk, so its line numbers hold;
+its version is part of the index fingerprint, so a changed detector takes `memini reindex`; runs
+count `chunk_values_redacted`. **`read_source`**: the mirror is the raw store of code and is not
+rewritten (a blob id is the hash of its content, and sync compares them), so a read redacts the
+whole file before it takes the lines; line numbers and symbols still agree. The mirror on disk
+keeps whatever the repository holds, as the user's remote does; backups are database dumps
+without it. Detectors find shapes: a secret of no known shape in prose (`password: hunter` without
+a digit) passes, and a long number that starts like a card and passes the Luhn check by chance
+(one in ten) is redacted. The logs have their own redaction (`memini.logs`).
 
 ## 10. Quality
 

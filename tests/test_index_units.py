@@ -21,6 +21,7 @@ from memini.index import (
     current_fingerprint,
     embedding_key,
 )
+from memini.redaction import REDACTION_VERSION
 
 SPEC = EmbeddingSpec(provider="openai_compatible", model="synthetic-embed", dimension=768)
 
@@ -106,11 +107,12 @@ def test_the_key_goes_into_the_query_as_a_literal_that_cannot_break_out() -> Non
 # --- Fingerprint ---------------------------------------------------------------------------------
 
 
-def test_the_current_fingerprint_covers_the_chunker_and_its_grammars() -> None:
+def test_the_current_fingerprint_covers_the_chunker_its_grammars_and_the_redaction() -> None:
     fingerprint = current_fingerprint(SPEC)
 
     assert fingerprint.embedding == SPEC
-    assert fingerprint.chunker_version == chunker_fingerprint()
+    # Chunk text is what the chunker cut, with its secrets redacted by the writer.
+    assert fingerprint.chunker_version == f"{chunker_fingerprint()} redaction/{REDACTION_VERSION}"
     assert fingerprint.chunker_version.startswith("memini-chunker/")
 
 

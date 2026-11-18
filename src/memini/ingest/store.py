@@ -266,7 +266,7 @@ async def _store(
                         external_id=item.external_id,
                         occurred_at=item.occurred_at,
                         content_hash=item.content_hash,
-                        payload=item.payload,
+                        payload=item.payload,  # redacted in prepare_batch, as stored
                         content_changed=bool(inserted or revived or content_changed),
                     )
                 )
@@ -319,9 +319,12 @@ async def _store(
     return tally
 
 
-def _count(run: Run | None, tally: _Tally) -> None:
+def _count(run: Run | None, tally: _Tally, batch: PreparedBatch) -> None:
     if run is None:
         return
+    # What redaction replaced in the batch, by kind (memini.redaction): counts, never values.
+    for kind, value in sorted(batch.redactions.items()):
+        run.count(f"redacted_{kind}", value)
     for name, value in (
         ("records_inserted", tally.inserted),
         ("records_updated", tally.updated),
@@ -397,7 +400,7 @@ async def ingest(
     target = await _resolve(conn, access, workspace, source, prepared.stream)
     if runs is None:
         tally = await _store_once(conn, access, target, prepared, indexer)
-        _count(current_run(), tally)
+        _count(current_run(), tally, prepared)
         return _result(target, prepared, tally, run_id=None)
     async with record_run(
         runs,
@@ -410,7 +413,7 @@ async def ingest(
     ) as run:
         async with run.step("store"):
             tally = await _store_once(conn, access, target, prepared, indexer)
-        _count(run, tally)
+        _count(run, tally, prepared)
         window = prepared.window
         if window is not None and not window.complete:
             run.set_outcome("partial", "the window is incomplete; the checkpoint stays")

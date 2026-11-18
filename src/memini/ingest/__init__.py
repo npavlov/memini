@@ -8,9 +8,11 @@ Everything that is not code enters here: the push API (``POST …/sources/{sourc
 **Checks** (:func:`prepare_batch`, before the database). Each item is a record of kind
 ``thread``, ``meeting`` or ``document`` with an ``external_id``, an ``occurred_at`` with a zone
 and a ``payload`` (a JSON object with the fields its kind requires), or a tombstone: a kind and an
-external id with ``deleted``. A kind and external id appear once per batch. A payload is stored as
-its canonical JSON and hashed (:mod:`memini.ingest.validate`). The limits (:class:`IngestLimits`)
-are the number of items and the stored size of a payload. A refused batch touches nothing.
+external id with ``deleted``. A kind and external id appear once per batch. Secrets and card
+numbers in a payload, its external URL and the window's cursor are redacted
+(:mod:`memini.redaction`, principle 11); the payload is then stored as its canonical JSON and
+hashed (:mod:`memini.ingest.validate`). The limits (:class:`IngestLimits`) are the number of
+items and the stored size of a payload. A refused batch touches nothing.
 
 **Target.** The source must be a push or mcp source the caller may change; a git source is
 refused, its records come from its mirror. The stream the batch names is created on first use,
@@ -51,7 +53,8 @@ in a transaction of its own, so that the batch's run can name it.
 Any failure rolls the whole transaction back: records, tombstones, chunks and checkpoint
 (principle 7). Sending the same batch twice changes nothing the second time: no row is written,
 the checkpoint is where the first batch left it (principle 6). Each batch writes a run row of kind
-``ingest`` with its counts when ``runs`` is given; an incomplete window ends it as ``partial``.
+``ingest`` with its counts when ``runs`` is given, the values redacted by kind among them
+(``redacted_card``); an incomplete window ends it as ``partial``.
 """
 
 from memini.ingest.indexing import PayloadIndexer

@@ -15,14 +15,23 @@ sent it with whatever key order, spacing or escapes: re-sending a record changes
 in one object is refused rather than silently collapsed (by the transport, which parses the
 JSON), and a value that is not finite JSON is refused.
 
+**Redaction** (principle 11, :mod:`memini.redaction`). Before a payload takes its stored form, its
+secrets and card numbers are replaced by markers (``[REDACTED:card]``): every string, keys
+included, and every string under a key that names a secret. The same goes for the external URL
+and the window's cursor. The stored bytes and the content hash are those of the redacted payload,
+so a record sent again is unchanged, and every check and parser reads the redacted payload. An
+external id or a stream key is not rewritten (two ids redacted to one would make two records one):
+one that holds a key or a token is refused. The batch carries the counts by kind, never a value.
+
 **Fields by kind.** A payload is parsed by the parser of its kind (:mod:`memini.payloads`): a
 thread needs ``messages``, each with ``author``, ``sent_at`` and ``text``; a meeting ``title`` and
 ``started_at``; a document ``title`` and ``text``. The optional fields the parsers read
 (recipients, mentions, participants, summary, action items, transcript, the ids of messages and
 segments) are checked when present; other fields are kept and not checked.
 
-**Normalized text.** The parsed payload is rendered as the record's plain text
-(:func:`memini.payloads.normalize`), stored as ``normalized_text`` with the payload.
+**Normalized text.** The parsed payload, redacted, is rendered as the record's plain text
+(:func:`memini.payloads.normalize`), redacted again and stored as ``normalized_text`` with the
+payload.
 """
 
 import hashlib
@@ -30,6 +39,7 @@ import json
 import math
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, Final
 from urllib.parse import urlsplit
@@ -47,6 +57,13 @@ from memini.ingest.model import (
     WindowClaim,
 )
 from memini.payloads import PayloadError, parse_payload, render
+from memini.redaction import (
+    RedactionCollisionError,
+    RedactionKind,
+    add_counts,
+    redact_json,
+    redact_text,
+)
 
 __all__ = [
     "MAX_CLOCK_SKEW",
@@ -148,6 +165,38 @@ def content_hash(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+# --- Redaction (principle 11) --------------------------------------------------------------------
+
+
+def _redacted(
+    value: Mapping[str, Any], field: str
+) -> tuple[dict[str, Any], dict[RedactionKind, int]]:
+    """``value`` checked as JSON, then with its secrets and card numbers redacted
+    (:func:`memini.redaction.redact_json`), and the counts by kind."""
+    _check_json(value, field)
+    try:
+        redacted = redact_json(value)
+    except RedactionCollisionError:
+        raise InvalidBatchError(
+            field, "two keys of an object are the same once secrets are redacted from them"
+        ) from None
+    return redacted.value, dict(redacted.counts)
+
+
+_ID_SKIP: Final[frozenset[RedactionKind]] = frozenset({"card"})
+"""An id of digits can look like a card number by chance; a key or a token in one cannot."""
+
+
+def _secret_free(value: str, field: str) -> str:
+    """An id (an external id, a stream key) is stored as sent: it names the record, and two ids
+    redacted to one would make two records one. So an id that holds a secret is refused."""
+    if redact_text(value, skip=_ID_SKIP).counts:
+        raise InvalidBatchError(
+            field, "holds what looks like a secret; an id is stored as sent, so it must hold none"
+        )
+    return value
+
+
 # --- Fields --------------------------------------------------------------------------------------
 
 
@@ -188,7 +237,7 @@ def _external_id(value: object, field: str) -> str:
         raise InvalidBatchError(
             field, f"at most {MAX_EXTERNAL_ID_BYTES} bytes in UTF-8, without NUL characters"
         )
-    return value
+    return _secret_free(value, field)
 
 
 def _external_url(value: object, field: str) -> str | None:
@@ -218,11 +267,14 @@ def _stream_key(value: object) -> str:
     _check_unicode(value, "stream")
     if not value.strip() or not value.isprintable() or len(value.encode()) > MAX_STREAM_KEY_BYTES:
         raise InvalidBatchError("stream", reason)
-    return value
+    return _secret_free(value, "stream")
 
 
-def _window(window: WindowClaim, stream: str | None) -> dict[str, Any] | None:
-    """Check the claim; return its cursor as a plain, checked JSON object."""
+def _window(
+    window: WindowClaim, stream: str | None
+) -> tuple[dict[str, Any] | None, dict[RedactionKind, int]]:
+    """Check the claim; return its cursor as a plain, checked JSON object with its secrets
+    redacted, and the counts of what was."""
     if stream is None:
         raise InvalidBatchError("window", "a window is claimed on a stream: name the stream")
     start = _aware(window.start, "window.from")
@@ -232,14 +284,15 @@ def _window(window: WindowClaim, stream: str | None) -> dict[str, Any] | None:
     if window.snapshot and not window.complete:
         raise InvalidBatchError("window.snapshot", "a snapshot is a complete window")
     if window.cursor is None:
-        return None
+        return None, {}
     if not isinstance(window.cursor, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise InvalidBatchError("window.cursor", "a JSON object")
-    data = canonical_json(window.cursor, field="window.cursor")
+    redacted, found = _redacted(window.cursor, "window.cursor")
+    data = canonical_json(redacted, field="window.cursor")
     if len(data) > MAX_CURSOR_SIZE:
         raise InvalidBatchError("window.cursor", f"at most {MAX_CURSOR_SIZE} bytes as JSON")
     cursor: dict[str, Any] = json.loads(data)
-    return cursor
+    return cursor, found
 
 
 # --- The batch -----------------------------------------------------------------------------------
@@ -260,7 +313,8 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
             code="too_many_records",
         )
     stream = None if batch.stream is None else _stream_key(batch.stream)
-    cursor = None if batch.window is None else _window(batch.window, stream)
+    cursor, found = (None, {}) if batch.window is None else _window(batch.window, stream)
+    redactions: list[dict[RedactionKind, int]] = [found]
 
     records: list[PreparedRecord] = []
     tombstones: list[PreparedTombstone] = []
@@ -284,21 +338,41 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
         occurred_at = _aware(item.occurred_at, f"{field}.occurred_at")
         if not isinstance(item.payload, Mapping):
             raise InvalidBatchError(f"{field}.payload", "a JSON object")
-        payload = canonical_json(item.payload, field=f"{field}.payload")
+        external_url = _external_url(item.external_url, f"{field}.external_url")
+
+        # --- Redaction (memini.redaction, principle 11) ------------------------------------
+        # Secrets and card numbers go here, before anything is stored or derived. Everything
+        # below reads the redacted `value`, never `item.payload`: the stored bytes and their
+        # content hash (so a resend is unchanged), the parser of the kind and the normalized
+        # text, and through the stored payload whatever derives from the record later
+        # (persons, chunks). Stored text derived from `value` goes through `redact_text` too.
+        value, found = _redacted(item.payload, f"{field}.payload")
+        redactions.append(found)
+        if external_url is not None:
+            url = redact_text(external_url)
+            external_url = url.value
+            redactions.append(dict(url.counts))
+        # --- End of redaction ---------------------------------------------------------------
+
+        payload = canonical_json(value, field=f"{field}.payload")
         if len(payload) > limits.max_payload_size:
             raise BatchTooLargeError(
                 f"{field}.payload",
                 f"at most {limits.max_payload_size} bytes as stored",
                 code="payload_too_large",
             )
-        normalized_text = _normalized(kind, item.payload, f"{field}.payload")
+        # The parser reads the redacted payload, and what it renders is redacted again: text
+        # joined from several fields could form a value that no single field held.
+        normalized = redact_text(_normalized(kind, value, f"{field}.payload"))
+        normalized_text = normalized.value
+        redactions.append(dict(normalized.counts))
         records.append(
             PreparedRecord(
                 index=index,
                 kind=kind,
                 external_id=external_id,
                 occurred_at=occurred_at,
-                external_url=_external_url(item.external_url, f"{field}.external_url"),
+                external_url=external_url,
                 payload=payload,
                 content_hash=content_hash(payload),
                 normalized_text=normalized_text,
@@ -308,6 +382,8 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
         records=tuple(records),
         tombstones=tuple(tombstones),
         stream=stream,
-        window=batch.window,
+        # The claim with the redacted cursor: nothing downstream sees the one that was sent.
+        window=None if batch.window is None else replace(batch.window, cursor=cursor),
         cursor=cursor,
+        redactions=add_counts(*redactions),
     )

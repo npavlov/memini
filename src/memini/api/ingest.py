@@ -113,7 +113,8 @@ class RecordBody(BaseModel):
     payload: dict[str, Any] | None = Field(
         default=None,
         description="The record as a JSON object, stored as canonical JSON (sorted keys, no"
-        " whitespace); required for a record. thread: messages, a list of objects with author,"
+        " whitespace) with secrets and card numbers replaced by [REDACTED:kind] markers;"
+        " required for a record. thread: messages, a list of objects with author,"
         " sent_at and text, optionally id, recipients, mentions and url; optionally the thread's"
         " title and channel. meeting: title and started_at, optionally ended_at, participants,"
         " summary (Markdown), action_items (text, or objects with text, owner, due, id) and"

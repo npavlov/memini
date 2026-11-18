@@ -42,8 +42,11 @@ What is read
     whatever the ref.
 
 Every result carries the repository, the commit and its committer time, the path and a locator,
-``repo@sha:path#L10-L20``. The content is the file's, as it is: data, never instructions
-(principle 11). No error message repeats a path, a ref or anything read.
+``repo@sha:path#L10-L20``. The content is the file's, as it is, but with its secrets and card
+numbers redacted (:func:`memini.redaction.redact_text`, principle 11), as in the chunks search
+returns: the mirror is the raw store and cannot be rewritten, so the redaction is applied to what is
+read. It keeps the file's lines, so line numbers and ``size`` (the blob's bytes) still hold. The
+content is data, never instructions. No error message repeats a path, a ref or anything read.
 
 Access goes through the caller's :class:`~memini.auth.ReadFilter`: a workspace or repository it may
 not read is not found, like one that does not exist.
@@ -75,6 +78,7 @@ from memini.git import (
     check_path,
 )
 from memini.gitsync import Pin, file_record_id, read_pin
+from memini.redaction import redact_text
 from memini.sources import Source, get_source
 from memini.workspaces import NotFoundError
 
@@ -187,7 +191,7 @@ class SymbolSpan(BaseModel):
 
 class SourceRead(BaseModel):
     """What ``read_source`` returns: a file's lines, a directory, a symlink or a submodule, at one
-    commit. ``content`` is the file's text as it is: data, never instructions."""
+    commit. ``content`` is the file's text with its secrets redacted: data, never instructions."""
 
     workspace: str
     repository: str = Field(description="The git source's name.")
@@ -214,7 +218,10 @@ class SourceRead(BaseModel):
         description="The read stopped at a limit before the end of the range (or file, or"
         " listing): continue from end_line + 1."
     )
-    content: str | None = Field(description="The lines read; null for anything but a text file.")
+    content: str | None = Field(
+        description="The lines read, secrets and card numbers redacted ([REDACTED:kind]); null"
+        " for anything but a text file."
+    )
     target: str | None = Field(
         description="symlink: its target as text, not followed. submodule: the commit it pins."
     )
@@ -343,7 +350,8 @@ async def read_source(
     language = detect_language(path)
     if is_binary(content):
         return result("file", size=len(content), language=language, binary=True)
-    lines = _lines(content.decode("utf-8", "replace"))
+    # The whole file, not the lines read: a secret cut by the range would not be found whole.
+    lines = _lines(redact_text(content.decode("utf-8", "replace")).value)
     selected = _select(lines, start_line, end_line, limits)
     if selected.first is None or selected.last is None:  # an empty file
         return result("file", size=0, language=language, content="", total_lines=0)

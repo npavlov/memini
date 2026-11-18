@@ -18,7 +18,8 @@ batch size, the timeout and the endpoint URL are not parts: they do not change s
 Each workspace's index records its fingerprint in ``index_state`` (migration 0004). The service
 computes the fingerprint its settings call for, :func:`current_fingerprint` of
 ``embedding_spec(settings)`` (the spec and :func:`memini.chunking.chunker_fingerprint`: the chunker
-version and the versions of tree-sitter and its grammars), and:
+version and the versions of tree-sitter and its grammars; then the version of the redaction that the
+writer applies to chunk text, :data:`memini.redaction.REDACTION_VERSION`), and:
 
 - search calls :func:`check_index` first: a stored fingerprint that differs raises
   :class:`IndexMismatchError`, whose message names ``memini reindex``;
@@ -40,6 +41,7 @@ from memini.chunking import chunker_fingerprint
 from memini.config import EmbeddingPooling, EmbeddingProvider
 from memini.embeddings.base import EmbeddingSpec, Normalization
 from memini.ids import hash_fields
+from memini.redaction import REDACTION_VERSION
 
 __all__ = [
     "EMBEDDING_KEY_DOMAIN",
@@ -135,8 +137,9 @@ class IndexFingerprint:
 def current_fingerprint(spec: EmbeddingSpec) -> IndexFingerprint:
     """The fingerprint of an index built now with ``spec``: what search checks a stored one against,
     and what the writer and a rebuild record. Its chunker part is
-    :func:`memini.chunking.chunker_fingerprint`."""
-    return IndexFingerprint(spec, chunker_fingerprint())
+    :func:`memini.chunking.chunker_fingerprint` and the redaction version: chunk text is what the
+    chunker cut with its secrets redacted (:mod:`memini.index.writer`)."""
+    return IndexFingerprint(spec, f"{chunker_fingerprint()} redaction/{REDACTION_VERSION}")
 
 
 @dataclass(frozen=True, slots=True)

@@ -33,9 +33,15 @@ has committed, so a batch that rolls back leaves nothing in the report.
 :func:`write_record_chunks` and :func:`clear_record_chunks` run in the caller's transaction and
 never report.
 
-The text stored and embedded is the chunk's text as the chunker made it. Postgres text cannot hold a
-NUL character, so the chunker replaces NUL bytes (:mod:`memini.chunking`); a chunk that still holds
-one is refused before anything is written.
+The text stored and embedded is the chunk's text as the chunker made it, with its secrets and card
+numbers redacted (:func:`memini.redaction.redact_text`, principle 11): a file of a repository is not
+copied into the database, but its chunks are, and they are sent to the embedding model and returned
+by search. The chunk's URL and anchor are redacted too. A chunk of a pushed record comes from the
+redacted payload, so for it this is a second line. Redaction keeps the lines of a chunk, so its
+line numbers still hold; its text hash is of the redacted text, and the redaction version is part
+of the index fingerprint. Postgres text cannot
+hold a NUL character, so the chunker replaces NUL bytes (:mod:`memini.chunking`); a chunk that still
+holds one is refused before anything is written.
 """
 
 from collections.abc import Mapping, Sequence
@@ -50,6 +56,7 @@ from memini.embeddings import EmbeddedTexts, Embedder, Vector, embed_missing, te
 from memini.index.fingerprint import current_fingerprint, embedding_key, ensure_index
 from memini.index.raw import RECORD_COLUMNS, RecordRef, record_ref
 from memini.index.vectors import VectorIndex, ensure_vector_index
+from memini.redaction import RedactionKind, redact_text
 from memini.runs import current_run
 
 __all__ = [
@@ -63,6 +70,8 @@ __all__ = [
 ]
 
 type Conn = AsyncConnection[TupleRow]
+
+_NOT_CARDS: Final[frozenset[RedactionKind]] = frozenset({"card"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +94,9 @@ class IndexCounts:
     symbols_updated: int = 0
     symbols_unchanged: int = 0
     symbols_deleted: int = 0
+    redacted: int = 0
+    """Secrets and card numbers redacted in the chunks written (inserted, updated): their text,
+    URL and anchor."""
 
     def __add__(self, other: "IndexCounts") -> "IndexCounts":
         return IndexCounts(
@@ -132,6 +144,7 @@ RUN_COUNTS: Final[Mapping[str, str]] = {
     "symbols_updated": "symbols_updated",
     "symbols_unchanged": "symbols_unchanged",
     "symbols_deleted": "symbols_deleted",
+    "redacted": "chunk_values_redacted",
 }
 """The name of each :class:`IndexCounts` field in a run report."""
 
@@ -273,6 +286,8 @@ class _ChunkRow:
     stored: tuple[Any, ...]
     header: str
     content: str
+    redacted: int
+    """Values redacted in the header, the content, the URL and the anchor."""
 
     @property
     def id(self) -> str:
@@ -290,10 +305,14 @@ class _ChunkRow:
 
 
 def _chunk_row(record: RecordRef, chunk: Chunk, path: str | None, key: str) -> _ChunkRow:
-    header, content = chunk.header, chunk.content
     # Postgres text cannot hold a NUL character; the chunker replaces them, so this is a bug.
-    if "\0" in header or "\0" in content:
+    if "\0" in chunk.header or "\0" in chunk.content:
         raise ValueError(f"chunk {chunk.key} of {record.id} holds a NUL character")
+    # Secrets and card numbers never reach the table, the embedding model or a search hit. The
+    # anchor is an id (a message's, a segment's): one of digits is not looked at as a card.
+    header, content = redact_text(chunk.header), redact_text(chunk.content)
+    url = None if chunk.url is None else redact_text(chunk.url)
+    anchor = None if chunk.anchor is None else redact_text(chunk.anchor, skip=_NOT_CARDS)
     stored = (
         chunk.id,
         record.owner_id,
@@ -306,13 +325,18 @@ def _chunk_row(record: RecordRef, chunk: Chunk, path: str | None, key: str) -> _
         chunk.end_line,
         chunk.start_byte,
         chunk.end_byte,
-        text_hash(f"{header}\n{content}"),
+        text_hash(f"{header.value}\n{content.value}"),
         key,
-        chunk.anchor,
-        chunk.url,
+        None if anchor is None else anchor.value,
+        None if url is None else url.value,
         chunk.occurred_at,
     )
-    return _ChunkRow(stored=stored, header=header, content=content)
+    return _ChunkRow(
+        stored=stored,
+        header=header.value,
+        content=content.value,
+        redacted=sum(part.total for part in (header, content, url, anchor) if part is not None),
+    )
 
 
 def _symbol_row(record: RecordRef, symbol: Symbol, language: str | None) -> tuple[Any, ...]:
@@ -432,6 +456,7 @@ async def write_record_chunks(
         symbols_updated=symbols[1],
         symbols_unchanged=symbols[2],
         symbols_deleted=symbols[3],
+        redacted=sum(row.redacted for row in (*inserts, *updates)),
     )
 
 

@@ -12,6 +12,7 @@ from psycopg.rows import TupleRow
 
 from memini.config import Settings
 from memini.index import IndexCounts
+from memini.redaction import RedactionKind
 
 __all__ = [
     "DEFAULT_LIMITS",
@@ -135,11 +136,13 @@ class PreparedRecord:
     occurred_at: datetime
     external_url: str | None
     payload: bytes
-    """Canonical JSON of the payload (:func:`memini.ingest.validate.canonical_json`)."""
+    """Canonical JSON of the payload with its secrets redacted
+    (:func:`memini.ingest.validate.canonical_json`, :func:`memini.redaction.redact_json`)."""
     content_hash: str
     """SHA-256 of ``payload``, 64 lowercase hex characters."""
     normalized_text: str
-    """The payload as plain text (:func:`memini.payloads.normalize`)."""
+    """The redacted payload as plain text (:func:`memini.payloads.normalize`), redacted again
+    (:func:`memini.redaction.redact_text`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +163,9 @@ class PreparedBatch:
     stream: str | None
     window: WindowClaim | None
     cursor: dict[str, Any] | None
-    """The window's cursor as a plain JSON object, checked."""
+    """The window's cursor as a plain JSON object, checked and redacted."""
+    redactions: Mapping[RedactionKind, int] = field(default_factory=dict[RedactionKind, int])
+    """Secrets and card numbers the batch held, by kind (:mod:`memini.redaction`): counts only."""
 
 
 # --- Output --------------------------------------------------------------------------------------
@@ -176,6 +181,8 @@ class StoredRecord:
     occurred_at: datetime
     content_hash: str
     payload: bytes
+    """The payload as stored: canonical JSON with its secrets redacted. Every hook of the batch
+    (indexing, persons) reads this, never the payload as it was sent."""
     content_changed: bool
     """New, revived from a tombstone, or with another payload; false when only ``occurred_at``,
     ``external_url`` or the stream changed."""
