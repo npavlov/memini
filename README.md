@@ -85,7 +85,9 @@ memini token list | revoke <id-or-prefix>
 
 Settings come from `MEMINI_*` environment variables, or a TOML file named by `MEMINI_CONFIG_FILE`:
 `MEMINI_DATABASE_URL` (or `MEMINI_DATABASE_URL_FILE`, a file that holds it), `MEMINI_HTTP_HOST`,
-`MEMINI_HTTP_PORT`, `MEMINI_LOG_LEVEL`, `MEMINI_PRINCIPAL`. Secrets are read from the environment only,
+`MEMINI_HTTP_PORT`, `MEMINI_LOG_LEVEL`, `MEMINI_PRINCIPAL`; the embedding provider, `MEMINI_EMBEDDING_*`
+(off until `MEMINI_EMBEDDING_PROVIDER` is set); the git connector, `MEMINI_GIT_*` (mirror directory,
+limits, allowed transports, an https token or an ssh key). Secrets are read from the environment only,
 never from the TOML file. With compose, `MEMINI_HTTP_PORT`, `MEMINI_DB_PORT`, `MEMINI_DB_PASSWORD` and
 `MEMINI_LOG_LEVEL` in the shell or a `.env` file change the published ports, the database password and
 the log level.

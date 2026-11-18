@@ -41,6 +41,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   search on a mismatched index and names `memini reindex`.
 - Tree-sitter code chunker for Python, TypeScript/JavaScript, Ruby and Go, with a symbol table and
   line windows for other files; chunk ids stable across runs and unaffected by edits elsewhere.
+- Git mirror manager: one bare mirror per source, fetched atomically (a failed fetch changes nothing),
+  hardened git invocations, https and ssh by default; the image ships git and a mirror volume.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
