@@ -82,6 +82,8 @@ Day to day:
 | Stop, keeping the data | `docker compose stop` |
 | Update to a new checkout | `git pull && docker compose up -d --wait` |
 | Check it end to end | `make smoke` |
+| Is the base current? (exit 6 if not) | `memini status --gate`, or `GET /v1/status?gate=true` (503) |
+| Metrics (Prometheus) | set `MEMINI_METRICS_TOKEN_FILE` in `.env`, scrape `GET /metrics` with it as bearer |
 
 Health: `GET /healthz`; readiness, with the database: `GET /readyz`; the HTTP API schema:
 `GET /openapi.json`.

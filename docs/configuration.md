@@ -234,6 +234,7 @@ Each of these variables, set in `.env`, names a file on the host: relative to `c
 | `MEMINI_CREDENTIAL_OLD_KEYS_FILE` | `/run/secrets/credential_old_keys` | `credential_old_keys` |
 | `MEMINI_LLM_LOCAL_API_KEY_FILE` | `/run/secrets/llm_local_api_key` | `llm_local_api_key` |
 | `MEMINI_LLM_CLOUD_API_KEY_FILE` | `/run/secrets/llm_cloud_api_key` | `llm_cloud_api_key` |
+| `MEMINI_METRICS_TOKEN_FILE` | `/run/secrets/metrics_token` | `metrics_token` |
 
 ### Local repositories
 

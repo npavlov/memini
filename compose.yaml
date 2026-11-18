@@ -92,6 +92,7 @@ services:
       MEMINI_EMBEDDING_API_KEY_FILE: ${MEMINI_EMBEDDING_API_KEY_FILE:+/run/secrets/embedding_api_key}
       MEMINI_LLM_LOCAL_API_KEY_FILE: ${MEMINI_LLM_LOCAL_API_KEY_FILE:+/run/secrets/llm_local_api_key}
       MEMINI_LLM_CLOUD_API_KEY_FILE: ${MEMINI_LLM_CLOUD_API_KEY_FILE:+/run/secrets/llm_cloud_api_key}
+      MEMINI_METRICS_TOKEN_FILE: ${MEMINI_METRICS_TOKEN_FILE:+/run/secrets/metrics_token}
     # Each at /run/secrets/<name>, read-only.
     secrets:
       - credential_key
@@ -102,6 +103,7 @@ services:
       - embedding_api_key
       - llm_local_api_key
       - llm_cloud_api_key
+      - metrics_token
     # host.docker.internal is the host: Docker Desktop and OrbStack define it, and on Linux this
     # entry maps it to the host's address on the Docker bridge. Ollama on Linux listens on
     # 127.0.0.1 only by default; see .env.memini.example for making it reachable from the container.
@@ -167,6 +169,8 @@ secrets:
     file: ${MEMINI_LLM_LOCAL_API_KEY_FILE:-./secrets/unset}
   llm_cloud_api_key:
     file: ${MEMINI_LLM_CLOUD_API_KEY_FILE:-./secrets/unset}
+  metrics_token:
+    file: ${MEMINI_METRICS_TOKEN_FILE:-./secrets/unset}
 
 volumes:
   memini-db:

@@ -317,6 +317,7 @@ COMPOSE_FILE_SETTINGS: Final = (
     "credential_old_keys",
     "llm_local_api_key",
     "llm_cloud_api_key",
+    "metrics_token",
 )
 """The settings whose value compose.yaml mounts as a file, a compose secret: every secret but the
 database URL, which compose sets itself, and the files of ssh. Each file's path on the host comes
