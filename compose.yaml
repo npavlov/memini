@@ -1,10 +1,27 @@
-# Development database: Postgres 18 with pgvector. pg_trgm ships with Postgres.
-# Bound to localhost only. Data lives in the named volume `memini-db`.
+# Memini with its database: the supported install.
 #
-#   docker compose up -d --wait db    # or: make db
+#   docker compose up                 # build the image, start the database and the service
+#   docker compose up -d --wait       # the same in the background; returns once both are healthy
+#   docker compose up -d --wait db    # the database alone, for development and tests (or: make db)
 #
-# MEMINI_DB_PORT changes the host port (default 55432, to stay clear of a local Postgres on 5432).
-# MEMINI_DB_PASSWORD changes the password of the development role (default: memini).
+# Both services publish their port on the host's 127.0.0.1 only, so other machines cannot reach
+# them. Inside its container the service listens on 0.0.0.0 (set in the image): that is the
+# container's own network interface, which the host reaches through the published port. To let
+# other machines reach Memini, change the published address here, and put TLS in front of it.
+#
+# Settings, from the environment or a `.env` file next to this one:
+#
+# - MEMINI_HTTP_PORT: host port of the service (default 6364; MCP at http://127.0.0.1:6364/mcp).
+# - MEMINI_DB_PORT: host port of the database (default 55432, to stay clear of a local Postgres on
+#   5432).
+# - MEMINI_DB_PASSWORD: password of the database role (default: memini, a development default).
+#   Use letters and digits: it goes into the service's database URL as is. For more than a local
+#   machine, set a strong one before the first start: the database keeps the password it was
+#   created with.
+# - MEMINI_LOG_LEVEL: CRITICAL, ERROR, WARNING, INFO (default) or DEBUG.
+#
+# Data lives in the named volume `memini-db`. `docker compose down` keeps it; only
+# `docker compose down --volumes` deletes it.
 
 name: memini
 
@@ -26,6 +43,46 @@ services:
       timeout: 3s
       retries: 30
     restart: unless-stopped
+
+  memini:
+    build:
+      context: .
+    # The image is built from this checkout on every `up`, so it always matches the code; the
+    # layer cache makes an unchanged rebuild take seconds. Never pulled from a registry.
+    image: memini:dev
+    pull_policy: build
+    # The first start applies the migrations; later starts find none pending.
+    command: ["serve", "--migrate"]
+    environment:
+      MEMINI_DATABASE_URL: postgresql://memini:${MEMINI_DB_PASSWORD:-memini}@db:5432/memini
+      MEMINI_LOG_LEVEL: ${MEMINI_LOG_LEVEL:-INFO}
+    ports:
+      # Host side: 127.0.0.1 only. Container side: the port the image listens on.
+      - "127.0.0.1:${MEMINI_HTTP_PORT:-6364}:6364"
+    depends_on:
+      db:
+        condition: service_healthy
+    # The healthcheck comes from the image: healthy once /readyz answers 200 (database reachable).
+    restart: unless-stopped
+    # A small init as PID 1 forwards signals and reaps child processes.
+    init: true
+    # On stop: open requests get 10 s, a running job 30 s, recording its end 10 s more. Docker's
+    # default of 10 s before SIGKILL would cut that short.
+    stop_grace_period: 60s
+    # The service writes nothing to its own filesystem.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Docker keeps container logs without a limit by default; keep at most 3 files of 10 MB.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
 
 volumes:
   memini-db:

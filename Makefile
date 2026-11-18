@@ -4,7 +4,7 @@ SHELL := /bin/bash
 # `uv run` syncs the environment from uv.lock before each command.
 UV_RUN := uv run
 
-.PHONY: help sync lint format typecheck test test-integration check db db-down
+.PHONY: help sync lint format typecheck test test-integration check db db-down smoke
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -34,5 +34,8 @@ check: lint typecheck test ## Everything a pull request must pass
 db: ## Start the development database (Postgres with pgvector) and wait until healthy
 	docker compose up -d --wait db
 
-db-down: ## Stop the development database; the data volume stays
+db-down: ## Stop and remove the compose containers (database and service); the data volume stays
 	docker compose down
+
+smoke: ## M0 check: compose up (service and database), then MCP status from the host with a token
+	scripts/compose-smoke.sh

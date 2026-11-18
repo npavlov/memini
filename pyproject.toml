@@ -64,7 +64,7 @@ select = [
 "tests/**" = ["S101"] # assert is how pytest checks
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."

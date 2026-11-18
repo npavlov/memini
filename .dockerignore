@@ -1,0 +1,18 @@
+# The build context is an allowlist: only what the image is built from goes in. Everything else
+# stays out by default, including .git, .env, CLAUDE.local.md, .venv, tests, docs, agent and tool
+# directories (.beads, .claude, .codex, .cursor, .agents) and caches, so a new local file cannot
+# reach an image layer by accident.
+*
+
+!pyproject.toml
+!uv.lock
+!.python-version
+# Named by pyproject.toml (readme, license-files): the wheel is built with them.
+!README.md
+!LICENSE
+!src/
+
+# Never from inside src/ either.
+**/__pycache__/
+**/*.py[cod]
+**/.DS_Store
