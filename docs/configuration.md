@@ -164,6 +164,18 @@ The API keys and OAuth tokens of sources are stored encrypted (AES-256-GCM) with
 | `credential_key`<br>`MEMINI_CREDENTIAL_KEY`<br>`MEMINI_CREDENTIAL_KEY_FILE`<br>*secret* | string | unset | restart with the old key in `credential_old_keys`, then `memini credentials rotate-key` | 32 random bytes in base64, e.g. from `openssl rand -base64 32`. Unset: the service starts, and storing or reading a credential fails with a message that names this setting. |
 | `credential_old_keys`<br>`MEMINI_CREDENTIAL_OLD_KEYS`<br>`MEMINI_CREDENTIAL_OLD_KEYS_FILE`<br>*secret* | list of strings | empty | restart; remove them once `memini credentials rotate-key` reports nothing left | Keys still read during a rotation, comma-separated, each 32 random bytes in base64, e.g. from `openssl rand -base64 32`; only together with `credential_key`. |
 
+### MCP service executor
+
+The service syncs mcp sources on its own with the built-in MCP client, and connects only where these settings allow: an endpoint inside `mcp_allowed_endpoints` (https, unless `mcp_allow_http`), whose host resolves to no internal address (loopback, private, link-local, the cloud metadata address) unless its network is in `mcp_allowed_networks`, checked again at every connection and redirect; a stdio server only from an executable in `mcp_allowed_commands`. Every list is empty by default, so no mcp source reaches anything until it is listed. A source's OAuth token endpoint is an endpoint too.
+
+| Setting | Values | Default | Change needs | Description |
+| --- | --- | --- | --- | --- |
+| `mcp_allowed_endpoints`<br>`MEMINI_MCP_ALLOWED_ENDPOINTS` | list of strings | empty | restart | Hosts (mcp.example.com, host:port, *.example.com) or URL prefixes (https://mcp.example.com/v1), comma-separated, that mcp sources may connect to; empty: none. Checked when an mcp source is added or changed, and before every connection; a change applies to the next sync. With compose, a server on the host is `host.docker.internal`, whose address is internal: list its network as well. |
+| `mcp_allowed_networks`<br>`MEMINI_MCP_ALLOWED_NETWORKS` | list of strings | empty | restart | Networks in CIDR notation, comma-separated, of internal addresses (loopback, private, link-local) that MCP endpoints may resolve to all the same; empty: none. |
+| `mcp_allow_http`<br>`MEMINI_MCP_ALLOW_HTTP` | boolean | `false` | restart | True or false: allow plain http:// MCP endpoints (no TLS). |
+| `mcp_allowed_commands`<br>`MEMINI_MCP_ALLOWED_COMMANDS` | list of paths | empty | restart | Absolute paths, comma-separated, of the executables mcp sources may run as stdio servers; empty: none. The path given is the path allowed; a symlink is not resolved. With compose the executable must exist in the container. |
+| `mcp_call_attempts`<br>`MEMINI_MCP_CALL_ATTEMPTS` | integer, 1 to 10 | `3` | restart | Attempts of one call of an mcp sync, the first included, 1 to 10. Each try is a call of the recipe's `[rate]` budget. A call that times out, fails on the network, gets HTTP 429 or a server error, or answers `isError`, is tried again after a backoff; one out of tries leaves its window incomplete. |
+
 ### LLM providers
 
 At most two OpenAI-compatible chat APIs, declared by the slot they are set in: `llm_local_*` is trusted with the content of every source, `llm_cloud_*` (https only) only with sources whose `llm_policy` is `cloud`, in workspaces that opted in (`memini workspace llm`). The slot is the declaration; it is never inferred from the URL. Each slot needs its URL and its model. No provider is configured by default, and then nothing is extracted.

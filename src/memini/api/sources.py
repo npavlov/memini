@@ -4,7 +4,7 @@
 | Route | Scope | Does |
 |---|---|---|
 | ``GET …/sources`` | read | list the sources of a workspace |
-| ``POST …/sources`` | admin | add a git or a push source (201) |
+| ``POST …/sources`` | admin | add a git, a push or an mcp source (201) |
 | ``GET …/sources/{source}`` | read | one source |
 | ``PATCH …/sources/{source}`` | admin | change its settings |
 | ``DELETE …/sources/{source}`` | admin | delete it, its streams, runs and mirror (204) |
@@ -24,7 +24,7 @@ from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from memini import prune, sources
 from memini.api.admin_errors import admin_errors
@@ -34,6 +34,18 @@ from memini.api.errors import ApiError
 from memini.config import HANDLE_REGEX, Settings
 from memini.db import Pool
 from memini.embeddings import EmbeddingError
+from memini.executors.egress import MAX_URL_LENGTH, EgressPolicy
+from memini.executors.source import (
+    MAX_ARG_LENGTH,
+    MAX_ARGS,
+    MAX_RECIPE_TEXT,
+    MAX_STREAM_KEY_LENGTH,
+    MAX_STREAMS,
+    Endpoint,
+    HttpEndpoint,
+    McpConfig,
+    StdioEndpoint,
+)
 from memini.filters import MAX_FILTER_PATTERN_LENGTH, MAX_FILTER_PATTERNS, SourceFilters
 from memini.git import GitOptions, MirrorManager
 from memini.index import IndexMismatchError
@@ -55,11 +67,15 @@ from memini.sources import (
 from memini.status import STALE_AFTER_SCHEDULES
 
 __all__ = [
+    "EndpointBody",
     "FiltersBody",
+    "McpInfo",
+    "NewMcpSource",
     "NewPushSource",
     "NewSource",
     "PruneAccepted",
     "PruneCounts",
+    "RecipeBody",
     "SourceChanges",
     "SourceInfo",
     "SourceList",
@@ -69,6 +85,7 @@ __all__ = [
     "SyncRequest",
     "build_sources_router",
     "git_options",
+    "mcp_policy",
 ]
 
 log = logging.getLogger(__name__)
@@ -110,6 +127,15 @@ _RETENTION = (
     " that long ago. null: keep them."
 )
 _LLM_POLICY = "Which LLM may read the source's content: none, the local one, or a cloud one too."
+_STREAMS = (
+    "mcp: the stream keys to sync, one stream each, as the recipe's stream.key_description says"
+    " (a channel id, a mailbox query); each must match its stream.key_pattern. Sorted."
+)
+_WINDOW = (
+    "mcp: overrides of the recipe's [window]: overlap, initial, backfill, max_span and history"
+    " (how far back history loads at most), each a duration such as 7d or 12h; null turns"
+    " backfill, max_span or history off. Left out: the recipe's value."
+)
 
 type _Patterns = Annotated[
     list[Annotated[str, Field(min_length=1, max_length=MAX_PATTERN_LENGTH)]],
@@ -252,6 +278,140 @@ class NewPushSource(BaseModel):
         )
 
 
+class EndpointBody(BaseModel):
+    """Where an mcp source's server is: a URL (streamable HTTP), or a command the service starts
+    (stdio). Exactly one of ``url`` and ``command``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_URL_LENGTH,
+        description="An https:// URL of an MCP server inside MEMINI_MCP_ALLOWED_ENDPOINTS, whose"
+        " host resolves to no internal address unless MEMINI_MCP_ALLOWED_NETWORKS lists it; plain"
+        " http:// only with MEMINI_MCP_ALLOW_HTTP. Never with a user name, password, query or"
+        " fragment: the credential comes from the credential store.",
+    )
+    command: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4096,
+        description="The absolute path of an executable listed in MEMINI_MCP_ALLOWED_COMMANDS,"
+        " run as an MCP server over stdio.",
+    )
+    args: list[Annotated[str, Field(max_length=MAX_ARG_LENGTH)]] = Field(
+        default_factory=list[str],
+        max_length=MAX_ARGS,
+        description="With command: its arguments.",
+    )
+    credential_env: str | None = Field(
+        default=None,
+        pattern=r"^[A-Z_][A-Z0-9_]{0,127}$",
+        description="With command: the environment variable the source's credential is passed"
+        " in; left out, the server gets none.",
+    )
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> "EndpointBody":
+        if (self.url is None) == (self.command is None):
+            raise ValueError("give url or command, one of them")
+        if self.url is not None and (self.args or self.credential_env is not None):
+            raise ValueError("args and credential_env go with command, not with url")
+        return self
+
+    def to_endpoint(self) -> Endpoint:
+        if self.url is not None:
+            return HttpEndpoint(self.url)
+        return StdioEndpoint(
+            command=self.command or "", args=tuple(self.args), credential_env=self.credential_env
+        )
+
+    @classmethod
+    def of(cls, endpoint: Endpoint) -> "EndpointBody":
+        if isinstance(endpoint, HttpEndpoint):
+            return cls(url=endpoint.url)
+        return cls(
+            command=endpoint.command,
+            args=list(endpoint.args),
+            credential_env=endpoint.credential_env,
+        )
+
+
+class RecipeBody(BaseModel):
+    """The recipe of an mcp source: a recipe file's text, or a recipe that ships with Memini.
+    Exactly one of ``toml`` and ``bundled``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    toml: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_RECIPE_TEXT,
+        description="The text of a recipe file (docs/recipes.md), which the source holds:"
+        " checked now, and its parser must be part of the service's build.",
+    )
+    bundled: str | None = Field(
+        default=None,
+        pattern=HANDLE_REGEX,
+        description="The name of a recipe that ships with Memini; read again at every sync.",
+    )
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> "RecipeBody":
+        if (self.toml is None) == (self.bundled is None):
+            raise ValueError("give toml or bundled, one of them")
+        return self
+
+
+class NewMcpSource(BaseModel):
+    """An mcp source to add: an MCP server the service syncs with a recipe, on a schedule or
+    when triggered. Its credential, if it needs one, is set with ``memini credentials set``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["mcp"] = Field(description="The kind of source: mcp.")
+    name: str = Field(pattern=HANDLE_REGEX, description=_NAME)
+    endpoint: EndpointBody
+    recipe: RecipeBody
+    streams: list[Annotated[str, Field(min_length=1, max_length=MAX_STREAM_KEY_LENGTH)]] = Field(
+        min_length=1, max_length=MAX_STREAMS, description=_STREAMS
+    )
+    schedule_seconds: int | None = Field(
+        default=None,
+        ge=int(MIN_SCHEDULE.total_seconds()),
+        le=int(MAX_SCHEDULE.total_seconds()),
+        description=_SCHEDULE,
+    )
+    window: dict[str, str | None] = Field(
+        default_factory=dict[str, str | None], description=_WINDOW
+    )
+    visibility: Visibility = Field(default="private", description=_VISIBILITY)
+    retention_days: int | None = Field(
+        default=None, ge=1, le=MAX_RETENTION_DAYS, description=_RETENTION
+    )
+    llm_policy: LlmPolicy = Field(default="local", description=_LLM_POLICY)
+    filters: FiltersBody = Field(
+        default_factory=FiltersBody,
+        description="Which of its records, and messages of threads, it stores; none: all.",
+    )
+
+    def to_new(self) -> sources.NewMcpSource:
+        return sources.NewMcpSource(
+            name=self.name,
+            endpoint=self.endpoint.to_endpoint(),
+            streams=self.streams,
+            recipe_toml=self.recipe.toml,
+            recipe_name=self.recipe.bundled,
+            schedule=_seconds(self.schedule_seconds),
+            window=self.window,
+            visibility=self.visibility,
+            retention_days=self.retention_days,
+            llm_policy=self.llm_policy,
+            filters=self.filters.to_filters(),
+        )
+
+
 class SourceChanges(BaseModel):
     """Settings to change. A setting left out stays as it is; ``refs``, ``include`` and
     ``exclude`` replace the whole list, and ``filters`` every filter rule of a push source. The
@@ -283,14 +443,36 @@ class SourceChanges(BaseModel):
     llm_policy: LlmPolicy | None = Field(default=None, description=_LLM_POLICY)
     filters: FiltersBody | None = Field(
         default=None,
-        description="Push sources: the filter rules, all of them; a rule left out is not set, and"
-        " {} clears every rule. They apply to the batches after the change; prune applies them"
-        " to the records stored before.",
+        description="Push and mcp sources: the filter rules, all of them; a rule left out is not"
+        " set, and {} clears every rule. They apply to the batches after the change; prune"
+        " applies them to the records stored before.",
+    )
+    streams: list[Annotated[str, Field(min_length=1, max_length=MAX_STREAM_KEY_LENGTH)]] | None = (
+        Field(
+            default=None,
+            min_length=1,
+            max_length=MAX_STREAMS,
+            description=_STREAMS + " Streams of keys left out are deleted with their runs.",
+        )
+    )
+    endpoint: EndpointBody | None = Field(
+        default=None, description="mcp: a new endpoint, checked as when the source was added."
+    )
+    recipe: RecipeBody | None = Field(
+        default=None,
+        description="mcp: a new recipe; the source's streams and window must be valid with it.",
+    )
+    window: dict[str, str | None] | None = Field(
+        default=None, description=_WINDOW + " Replaces every override; {} clears them."
     )
 
     @field_validator(
         "name",
         "refs",
+        "streams",
+        "endpoint",
+        "recipe",
+        "window",
         "include",
         "exclude",
         "builtin_excludes",
@@ -331,11 +513,58 @@ class SourceChanges(BaseModel):
                 if "filters" in given and self.filters is not None
                 else unset
             ),
+            streams=self.streams if "streams" in given and self.streams is not None else unset,
+            endpoint=(
+                self.endpoint.to_endpoint()
+                if "endpoint" in given and self.endpoint is not None
+                else unset
+            ),
+            recipe_toml=(
+                self.recipe.toml
+                if "recipe" in given and self.recipe is not None and self.recipe.toml is not None
+                else unset
+            ),
+            recipe_name=(
+                self.recipe.bundled
+                if "recipe" in given and self.recipe is not None and self.recipe.bundled is not None
+                else unset
+            ),
+            window=self.window if "window" in given and self.window is not None else unset,
         )
 
 
 def _seconds(value: int | None) -> timedelta | None:
     return None if value is None else timedelta(seconds=value)
+
+
+class McpRecipeInfo(BaseModel):
+    name: str = Field(description="The recipe's name.")
+    bundled: bool = Field(
+        description="true: a recipe that ships with Memini, read at every sync; false: the"
+        " recipe text the source holds."
+    )
+    digest: str | None = Field(
+        description="The digest of the recipe the source holds; each run records the one it read."
+    )
+
+
+class McpInfo(BaseModel):
+    """The settings of an mcp source."""
+
+    endpoint: EndpointBody | None = Field(description="Where its server is.")
+    recipe: McpRecipeInfo | None
+    window: dict[str, str | None] = Field(description=_WINDOW)
+
+    @classmethod
+    def of(cls, config: McpConfig) -> "McpInfo":
+        ref = config.recipe
+        return cls(
+            endpoint=None if config.endpoint is None else EndpointBody.of(config.endpoint),
+            recipe=None
+            if ref is None
+            else McpRecipeInfo(name=ref.name, bundled=ref.bundled, digest=ref.digest),
+            window=dict(config.window),
+        )
 
 
 class SourceInfo(BaseModel):
@@ -364,6 +593,9 @@ class SourceInfo(BaseModel):
     filters: FiltersBody | None = Field(
         description="Push and mcp sources: which records and messages they store; null for git."
     )
+    mcp: McpInfo | None = Field(
+        default=None, description="mcp: endpoint, recipe and window; null for other kinds."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -385,6 +617,7 @@ class SourceInfo(BaseModel):
             retention_days=source.retention_days,
             llm_policy=source.llm_policy,
             filters=None if source.filters is None else FiltersBody.of(source.filters),
+            mcp=None if source.mcp is None else McpInfo.of(source.mcp),
             created_at=source.created_at,
             updated_at=source.updated_at,
         )
@@ -600,6 +833,15 @@ def git_options(request: Request) -> GitOptions:
 GitSettings = Annotated[GitOptions, Depends(git_options)]
 
 
+def mcp_policy(request: Request) -> EgressPolicy:
+    """The egress policy of mcp sources, from the application's settings."""
+    settings = cast(Settings, request.app.state.settings)
+    return EgressPolicy.from_settings(settings)
+
+
+McpPolicy = Annotated[EgressPolicy, Depends(mcp_policy)]
+
+
 def build_sources_router() -> APIRouter:
     """The source routes; see the module."""
     router = APIRouter(prefix="/workspaces/{workspace}/sources", tags=["sources"])
@@ -615,19 +857,26 @@ def build_sources_router() -> APIRouter:
     @router.post("", status_code=201, summary="Add a source")
     async def create_source(
         workspace: str,
-        body: Annotated[NewSource | NewPushSource, Field(discriminator="kind")],
+        body: Annotated[NewSource | NewPushSource | NewMcpSource, Field(discriminator="kind")],
         access: AdminAccess,
         options: GitSettings,
+        policy: McpPolicy,
         conn: Connection,
     ) -> SourceInfo:
-        """Add a git source with one stream per ref, or a push source. A git location is checked
-        by the rules the mirror enforces (422 ``invalid_source`` names the setting and why, never
-        the value), not fetched: the first sync creates the mirror. A push source takes batches
-        of records at ``POST …/sources/{source}/records``. 409 if the workspace has a source of
-        that name."""
+        """Add a git source with one stream per ref, a push source, or an mcp source with one
+        stream per stream key. A git location is checked by the rules the mirror enforces (422
+        ``invalid_source`` names the setting and why, never the value), not fetched: the first
+        sync creates the mirror. A push source takes batches of records at ``POST
+        …/sources/{source}/records``. An mcp source's endpoint is checked against the
+        ``mcp_*`` settings, not connected to, and its recipe must be valid with a parser in this
+        build. 409 if the workspace has a source of that name."""
         with admin_errors():
             if isinstance(body, NewPushSource):
                 source = await sources.create_push_source(conn, access, workspace, body.to_new())
+            elif isinstance(body, NewMcpSource):
+                source = await sources.create_mcp_source(
+                    conn, access, workspace, body.to_new(), policy=policy
+                )
             else:
                 source = await sources.create_git_source(
                     conn, access, workspace, body.to_new(), options=options
@@ -645,12 +894,20 @@ def build_sources_router() -> APIRouter:
 
     @router.patch("/{source}", summary="Change a source")
     async def update_source(
-        workspace: str, source: str, body: SourceChanges, access: AdminAccess, conn: Connection
+        workspace: str,
+        source: str,
+        body: SourceChanges,
+        access: AdminAccess,
+        policy: McpPolicy,
+        conn: Connection,
     ) -> SourceInfo:
         """Change settings of a source; see the request body. A new schedule starts now. Refs
-        left out lose their streams, with their runs and queued syncs."""
+        (git) or stream keys (mcp) left out lose their streams, with their runs and queued
+        syncs."""
         with admin_errors():
-            changed = await sources.update_source(conn, access, workspace, source, body.to_update())
+            changed = await sources.update_source(
+                conn, access, workspace, source, body.to_update(), policy=policy
+            )
         return SourceInfo.of(changed)
 
     @router.delete("/{source}", status_code=204, summary="Delete a source")

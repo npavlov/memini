@@ -6,16 +6,23 @@ Each is one or a few calls to the HTTP API (:mod:`memini.api.workspaces`,
 source's location and enqueues syncs. Reading needs a token with the ``read`` scope, changing one
 with ``admin``.
 
-The filters of a push source (:mod:`memini.filters`) are set with ``source add --kind push`` and
+The filters of a push or mcp source (:mod:`memini.filters`) are set with ``source add`` and
 changed with ``source edit``: each filter option there replaces that one rule, the others stay
 (the command reads the source first, then sends every rule, as the API takes them).
 ``source prune`` applies the current rules to the records the source stored before.
+
+An mcp source (``source add --kind mcp``) names its server with ``--url`` or ``--command`` (and
+``--arg``, ``--credential-env``), its recipe with ``--recipe`` (a file, whose text this command
+reads and sends, or the name of a recipe that ships with Memini) and its streams with
+``--stream``; the service checks the endpoint against its ``mcp_*`` settings and the recipe
+against its build.
 """
 
 import argparse
 import time
 from collections.abc import Mapping
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Final, get_args
 
 from memini.cli import admin
@@ -39,6 +46,8 @@ from memini.cli.output import (
     text,
     when,
 )
+from memini.executors.source import MAX_RECIPE_TEXT
+from memini.intake import OVERRIDABLE
 from memini.sources import MAX_RETENTION_DAYS, LlmPolicy, Visibility
 
 __all__ = ["FILTER_LISTS", "POLL_INTERVAL", "add_commands", "source_path", "sync_command"]
@@ -116,8 +125,48 @@ def _schedule(value: object) -> str:
     return "when triggered" if value is None else f"every {seconds(value)}"
 
 
+def _mcp_fields(value: object) -> list[tuple[str, str]]:
+    """The settings of an mcp source, one line each; none for another kind."""
+    mcp = as_mapping(value)
+    if not mcp:  # null for a source of another kind
+        return []
+    endpoint = as_mapping(mcp.get("endpoint"))
+    recipe = as_mapping(mcp.get("recipe"))
+    fields: list[tuple[str, str]] = []
+    if endpoint.get("url") is not None:
+        fields.append(("endpoint", text(endpoint.get("url"))))
+    else:
+        command = " ".join(
+            [text(endpoint.get("command")), *map(text, as_list(endpoint.get("args")))]
+        )
+        fields.append(("command", command))
+        if endpoint.get("credential_env") is not None:
+            fields.append(("credential in", text(endpoint.get("credential_env"))))
+    if recipe:
+        held = "bundled" if recipe.get("bundled") is True else "held by the source"
+        digest = recipe.get("digest")
+        fields.append(
+            (
+                "recipe",
+                f"{text(recipe.get('name'))} ({held}"
+                + (f", digest {str(digest)[:12]}" if isinstance(digest, str) else "")
+                + ")",
+            )
+        )
+    window = as_mapping(mcp.get("window"))
+    fields.append(
+        (
+            "window",
+            ", ".join(f"{key} {text(window.get(key), 'none')}" for key in sorted(window))
+            or "the recipe's",
+        )
+    )
+    return fields
+
+
 def _print_source(source: Mapping[str, Any]) -> None:
     retention = source.get("retention_days")
+    mcp = source.get("kind") == "mcp"
     print_fields(
         [
             ("name", text(source.get("name"))),
@@ -125,7 +174,8 @@ def _print_source(source: Mapping[str, Any]) -> None:
             ("id", text(source.get("id"))),
             ("kind", text(source.get("kind"))),
             ("location", text(source.get("location"))),
-            ("refs", text(source.get("refs"))),
+            *_mcp_fields(source.get("mcp")),
+            ("streams" if mcp else "refs", text(source.get("refs"))),
             ("schedule", _schedule(source.get("schedule_seconds"))),
             ("include", text(source.get("include"), "every file")),
             ("exclude", text(source.get("exclude"))),
@@ -172,12 +222,65 @@ def _filters(args: argparse.Namespace, current: Mapping[str, Any]) -> Json:
     return rules
 
 
-_GIT_ONLY: Final = ("location", "ref", "schedule", "include", "exclude", "no_builtin_excludes")
-_PUSH_ONLY: Final = (*(option for option, _, _, _ in FILTER_LISTS), "exclude_automated")
+_GIT_ONLY: Final = ("location", "ref", "include", "exclude", "no_builtin_excludes")
+_FILTER_OPTIONS: Final = (*(option for option, _, _, _ in FILTER_LISTS), "exclude_automated")
+_MCP_ONLY: Final = ("url", "command", "arg", "credential_env", "recipe", "stream", "window")
 
 
 def _option(name: str) -> str:
     return "--" + name.replace("_", "-")
+
+
+def _recipe(value: str) -> Json:
+    """``--recipe``: a file's text when the value names a file (it has a ``/`` or ends in
+    ``.toml``), else the name of a recipe that ships with Memini."""
+    if "/" not in value and not value.endswith(".toml"):
+        return {"bundled": value}
+    path = Path(value)
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise CommandError(
+            f"cannot read the recipe {value}: {error.strerror or error}", EXIT_USAGE
+        ) from None
+    if len(raw) > MAX_RECIPE_TEXT:
+        raise CommandError(f"the recipe {value} is larger than {MAX_RECIPE_TEXT} bytes", EXIT_USAGE)
+    try:
+        return {"toml": raw.decode()}
+    except UnicodeDecodeError:
+        raise CommandError(f"the recipe {value} is not UTF-8 text", EXIT_USAGE) from None
+
+
+def _window(values: list[str]) -> Json:
+    """``--window KEY=DURATION`` (or ``KEY=none``) options as the API's window overrides."""
+    window: Json = {}
+    for value in values:
+        key, sep, duration = value.partition("=")
+        if not sep or key not in OVERRIDABLE or not duration:
+            raise CommandError(
+                f"--window takes KEY=DURATION or KEY=none, KEY one of {', '.join(OVERRIDABLE)}",
+                EXIT_USAGE,
+            )
+        window[key] = None if duration == "none" else duration
+    return window
+
+
+def _endpoint(args: argparse.Namespace) -> Json | None:
+    """The endpoint the options give, or ``None`` when they give none."""
+    if args.url is not None and args.command is not None:
+        raise CommandError("--url or --command, not both", EXIT_USAGE)
+    if args.url is not None:
+        if args.arg or args.credential_env:
+            raise CommandError("--arg and --credential-env go with --command", EXIT_USAGE)
+        return {"url": args.url}
+    if args.command is not None:
+        endpoint: Json = {"command": args.command, "args": args.arg or []}
+        if args.credential_env:
+            endpoint["credential_env"] = args.credential_env
+        return endpoint
+    if args.arg or args.credential_env:
+        raise CommandError("--arg and --credential-env go with --command", EXIT_USAGE)
+    return None
 
 
 def add_source_command(args: argparse.Namespace, api: Api) -> int:
@@ -185,6 +288,10 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
     workspace: str = args.workspace
     schedule: timedelta | None = args.schedule
     body: Json = {"kind": kind, "name": args.name}
+    if kind != "mcp":
+        given = [_option(name) for name in _MCP_ONLY if getattr(args, name)]
+        if given:
+            raise CommandError(f"{', '.join(given)}: only for an mcp source", EXIT_USAGE)
     if kind == "git":
         missing = [_option(name) for name in ("location", "ref") if not getattr(args, name)]
         if missing:
@@ -192,11 +299,11 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
                 f"a git source needs {' and '.join(missing)}; see `memini source add --help`",
                 EXIT_USAGE,
             )
-        given = [_option(name) for name in _PUSH_ONLY if getattr(args, name)]
+        given = [_option(name) for name in _FILTER_OPTIONS if getattr(args, name)]
         if given:
             raise CommandError(
-                f"{', '.join(given)}: only for a push source; a git source selects files with"
-                " --include and --exclude",
+                f"{', '.join(given)}: only for a push or mcp source; a git source selects files"
+                " with --include and --exclude",
                 EXIT_USAGE,
             )
         body |= {
@@ -210,13 +317,38 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
     else:
         given = [_option(name) for name in _GIT_ONLY if getattr(args, name)]
         if given:
+            raise CommandError(f"{', '.join(given)}: only for a git source", EXIT_USAGE)
+        if kind == "push" and schedule is not None:
             raise CommandError(
-                f"{', '.join(given)}: only for a git source; a push source takes its records at"
-                " POST …/sources/<name>/records",
+                "--schedule: only for a git or mcp source; clients send a push source's records",
                 EXIT_USAGE,
             )
         if _filters_given(args):
             body["filters"] = {rule: value for rule, value in _filters(args, {}).items() if value}
+    if kind == "mcp":
+        endpoint = _endpoint(args)
+        window = _window(args.window or [])
+        missing = [
+            option
+            for option, value in (
+                ("--url or --command", endpoint),
+                ("--recipe", args.recipe),
+                ("--stream", args.stream),
+            )
+            if not value
+        ]
+        if missing:
+            raise CommandError(
+                f"an mcp source needs {', '.join(missing)}; see `memini source add --help`",
+                EXIT_USAGE,
+            )
+        body |= {
+            "endpoint": endpoint,
+            "recipe": _recipe(args.recipe),
+            "streams": args.stream,
+            "schedule_seconds": None if schedule is None else int(schedule.total_seconds()),
+            "window": window,
+        }
     for option in ("visibility", "retention_days", "llm_policy"):
         value = getattr(args, option)
         if value is not None:
@@ -229,7 +361,12 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
             f"clients send its records to POST /v1/workspaces/{workspace}/sources/{args.name}"
             "/records, with a token with the ingest scope"
         )
-    elif schedule is None:
+    if kind == "mcp":
+        message(
+            "if its server needs a credential: `memini credentials set --workspace"
+            f" {workspace} --source {args.name} --kind api_key` (or oauth)"
+        )
+    if kind != "push" and schedule is None:
         message(f"it syncs when triggered: `memini sync {workspace} {args.name}`")
     return EXIT_OK
 
@@ -293,6 +430,17 @@ def edit_source_command(args: argparse.Namespace, api: Api) -> int:
     for option in ("visibility", "llm_policy"):
         if getattr(args, option) is not None:
             changes[option] = getattr(args, option)
+    endpoint = _endpoint(args)
+    if endpoint is not None:
+        changes["endpoint"] = endpoint
+    if args.recipe is not None:
+        changes["recipe"] = _recipe(args.recipe)
+    if args.stream is not None:
+        changes["streams"] = args.stream
+    if args.no_window:
+        changes["window"] = {}
+    elif args.window is not None:
+        changes["window"] = _window(args.window)
     if args.no_filters:
         changes["filters"] = {}
     elif _filters_given(args) or any(getattr(args, f"no_{rule}") for _, rule, _, _ in FILTER_LISTS):
@@ -546,6 +694,57 @@ def _filter_options(parser: argparse.ArgumentParser, *, edit: bool) -> None:
     parser.add_argument("--no-filters", action="store_true", help="clear every filter rule")
 
 
+def _mcp_options(parser: argparse.ArgumentParser, *, edit: bool) -> None:
+    """The options of an mcp source, for ``source add`` and, with ``edit``, ``source edit``."""
+    prefix = "" if edit else "mcp: "
+    replaces = "; replaces the endpoint" if edit else ""
+    parser.add_argument(
+        "--url",
+        metavar="URL",
+        help=f"{prefix}the server's https:// URL, inside MEMINI_MCP_ALLOWED_ENDPOINTS{replaces}",
+    )
+    parser.add_argument(
+        "--command",
+        metavar="PATH",
+        help=f"{prefix}an executable listed in MEMINI_MCP_ALLOWED_COMMANDS, run as a stdio"
+        f" server{replaces}",
+    )
+    parser.add_argument(
+        "--arg",
+        action="append",
+        metavar="ARG",
+        help=f"{prefix}an argument of --command; repeat; --arg=-x for one that starts with -",
+    )
+    parser.add_argument(
+        "--credential-env",
+        metavar="NAME",
+        help=f"{prefix}the environment variable --command gets the source's credential in",
+    )
+    parser.add_argument(
+        "--recipe",
+        metavar="NAME|PATH",
+        help=f"{prefix}a recipe file (its text is sent; a path has a / or ends in .toml), or the"
+        " name of a recipe that ships with Memini",
+    )
+    parser.add_argument(
+        "--stream",
+        action="append",
+        metavar="KEY",
+        help=f"{prefix}a stream key of the recipe (a channel id, a mailbox query); repeat for"
+        " more" + ("; replaces the list" if edit else ""),
+    )
+    window = parser.add_mutually_exclusive_group() if edit else parser
+    window.add_argument(
+        "--window",
+        action="append",
+        metavar="KEY=DURATION",
+        help=f"{prefix}override the recipe's window: {', '.join(OVERRIDABLE)}, e.g. initial=7d"
+        " or backfill=none; repeat" + ("; replaces every override" if edit else ""),
+    )
+    if edit:
+        window.add_argument("--no-window", action="store_true", help="the recipe's window")
+
+
 def add_commands(commands: Commands) -> None:
     """Add ``workspace``, ``source``, ``streams`` and ``sync``."""
     workspace = commands.add_client(
@@ -584,18 +783,24 @@ def add_commands(commands: Commands) -> None:
     source_commands = source.add_subparsers(metavar="<command>", required=True)
     add = source_commands.add_parser(
         "add",
-        help="add a git repository or a push source (admin)",
+        help="add a git repository, a push source or an MCP server (admin)",
         description="Add a source to a workspace. A git repository (the default kind) needs"
         " --location and --ref, and gets one stream per ref; the service checks the location at"
         " once and fetches it at the first sync. A push source (--kind push) takes batches of"
         " records that clients send it, and has none of the git options; its filters say which"
-        " records and messages it stores. Patterns (GLOB) are matched against the whole value,"
-        " ignoring case: * any characters, ? one, [abc] one of a set.",
+        " records and messages it stores. An MCP server (--kind mcp) needs --url or --command,"
+        " --recipe and --stream, gets one stream per stream key, and syncs on --schedule or when"
+        " triggered; the service checks its endpoint against MEMINI_MCP_* and its recipe at once."
+        " Patterns (GLOB) are matched against the whole value, ignoring case: * any characters, ?"
+        " one, [abc] one of a set.",
     )
     _workspace_argument(add)
     add.add_argument("name", type=parse_source_name, help="the source's name in the workspace")
     add.add_argument(
-        "--kind", choices=("git", "push"), default="git", help="the kind of source (default: git)"
+        "--kind",
+        choices=("git", "push", "mcp"),
+        default="git",
+        help="the kind of source (default: git)",
     )
     add.add_argument(
         "--location",
@@ -638,6 +843,7 @@ def add_commands(commands: Commands) -> None:
     )
     _settings_options(add)
     _filter_options(add, edit=False)
+    _mcp_options(add, edit=False)
     add.set_defaults(client=add_source_command)
 
     list_sources = source_commands.add_parser(
@@ -704,6 +910,7 @@ def add_commands(commands: Commands) -> None:
     retention.add_argument("--no-retention", action="store_true", help="keep records")
     _settings_options(edit)
     _filter_options(edit, edit=True)
+    _mcp_options(edit, edit=True)
     edit.set_defaults(client=edit_source_command)
 
     prune = source_commands.add_parser(

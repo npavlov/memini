@@ -8,9 +8,10 @@ application's shutdown; the worker and scheduler stop (a running job finishes wi
 grace period or goes back to the queue); pending run reports are written; the embedder is closed;
 then the pool closes. A stop by signal exits 0.
 
-One embedder serves the search queries of the application and the ``git_sync`` jobs: a local
-model is loaded once. ``retention`` jobs need no embedder and always run: the scheduler enqueues one
-for each source with a retention every ``retention_interval``.
+One embedder serves the search queries of the application and the ``git_sync`` and ``mcp_sync``
+jobs: a local model is loaded once. ``retention`` jobs need no embedder and always run: the
+scheduler enqueues one for each source with a retention every ``retention_interval``. ``mcp_sync``
+jobs always run too (:mod:`memini.executors.service`).
 
 Logs are JSON lines on stderr through :func:`memini.logs.configure_logging`, which masks tokens and
 secrets; the password of the database URL and the metrics token are registered as secrets at start.
@@ -41,10 +42,13 @@ from memini import logs
 from memini.api import create_app
 from memini.cli.common import EXIT_OK, CommandError, require_migrated
 from memini.config import Settings
+from memini.credentials import Keyring
 from memini.db import Pool, connect, database_check, migrate, open_pool
 from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_embedder
+from memini.executors.service import MCP_SYNC, ServiceOptions, mcp_sync_handler
 from memini.git import GitOptions, MirrorManager
 from memini.gitsync import GIT_SYNC, git_sync_handler, mirrors_unusable
+from memini.ingest import PayloadIndexer
 from memini.jobs import DEFAULT_RETENTION_INTERVAL, SYNC_KINDS, Handler, Scheduler, Worker
 from memini.removal import RETENTION, retention_handler
 from memini.runs import wait_for_run_writes
@@ -104,7 +108,11 @@ async def job_handlers(
 ) -> AsyncGenerator[Mapping[str, Handler]]:
     """The job handlers ``serve`` runs, by job kind, for the duration of the block.
 
-    ``retention`` (:mod:`memini.removal`) is always there. ``git_sync`` (:mod:`memini.gitsync`) is
+    ``retention`` (:mod:`memini.removal`) is always there, and so is ``mcp_sync``
+    (:mod:`memini.executors.service`): an mcp sync without an embedding provider stores its
+    records without chunks, as the push API does, and ``memini reindex`` indexes them later; a
+    source whose credential needs ``credential_key`` fails its runs with a message naming it,
+    while sources without a credential sync. ``git_sync`` (:mod:`memini.gitsync`) is
     there when an embedding provider is configured and
     mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
     and written. Code is synced only into an index: without embeddings there is none to write, and
@@ -125,6 +133,7 @@ async def job_handlers(
         except EmbeddingsNotConfiguredError as error:
             log.warning("git sources are not synced: %s", error)
     try:
+        handlers[MCP_SYNC] = _mcp_handler(settings, pool, embedder)
         if embedder is not None:
             options = GitOptions.from_settings(settings)
             problem = mirrors_unusable(options)
@@ -141,6 +150,23 @@ async def job_handlers(
     finally:
         if owned and embedder is not None:
             await embedder.aclose()
+
+
+def _mcp_handler(settings: Settings, pool: Pool, embedder: Embedder | None) -> Handler:
+    options = ServiceOptions.from_settings(settings)
+    if not options.policy.endpoints and not options.policy.commands:
+        log.info(
+            "mcp sources reach nothing until MEMINI_MCP_ALLOWED_ENDPOINTS or"
+            " MEMINI_MCP_ALLOWED_COMMANDS lists their servers"
+        )
+    if embedder is None:
+        log.info("mcp sources are synced without embeddings: their records are not indexed")
+    return mcp_sync_handler(
+        pool,
+        keyring=Keyring.from_settings(settings),
+        indexer=None if embedder is None else PayloadIndexer(embedder),
+        options=options,
+    )
 
 
 @asynccontextmanager

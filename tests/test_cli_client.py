@@ -6,6 +6,7 @@ test_cli_client_db.py. Every value is synthetic; the token is generated per run.
 """
 
 import json
+import re
 import secrets
 import socket
 from collections.abc import Callable
@@ -573,7 +574,7 @@ def test_source_add_git_refuses_the_filters_of_push_sources(
     )  # fmt: skip
 
     assert result.code == EXIT_USAGE
-    assert "--exclude-author: only for a push source" in result.err
+    assert "--exclude-author: only for a push or mcp source" in result.err
     assert service.requests == []
 
 
@@ -652,6 +653,144 @@ def test_source_prune_prints_what_it_did(cli: Callable[..., Run], service: FakeS
     assert (fields["records read"], fields["deleted"], fields["trimmed"]) == ("12", "3", "2")
     assert fields["messages removed"] == "7"
     assert fields["run"] == RUN_ID
+
+
+MCP_SOURCE: Json = {
+    **SOURCE,
+    "kind": "mcp",
+    "name": "chat",
+    "location": None,
+    "refs": ["C0042", "C0043"],
+    "schedule_seconds": 900.0,
+    "include": [],
+    "builtin_excludes": None,
+    "filters": {
+        "allow_channels": [],
+        "allow_domains": [],
+        "exclude_authors": ["*bot*"],
+        "exclude_titles": [],
+        "exclude_automated": False,
+    },
+    "mcp": {
+        "endpoint": {
+            "url": "https://hearth.example/mcp",
+            "command": None,
+            "args": [],
+            "credential_env": None,
+        },
+        "recipe": {"name": "hearth", "bundled": False, "digest": "ab" * 32},
+        "window": {"initial": "3d", "backfill": None},
+    },
+}
+
+
+def test_source_add_mcp_sends_the_recipe_file_s_text_and_shows_the_source(
+    cli: Callable[..., Run], service: FakeService, tmp_path: Path
+) -> None:
+    recipe = tmp_path / "hearth.toml"
+    recipe.write_text('format = 1\nname = "hearth"\n', encoding="utf-8")
+    service.answer(ok(MCP_SOURCE, 201))
+
+    result = cli(
+        "source", "add", "acme", "chat", "--kind", "mcp",
+        "--url", "https://hearth.example/mcp", "--recipe", str(recipe),
+        "--stream", "C0042", "--stream", "C0043", "--schedule", "15m",
+        "--window", "initial=3d", "--window", "backfill=none", "--exclude-author", "*bot*",
+    )  # fmt: skip
+
+    assert result.code == EXIT_OK, result.err
+    assert json.loads(service.last.content) == {
+        "kind": "mcp",
+        "name": "chat",
+        "endpoint": {"url": "https://hearth.example/mcp"},
+        "recipe": {"toml": 'format = 1\nname = "hearth"\n'},
+        "streams": ["C0042", "C0043"],
+        "schedule_seconds": 900,
+        "window": {"initial": "3d", "backfill": None},
+        "filters": {"exclude_authors": ["*bot*"]},
+    }
+    fields = dict(re.split(r"\s{2,}", line, maxsplit=1) for line in result.out.splitlines())
+    assert fields["endpoint"] == "https://hearth.example/mcp"
+    assert fields["recipe"] == "hearth (held by the source, digest abababababab)"
+    assert fields["streams"] == "C0042, C0043"
+    assert fields["window"] == "backfill none, initial 3d"
+    assert "memini credentials set --workspace acme --source chat" in result.err
+
+
+def test_source_add_mcp_names_a_bundled_recipe_and_a_stdio_command(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok(MCP_SOURCE, 201))
+
+    result = cli(
+        "source", "add", "acme", "chat", "--kind", "mcp", "--command", "/usr/bin/hearth-mcp",
+        "--arg=--stdio", "--credential-env", "HEARTH_TOKEN", "--recipe", "hearth",
+        "--stream", "C0042",
+    )  # fmt: skip
+
+    assert result.code == EXIT_OK, result.err
+    sent = json.loads(service.last.content)
+    assert sent["endpoint"] == {
+        "command": "/usr/bin/hearth-mcp",
+        "args": ["--stdio"],
+        "credential_env": "HEARTH_TOKEN",
+    }
+    assert sent["recipe"] == {"bundled": "hearth"}
+
+
+@pytest.mark.parametrize(
+    ("argv", "complaint"),
+    [
+        (("--kind", "mcp"), "an mcp source needs --url or --command, --recipe, --stream"),
+        (
+            ("--kind", "mcp", "--url", "https://h.example/mcp", "--command", "/bin/x"),
+            "--url or --command, not both",
+        ),
+        (("--kind", "mcp", "--url", "https://h.example/mcp", "--arg", "x"), "go with --command"),
+        (("--kind", "mcp", "--window", "later=1d"), "--window takes KEY=DURATION"),
+        (("--kind", "push", "--stream", "C0042"), "--stream: only for an mcp source"),
+        (("--kind", "push", "--schedule", "1h"), "--schedule: only for a git or mcp source"),
+        (
+            (
+                "--kind",
+                "mcp",
+                "--url",
+                "https://h.example/mcp",
+                "--stream",
+                "C0042",
+                "--recipe",
+                "/no/such/recipe.toml",
+            ),
+            "cannot read the recipe",
+        ),
+    ],
+)
+def test_source_add_mcp_checks_its_options(
+    cli: Callable[..., Run], service: FakeService, argv: tuple[str, ...], complaint: str
+) -> None:
+    result = cli("source", "add", "acme", "chat", *argv)
+
+    assert result.code == EXIT_USAGE
+    assert complaint in result.err
+    assert service.requests == []
+
+
+def test_source_edit_mcp_sends_the_new_endpoint_streams_and_window(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok(MCP_SOURCE))
+
+    result = cli(
+        "source", "edit", "acme", "chat", "--url", "https://hearth.example/v2/mcp",
+        "--stream", "C0042", "--no-window",
+    )  # fmt: skip
+
+    assert result.code == EXIT_OK, result.err
+    assert json.loads(service.last.content) == {
+        "endpoint": {"url": "https://hearth.example/v2/mcp"},
+        "streams": ["C0042"],
+        "window": {},
+    }
 
 
 def test_source_remove(cli: Callable[..., Run], service: FakeService) -> None:

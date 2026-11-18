@@ -79,6 +79,11 @@ credential then fails with a message that names the setting. ``credential_old_ke
 comma-separated, are keys still accepted for reading while ``memini credentials rotate-key``
 re-encrypts the store with ``credential_key``. Both are secrets.
 
+The ``mcp_*`` settings bound the service executor of MCP recipes (:mod:`memini.executors`): the
+endpoints an mcp source may name (hosts or URL prefixes), the internal networks they may resolve to
+all the same, plain http, the executables a stdio source may run, and how often one call is tried.
+Every list is empty by default, so no mcp source reaches anything until the operator lists it.
+
 ``metrics_token``, a secret, turns on ``GET /metrics`` (:mod:`memini.api.metrics`): a scraper sends
 it as its bearer token. ``log_slow_statement_threshold`` is the time after which a database
 statement of the service is logged as slow (:mod:`memini.db.statements`).
@@ -86,6 +91,7 @@ statement of the service is logged as slow (:mod:`memini.db.statements`).
 
 import base64
 import binascii
+import ipaddress
 import os
 import re
 import tomllib
@@ -265,6 +271,28 @@ _CREDENTIAL_KEY_DESCRIPTION: Final = (
 )
 
 
+# --- MCP service executor: value types -----------------------------------------------------------
+
+
+def _endpoint_rule(value: str) -> str:
+    # The rule's reader, so the settings refuse what the executor could not read. Imported here:
+    # memini.executors.egress reads these settings.
+    from memini.executors.egress import EgressRefused, EndpointRule
+
+    try:
+        EndpointRule.parse(value)
+    except (ValueError, EgressRefused) as error:
+        raise ValueError(str(error)) from None
+    return value.strip()
+
+
+def _network(value: str) -> str:
+    try:
+        return str(ipaddress.ip_network(value, strict=False))
+    except ValueError:
+        raise ValueError("not a network in CIDR notation, such as 10.0.0.0/8") from None
+
+
 class Settings(BaseModel):
     """Validated service settings. Build it with :func:`load_settings`."""
 
@@ -429,6 +457,43 @@ class Settings(BaseModel):
         description="keys still read during a rotation, comma-separated, each "
         + _CREDENTIAL_KEY_DESCRIPTION
         + "; only together with credential_key",
+    )
+
+    # --- MCP service executor (memini.executors) --------------------------------------------------
+    # mcp sources are MCP servers the service syncs on its own. It connects only to the endpoints
+    # listed here, to an internal address only in a network listed here, and runs as stdio servers
+    # only the executables listed here (memini.executors.egress).
+    mcp_allowed_endpoints: Annotated[
+        tuple[Annotated[str, AfterValidator(_endpoint_rule)], ...], BeforeValidator(_comma_list)
+    ] = Field(
+        default=(),
+        description="hosts (mcp.example.com, host:port, *.example.com) or URL prefixes"
+        " (https://mcp.example.com/v1), comma-separated, that mcp sources may connect to; empty:"
+        " none",
+    )
+    mcp_allowed_networks: Annotated[
+        tuple[Annotated[str, AfterValidator(_network)], ...], BeforeValidator(_comma_list)
+    ] = Field(
+        default=(),
+        description="networks in CIDR notation, comma-separated, of internal addresses (loopback,"
+        " private, link-local) that MCP endpoints may resolve to all the same; empty: none",
+    )
+    mcp_allow_http: bool = Field(
+        default=False,
+        description="true or false: allow plain http:// MCP endpoints (no TLS)",
+    )
+    mcp_allowed_commands: Annotated[tuple[_AbsolutePath, ...], BeforeValidator(_comma_list)] = (
+        Field(
+            default=(),
+            description="absolute paths, comma-separated, of the executables mcp sources may run as"
+            " stdio servers; empty: none",
+        )
+    )
+    mcp_call_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="attempts of one call of an mcp sync, the first included, 1 to 10",
     )
 
     # --- Search (memini.search) -------------------------------------------------------------------

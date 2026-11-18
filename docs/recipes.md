@@ -432,7 +432,15 @@ each window it makes the missing calls, up to `rate.concurrency` at once and wit
 storing each raw result as it came (after redaction) before anything is parsed, until none is
 missing or the budget is spent. The parser then turns the stored responses into records, the
 checks run on them, and one ingest batch stores the records and claims the window, complete or
-not.
+not. A call that times out, fails on the network, gets HTTP 429 or a server error, or answers
+`isError` is tried again after a backoff, each try a call of the budget, up to
+`mcp_call_attempts` tries; a 429 pauses every call for its `Retry-After`. It connects only where
+the service's `mcp_*` settings allow: an endpoint in `mcp_allowed_endpoints` whose host resolves
+to no internal address unless `mcp_allowed_networks` lists it, or an executable in
+`mcp_allowed_commands` (requirements, section 4, Service executor and its egress).
+
+The source holds its recipe: `memini source add --kind mcp --recipe PATH` sends the file's text,
+and the service keeps it with the source; `--recipe NAME` names a recipe that ships with Memini.
 
 **Agent executor.** For servers reachable only inside an interactive agent session. The service
 hands out the missing calls one at a time ("next call": a tool and its arguments). The agent

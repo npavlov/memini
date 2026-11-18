@@ -381,6 +381,50 @@ still being made) is an `IncompleteItem`, stored as far as it goes, with its cal
 (`details.incomplete_windows`: bounds, reasons, at most 50 calls; counts `windows_incomplete`,
 `missing_calls`); its claim is incomplete, so the checkpoint stays.
 
+**Service executor** (decided 2026-11-18). The `mcp_sync` job (`memini.executors.service`) runs
+a recipe headlessly with the official SDK's client, over streamable HTTP or stdio; it is
+registered whenever the service runs. One job syncs one stream: the step `connect` reads the
+source's endpoint, recipe and parser, pins `as_of` in the job, reads the credential, opens the
+session and checks drift before any call (another server name, a tool the recipe calls that is
+not listed, or an argument the tool's schema does not declare stops the run; another version is a
+warning, `details.drift`); then one step per planned window: `begin_window`, the calls
+`calls_to_make` names (the missing calls less those past `max_pages` and those out of tries), up
+to `rate.concurrency` at once, each result stored redacted before anything reads it, round after
+round until nothing is left to make, then `ingest_window`; each chain stops at its first incomplete
+window; a source with a retention ends with the step `retention`. The parts both executors share
+are `memini.executors.core`. A call returns the result object as the server sent it (the SDK's
+output schema validation is not applied: the store keeps what the server said and the recipe's
+checks judge it). Every try is a call of the recipe's `[rate]` budget (`calls_per_minute` in any
+60 seconds, `max_calls` a run); a timeout (`rate.timeout`), a network failure, HTTP 429 or 5xx, or
+an `isError` result is tried again after an exponential backoff, up to `mcp_call_attempts` tries
+in the window, and a 429 pauses every call for its `Retry-After` (at most 300 seconds). A call out
+of tries stays missing, so the window is incomplete and the next run plans it again; once
+`max_calls` is spent the window in hand is ingested incomplete, the rest waits, and the run is
+`partial` (`details.budget`). The credential (an API key, or OAuth tokens refreshed first when
+they expire soon, at the token endpoint stored with them, never through the SDK's OAuth provider)
+is sent as a bearer token or, for stdio, in the environment variable the source names; a 401
+refreshes OAuth tokens once and the call goes on, and a 401 without a refresh, or a connection
+that ended, ends the run after the window in hand is ingested. Without an embedding provider the
+records are stored without chunks, as the push API stores them, and `memini reindex` indexes them
+later: unlike a git sync, every record goes through ingest, which the index catches up with.
+
+**Egress of the service executor** (decided 2026-11-18; principle 11). Whoever may configure
+sources could otherwise point the service at anything it can reach, so `memini.executors.egress`
+closes it before any connection. An HTTP endpoint (and an OAuth token endpoint) must be https
+(http only with `mcp_allow_http`), hold no user name, password, query or fragment, and match
+`mcp_allowed_endpoints`: a host (`*.domain` for the hosts below it, an optional port) or a URL
+prefix whose path it is or is below; the list is empty by default. Every address its host resolves
+to must be public unicast: loopback, private, link-local (the cloud metadata address),
+carrier-grade NAT, unique local, multicast, reserved, unspecified and an IPv4 address inside an
+IPv6 one are refused unless `mcp_allowed_networks` lists their network, and a host with one
+refused address is refused whole. The check runs when the source is added, before a session opens
+and at every connection, on the address the connection then uses (the transport connects to the
+address it checked, so a DNS answer that changes in between cannot slip through), and the guard
+checks every request again; the SDK follows a redirect only within the endpoint's origin, and the
+guard refuses one that leaves the allowed path. A stdio server is an executable whose absolute
+path is in `mcp_allowed_commands`, exactly; its stderr is discarded, as it is not redacted.
+Refusals name the rule and the setting, never the URL or an address.
+
 ### Scheduling and hygiene
 
 - Per-stream schedule, with an overlap margin behind the checkpoint to catch late replies.
@@ -420,8 +464,8 @@ never bring them back. The pass runs as a `retention` job of the source, under t
 lock, so it takes turns with the source's syncs: the scheduler enqueues one for each source with a
 retention every `retention_interval` (1 hour), with the source id as dedupe key, from
 `source.retention_next_at`, which a changed `retention_days` resets so the change applies at
-once. A git sync also ends with a pass over its source (the step `retention`), and so will an mcp
-sync (M3); a push source has no sync, hence the scheduled job, which also covers a source whose
+once. A git sync also ends with a pass over its source (the step `retention`), and so does an mcp
+sync; a push source has no sync, hence the scheduled job, which also covers a source whose
 syncs stopped. Both "on every run" readings were weighed: the end of a sync alone would never
 clean a push source, and the job alone leaves a syncing source up to an hour behind. A pass
 deletes `retention_batch_size` (1000) records per transaction, locked `FOR UPDATE SKIP LOCKED`
@@ -642,7 +686,20 @@ globs: `source.config` holds `{"location", "include", "exclude"}`, each tracked 
 by its full name (`refs/heads/main`), and the schedule is set on all its streams at once. The location
 is checked when the source is added, by the rules the mirror enforces at every fetch (section 9, git
 mirrors), so a bad one is refused at once with a message that never repeats it; it never holds a
-credential, and it cannot change: another repository is another source. A changed schedule starts
+credential, and it cannot change: another repository is another source. An mcp source (decided
+2026-11-18) is an endpoint, a recipe, stream keys, window overrides and filters: `source.config`
+holds `{"endpoint", "recipe", "window", "filters"}` (`memini.executors.source`). The endpoint is a
+URL (`{"url"}`) or a stdio command (`{"command", "args", "credential_env"}`), checked against the
+egress policy (section 4) when it is set and before every connection; it can change, as a server
+that moved is the same source. The source holds its recipe: the text of a recipe file
+(`{"toml"}`, with its name and digest), checked when it is set (valid, with a parser in this build;
+`memini source add --recipe PATH` reads the file on the client and sends its text, so the service
+reads no client path), or a recipe that ships with Memini by name (`{"bundled"}`, read from
+`memini.recipes.bundled` at every sync, so a fixed recipe applies with the build that fixes it).
+Each stream key is a stream, and must match the recipe's `stream.key_pattern`; the window
+overrides are checked with the recipe's `[window]`; the schedule is set on all streams at once, as
+for git. The credential is the source's row in the credential store, never part of the config;
+`GET` shows the recipe's name, digest and origin, not its text. A changed schedule starts
 now. A triggered sync enqueues one job per stream with the stream's dedupe key, so it merges with a
 scheduled one. Deleting a source deletes its streams, runs, jobs and records and removes its mirror in
 the same request, under the source's job lock; while a job of the source runs, the deletion is refused

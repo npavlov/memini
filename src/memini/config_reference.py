@@ -175,6 +175,18 @@ GROUPS: Final[tuple[Group, ...]] = (
         " reports nothing left, remove `credential_old_keys` and restart.",
     ),
     Group(
+        "MCP service executor",
+        ("mcp_",),
+        "The service syncs mcp sources on its own with the built-in MCP client, and connects only"
+        " where these settings allow: an endpoint inside `mcp_allowed_endpoints` (https, unless"
+        " `mcp_allow_http`), whose host resolves to no internal address (loopback, private,"
+        " link-local, the cloud metadata address) unless its network is in"
+        " `mcp_allowed_networks`, checked again at every connection and redirect; a stdio server"
+        " only from an executable in `mcp_allowed_commands`. Every list is empty by default, so"
+        " no mcp source reaches anything until it is listed. A source's OAuth token endpoint is"
+        " an endpoint too.",
+    ),
+    Group(
         "LLM providers",
         ("llm_",),
         "At most two OpenAI-compatible chat APIs, declared by the slot they are set in:"
@@ -248,6 +260,14 @@ NOTES: Final[Mapping[str, str]] = {
     " has an example.",
     "credential_key": "Unset: the service starts, and storing or reading a credential fails with"
     " a message that names this setting.",
+    "mcp_allowed_endpoints": "Checked when an mcp source is added or changed, and before every"
+    " connection; a change applies to the next sync. With compose, a server on the host is"
+    " `host.docker.internal`, whose address is internal: list its network as well.",
+    "mcp_allowed_commands": "The path given is the path allowed; a symlink is not resolved. With"
+    " compose the executable must exist in the container.",
+    "mcp_call_attempts": "Each try is a call of the recipe's `[rate]` budget. A call that times"
+    " out, fails on the network, gets HTTP 429 or a server error, or answers `isError`, is tried"
+    " again after a backoff; one out of tries leaves its window incomplete.",
     "llm_local_url": "Unset, and `llm_cloud_url` unset too: no LLM is called.",
     "llm_local_model": "Required when `llm_local_url` is set.",
     "llm_local_api_key": "Only with `llm_local_url`.",

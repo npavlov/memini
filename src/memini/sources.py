@@ -15,6 +15,16 @@ domains, exclusions of authors, titles and automated mail), or ``{}`` without an
 them to every batch; a change applies to the batches after it, and ``memini source prune``
 (:mod:`memini.prune`) applies the current rules to the records stored before.
 
+An **mcp source** is an MCP server the service syncs with a recipe (:mod:`memini.executors`):
+``source.config`` holds its endpoint (a URL, or a stdio command), its recipe (the TOML text it
+holds, or the name of a recipe that ships with Memini), its overrides of the recipe's window and its
+filters, in the shape :class:`memini.executors.source.McpConfig` describes. The endpoint is checked
+against the egress policy when the source is added or changed (the ``mcp_*`` settings), and again
+before every connection; the recipe must be valid and its parser part of this build. Each stream is
+a stream key of the recipe (a channel id, a mailbox query), which must match its
+``stream.key_pattern``; the schedule is set on all streams at once, as for git. Its credential is
+its row in the credential store (``memini credentials set``), never part of the config.
+
 A **git source** is:
 
 - ``source.config``, a JSON object of the shape :class:`GitConfig` reads and writes::
@@ -61,10 +71,11 @@ until the deletion commits. While a job of the source runs, the deletion is refu
 
 import enum
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Generator, Iterable, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Final, Literal, get_args
+from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 from uuid import UUID
 
 from psycopg import AsyncConnection, errors, sql
@@ -72,6 +83,19 @@ from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
 from memini.auth import ReadFilter, WriteAccess
+from memini.executors.egress import EgressPolicy
+from memini.executors.source import (
+    Endpoint,
+    McpConfig,
+    McpConfigError,
+    RecipeRef,
+    bundled_recipe,
+    check_endpoint,
+    check_stream_keys,
+    check_window,
+    inline_recipe,
+    load_recipe_ref,
+)
 from memini.filters import FilterError, SourceFilters, check_filters
 from memini.git import (
     GitOptions,
@@ -85,6 +109,9 @@ from memini.git import (
 from memini.jobs import SYNC_KINDS, enqueue, source_lock_key, stream_dedupe_key
 from memini.status import stream_is_current
 from memini.workspaces import NotFoundError, check_handle, get_workspace, get_writable_workspace
+
+if TYPE_CHECKING:  # memini.recipes imports memini.ingest, which imports this module's importers
+    from memini.recipes import Recipe
 
 __all__ = [
     "MAX_LOCATION_LENGTH",
@@ -101,6 +128,7 @@ __all__ = [
     "JobBrief",
     "LlmPolicy",
     "NewGitSource",
+    "NewMcpSource",
     "NewPushSource",
     "NotFoundError",
     "NotSyncableError",
@@ -122,6 +150,7 @@ __all__ = [
     "check_refs",
     "check_schedule",
     "create_git_source",
+    "create_mcp_source",
     "create_push_source",
     "delete_source",
     "get_source",
@@ -397,6 +426,26 @@ def _filters_config(filters: SourceFilters) -> dict[str, Any]:
     return {} if filters.empty else {"filters": filters.to_json()}
 
 
+@contextmanager
+def _mcp_checks() -> Generator[None]:
+    """Turn a refused setting of an mcp source (:mod:`memini.executors.source`) into
+    :class:`InvalidSourceError`."""
+    try:
+        yield
+    except McpConfigError as error:
+        raise InvalidSourceError(error.setting, error.reason) from None
+
+
+def _new_recipe(toml: str | None, name: str | None) -> "tuple[RecipeRef, Recipe]":
+    """The recipe an mcp source is given: its own text, or a bundled one by name."""
+    if (toml is None) == (name is None):
+        raise InvalidSourceError(
+            "recipe",
+            "a recipe file's text, or the name of a recipe that ships with Memini: one of them",
+        )
+    return inline_recipe(toml) if toml is not None else bundled_recipe(name or "")
+
+
 def check_schedule(schedule: timedelta | None) -> timedelta | None:
     """``schedule`` if it is from :data:`MIN_SCHEDULE` to :data:`MAX_SCHEDULE`, or ``None`` (only
     when triggered)."""
@@ -463,6 +512,31 @@ class NewPushSource:
     """Which records, and messages of threads, it stores (:mod:`memini.filters`)."""
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NewMcpSource:
+    """What :func:`create_mcp_source` adds. See the module, and
+    :mod:`memini.executors.source` for each setting."""
+
+    name: str
+    endpoint: Endpoint
+    """A URL (:class:`~memini.executors.source.HttpEndpoint`) or a stdio command
+    (:class:`~memini.executors.source.StdioEndpoint`)."""
+    streams: Sequence[str]
+    """Stream keys of the recipe: one stream each."""
+    recipe_toml: str | None = None
+    """The recipe the source holds: a recipe file's text. Exactly one of this and
+    ``recipe_name``."""
+    recipe_name: str | None = None
+    """A recipe that ships with Memini, by name."""
+    schedule: timedelta | None = None
+    window: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
+    """Overrides of the recipe's ``[window]``: durations, or ``None`` for none."""
+    visibility: Visibility = "private"
+    retention_days: int | None = None
+    llm_policy: LlmPolicy = "local"
+    filters: SourceFilters = field(default_factory=SourceFilters)
+
+
 class Unset(enum.Enum):
     """The type of :data:`UNSET`."""
 
@@ -477,9 +551,11 @@ UNSET: Final = Unset.UNSET
 class SourceUpdate:
     """What :func:`update_source` changes; every setting left :data:`UNSET` stays as it is.
 
-    ``refs``, ``include`` and ``exclude`` replace the whole list, and ``filters`` every rule of a
-    push or mcp source (an empty :class:`~memini.filters.SourceFilters` clears them). ``schedule``
-    and ``retention_days`` take ``None`` for none. The location cannot change.
+    ``refs`` (git), ``streams`` (mcp), ``include`` and ``exclude`` replace the whole list,
+    ``filters`` every rule of a push or mcp source (an empty :class:`~memini.filters.
+    SourceFilters` clears them), and ``window`` every override of an mcp source. ``schedule`` and
+    ``retention_days`` take ``None`` for none. A git location cannot change; an mcp endpoint and
+    recipe can (``recipe_toml`` or ``recipe_name``).
     """
 
     name: str | Unset = UNSET
@@ -492,6 +568,11 @@ class SourceUpdate:
     retention_days: int | Unset | None = UNSET
     llm_policy: LlmPolicy | Unset = UNSET
     filters: SourceFilters | Unset = UNSET
+    streams: Sequence[str] | Unset = UNSET
+    endpoint: Endpoint | Unset = UNSET
+    recipe_toml: str | Unset = UNSET
+    recipe_name: str | Unset = UNSET
+    window: Mapping[str, str | None] | Unset = UNSET
 
 
 @dataclass(frozen=True, slots=True)
@@ -518,6 +599,8 @@ class Source:
     updated_at: datetime
     filters: SourceFilters | None = None
     """The filter rules of a push or mcp source (:mod:`memini.filters`); ``None`` for git."""
+    mcp: McpConfig | None = None
+    """The configuration of an mcp source: endpoint, recipe, window; ``None`` for other kinds."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -625,6 +708,7 @@ def _source(row: Sequence[Any]) -> Source:
         created_at=created_at,
         updated_at=updated_at,
         filters=None if kind == "git" else SourceFilters.from_json(config.get("filters")),
+        mcp=McpConfig.from_json(config) if kind == "mcp" else None,
     )
 
 
@@ -885,10 +969,133 @@ async def create_push_source(
         raise
 
 
+async def create_mcp_source(
+    conn: Conn,
+    access: WriteAccess,
+    workspace: str,
+    new: NewMcpSource,
+    *,
+    policy: EgressPolicy,
+) -> Source:
+    """Add an mcp source and one stream per stream key to the workspace ``workspace``.
+
+    The endpoint is checked against ``policy`` (the ``mcp_*`` settings), not connected to; the
+    recipe is checked and its parser looked up in this build; each stream key must match the
+    recipe's ``stream.key_pattern``, and the window overrides must be valid with its ``[window]``.
+
+    Raises:
+        InvalidSourceError: a setting is refused; nothing was written.
+        NotFoundError: no such workspace that ``access`` may change.
+        SourceExistsError: the workspace has a source of that name.
+    """
+    name = _check_name(new.name)
+    with _mcp_checks():
+        endpoint = check_endpoint(new.endpoint, policy)
+        ref, recipe = _new_recipe(new.recipe_toml, new.recipe_name)
+        keys = check_stream_keys(new.streams, recipe)
+        window = check_window(new.window, recipe)
+    schedule = check_schedule(new.schedule)
+    visibility = _check_choice("visibility", new.visibility, get_args(Visibility))
+    retention_days = _check_retention(new.retention_days)
+    llm_policy = _check_choice("llm_policy", new.llm_policy, get_args(LlmPolicy))
+    filters = check_filters_setting(new.filters)
+    config = McpConfig(endpoint=endpoint, recipe=ref, window=window).to_json()
+    config |= _filters_config(filters)
+    try:
+        async with conn.transaction():
+            found = await get_writable_workspace(conn, access, workspace)
+            cur = await conn.execute(
+                "INSERT INTO source (workspace_id, owner_id, name, kind, config, visibility,"
+                " retention_days, llm_policy) VALUES (%s, %s, %s, 'mcp', %s, %s, %s, %s)"
+                " RETURNING id",
+                (
+                    found.id,
+                    access.owner_id,
+                    name,
+                    Jsonb(config),
+                    visibility,
+                    retention_days,
+                    llm_policy,
+                ),
+            )
+            row = await cur.fetchone()
+            if row is None:  # INSERT ... RETURNING always returns the row
+                raise RuntimeError("INSERT INTO source returned no row")
+            source_id: UUID = row[0]
+            await _add_streams(conn, source_id, found.id, access.owner_id, keys, schedule)
+            return await _reload(conn, access, source_id)
+    except errors.UniqueViolation as error:
+        if error.diag.constraint_name == _SOURCE_NAME_KEY:
+            raise SourceExistsError(f"the workspace has a source named {name}") from None
+        raise
+
+
+def _mcp_changes(
+    source: Source,
+    changes: SourceUpdate,
+    filters: SourceFilters | Unset,
+    policy: EgressPolicy,
+) -> tuple[dict[str, Any] | None, tuple[str, ...] | Unset]:
+    """The new ``config`` of an mcp source, if a setting of it changes, and its new stream keys.
+
+    A new recipe is checked with the source's stream keys and window as they will be."""
+    mcp = source.mcp
+    recipe_changed = not (
+        isinstance(changes.recipe_toml, Unset) and isinstance(changes.recipe_name, Unset)
+    )
+    touched = recipe_changed or not (
+        isinstance(changes.endpoint, Unset)
+        and isinstance(changes.window, Unset)
+        and isinstance(changes.streams, Unset)
+        and isinstance(filters, Unset)
+    )
+    if mcp is None or not touched:
+        return None, UNSET
+    with _mcp_checks():
+        endpoint = mcp.endpoint
+        if not isinstance(changes.endpoint, Unset):
+            endpoint = check_endpoint(changes.endpoint, policy)
+        ref = mcp.recipe
+        recipe: Recipe | None = None
+        if recipe_changed:
+            ref, recipe = _new_recipe(
+                None if isinstance(changes.recipe_toml, Unset) else changes.recipe_toml,
+                None if isinstance(changes.recipe_name, Unset) else changes.recipe_name,
+            )
+        elif not (isinstance(changes.window, Unset) and isinstance(changes.streams, Unset)):
+            if ref is None:
+                raise McpConfigError("recipe", "the source holds no recipe; set one")
+            recipe = load_recipe_ref(ref)
+        window = dict(mcp.window)
+        keys: tuple[str, ...] | Unset = UNSET
+        if recipe is not None:
+            if not isinstance(changes.window, Unset):
+                window = check_window(changes.window, recipe)
+            elif recipe_changed:
+                window = check_window(window, recipe)
+            if not isinstance(changes.streams, Unset):
+                keys = check_stream_keys(changes.streams, recipe)
+            elif recipe_changed:
+                check_stream_keys(source.refs, recipe)
+    config = McpConfig(endpoint=endpoint, recipe=ref, window=window).to_json()
+    config |= _filters_config(
+        (source.filters or SourceFilters()) if isinstance(filters, Unset) else filters
+    )
+    return config, keys
+
+
 async def update_source(
-    conn: Conn, access: WriteAccess, workspace: str, name: str, changes: SourceUpdate
+    conn: Conn,
+    access: WriteAccess,
+    workspace: str,
+    name: str,
+    changes: SourceUpdate,
+    *,
+    policy: EgressPolicy | None = None,
 ) -> Source:
     """Change the settings of a source; see :class:`SourceUpdate`. Returns the source as changed.
+
+    ``policy`` checks a new endpoint of an mcp source; without it, none is allowed.
 
     A new schedule applies to every stream and sets their ``next_run_at`` to NULL; streams already
     on it are left alone. New refs get streams on the source's schedule; streams of refs no longer
@@ -948,6 +1155,18 @@ async def update_source(
                     "refs" if not isinstance(refs, Unset) else "include",
                     f"refs and path rules are settings of git sources, not of {source.kind}",
                 )
+            mcp_only = [
+                setting
+                for setting in ("streams", "endpoint", "recipe_toml", "recipe_name", "window")
+                if not isinstance(getattr(changes, setting), Unset)
+            ]
+            if source.kind != "mcp" and mcp_only:
+                raise InvalidSourceError(
+                    mcp_only[0].removesuffix("_toml").removesuffix("_name"),
+                    "streams, endpoint, recipe and window are settings of mcp sources, not of"
+                    f" {source.kind}",
+                )
+            mcp_config, mcp_keys = _mcp_changes(source, changes, filters, policy or EgressPolicy())
             if git is not None and not isinstance(filters, Unset):
                 raise InvalidSourceError(
                     "filters",
@@ -979,10 +1198,14 @@ async def update_source(
                     ),
                 )
                 assign("config", Jsonb(config.to_json()))
-            if not isinstance(filters, Unset):
-                # Only the filters of the configuration: an mcp source keeps the rest of it.
+            if mcp_config is not None:
+                assign("config", Jsonb(mcp_config))
+            elif not isinstance(filters, Unset):
+                # Only the filters of the configuration.
                 assignments.append(sql.SQL("config = (config - 'filters') || %s"))
                 params.append(Jsonb(_filters_config(filters)))
+            if not isinstance(mcp_keys, Unset):
+                refs = mcp_keys
             if not isinstance(visibility, Unset):
                 assign("visibility", visibility)
             if not isinstance(retention_days, Unset):

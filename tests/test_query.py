@@ -29,6 +29,7 @@ from memini.embeddings import (
     FakeEmbedder,
     OpenAICompatibleEmbedder,
 )
+from memini.executors.service import MCP_SYNC
 from memini.gitsync import GIT_SYNC
 from memini.mcp import MCP_PATH
 from memini.mcp.query import (
@@ -579,7 +580,7 @@ async def test_serve_shares_one_embedder_and_closes_it_once(tmp_path: Path) -> N
     async with service_embedder(settings) as embedder:
         assert isinstance(embedder, OpenAICompatibleEmbedder)
         async with job_handlers(settings, NO_POOL, embedder=embedder) as handlers:
-            assert set(handlers) == {GIT_SYNC, RETENTION}
+            assert set(handlers) == {GIT_SYNC, MCP_SYNC, RETENTION}
         # The handlers leave the shared embedder open: its client still answers.
         assert not embedder._client.is_closed  # pyright: ignore[reportPrivateUsage]
     assert embedder._client.is_closed  # pyright: ignore[reportPrivateUsage]

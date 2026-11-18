@@ -5,11 +5,12 @@ checked, never fetched; the one repository that is fetched is made by the test i
 directory listed in git_local_roots.
 """
 
+import json
 import os
 import shutil
 import subprocess
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any, LiteralString
 
@@ -19,12 +20,14 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 from pydantic import SecretStr
 
+from hearth_helpers import HEARTH_RECIPE_PATH, hearth_parser
 from memini.api import create_app
 from memini.auth import Scope, create_token
 from memini.config import Settings
 from memini.db import Pool, connect, open_pool
 from memini.git import GitOptions, MirrorManager
 from memini.jobs import enqueue_due_streams, source_lock_key
+from memini.recipes import register_parser, unregister_parser
 from memini.runs import record_run
 from memini.workspaces import ensure_principal
 
@@ -35,6 +38,7 @@ type Json = dict[str, Any]
 
 SECRET = "fake-password-for-tests-only-91ac"  # noqa: S105 - fake, for leak checks
 REMOTE = "https://git.example.invalid/team/site.git"
+MCP_HOST = "hearth.example"
 
 
 @pytest.fixture
@@ -50,6 +54,7 @@ def git_settings(migrated_database_url: str, tmp_path: Path, repos: Path) -> Set
         database_url=SecretStr(migrated_database_url),
         git_mirror_dir=tmp_path / "mirrors",
         git_local_roots=(repos,),
+        mcp_allowed_endpoints=(MCP_HOST,),
     )
 
 
@@ -820,3 +825,103 @@ async def test_a_source_is_not_deleted_while_a_job_of_it_runs(
 
     ok(await client.delete(path, headers=admin), 204)
     assert await scalar(db, "SELECT count(*) FROM source WHERE id = %s", source_id) == 0
+
+
+# --- mcp sources ---------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def hearth_parser_registered() -> Iterator[None]:
+    register_parser("hearth.thread", hearth_parser(), replace=True)
+    yield
+    unregister_parser("hearth.thread")
+
+
+def mcp_body(**changes: Any) -> Json:
+    body: Json = {
+        "kind": "mcp",
+        "name": "chat",
+        "endpoint": {"url": f"https://{MCP_HOST}/mcp"},
+        "recipe": {"toml": HEARTH_RECIPE_PATH.read_text(encoding="utf-8")},
+        "streams": ["C0042"],
+        "schedule_seconds": 900,
+        "window": {"initial": "3d"},
+        "filters": {"exclude_authors": ["*bot*"]},
+    }
+    return body | changes
+
+
+async def test_an_mcp_source_is_added_shown_changed_and_synced_over_http(
+    client: httpx2.AsyncClient, db: Conn, admin: dict[str, str], hearth_parser_registered: None
+) -> None:
+    await new_workspace(client, admin, "alpha")
+    path = "/v1/workspaces/alpha/sources"
+    created = ok(await client.post(path, json=mcp_body(), headers=admin), 201)
+
+    assert (created["kind"], created["refs"], created["schedule_seconds"]) == (
+        "mcp",
+        ["C0042"],
+        900,
+    )
+    assert created["mcp"]["endpoint"] == {
+        "url": f"https://{MCP_HOST}/mcp",
+        "command": None,
+        "args": [],
+        "credential_env": None,
+    }
+    recipe = created["mcp"]["recipe"]
+    assert (recipe["name"], recipe["bundled"], len(recipe["digest"])) == ("hearth", False, 64)
+    assert created["mcp"]["window"] == {"initial": "3d"}
+    assert created["filters"]["exclude_authors"] == ["*bot*"]
+    assert "toml" not in json.dumps(created)  # the recipe's text is not sent back
+    assert ok(await client.get(f"{path}/chat", headers=admin)) == created
+
+    changed = ok(
+        await client.patch(
+            f"{path}/chat",
+            json={"streams": ["C0042", "C0043"], "window": {}, "filters": {}},
+            headers=admin,
+        )
+    )
+    assert changed["refs"] == ["C0042", "C0043"]
+    assert changed["mcp"]["window"] == {}
+    assert changed["filters"]["exclude_authors"] == []
+    assert changed["mcp"]["recipe"] == recipe
+
+    accepted = ok(await client.post(f"{path}/chat/sync", headers=admin), 202)
+    assert [job["stream"] for job in accepted["jobs"]] == ["C0042", "C0043"]
+    kinds = await db.execute("SELECT DISTINCT kind FROM job")
+    assert [row[0] for row in await kinds.fetchall()] == ["mcp_sync"]
+
+
+async def test_an_mcp_source_is_refused_without_echoing_what_was_sent(
+    client: httpx2.AsyncClient, db: Conn, admin: dict[str, str], hearth_parser_registered: None
+) -> None:
+    await new_workspace(client, admin, "alpha")
+    path = "/v1/workspaces/alpha/sources"
+    for body, setting in (
+        ({"endpoint": {"url": f"https://{SECRET}.example/mcp"}}, "endpoint.url"),
+        ({"endpoint": {"url": f"http://{MCP_HOST}/mcp"}}, "endpoint.url"),
+        ({"endpoint": {"url": f"https://user:{SECRET}@{MCP_HOST}/mcp"}}, "endpoint.url"),
+        ({"endpoint": {"command": "/bin/sh", "args": [SECRET]}}, "endpoint.command"),
+        ({"recipe": {"toml": f"format = 1\nname = '{SECRET}'\n"}}, "recipe"),
+        ({"recipe": {"bundled": "hearth"}}, "recipe"),
+        ({"streams": [SECRET]}, "streams"),
+        ({"window": {"initial": SECRET}}, "window.initial"),
+    ):
+        response = await client.post(path, json=mcp_body(**body), headers=admin)
+        error = refused(response, 422, "invalid_source")
+        assert error["message"].startswith(f"The source setting {setting} is not valid"), body
+        assert SECRET not in response.text
+    malformed: list[Json] = [
+        {"endpoint": {"url": f"https://{MCP_HOST}/mcp", "command": "/bin/true"}},
+        {"recipe": {}},
+        {"streams": []},
+    ]
+    for change in malformed:
+        refused(
+            await client.post(path, json=mcp_body(**change), headers=admin),
+            422,
+            "validation_error",
+        )
+    assert await scalar(db, "SELECT count(*) FROM source") == 0
