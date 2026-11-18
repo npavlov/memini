@@ -10,7 +10,8 @@ Layout of the application :func:`create_app` builds:
   for the authorization filter and a write route for its write access, through
   :mod:`memini.api.auth`. Administration: workspaces (:mod:`memini.api.workspaces`), sources and
   streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`), tokens
-  (:mod:`memini.api.tokens`). Intake: batches of records for push sources
+  (:mod:`memini.api.tokens`). Freshness: ``GET /v1/status`` (:mod:`memini.api.status`), the same
+  answer as the MCP ``status`` tool. Intake: batches of records for push sources
   (:mod:`memini.api.ingest`). Queries: search, code search, symbols and reading files
   (:mod:`memini.api.query`), the same calls as the MCP tools. Knowledge: recording,
   superseding, closing and retracting decisions by hand (:mod:`memini.api.decisions`), the same
@@ -51,6 +52,7 @@ from memini.api.query import build_query_router
 from memini.api.request_id import RequestIdMiddleware
 from memini.api.runs import build_runs_router
 from memini.api.sources import build_sources_router
+from memini.api.status import build_status_router
 from memini.api.tokens import build_tokens_router
 from memini.api.workspaces import build_workspaces_router
 from memini.auth import Authenticator, pool_authenticator
@@ -178,6 +180,7 @@ def create_app(
     v1.include_router(build_sources_router())
     v1.include_router(build_ingest_router())
     v1.include_router(build_runs_router())
+    v1.include_router(build_status_router())
     v1.include_router(build_tokens_router())
     v1.include_router(build_query_router())
     v1.include_router(build_decisions_router())

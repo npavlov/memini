@@ -383,7 +383,7 @@ in the index fingerprint (`payload/1`).
 | `get_meeting` | Summary, action items, participants, transcript on request. |
 | `list_messages` | Messages to me, mentioning me, or from a person, by source and time. |
 | `get_thread` | A whole thread. |
-| `status` | Stream lag, last results, index state. |
+| `status` | Stream lag, last results, failures, history loaded, index state per workspace. |
 | `add_document`, `record_decision`, `supersede_decision`, `close_decision`, `retract_decision` | Writes; off unless the token has the `ingest` scope. |
 
 Every result carries source kind, locator or URL, timestamp, and `repo@sha` for code. Decisions carry
@@ -470,6 +470,38 @@ read, 409 for a repository not synced yet, 503 for a stale index (the message na
 `memini reindex`) or no embedding provider. Every search mode needs the embedder, whose spec the
 fingerprint check compares (principle 9); reading code needs none. `serve` makes one embedder for
 search and sync, so a local model is loaded once.
+
+**Status** (decided 2026-11-18; principle 10). One function, `memini.status.read_status`, answers
+the MCP `status` tool, `GET /v1/status` (scope `read`) and `memini status` (a table; `--json` prints
+the answer), through the authorization filter. Per stream: the newest run (id, kind, status,
+times), the failed runs since the newest that succeeded or was partial and the newest of them
+(every attempt of a job is a run; a cancelled run neither counts nor ends the count), the lag, the
+history frontier `checked_from` and, for a stream the intake planner plans, the history start its
+newest planned run recorded (`details.plan`) and whether the frontier has reached it, the git pin
+(commit, `partial`) and `missing`, and its live records and how many of them are not indexed. A
+record is not indexed when it is live, keeps a payload and has no chunk; files of a repository are
+not counted, as they keep no payload, an empty file has no chunk, and a git sync writes a file's
+chunks with its record or not at all. Per workspace: its index against the fingerprint of the
+service's embedder (`ok`, `stale`, `none` when nothing is indexed, `off` without an embedding
+provider), the model it was built with and what changed, live records, records not indexed,
+chunks, and, when it is behind, the command `memini reindex --workspace NAME`. A stream is behind
+for `never_checked` and `lag` (the schedule rule: a scheduled stream is behind once its lag is
+over twice its schedule), `not_indexed` (records not indexed while a provider is set) and
+`index_stale` (its workspace's index is); its `current` is false when it is behind, true when it
+is scheduled and is not, and null for a stream without a schedule that is not behind. A
+workspace's index is behind when it is stale, or holds records not indexed while a provider is
+set. The base is current when the database is reachable and no stream and no workspace's index is
+behind. A ref missing at the remote and a history still loading are reported, not counted as
+behind. Without a provider nothing is indexed or searched, so records not indexed are counted but
+not judged. Errors (principle 11): a run's error is what the service's own code wrote, the type
+and message of an exception from git, the index, a provider or the database, or a reason a job
+chose; it names ids, refs, paths, settings and fields, never the content of a record (a refused
+batch names the field, never the value), and it is redacted when it is written. Status shows its
+first line only (a database error's `DETAIL` line can quote a key value), redacted again, without
+control characters, at most 200 characters; the whole text stays on the run, behind
+`GET /v1/runs/{id}` for the same scope. An error class or code alone was not chosen: what to act
+on (the remote that refused, the setting that is missing) is in the message, and the runs and
+streams routes already show the whole text to a `read` token.
 
 ## 7. Service and deployment
 

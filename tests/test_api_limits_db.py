@@ -22,6 +22,7 @@ from memini.api import create_app
 from memini.auth import ReadFilter, Scope, create_token
 from memini.config import Settings
 from memini.db import TIMEOUT_ERRORS, Pool, SessionLimits, connect, open_pool, session_limits
+from memini.index import IndexFingerprint
 from memini.mcp import MCP_PATH
 from memini.workspaces import ensure_principal
 
@@ -173,9 +174,11 @@ async def test_mcp_tools_run_under_the_request_limits(
     seen: list[tuple[str, str]] = []
     read = status._read  # pyright: ignore[reportPrivateUsage]
 
-    async def watched_read(conn: Conn, access: ReadFilter) -> status.ServiceStatus:
+    async def watched_read(
+        conn: Conn, access: ReadFilter, fingerprint: IndexFingerprint | None
+    ) -> status.ServiceStatus:
         seen.append(await limits_of(conn))
-        return await read(conn, access)
+        return await read(conn, access, fingerprint)
 
     monkeypatch.setattr(status, "_read", watched_read)
     settings = settings_for(

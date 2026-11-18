@@ -24,6 +24,7 @@ from memini.index.fingerprint import (
     embedding_key,
     ensure_index,
     read_index_state,
+    read_index_states,
     reindex_command,
     set_index_fingerprint,
 )
@@ -101,6 +102,7 @@ __all__ = [
     "index_record",
     "lock_record",
     "read_index_state",
+    "read_index_states",
     "reindex",
     "reindex_command",
     "set_index_fingerprint",

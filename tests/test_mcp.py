@@ -41,13 +41,16 @@ from memini.mcp import (
 )
 from memini.mcp.status import summarize_status
 from memini.status import (
+    MAX_ERROR_LINE,
     STALE_AFTER_SCHEDULES,
     DatabaseStatus,
     IndexStatus,
-    RunSummary,
     ServiceStatus,
+    StreamRun,
     StreamStatus,
+    WorkspaceIndex,
     WorkspaceStatus,
+    error_line,
     stream_is_current,
 )
 
@@ -182,7 +185,9 @@ async def test_status_without_a_database_says_so_and_is_not_current(
         "expected_schema_version": len(load_migrations()),
     }
     assert structured["workspaces"] == []
-    assert structured["index"]["state"] == "none"
+    # No embedding provider in the settings: there is no index to speak of.
+    assert structured["index"]["state"] == "off"
+    assert structured["index"]["configured"] is None
     datetime.fromisoformat(structured["as_of"])  # ISO 8601
     text = text_of(result.content[0])
     assert "Current: no." in text
@@ -452,10 +457,23 @@ def test_stream_is_current(
     assert stream_is_current(schedule, lag) is expected
 
 
+RUN = uuid.UUID("00000000-0000-7000-8000-0000000000c1")
+OFF = WorkspaceIndex(
+    state="off",
+    built_with=None,
+    changed=[],
+    records=0,
+    records_not_indexed=0,
+    chunks=0,
+    behind=False,
+    reindex=None,
+)
+
+
 def test_the_summary_names_the_streams_that_are_behind() -> None:
     as_of = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 
-    def stream(key: str, lag: float | None, run: RunSummary | None) -> StreamStatus:
+    def stream(key: str, lag: float | None, run: StreamRun | None) -> StreamStatus:
         return StreamStatus(
             source="code",
             source_kind="git",
@@ -467,7 +485,9 @@ def test_the_summary_names_the_streams_that_are_behind() -> None:
             last_run=run,
         )
 
-    failed = RunSummary(status="failed", started_at=as_of, finished_at=as_of)
+    failed = StreamRun(
+        id=RUN, kind="git_sync", status="failed", started_at=as_of, finished_at=as_of
+    )
     result = ServiceStatus(
         version="9.9.9",
         as_of=as_of,
@@ -482,9 +502,10 @@ def test_the_summary_names_the_streams_that_are_behind() -> None:
                     stream("refs/heads/dev", 7200.0, failed),
                     stream("refs/heads/new", None, None),
                 ],
+                index=OFF,
             )
         ],
-        index=IndexStatus(state="none", note="No index."),
+        index=IndexStatus(state="off", configured=None, note="No index."),
     )
 
     assert summarize_status(result).splitlines() == [
@@ -501,7 +522,9 @@ def test_the_summary_names_the_streams_that_are_behind() -> None:
 
 def test_the_summary_names_the_streams_missing_at_the_source() -> None:
     as_of = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
-    succeeded = RunSummary(status="succeeded", started_at=as_of, finished_at=as_of)
+    succeeded = StreamRun(
+        id=RUN, kind="git_sync", status="succeeded", started_at=as_of, finished_at=as_of
+    )
     gone = StreamStatus(
         source="code",
         source_kind="git",
@@ -520,10 +543,13 @@ def test_the_summary_names_the_streams_missing_at_the_source() -> None:
         database=DatabaseStatus(reachable=True, schema_version=2, expected_schema_version=2),
         workspaces=[
             WorkspaceStatus(
-                id=uuid.UUID("00000000-0000-7000-8000-0000000000a1"), name="alpha", streams=[gone]
+                id=uuid.UUID("00000000-0000-7000-8000-0000000000a1"),
+                name="alpha",
+                streams=[gone],
+                index=OFF,
             )
         ],
-        index=IndexStatus(state="none", note="No index."),
+        index=IndexStatus(state="off", configured=None, note="No index."),
     )
 
     assert summarize_status(result).splitlines()[3:] == [
@@ -532,3 +558,109 @@ def test_the_summary_names_the_streams_missing_at_the_source() -> None:
         "last run succeeded at 2026-01-02T03:04:05+00:00",
         "Index: No index.",
     ]
+
+
+def test_the_summary_names_failures_unindexed_records_and_stale_indexes() -> None:
+    as_of = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    failed = StreamRun(
+        id=RUN,
+        kind="git_sync",
+        status="failed",
+        started_at=as_of,
+        finished_at=as_of,
+        error="GitCommandError: git fetch failed (exit 128)",
+    )
+    failing = StreamStatus(
+        source="code",
+        source_kind="git",
+        key="refs/heads/main",
+        schedule_seconds=900.0,
+        checked_until=as_of,
+        lag_seconds=60.0,
+        current=False,
+        behind=["index_stale"],
+        last_run=failed,
+        failures=3,
+        last_failure=failed,
+    )
+    pushed = StreamStatus(
+        source="notes",
+        source_kind="push",
+        key="inbox",
+        schedule_seconds=None,
+        checked_until=as_of,
+        lag_seconds=60.0,
+        current=False,
+        behind=["not_indexed", "index_stale"],
+        last_run=None,
+        records=4,
+        records_not_indexed=4,
+    )
+    stale = WorkspaceIndex(
+        state="stale",
+        built_with="model old (openai_compatible, dimension 8)",
+        changed=["model", "dimension"],
+        records=10,
+        records_not_indexed=4,
+        chunks=12,
+        behind=True,
+        reindex="memini reindex --workspace alpha",
+    )
+    result = ServiceStatus(
+        version="9.9.9",
+        as_of=as_of,
+        current=False,
+        database=DatabaseStatus(reachable=True, schema_version=2, expected_schema_version=2),
+        workspaces=[
+            WorkspaceStatus(
+                id=uuid.UUID("00000000-0000-7000-8000-0000000000a1"),
+                name="alpha",
+                streams=[failing, pushed],
+                index=stale,
+            )
+        ],
+        index=IndexStatus(state="stale", configured="model new", note="Stale in alpha."),
+    )
+
+    assert summarize_status(result).splitlines()[3:] == [
+        "Workspaces: 1; streams: 2; behind or never checked: 2.",
+        "- alpha/code (git) refs/heads/main: lag 60s, schedule 15m, last run failed at"
+        " 2026-01-02T03:04:05+00:00; failed 3 times in a row: GitCommandError: git fetch failed"
+        " (exit 128); index stale",
+        "- alpha/notes (push) inbox: lag 60s, no run yet; 4 records not indexed; index stale",
+        "Index: Stale in alpha.",
+        "- alpha: index stale (changed: model, dimension), 4 records not indexed;"
+        " run `memini reindex --workspace alpha`",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("stored", "shown"),
+    [
+        (None, None),
+        ("", None),
+        ("RuntimeError", "RuntimeError"),
+        # The first line only: a database error's DETAIL can quote a key value.
+        (
+            "UniqueViolation: duplicate key value\nDETAIL: Key (external_id)=(general/0001)",
+            "UniqueViolation: duplicate key value",
+        ),
+        # Redacted again: a URL password, a token.
+        (
+            "GitCommandError: fetch https://bot:hunter2-synthetic@git.example.invalid/a.git",
+            "GitCommandError: fetch https://bot:[REDACTED]@git.example.invalid/a.git",
+        ),
+        ("ValueError: \x1b[31mred\x1b[0m", "ValueError: [31mred[0m"),
+    ],
+)
+def test_status_shows_one_redacted_line_of_a_run_error(
+    stored: str | None, shown: str | None
+) -> None:
+    assert error_line(stored) == shown
+
+
+def test_status_cuts_a_long_error_line() -> None:
+    line = error_line("ValueError: " + "x" * 500)
+    assert line is not None
+    assert len(line) == MAX_ERROR_LINE
+    assert line.endswith("…")

@@ -31,6 +31,7 @@ from memini.auth import (
 )
 from memini.config import Settings
 from memini.db import Pool, connect, open_pool
+from memini.embeddings import FakeEmbedder
 from memini.mcp import MCP_PATH
 from memini.status import expected_schema_version
 from memini.workspaces import create_workspace, ensure_principal
@@ -271,8 +272,60 @@ async def test_status_reports_every_stream_the_token_may_read(
     assert inbox["current"] is False
     assert inbox["last_run"]["status"] == "running"
     assert inbox["last_run"]["finished_at"] is None
+    # The failed run before it is followed by one that succeeded: no failures in a row.
+    assert (main["failures"], main["last_failure"]) == (0, None)
+    assert main["behind"] == []
+    assert dev["behind"] == ["never_checked"]
+    assert inbox["behind"] == ["lag"]
+    assert inbox["failures"] == 0
 
-    assert status["index"]["state"] == "none"
+    # The application has no embedding provider: no index, nothing judged by it.
+    assert status["index"]["state"] == "off"
+    assert [w["index"]["state"] for w in status["workspaces"]] == ["off", "off"]
+
+
+async def test_the_status_tool_judges_the_index_with_the_service_s_embedder(
+    settings: Settings, pool: Pool, db: Conn, world: World
+) -> None:
+    notes = await insert_source(db, world, world.beta, "notes", "push")
+    inbox = await insert_stream(
+        db, world, world.beta, notes, "inbox", checked_ago="1 minute", schedule=None
+    )
+    # A thread stored while no embedding provider was set: a payload, no chunk.
+    await db.execute(
+        "INSERT INTO record (id, workspace_id, owner_id, source_id, stream_id, kind, external_id,"
+        " content_hash, occurred_at, payload, normalized_text)"
+        " VALUES (record_id(%s, 'thread', 'inbox/0001'), %s, %s, %s, %s, 'thread', 'inbox/0001',"
+        " repeat('0', 64), now(), %s, 'synthetic text')",
+        (notes, world.beta, world.owner, notes, inbox, b'{"messages":[]}'),
+    )
+    app = create_app(settings, pool=pool, embedder=FakeEmbedder())
+
+    status = await call_status(app, await new_token(db, world, "read"))
+
+    assert status["current"] is False
+    assert status["index"]["state"] == "behind"
+    alpha, beta = status["workspaces"]
+    assert alpha["index"]["state"] == "none"
+    assert beta["index"]["records_not_indexed"] == 1
+    assert beta["index"]["reindex"] == "memini reindex --workspace beta"
+    assert beta["streams"][0]["behind"] == ["not_indexed"]
+    assert beta["streams"][0]["current"] is False
+
+    async with mcp_client(app, await new_token(db, world, "read")) as client:
+        result = await client.call_tool("status", {})
+    lines = [
+        line
+        for content in result.content
+        if content.type == "text"
+        for line in content.text.splitlines()
+    ]
+    (inbox_line,) = (line for line in lines if line.startswith("- beta/notes (push) inbox: lag "))
+    assert inbox_line.endswith(", no run yet; 1 records not indexed")
+    text = "\n".join(lines)
+    assert (
+        "- beta: index none, 1 records not indexed; run `memini reindex --workspace beta`" in text
+    )
 
 
 @pytest.mark.usefixtures("streams")

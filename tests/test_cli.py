@@ -199,7 +199,17 @@ def test_help_lists_client_and_operator_commands_apart(
     assert result.code == EXIT_OK
     client, operator = result.out.split("\nclient commands", 1)[1].split("\noperator commands")
     listed = {line.split()[0] for line in client.splitlines() if line.startswith("  ")}
-    assert listed == {"workspace", "source", "streams", "sync", "runs", "run", "token", "search"}
+    assert listed == {
+        "workspace",
+        "source",
+        "streams",
+        "sync",
+        "runs",
+        "run",
+        "status",
+        "token",
+        "search",
+    }
     operator_part = operator.split("\n\n")[0]
     listed = {line.split()[0] for line in operator_part.splitlines() if line.startswith("  ")}
     assert listed == {

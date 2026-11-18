@@ -19,6 +19,7 @@ mirrors and writes run reports; no database credentials leave it::
     memini sync <workspace> <source> [--stream KEY ...] [--wait]
     memini runs <workspace> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
     memini run <run-id>
+    memini status
     memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME]
                         [--name LABEL] [--expires-in DURATION]
     memini token list | revoke <id-or-prefix>
@@ -120,6 +121,7 @@ from memini.cli import (
     search,
     serve,
     sources,
+    status,
     tokens,
 )
 from memini.cli.arguments import (
@@ -342,6 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
     # --- Client commands: HTTP clients of the running service ------------------------------------
     sources.add_commands(commands)
     runs.add_commands(commands)
+    status.add_commands(commands)
     tokens.add_commands(commands)
     search.add_commands(commands)
 

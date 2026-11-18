@@ -37,6 +37,7 @@ from uuid import UUID
 from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow
 
+from memini.auth import ReadFilter
 from memini.chunking import chunker_fingerprint
 from memini.config import EmbeddingPooling, EmbeddingProvider
 from memini.embeddings.base import EmbeddingSpec, Normalization
@@ -55,6 +56,7 @@ __all__ = [
     "embedding_key",
     "ensure_index",
     "read_index_state",
+    "read_index_states",
     "reindex_command",
     "set_index_fingerprint",
 ]
@@ -223,6 +225,23 @@ async def check_index(
     if state is not None and state.fingerprint != expected.digest:
         raise IndexMismatchError(state, expected)
     return state
+
+
+async def read_index_states(conn: Conn, access: ReadFilter) -> dict[UUID, IndexState]:
+    """The index state of every workspace ``access`` may read that has one, by workspace id. For
+    status (:mod:`memini.status`): a workspace without a row has nothing indexed yet."""
+    query = sql.SQL(
+        "SELECT {columns} FROM index_state s JOIN workspace w ON w.id = s.workspace_id"
+        " WHERE {readable}"
+    ).format(
+        columns=_STATE_COLUMNS,
+        readable=access.where(
+            workspace_id=sql.Identifier("s", "workspace_id"),
+            owner_id=sql.Identifier("s", "owner_id"),
+        ),
+    )
+    cur = await conn.execute(query)
+    return {state.workspace_id: state for state in map(_state, await cur.fetchall())}
 
 
 async def ensure_index(
