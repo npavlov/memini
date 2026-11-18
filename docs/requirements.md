@@ -97,13 +97,42 @@ A knowledge item is a `decision` or an `open_question`:
 | `statement` | One or two sentences: what was decided or asked. |
 | `decided_at` | When it was said (event time). |
 | `participants` | Persons involved. |
-| `evidence` | One or more record references, with a message anchor inside a thread or meeting. |
-| `status` | `active`, `superseded`, `closed`. |
+| `evidence` | One or more record references, with a message anchor inside a thread or meeting, a commit in code. |
+| `status` | `active`, `superseded`, `closed`, `retracted`. |
 | `supersedes` | Ids of earlier items this one replaces or answers. Stored only on the new item. |
 | `recorded_at`, `invalidated_at` | When the service learned it and when it stopped being current. |
 | `extractor` | Model and prompt version, or `manual`. |
 
 The journal is append-only. Corrections are new items or supersession links, never edits of old items.
+
+**Knowledge journal** (decided 2026-11-18). The database enforces the journal, not only the code
+that writes it. Triggers refuse any change of a stored item (statement, kind, `decided_at`,
+extractor, times), of its evidence, participants and links, and every delete or truncate except of
+a whole workspace. The status changes once, from `active`: to `superseded` by a link from a newer
+item that `replaces` it; to `closed` by a link from a decision that `answers` an open question, or
+by hand without a replacement; to `retracted` by hand when the item was wrong (a misread extraction,
+a mistake). `invalidated_at` is set with the change to the time of its transaction, as `recorded_at`
+is set to the time of the transaction that records the item; the database sets both. Retracted is a
+status, not a separate mark: an item is current or not for one reason, and the history shows which.
+A link is a row stored on the newer item only; inserting it supersedes the earlier item in the same
+statement. Both items must be active and in one workspace, the newer one said no earlier than the
+other, and `answers` goes from a decision to an open question. So an item is superseded at most
+once, and links cannot close a cycle (the database checks for one anyway). Extraction never
+supersedes or answers an item recorded by hand, so a manual correction survives a re-extraction. An
+item without evidence is not stored, a manual one included: the database checks at commit that it
+has evidence, and evidence and participants are written in the transaction that records their item.
+A decision taken in a conversation is first stored as a document, then cited. Evidence is a record
+id and an anchor: the message id in a thread; a segment, offset or section in a meeting; the commit
+in a code file (`<sha>`, `<sha>#symbol`, `<sha>#L12-L30`); a heading trail, lines or nothing in a
+document. It has no foreign key to the record and keeps a copy of the record's source, kind,
+external id and URL, which the database takes from the record. Retention, forget and deleting a
+source therefore leave the item and its reference, shown as gone, and a record ingested again is
+found by its unchanged id. Evidence holds no quote, so no text of a record outlives the record. A
+person cited as a participant cannot be deleted. Extraction is idempotent through one row per
+record, content hash and extractor (model and prompt version), written with the items found, also
+when none were: the same content read again by the same extractor writes nothing. Tables:
+`knowledge_item`, `knowledge_evidence`, `knowledge_participant`, `knowledge_supersession`,
+`knowledge_extraction`; library: `memini.knowledge`.
 
 ## 4. Intake
 
@@ -228,7 +257,8 @@ status and evidence links.
 ### HTTP API
 
 Mirrors the MCP tools and adds administration: workspaces, sources, streams, runs, ingest, recipe plans,
-persons and aliases, reindex, forget (hard delete of a record and everything derived from it).
+persons and aliases, reindex, forget (hard delete of a record, its raw responses and its index;
+knowledge items that cite it stay and keep their reference, section 3).
 
 **Source administration** (decided 2026-11-18, open question 4). Source configuration lives in the
 database and is managed through the HTTP API and the CLI; there is no configuration file applied on
