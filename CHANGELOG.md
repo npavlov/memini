@@ -106,6 +106,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `memini person ...`.
 - Raw MCP responses are stored (redacted) per window; `memini replay` re-runs a parser over them without
   calling the source.
+- Compose passes every service setting from an optional `.env.memini` (`.env.memini.example`) and mounts
+  keys, tokens and the ssh key as compose secrets, with their paths in `.env`; needs Docker Compose
+  2.24.0. Embedding, log-level and request-limit settings move from `.env` to `.env.memini`, with
+  `MEMINI_EMBEDDING_URL=http://host.docker.internal:11434/v1` next to the provider.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
