@@ -206,7 +206,8 @@ class BatchBody(BaseModel):
 
 
 class IngestCounts(BaseModel):
-    """Each item of the batch counts once, in inserted, updated, revived, deleted or unchanged."""
+    """Each item of the batch counts once, in inserted, updated, revived, deleted, unchanged or
+    forgotten."""
 
     inserted: int = Field(description="Records stored for the first time.")
     updated: int = Field(description="Records written again: another payload, time, URL or stream.")
@@ -219,6 +220,10 @@ class IngestCounts(BaseModel):
     reconciled: int = Field(
         description="Records of the stream in a snapshot's window that the snapshot left out:"
         " deleted now."
+    )
+    forgotten: int = Field(
+        default=0,
+        description="Records that were forgotten (POST …/forget): left out, not stored again.",
     )
 
 
@@ -294,6 +299,7 @@ class IngestAccepted(BaseModel):
                 deleted=result.deleted,
                 unchanged=result.unchanged,
                 reconciled=result.reconciled,
+                forgotten=result.forgotten,
             ),
             checkpoint=None
             if checkpoint is None

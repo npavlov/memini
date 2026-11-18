@@ -128,11 +128,12 @@ id and an anchor: the message id in a thread; a segment, offset or section in a 
 in a code file (`<sha>`, `<sha>#symbol`, `<sha>#L12-L30`); a heading trail, lines or nothing in a
 document. It has no foreign key to the record and keeps a copy of the record's source, kind,
 external id and URL, which the database takes from the record. Retention, forget and deleting a
-source therefore leave the item and its reference, shown as gone, and a record ingested again is
-found by its unchanged id. Evidence holds no quote, so no text of a record outlives the record. A
-person cited as a participant cannot be deleted. Extraction is idempotent through one row per
-record, content hash and extractor (model and prompt version), written with the items found, also
-when none were: the same content read again by the same extractor writes nothing. Tables:
+source therefore leave the item and its reference, shown as expired, forgotten or gone (section 6,
+Forget; section 4, Retention), and a record ingested again is found by its unchanged id. Evidence
+holds no quote, so no text of a record outlives the record. A person cited as a participant cannot
+be deleted. Extraction is idempotent through one row per record, content hash and extractor (model
+and prompt version), written with the items found, also when none were: the same content read
+again by the same extractor writes nothing. Tables:
 `knowledge_item`, `knowledge_evidence`, `knowledge_participant`, `knowledge_supersession`,
 `knowledge_extraction`; library: `memini.knowledge`.
 
@@ -269,8 +270,9 @@ means rather than of its text, is recorded with each run.
 
 - Per-stream schedule, with an overlap margin behind the checkpoint to catch late replies.
 - First sync loads a short recent window; older history loads in steps on later runs.
-- Retention per source: expired raw records and their chunks are removed on every run. Knowledge items
-  outlive their raw evidence and keep the link.
+- Retention per source: expired raw records and their chunks are removed by a retention pass every
+  hour and at the end of every sync (Retention, below). Knowledge items outlive their raw evidence
+  and keep the link.
 - Filters per source: allowlists (channels, domains), exclusion patterns (bots, automated mail, meeting
   titles).
 - Separate locks per source, so a slow code index does not block message intake.
@@ -292,6 +294,29 @@ history step, `backfill` back from the frontier, until the frontier reaches the 
 window longer than `max_span` is split; forward windows run oldest first, history windows newest
 first, each one ingest batch that claims it, and each chain stops at its first incomplete window.
 The plan goes into the run report (`details.plan`), each window into a step of its own.
+
+**Retention** (decided 2026-11-18). A source with `retention_days` loses the records older than
+that, with their chunks, symbols, person links and raw responses (`memini.removal`, one deletion
+core shared with forget). For a push or mcp source a record expires by its `occurred_at`, live or
+a tombstone. For a git source only tombstones expire, by their `deleted_at`: its records are the
+files of the tree at the pinned commit, current whatever the time of their last change, and
+expiring them would leave the index short of what the source holds while a diff-based sync would
+never bring them back. The pass runs as a `retention` job of the source, under the source's job
+lock, so it takes turns with the source's syncs: the scheduler enqueues one for each source with a
+retention every `retention_interval` (1 hour), with the source id as dedupe key, from
+`source.retention_next_at`, which a changed `retention_days` resets so the change applies at
+once. A git sync also ends with a pass over its source (the step `retention`), and so will an mcp
+sync (M3); a push source has no sync, hence the scheduled job, which also covers a source whose
+syncs stopped. Both "on every run" readings were weighed: the end of a sync alone would never
+clean a push source, and the job alone leaves a syncing source up to an hour behind. A pass
+deletes `retention_batch_size` (1000) records per transaction, locked `FOR UPDATE SKIP LOCKED`
+so a record an ingest batch holds waits for the next pass, and counts each batch once it commits:
+`records_expired`, `chunks_deleted`, `symbols_deleted`, with `details.retention` (days, cutoff,
+rule). It writes no audit entry per record. A record knowledge evidence cites gets a row in
+`expired_record` in the same transaction, so its evidence reads `expired` rather than `gone`
+(`records_expired_cited`); other expired records leave no trace. A cited record sent again inside
+the retention reads `stored` again. Ingest does not refuse a record already past the retention:
+it is stored, then removed by the next pass, and the intake planner never asks for one (above).
 
 ## 5. Derive pipeline
 
@@ -415,6 +440,35 @@ or a person that is not found is a 404, a field the journal refuses a 422. Reads
 Mirrors the MCP tools and adds administration: workspaces, sources, streams, runs, tokens, ingest,
 recipe plans, persons and aliases, reindex, forget (hard delete of a record, its raw responses and
 its index; knowledge items that cite it stay and keep their reference, section 3).
+
+**Forget** (decided 2026-11-18). `POST /v1/workspaces/{workspace}/forget` (scope `admin`) and
+`memini forget <workspace> (--record ID | --source NAME --external-id ID [--kind KIND])` delete one
+record, live or a tombstone, named as evidence names one (its id, or its source and external id,
+with its kind when the source has two under that id; 422 `ambiguous_record` otherwise), in the
+request and in one transaction: the record row (payload and normalized text), its chunks and
+symbols, its person links, and the raw responses it was parsed from (the hook waits for the raw
+response store of M3). Run reports and job arguments hold counts and ids, never a record's text;
+a test scans every text, bytea, JSON, tsvector and array column of every table after a forget. A
+deleted row stays in the database files until Postgres reuses its space, and in backups taken
+before. Knowledge items that cite the record stay (principle 4) with their reference, never a
+quote; their evidence reads `forgotten`, and the answer counts them (`citing_items`). Persons seen
+in the record stay: a person is shared by the records that name them. The audit entry,
+`forgotten_record`, holds the workspace, who (the principal and the token of the request), when,
+and the record's id, source and kind; no external id, which can itself be private (a mail subject,
+a meeting title, a file name). A forgotten record does not come back: a later sync would otherwise
+store again an item that still exists upstream, and what the user removed must stay removed
+(principle 11). The audit entry is that list. A record id is derived from the source, kind and
+external id, so ingest and git sync, which compute it before they write, need nothing else: ingest
+leaves the record out and counts it `forgotten` (the run's `records_forgotten`), checked after it
+has locked the rows of its batch, so a batch that waited for a row a forget was deleting sees the
+entry; a git sync skips the file (`files_skipped_forgotten`), and forget takes the source's job
+lock (409 `source_busy` while a job of the source runs), so it never falls between a sync's plan
+and its writes. The file stays in the service's mirror, a copy of the remote, and `read_source`
+reads it there: a file kept out of the service is excluded from the source. Forget cannot be
+undone; deleting the source clears its entries' effect, since a source added again has new record
+ids. It is not an MCP tool: MCP tools are called by agents acting on retrieved text, which is data
+and never instructions (principle 11), and an irreversible hard delete is the user's decision, made
+with an admin token.
 
 **Source administration** (decided 2026-11-18, open question 4). Source configuration lives in the
 database and is managed through the HTTP API and the CLI; there is no configuration file applied on

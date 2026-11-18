@@ -16,10 +16,13 @@ The steps, recorded in the job's run report:
    next sync catches up from the pin.
 3. :func:`~memini.gitsync.sync.sync_stream` for each stream: ``diff`` or ``list``, then ``index``;
    or ``tombstone`` for a ref the remote no longer has, which is marked missing, not retried.
+4. ``retention``, only for a source with ``retention_days``: its tombstones deleted that long ago
+   are removed (:func:`~memini.removal.expire_source`); files of the tree never expire.
 """
 
 import os
 import shutil
+from contextlib import nullcontext
 from datetime import datetime
 from typing import Final
 from uuid import UUID
@@ -40,6 +43,7 @@ from memini.gitsync.sync import (
 )
 from memini.index import check_index, current_fingerprint
 from memini.jobs import SYNC_KINDS, Handler, Job
+from memini.removal import DEFAULT_RETENTION_BATCH, expire_source
 from memini.runs import current_run
 from memini.sources import GitConfig
 
@@ -65,12 +69,19 @@ def mirrors_unusable(options: GitOptions) -> str | None:
 
 
 def git_sync_handler(
-    pool: Pool, mirrors: MirrorManager, embedder: Embedder, *, limits: SyncLimits = DEFAULT_LIMITS
+    pool: Pool,
+    mirrors: MirrorManager,
+    embedder: Embedder,
+    *,
+    limits: SyncLimits = DEFAULT_LIMITS,
+    retention_batch: int = DEFAULT_RETENTION_BATCH,
 ) -> Handler:
     """The handler of ``git_sync`` jobs: :func:`run_git_sync` with these mirrors and embedder."""
 
     async def handle(job: Job) -> None:
-        await run_git_sync(pool, mirrors, embedder, job, limits=limits)
+        await run_git_sync(
+            pool, mirrors, embedder, job, limits=limits, retention_batch=retention_batch
+        )
 
     return handle
 
@@ -82,8 +93,10 @@ async def run_git_sync(
     job: Job,
     *,
     limits: SyncLimits = DEFAULT_LIMITS,
+    retention_batch: int = DEFAULT_RETENTION_BATCH,
 ) -> list[StreamSyncResult]:
-    """Sync the stream of ``job`` (or every stream of its source); see the module.
+    """Sync the stream of ``job`` (or every stream of its source), then pass retention over the
+    source; see the module.
 
     Raises:
         LookupError: the job's source or stream does not exist.
@@ -98,7 +111,7 @@ async def run_git_sync(
     if job.source_id is None:
         raise ValueError(f"{GIT_SYNC} job {job.id} names no source")
     async with pool.connection() as conn, conn.transaction():
-        source, streams, checked_until = await _load(conn, job.source_id, job.stream_id)
+        source, streams, checked_until, retention = await _load(conn, job.source_id, job.stream_id)
     if not source.config.location:
         raise ValueError(f"git source {source.id} has no location")
 
@@ -127,20 +140,26 @@ async def run_git_sync(
                     limits=limits,
                 )
             )
+        if retention:
+            async with run.step("retention") if run is not None else nullcontext():
+                await expire_source(conn, source.id, batch_size=retention_batch)
     return results
 
 
 async def _load(
     conn: AsyncConnection[TupleRow], source_id: UUID, stream_id: UUID | None
-) -> tuple[GitSource, list[GitStream], datetime]:
+) -> tuple[GitSource, list[GitStream], datetime, bool]:
+    """The source, the streams to sync, the database time, and whether the source has a
+    retention."""
     cur = await conn.execute(
-        "SELECT workspace_id, owner_id, kind, config, now() FROM source WHERE id = %s",
+        "SELECT workspace_id, owner_id, kind, config, now(), retention_days IS NOT NULL"
+        " FROM source WHERE id = %s",
         (source_id,),
     )
     row = await cur.fetchone()
     if row is None:
         raise LookupError(f"no source {source_id}")
-    workspace_id, owner_id, kind, config, now = row
+    workspace_id, owner_id, kind, config, now, retention = row
     if kind != "git":
         raise ValueError(f"source {source_id} is a {kind} source, not a git source")
     if stream_id is None:
@@ -161,4 +180,4 @@ async def _load(
         owner_id=owner_id,
         config=GitConfig.from_json(config),
     )
-    return source, streams, now
+    return source, streams, now, bool(retention)

@@ -14,7 +14,8 @@ rules the database enforces are described in the knowledge migration.
   status changes once, from active, and sets ``invalidated_at``; nothing is deleted
   (principle 4).
 - Evidence outlives its record: after retention, forget or a deleted source, it keeps the
-  reference, and :attr:`Evidence.record_state` says the record is gone.
+  reference, and :attr:`Evidence.record_state` says the record is ``expired``, ``forgotten`` or
+  ``gone``.
 
 Who calls what:
 

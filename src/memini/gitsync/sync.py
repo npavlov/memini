@@ -19,7 +19,9 @@ What changed
     Each file is then compared with its stored record. A file whose record already holds its blob
     id is left alone: it is not read, chunked or embedded. The others are written; files that are
     deleted, or are no longer selected (:mod:`memini.gitsync.rules`), turn their live records into
-    tombstones.
+    tombstones. A file whose record was forgotten by hand (:func:`memini.removal.forget_record`)
+    is skipped (``files_skipped_forgotten``): forget holds the source's lock, so it never falls
+    between a sync's plan and its writes.
 
 Transactions
     Files are written in batches of at most :attr:`SyncLimits.batch_files` files and
@@ -67,7 +69,7 @@ A ref that is gone
 
 import logging
 from collections import Counter
-from collections.abc import AsyncGenerator, Iterable, Iterator, Mapping, Sequence
+from collections.abc import AsyncGenerator, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -92,6 +94,7 @@ from memini.gitsync.model import (
 )
 from memini.gitsync.rules import FileKind, FileRules, SkipReason, file_kind, storable_path
 from memini.index import IndexCounts, delete_record_chunks, index_record
+from memini.removal import forgotten_record_ids
 from memini.runs import current_run
 from memini.sources import GitConfig
 
@@ -233,6 +236,7 @@ def _plan(
     stream: GitStream,
     rules: FileRules,
     full: bool,
+    forgotten: Collection[str] = (),
 ) -> _Plan:
     plan = _Plan()
     selected: set[str] = set()
@@ -250,6 +254,9 @@ def _plan(
         if entry.oid is None or entry.size is None:  # a selected file has both
             raise RuntimeError(f"no blob id or size for {entry.path!r}")
         rid = file_record_id(source_id, stream.key, entry.path)
+        if rid in forgotten:
+            plan.skipped["forgotten"] += 1
+            continue
         selected.add(rid)
         record = stored.get(rid)
         live = record is not None and not record.deleted
@@ -284,6 +291,13 @@ async def _stored_by_id(conn: Conn, record_ids: Sequence[str]) -> dict[str, _Sto
             (list(record_ids),),
         )
         return {row[0]: _Stored(row[1], row[2], row[3]) for row in await cur.fetchall()}
+
+
+async def _forgotten(conn: Conn, record_ids: Collection[str]) -> set[str]:
+    if not record_ids:
+        return set()
+    async with conn.transaction():
+        return await forgotten_record_ids(conn, record_ids)
 
 
 async def _stored_of_ref(conn: Conn, source_id: UUID, ref: str) -> dict[str, _Stored]:
@@ -321,15 +335,21 @@ async def _plan_diff(
         )
         for change in changes
     ]
-    stored = await _stored_by_id(
-        conn,
-        [
-            file_record_id(source.id, stream.key, entry.path)
-            for entry in entries
-            if storable_path(entry.path)
-        ],
+    record_ids = [
+        file_record_id(source.id, stream.key, entry.path)
+        for entry in entries
+        if storable_path(entry.path)
+    ]
+    stored = await _stored_by_id(conn, record_ids)
+    return _plan(
+        entries,
+        stored,
+        source_id=source.id,
+        stream=stream,
+        rules=rules,
+        full=False,
+        forgotten=await _forgotten(conn, record_ids),
     )
-    return _plan(entries, stored, source_id=source.id, stream=stream, rules=rules, full=False)
 
 
 async def _plan_listing(
@@ -347,7 +367,23 @@ async def _plan_listing(
         for entry in await mirrors.ls_tree(mirror, commit)
     ]
     stored = await _stored_of_ref(conn, source.id, stream.key)
-    return _plan(entries, stored, source_id=source.id, stream=stream, rules=rules, full=True)
+    forgotten = await _forgotten(
+        conn,
+        [
+            file_record_id(source.id, stream.key, entry.path)
+            for entry in entries
+            if storable_path(entry.path)
+        ],
+    )
+    return _plan(
+        entries,
+        stored,
+        source_id=source.id,
+        stream=stream,
+        rules=rules,
+        full=True,
+        forgotten=forgotten,
+    )
 
 
 # --- Writing -------------------------------------------------------------------------------------

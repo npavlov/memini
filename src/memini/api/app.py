@@ -10,12 +10,12 @@ Layout of the application :func:`create_app` builds:
   for the authorization filter and a write route for its write access, through
   :mod:`memini.api.auth`. Administration: workspaces (:mod:`memini.api.workspaces`), sources and
   streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`), tokens
-  (:mod:`memini.api.tokens`). Freshness: ``GET /v1/status`` (:mod:`memini.api.status`), the same
-  answer as the MCP ``status`` tool. Intake: batches of records for push sources
-  (:mod:`memini.api.ingest`). Queries: search, code search, symbols and reading files
-  (:mod:`memini.api.query`), the same calls as the MCP tools. Knowledge: recording,
-  superseding, closing and retracting decisions by hand (:mod:`memini.api.decisions`), the same
-  calls as the MCP write tools.
+  (:mod:`memini.api.tokens`), forgetting a record (:mod:`memini.api.forget`). Freshness:
+  ``GET /v1/status`` (:mod:`memini.api.status`), the same answer as the MCP ``status`` tool.
+  Intake: batches of records for push sources (:mod:`memini.api.ingest`). Queries: search, code
+  search, symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools.
+  Knowledge: recording, superseding, closing and retracting decisions by hand
+  (:mod:`memini.api.decisions`), the same calls as the MCP write tools.
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
   bearer tokens, the ``read`` scope for every request. It is an ASGI app of its own: it gets request
   ids from the outer middleware, and its session manager runs in the application's lifespan.
@@ -44,6 +44,7 @@ from memini import __version__
 from memini.api.auth import authenticate_request
 from memini.api.decisions import build_decisions_router
 from memini.api.errors import ERROR_RESPONSES, install_error_handlers
+from memini.api.forget import build_forget_router
 from memini.api.health import DEFAULT_READINESS_TIMEOUT, ReadinessCheck, build_health_router
 from memini.api.ingest import build_ingest_router
 from memini.api.limits import RequestLimitsMiddleware
@@ -184,6 +185,7 @@ def create_app(
     v1.include_router(build_tokens_router())
     v1.include_router(build_query_router())
     v1.include_router(build_decisions_router())
+    v1.include_router(build_forget_router())
     app.include_router(v1)
 
     app.router.routes.append(mcp_route(mcp, authenticator))

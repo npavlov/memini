@@ -88,7 +88,11 @@ _BUILTIN_EXCLUDES = (
     " every tracked ref in full at its next sync."
 )
 _VISIBILITY = "private: only the owner may read the source; workspace: everyone in the workspace."
-_RETENTION = "Delete records older than this many days on every run; null: keep them."
+_RETENTION = (
+    "Delete records older than this many days, with their chunks, on a retention pass every"
+    " retention_interval and at the end of every sync; for git, only files gone from the tree"
+    " that long ago. null: keep them."
+)
 _LLM_POLICY = "Which LLM may read the source's content: none, the local one, or a cloud one too."
 
 type _Patterns = Annotated[

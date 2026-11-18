@@ -488,6 +488,24 @@ class Settings(BaseModel):
         " with K, M or G",
     )
 
+    # --- Retention (memini.removal) ---------------------------------------------------------------
+    # A source with retention_days loses its expired records: the scheduler enqueues a retention
+    # job of it every retention_interval, which deletes them retention_batch_size at a time, one
+    # transaction each. A git sync ends with the same pass over its source.
+    retention_interval: int = Field(
+        default=3600,
+        ge=60,
+        le=7 * 86400,
+        description="seconds between two retention passes over a source that has retention_days,"
+        " 60 to 604800",
+    )
+    retention_batch_size: int = Field(
+        default=1000,
+        ge=1,
+        le=100_000,
+        description="records one transaction of a retention pass deletes at most, 1 to 100000",
+    )
+
     # --- HTTP request limits (memini.api.limits, memini.db.limits) -------------------------------
     # Limits of every HTTP and MCP request. The body: refused by its Content-Length before it is
     # read, or as soon as more of it arrives (the ingest route has its own, ingest_max_body_size).

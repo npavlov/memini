@@ -68,13 +68,16 @@ Relation = Literal["replaces", "answers"]
 """How a newer item supersedes an earlier one: ``replaces`` makes it superseded; ``answers`` (a
 decision answering an open question) makes it closed."""
 
-RecordState = Literal["stored", "deleted", "gone"]
+RecordState = Literal["stored", "deleted", "expired", "forgotten", "gone"]
 """What became of the record a piece of evidence names.
 
 - ``stored``: the record is in the store.
 - ``deleted``: a tombstone; the source deleted it, and the store keeps it until retention.
-- ``gone``: no longer stored: expired by retention, forgotten, or its source was deleted. The
-  reference (source, kind, external id and URL) is what is left.
+- ``expired``: removed by the retention of its source.
+- ``forgotten``: removed by hand (forget).
+- ``gone``: no longer stored, its source deleted.
+
+Without the record, the reference (source, kind, external id and URL) is what is left.
 """
 
 ITEM_KINDS: Final[tuple[ItemKind, ...]] = get_args(ItemKind)

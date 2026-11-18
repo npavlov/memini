@@ -31,7 +31,9 @@ in a transaction of its own, so that the batch's run can name it.
 3. Records are upserted by their deterministic id (:func:`memini.ids.record_id` of the source,
    kind and external id). A record equal to its row (payload, time, URL; and stream, when the
    batch names one) is not written at all; one that differs is written, a tombstone revived. Its
-   ``normalized_text`` (:func:`normalize`, the payload as plain text) is written with it.
+   ``normalized_text`` (:func:`normalize`, the payload as plain text) is written with it. A
+   record that was forgotten by hand (:func:`memini.removal.forget_record`) is left out and
+   counted ``forgotten``: it does not come back.
 4. Tombstones turn live records into tombstones (``deleted_at``) and delete their chunks and
    symbols. A tombstone for a record never stored, or already deleted, changes nothing.
 5. A snapshot (a complete window with ``snapshot``) holds every live record of the stream whose

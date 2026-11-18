@@ -78,9 +78,10 @@ not switch them off (``builtin_excludes``)."""
 FILE_MODES: Final = frozenset({"100644", "100755"})
 """Tree entry modes of regular files: a plain and an executable file."""
 
-SkipReason = Literal["bad_path", "not_a_file", "excluded", "too_large", "binary"]
+SkipReason = Literal["bad_path", "not_a_file", "excluded", "too_large", "binary", "forgotten"]
 """Why a file is not indexed: a path that is not UTF-8; a symlink, submodule or directory; left
-out by a glob; larger than ``git_max_blob_size``; binary."""
+out by a glob; larger than ``git_max_blob_size``; binary; its record was forgotten by hand
+(:func:`memini.removal.forget_record`), so it is not written again."""
 
 
 def file_kind(path: str) -> FileKind:

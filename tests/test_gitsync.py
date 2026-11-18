@@ -32,6 +32,7 @@ from memini.gitsync import (
 )
 from memini.gitsync import rules as file_rules
 from memini.ids import hash_fields, record_id
+from memini.removal import RETENTION
 from memini.sources import GitConfig
 
 LIMIT = 1000
@@ -259,7 +260,7 @@ async def test_serve_registers_git_sync_with_embeddings_and_usable_mirrors(
     settings = embedding_settings(git_mirror_dir=tmp_path / "mirrors")
 
     async with job_handlers(settings, NO_POOL) as handlers:
-        assert set(handlers) == {GIT_SYNC}
+        assert set(handlers) == {GIT_SYNC, RETENTION}
 
 
 @pytest.mark.anyio
@@ -267,7 +268,7 @@ async def test_serve_does_not_sync_git_without_embeddings(
     settings: Settings, log_output: io.StringIO
 ) -> None:
     async with job_handlers(settings, NO_POOL) as handlers:
-        assert handlers == {}
+        assert set(handlers) == {RETENTION}  # retention needs no embeddings
 
     assert "git sources are not synced: no embedding provider is configured" in (
         log_output.getvalue()
@@ -282,7 +283,7 @@ async def test_serve_does_not_sync_git_when_mirrors_cannot_be_kept(
     settings = embedding_settings(git_mirror_dir=tmp_path / "file" / "mirrors")
 
     async with job_handlers(settings, NO_POOL) as handlers:
-        assert handlers == {}
+        assert set(handlers) == {RETENTION}
 
     assert "git sources are not synced: the mirror directory" in log_output.getvalue()
 

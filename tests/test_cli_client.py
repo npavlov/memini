@@ -936,6 +936,77 @@ def test_token_revoke_refuses_an_unknown_token(
     assert len(service.requests) == 1
 
 
+# --- forget --------------------------------------------------------------------------------------
+
+RECORD = "ab" * 32
+FORGOTTEN: Json = {
+    "id": "0193a1b2-0000-7000-8000-00000000f0f0",
+    "workspace": "acme",
+    "record_id": RECORD,
+    "source_id": "0193a1b2-0000-7000-8000-00000000c0c0",
+    "source": "chat",
+    "record_kind": "thread",
+    "forgotten_at": "2026-11-18T16:00:00Z",
+    "removed": {"chunks": 3, "symbols": 0, "raw_responses": 0},
+    "citing_items": 1,
+}
+
+
+def test_forget_by_record_id(cli: Callable[..., Run], service: FakeService) -> None:
+    service.answer(ok(FORGOTTEN))
+
+    result = cli("forget", "acme", "--record", RECORD)
+
+    assert result.code == EXIT_OK, result.err
+    assert service.last.method == "POST"
+    assert service.last.url.path == "/v1/workspaces/acme/forget"
+    assert json.loads(service.last.content) == {"record_id": RECORD}
+    lines = [line.split(None, 1) for line in result.out.splitlines()]
+    assert ["forgot", RECORD] in lines
+    assert [line for line in result.out.splitlines() if line.startswith("chunks deleted")] == [
+        "chunks deleted             3"
+    ]
+    assert "knowledge items citing it  1" in result.out
+
+
+def test_forget_by_source_and_external_id(cli: Callable[..., Run], service: FakeService) -> None:
+    service.answer(ok(FORGOTTEN))
+
+    result = cli(
+        "forget", "acme", "--source", "chat", "--external-id", "garden/100", "--kind", "thread",
+        "--json",
+    )  # fmt: skip
+
+    assert result.code == EXIT_OK, result.err
+    assert json.loads(service.last.content) == {
+        "source": "chat",
+        "external_id": "garden/100",
+        "record_kind": "thread",
+    }
+    assert json.loads(result.out) == FORGOTTEN
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("forget", "acme"),
+        ("forget", "acme", "--record", "XYZ"),
+        ("forget", "acme", "--source", "chat"),
+        ("forget", "acme", "--record", RECORD, "--kind", "thread"),
+        ("forget", "acme", "--record", RECORD, "--external-id", "garden/100"),
+        ("forget", "acme", "--record", RECORD, "--source", "chat"),
+        ("forget", "acme", "--external-id", "garden/100"),
+    ],
+)
+def test_forget_names_its_record_one_way(
+    cli: Callable[..., Run], service: FakeService, argv: tuple[str, ...]
+) -> None:
+    result = cli(*argv)
+
+    assert result.code == EXIT_USAGE
+    assert service.requests == []
+
+
 # --- Errors --------------------------------------------------------------------------------------
 
 

@@ -219,7 +219,7 @@ class Checkpoint:
 @dataclass(frozen=True, slots=True)
 class IngestResult:
     """What a batch did. Each item of the batch is counted once, in ``inserted``, ``updated``,
-    ``revived``, ``deleted`` or ``unchanged``."""
+    ``revived``, ``deleted``, ``unchanged`` or ``forgotten``."""
 
     workspace_id: UUID
     source_id: UUID
@@ -251,6 +251,9 @@ class IngestResult:
     not_indexed: int = 0
     """Records written without their chunks, because no indexing hook was given: they are
     searchable once ``memini reindex`` has indexed them."""
+    forgotten: int = 0
+    """Records left out because they were forgotten by hand (:func:`memini.removal.
+    forget_record`): a forgotten record is not stored again."""
 
 
 # --- Errors --------------------------------------------------------------------------------------

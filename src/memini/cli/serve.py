@@ -9,7 +9,8 @@ grace period or goes back to the queue); pending run reports are written; the em
 then the pool closes. A stop by signal exits 0.
 
 One embedder serves the search queries of the application and the ``git_sync`` jobs: a local
-model is loaded once.
+model is loaded once. ``retention`` jobs need no embedder and always run: the scheduler enqueues one
+for each source with a retention every ``retention_interval``.
 
 Logs are JSON lines on stderr through :func:`memini.logs.configure_logging`, which masks tokens and
 secrets; the password of the database URL is registered as a secret at start.
@@ -26,6 +27,7 @@ import signal
 import threading
 from collections.abc import AsyncGenerator, Generator, Mapping
 from contextlib import asynccontextmanager, contextmanager
+from datetime import timedelta
 from types import FrameType
 from typing import Final
 
@@ -41,7 +43,8 @@ from memini.db import Pool, connect, database_check, migrate, open_pool
 from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_embedder
 from memini.git import GitOptions, MirrorManager
 from memini.gitsync import GIT_SYNC, git_sync_handler, mirrors_unusable
-from memini.jobs import SYNC_KINDS, Handler, Scheduler, Worker
+from memini.jobs import DEFAULT_RETENTION_INTERVAL, SYNC_KINDS, Handler, Scheduler, Worker
+from memini.removal import RETENTION, retention_handler
 from memini.runs import wait_for_run_writes
 
 __all__ = [
@@ -97,7 +100,8 @@ async def job_handlers(
 ) -> AsyncGenerator[Mapping[str, Handler]]:
     """The job handlers ``serve`` runs, by job kind, for the duration of the block.
 
-    ``git_sync`` (:mod:`memini.gitsync`) is there when an embedding provider is configured and
+    ``retention`` (:mod:`memini.removal`) is always there. ``git_sync`` (:mod:`memini.gitsync`) is
+    there when an embedding provider is configured and
     mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
     and written. Code is synced only into an index: without embeddings there is none to write, and
     records synced without their chunks would be left out of the index once embeddings are set,
@@ -107,7 +111,9 @@ async def job_handlers(
     ``embedder`` is the service's, which the caller closes; without it, one is created from the
     settings and closed at the end.
     """
-    handlers: dict[str, Handler] = {}
+    handlers: dict[str, Handler] = {
+        RETENTION: retention_handler(pool, batch_size=settings.retention_batch_size)
+    }
     owned = embedder is None
     if embedder is None:
         try:
@@ -119,7 +125,12 @@ async def job_handlers(
             options = GitOptions.from_settings(settings)
             problem = mirrors_unusable(options)
             if problem is None:
-                handlers[GIT_SYNC] = git_sync_handler(pool, MirrorManager(options), embedder)
+                handlers[GIT_SYNC] = git_sync_handler(
+                    pool,
+                    MirrorManager(options),
+                    embedder,
+                    retention_batch=settings.retention_batch_size,
+                )
             else:
                 log.warning("git sources are not synced: %s", problem)
         yield handlers
@@ -129,20 +140,27 @@ async def job_handlers(
 
 
 @asynccontextmanager
-async def background_jobs(pool: Pool, handlers: Mapping[str, Handler]) -> AsyncGenerator[None]:
-    """Run the job worker and the stream scheduler on ``pool`` for the duration of the block.
+async def background_jobs(
+    pool: Pool,
+    handlers: Mapping[str, Handler],
+    *,
+    retention_interval: timedelta = DEFAULT_RETENTION_INTERVAL,
+) -> AsyncGenerator[None]:
+    """Run the job worker and the scheduler on ``pool`` for the duration of the block.
 
     The worker runs the kinds in ``handlers``; the scheduler enqueues syncs only for the source
-    kinds whose sync job has a handler, so nothing piles up that no worker could run. With no
-    handlers, neither starts. At the end of the block both are stopped and awaited, and pending
+    kinds whose sync job has a handler, and retention passes (every ``retention_interval`` per
+    source) only with a ``retention`` handler, so nothing piles up that no worker could run. With
+    no handlers, neither starts. At the end of the block both are stopped and awaited, and pending
     run reports are written.
     """
     sync_kinds = {source: kind for source, kind in SYNC_KINDS.items() if kind in handlers}
+    retention_every = retention_interval if RETENTION in handlers else None
     services: list[Worker | Scheduler] = []
     if handlers:
         services.append(Worker(pool, handlers))
-    if sync_kinds:
-        services.append(Scheduler(pool, sync_kinds=sync_kinds))
+    if sync_kinds or retention_every is not None:
+        services.append(Scheduler(pool, sync_kinds=sync_kinds, retention_every=retention_every))
     if not services:
         log.info("no job handlers yet: the job worker and the scheduler are not started")
     try:
@@ -181,7 +199,9 @@ async def serve_command(args: argparse.Namespace, settings: Settings) -> int:
         )
         async with (
             job_handlers(settings, pool, embedder=embedder) as handlers,
-            background_jobs(pool, handlers),
+            background_jobs(
+                pool, handlers, retention_interval=timedelta(seconds=settings.retention_interval)
+            ),
         ):
             started = await run_http_server(app, settings)
     if not started:

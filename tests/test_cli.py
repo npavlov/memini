@@ -210,6 +210,7 @@ def test_help_lists_client_and_operator_commands_apart(
         "token",
         "search",
         "decision",
+        "forget",
     }
     operator_part = operator.split("\n\n")[0]
     listed = {line.split()[0] for line in operator_part.splitlines() if line.startswith("  ")}

@@ -56,6 +56,7 @@ from memini.query import (
     code_locator,
     query_errors,
 )
+from memini.removal import RETENTION
 from memini.search import (
     Hit,
     InvalidSearchError,
@@ -578,7 +579,7 @@ async def test_serve_shares_one_embedder_and_closes_it_once(tmp_path: Path) -> N
     async with service_embedder(settings) as embedder:
         assert isinstance(embedder, OpenAICompatibleEmbedder)
         async with job_handlers(settings, NO_POOL, embedder=embedder) as handlers:
-            assert set(handlers) == {GIT_SYNC}
+            assert set(handlers) == {GIT_SYNC, RETENTION}
         # The handlers leave the shared embedder open: its client still answers.
         assert not embedder._client.is_closed  # pyright: ignore[reportPrivateUsage]
     assert embedder._client.is_closed  # pyright: ignore[reportPrivateUsage]

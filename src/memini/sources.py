@@ -853,7 +853,9 @@ async def update_source(
 
     A new schedule applies to every stream and sets their ``next_run_at`` to NULL; streams already
     on it are left alone. New refs get streams on the source's schedule; streams of refs no longer
-    listed are deleted with their runs and jobs, and the records they stored keep no stream.
+    listed are deleted with their runs and jobs, and the records they stored keep no stream. A
+    changed ``retention_days`` applies at once: the scheduler passes retention over the source at
+    its next look (:mod:`memini.removal`).
 
     Raises:
         InvalidSourceError: a setting is refused, or does not apply to the source's kind; nothing
@@ -933,6 +935,8 @@ async def update_source(
                 assign("visibility", visibility)
             if not isinstance(retention_days, Unset):
                 assign("retention_days", retention_days)
+                # A changed retention applies at the scheduler's next look (0013).
+                assign("retention_next_at", None)
             if not isinstance(llm_policy, Unset):
                 assign("llm_policy", llm_policy)
             if len(assignments) > 1 or not (

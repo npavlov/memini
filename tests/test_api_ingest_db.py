@@ -184,6 +184,7 @@ async def test_a_push_source_takes_a_batch_and_the_same_batch_again_changes_noth
         "deleted": 0,
         "unchanged": 0,
         "reconciled": 0,
+        "forgotten": 0,
     }
     assert first["stream"] == "chat/general"
     assert first["window_complete"] is True

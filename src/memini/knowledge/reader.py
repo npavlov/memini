@@ -45,14 +45,22 @@ ORDER BY {order}
 
 # The record a piece of evidence names may be gone (retention, forget, a deleted source); its
 # source too. Both are joined only for what they add: the state of the record, the source's name.
+# Without the record, the entries of forget and retention (0013) say why it is gone.
 _EVIDENCE: Final = sql.SQL("""
 SELECT e.item_id, e.record_id, e.source_id, s.name, e.record_kind, e.external_id,
        e.external_url, e.anchor,
-       CASE WHEN r.id IS NULL THEN 'gone' WHEN r.deleted_at IS NOT NULL THEN 'deleted'
-            ELSE 'stored' END
+       CASE WHEN r.id IS NOT NULL AND r.deleted_at IS NOT NULL THEN 'deleted'
+            WHEN r.id IS NOT NULL THEN 'stored'
+            WHEN f.record_id IS NOT NULL THEN 'forgotten'
+            WHEN x.record_id IS NOT NULL THEN 'expired'
+            ELSE 'gone' END
 FROM knowledge_evidence e
 LEFT JOIN record r ON r.id = e.record_id AND r.workspace_id = e.workspace_id AND {record_access}
 LEFT JOIN source s ON s.id = e.source_id AND s.workspace_id = e.workspace_id AND {source_access}
+LEFT JOIN forgotten_record f
+    ON f.record_id = e.record_id AND f.workspace_id = e.workspace_id AND {forgotten_access}
+LEFT JOIN expired_record x
+    ON x.record_id = e.record_id AND x.workspace_id = e.workspace_id AND {expired_access}
 WHERE e.item_id = ANY(%s) AND {access}
 ORDER BY e.item_id, e.id
 """)
@@ -143,6 +151,8 @@ async def select_items(
         _EVIDENCE.format(
             record_access=_scope(access, "r", source="source_id"),
             source_access=_scope(access, "s", source="id"),
+            forgotten_access=_scope(access, "f", source="source_id"),
+            expired_access=_scope(access, "x", source="source_id"),
             access=_scope(access, "e", source="source_id"),
         ),
         (ids,),

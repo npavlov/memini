@@ -33,6 +33,7 @@ from memini.ingest.model import (
     StreamChangedError,
 )
 from memini.ingest.validate import MAX_CLOCK_SKEW, prepare_batch
+from memini.removal import forgotten_record_ids
 from memini.runs import Run, current_run, record_run
 from memini.workspaces import NotFoundError, get_writable_workspace
 
@@ -153,6 +154,7 @@ class _Tally:
     deleted: int = 0
     unchanged: int = 0
     reconciled: int = 0
+    forgotten: int = 0
     checkpoint: Checkpoint | None = None
     moved: bool = False
     index: IndexCounts = field(default_factory=IndexCounts)
@@ -229,10 +231,18 @@ async def _store(
                 "SELECT id FROM record WHERE id = ANY(%s::text[]) ORDER BY id FOR NO KEY UPDATE",
                 (sorted(ids.values()),),
             )
+        # Records forgotten by hand are not stored again. Checked after the lock: forget deletes
+        # the row and writes its entry in one transaction, so a batch that waited for the row
+        # sees the entry here (memini.removal.forgotten_record_ids).
+        forgotten = await forgotten_record_ids(conn, [ids[item.index] for item in batch.records])
+        tally.forgotten = sum(1 for item in batch.records if ids[item.index] in forgotten)
 
         written: list[StoredRecord] = []
-        if batch.records:
-            records = sorted(batch.records, key=lambda item: ids[item.index])
+        if len(batch.records) > tally.forgotten:
+            records = sorted(
+                (item for item in batch.records if ids[item.index] not in forgotten),
+                key=lambda item: ids[item.index],
+            )
             by_id = {ids[item.index]: item for item in records}
             cur = await conn.execute(
                 _UPSERT,
@@ -332,6 +342,7 @@ def _count(run: Run | None, tally: _Tally, batch: PreparedBatch) -> None:
         ("records_deleted", tally.deleted),
         ("records_unchanged", tally.unchanged),
         ("records_reconciled", tally.reconciled),
+        ("records_forgotten", tally.forgotten),
         ("records_not_indexed", tally.not_indexed),
     ):
         run.count(name, value)
@@ -440,4 +451,5 @@ def _result(
         window_complete=None if batch.window is None else batch.window.complete,
         index=tally.index,
         not_indexed=tally.not_indexed,
+        forgotten=tally.forgotten,
     )
