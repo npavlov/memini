@@ -15,6 +15,10 @@ an unhandled exception::
 A 500 never says more than "internal error"; the exception goes to the server log. A database
 statement or transaction of the request stopped by its time limit (:mod:`memini.db.limits`) answers
 503 ``query_timeout``; search reports its own limit as 422 ``search_timeout`` before it gets here.
+A database that cannot be reached, or whose session ended under the request (a restart, a crash,
+no free connection in the pool within its timeout: :class:`psycopg.OperationalError`), answers 503
+``unavailable``, as a service without a database does: the request may be sent again once the
+database is back, and the pool reconnects by itself.
 """
 
 import http.client
@@ -22,6 +26,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import Any, Final, cast
 
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -116,6 +121,7 @@ _CODES: Final[Mapping[int, str]] = {
 _VALIDATION_ERROR: Final = "validation_error"
 _INTERNAL_ERROR: Final = "internal_error"
 _QUERY_TIMEOUT: Final = "query_timeout"
+_UNAVAILABLE: Final = "unavailable"
 
 _log = logging.getLogger(__name__)
 
@@ -194,6 +200,14 @@ async def _handle_database_timeout(request: Request, exc: Exception) -> Response
     )
 
 
+async def _handle_database_unavailable(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, psycopg.OperationalError):  # registered for it only
+        raise exc
+    # The type only: the message can name the server, and a pool's error its connection string.
+    _log.warning("request failed: the database is not available (%s)", type(exc).__name__)
+    return error_response(503, _UNAVAILABLE, "The database is not available; try again later.")
+
+
 async def _handle_unexpected(request: Request, exc: Exception) -> Response:
     # Starlette re-raises the exception after this response is sent, so the server logs it.
     return error_response(500, _INTERNAL_ERROR, "Internal server error.")
@@ -205,4 +219,6 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _handle_validation_error)
     for timeout in TIMEOUT_ERRORS:
         app.add_exception_handler(timeout, _handle_database_timeout)
+    # After the time limits, which are operational errors too: the most specific handler wins.
+    app.add_exception_handler(psycopg.OperationalError, _handle_database_unavailable)
     app.add_exception_handler(Exception, _handle_unexpected)

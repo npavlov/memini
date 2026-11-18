@@ -5,7 +5,8 @@ reaches a real server or the network. Every name, id and text is made up.
 
 The server lists ``channel_history`` and ``thread_replies`` with input schemas, and answers from a
 :class:`hearth_helpers.FakeHearth`. Faults are queued per tool: ``"slow"`` sleeps past a short
-timeout before it answers, ``"error"`` answers ``isError``; the ASGI app answers queued HTTP
+timeout before it answers, ``"hang"`` never answers (until the server stops), ``"error"`` answers
+``isError``; the ASGI app answers queued HTTP
 statuses (``429`` with ``Retry-After``, ``500``) to the next ``tools/call`` requests. It records
 the ``Authorization`` header of every request and every call it answered.
 """
@@ -97,11 +98,13 @@ class FakeMcp:
         default_factory=deque[tuple[int, str | None]]
     )
     received: list[Received] = field(default_factory=list[Received])
+    hung: list[Received] = field(default_factory=list[Received])
+    """Calls that got the ``"hang"`` fault: never answered."""
     authorizations: list[str | None] = field(default_factory=list[str | None])
     http_statuses: list[int] = field(default_factory=list[int])
 
     def fail(self, tool: str, *faults: str) -> None:
-        """Queue ``faults`` (``"slow"``, ``"error"``) for the next calls of ``tool``."""
+        """Queue ``faults`` (``"slow"``, ``"hang"``, ``"error"``) for the next calls of ``tool``."""
         self.faults.setdefault(tool, deque()).extend(faults)
 
     def answer_http(self, status: int, retry_after: str | None = None) -> None:
@@ -133,6 +136,9 @@ class FakeMcp:
             fault = queue.popleft() if queue else None
             if fault == "slow":
                 await anyio.sleep(SLOW_SECONDS)
+            if fault == "hang":
+                self.hung.append(Received(params.name, arguments))
+                await anyio.sleep_forever()
             if fault == "error":
                 self.received.append(Received(params.name, arguments))
                 return types.CallToolResult(

@@ -16,7 +16,9 @@ from typing import Any, Final
 import anyio
 import httpcore2
 import httpx2
+import mcp_types as types
 import pytest
+from mcp.shared.exceptions import MCPError
 from pydantic import SecretStr
 
 from fake_mcp import FakeMcp, recent_threads
@@ -24,7 +26,13 @@ from hearth_helpers import CHANNEL, HEARTH_RECIPE_PATH, WINDOW_1, FakeHearth, he
 from memini.config import ConfigError, load_settings
 from memini.credentials import CredentialInfo, OAuthClient, OAuthCredential, OAuthTokens
 from memini.executors.budget import Budget, RetryPolicy
-from memini.executors.client import CallFailure, ConnectError, McpSession, open_session
+from memini.executors.client import (
+    CallFailure,
+    ConnectError,
+    McpSession,
+    _unwrap,  # pyright: ignore[reportPrivateUsage] - the unwrapping of the SDK's task groups
+    open_session,
+)
 from memini.executors.core import ToolInfo, call_identity, calls_to_make, check_drift
 from memini.executors.egress import (
     EgressPolicy,
@@ -379,6 +387,19 @@ async def test_a_network_failure_fails_one_call_and_not_the_session() -> None:
     assert failed.failure.kind == "transport"
     assert "ConnectError" in failed.failure.reason
     assert after.failure is None
+
+
+def test_a_transport_that_found_its_streams_closed_does_not_hide_the_failure() -> None:
+    """A server that stalls the handshake: the session gives up on initialize, and the transport's
+    request, timed out at the same moment, finds the session's streams closed. Both reach the
+    task group; the timeout is the failure (tests/test_failures_db.py meets it on a socket)."""
+    timeout = MCPError(code=types.REQUEST_TIMEOUT, message="Request 'initialize' timed out")
+    raced = BaseExceptionGroup(
+        "transport", [BaseExceptionGroup("session", [timeout]), anyio.ClosedResourceError()]
+    )
+    assert _unwrap(raced) is timeout
+    assert _unwrap(BaseExceptionGroup("one", [anyio.BrokenResourceError()])) is not None
+    assert _unwrap(BaseExceptionGroup("two", [ValueError("a"), timeout])) is None
 
 
 async def test_an_is_error_result_is_a_result() -> None:

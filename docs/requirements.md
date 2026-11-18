@@ -1066,6 +1066,15 @@ endpoint included; every limit is a setting, and each error is in the API's erro
   over MCP. Search keeps its own, `search_timeout` (5 s, 422 `search_timeout`, the query's to
   narrow); deleting a source is exempt, since its cascade grows with the source.
 
+**A database that is away** (decided 2026-11-19; memini-69f). While the database cannot be reached
+(restarted, crashed, or no pooled connection free within the pool's timeout), a request that needs
+it answers 503 `unavailable`, as a service without a database does, and never 500: the client sends
+it again (the CLI exits as for a service it cannot reach), and nothing needs a restart. The pool
+checks each connection before it lends it, so a dead one is replaced, not handed out; readiness
+answers 503 meanwhile and liveness 200. Right after a restart the pool grows back one connection at
+a time, so for a few seconds a request may wait for one. A job whose worker lost its connection is
+taken again once its lease runs out (Jobs, section 9).
+
 **Metrics** (decided 2026-11-18). `GET /metrics` serves the Prometheus text format (0.0.4) when
 `metrics_token` is set, and only to a request whose bearer token is that value; without the setting
 the route does not exist. A Memini token is not accepted there, an admin one included: a scraper's
@@ -1605,6 +1614,25 @@ a digit) passes, and a long number that starts like a card and passes the Luhn c
 - **Tests**: idempotent ingest, cursor safety on failure, reindex equals the first index, recipe parsers on
   recorded responses.
 - Fixtures in the repository are synthetic only.
+
+**Failure tests** (decided 2026-11-19; memini-69f). `tests/test_failures_db.py` breaks things for
+real, then checks the base with one reusable check (`tests/consistency_helpers.py`): every live
+record has exactly the chunks and symbols its raw content gives, read as a rebuild reads it, and a
+tombstone none; one vector per text; a git stream pinned and not partial holds exactly the files of
+its commit; an mcp checkpoint was moved by a complete window whose records are all stored; no raw
+body is left without a response; no advisory lock is held. The cases: a worker process killed with
+SIGKILL inside a git sync's fourth batch (the pin stays, marked partial; another worker takes the
+job once the lease runs out and ends where an unbroken sync ends, embedding nothing twice); the
+database server killed and started again under a push batch and under an `mcp_sync` of the
+service's worker (the batch in flight rolls back whole, readiness answers 503 then 200, the job is
+taken again by the same worker and completes); sources that hang: an MCP server that accepts and
+never answers (the attempt fails at `rate.timeout` and is retried), a tool call that never returns
+(out of tries, its window stays incomplete and the checkpoint where it was), a stdio server that
+never answers (stopped with the attempt), a git remote over HTTP that stalls (each fetch killed at
+`git_fetch_timeout`, the job quarantined after its attempts, nothing moved). A test that kills the
+database kills its own: a Docker container of the compose image on a free port of 127.0.0.1,
+removed afterwards; the shared development database and the service container of CI are never
+stopped, and without Docker those tests skip.
 
 **Retrieval eval** (decided 2026-11-18). `memini eval` runs a suite: a TOML file of fixture
 repositories and questions (`eval/code/suite.toml`, the code suite: three synthetic repositories in

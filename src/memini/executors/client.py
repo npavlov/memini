@@ -40,6 +40,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
+import anyio
 import httpx2
 import mcp_types as types
 from mcp import Client
@@ -172,9 +173,20 @@ def _is_tool_result(raw: Mapping[str, Any]) -> bool:
     return result_type == "complete" and isinstance(raw.get("content"), list)
 
 
+_STREAM_CLOSED: Final = (anyio.ClosedResourceError, anyio.BrokenResourceError)
+"""What a task of the SDK's transport raises when it has an answer to deliver to a session that
+has already ended: a consequence of the failure that ended it, never the failure itself."""
+
+
 def _unwrap(group: BaseExceptionGroup[BaseException]) -> BaseException | None:
     """The exception a task group of the SDK wrapped: a refusal of the egress policy if the group
-    holds one, else its only exception; ``None`` when it holds several."""
+    holds one, else its only exception, leaving out a transport's closed streams; ``None`` when it
+    holds several.
+
+    A server that stalls the handshake shows why the closed streams are left out: the session
+    gives up on ``initialize`` after ``rate.timeout`` (an :class:`MCPError`) and closes its streams,
+    while the transport's POST task, timed out by httpx at the same moment, finds them closed. The
+    group then holds both, and the handshake's timeout is the failure to report."""
     refused, _ = group.split(EgressRefused)
     leaves: list[BaseException] = []
 
@@ -188,7 +200,8 @@ def _unwrap(group: BaseExceptionGroup[BaseException]) -> BaseException | None:
     flatten(refused if refused is not None else group)
     if refused is not None or len(leaves) == 1:
         return leaves[0]
-    return None
+    causes = [leaf for leaf in leaves if not isinstance(leaf, _STREAM_CLOSED)]
+    return causes[0] if len(causes) == 1 else None
 
 
 class McpSession:
@@ -283,7 +296,8 @@ async def open_session(
 
     The SDK runs its transport in task groups, which wrap what is raised in them, the block's own
     exceptions included: the one exception a group holds is raised as it is, and a refusal of the
-    egress policy before anything else.
+    egress policy before anything else. A transport task that only found the session's streams
+    closed (an answer that came after the session gave up) does not count as one.
 
     Raises:
         EgressRefused: the endpoint, an address of its host, or a request of the session is not

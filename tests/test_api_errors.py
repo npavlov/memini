@@ -2,10 +2,13 @@
 
 from typing import Any
 
+import psycopg
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from httpx2 import Response
+from psycopg import errors
+from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, field_validator
 
 from memini.api import ApiError, create_app
@@ -59,6 +62,20 @@ def app(settings: Settings) -> FastAPI:
     @app.get("/test/boom")
     async def boom() -> None:
         raise RuntimeError(f"synthetic failure for postgresql://memini:{CANARY}@db.invalid/memini")
+
+    @app.get("/test/database-gone")
+    async def database_gone() -> None:
+        raise psycopg.OperationalError(
+            f"consuming input failed: server at postgresql://memini:{CANARY}@db.invalid closed"
+        )
+
+    @app.get("/test/pool-empty")
+    async def pool_empty() -> None:
+        raise PoolTimeout(f"couldn't get a connection after 30.00 sec ({CANARY})")
+
+    @app.get("/test/statement-stopped")
+    async def statement_stopped() -> None:
+        raise errors.QueryCanceled(f"canceling statement due to statement timeout ({CANARY})")
 
     return app
 
@@ -176,6 +193,23 @@ def test_unhandled_exception_is_500_without_its_text(client: TestClient) -> None
     assert error["details"] == []
     for leak in ("RuntimeError", "synthetic failure", "Traceback", "db.invalid"):
         assert leak not in response.text
+
+
+@pytest.mark.parametrize("path", ["/test/database-gone", "/test/pool-empty"])
+def test_a_database_that_is_away_is_503_unavailable_without_its_text(
+    client: TestClient, path: str
+) -> None:
+    """A restart, a crash or an empty pool: try again later, not an internal error."""
+    response = client.get(path)
+
+    error = error_of(response, 503, "unavailable")
+    assert error["message"] == "The database is not available; try again later."
+    for leak in ("OperationalError", "PoolTimeout", "consuming input", "db.invalid"):
+        assert leak not in response.text
+
+
+def test_a_statement_stopped_by_its_time_limit_is_still_a_query_timeout(client: TestClient) -> None:
+    error_of(client.get("/test/statement-stopped"), 503, "query_timeout")
 
 
 def test_unhandled_exception_still_reaches_the_server(app: FastAPI) -> None:
