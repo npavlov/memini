@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only token. No job needs to write to the repository.
+permissions:
+  contents: read
+
+# A new push to the same branch or pull request cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Every `uv sync` and `uv run`, including those inside make targets, fails if uv.lock is stale
+  # instead of rewriting it.
+  UV_LOCKED: "1"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No python-version: the interpreter comes from .python-version, as it does locally.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: lint
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint (ruff)
+        run: make lint
+
+      - name: Type check (pyright)
+        run: make typecheck
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_USER: memini
+          POSTGRES_PASSWORD: memini
+          POSTGRES_DB: memini
+        ports:
+          - 5432:5432
+        # Check over TCP: the server that initdb starts first listens on the socket only, so the
+        # check passes only once the final server accepts connections.
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U memini -d memini"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # python-version exports UV_PYTHON, which uv treats as an explicit request (like --python);
+      # it overrides the 3.12 pin in .python-version.
+      - name: Set up uv and Python ${{ matrix.python-version }}
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: test
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Check the Python version
+        env:
+          EXPECTED: ${{ matrix.python-version }}
+        run: |
+          actual="$(uv run python -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+          echo "Python ${actual}"
+          if [ "${actual}" != "${EXPECTED}" ]; then
+            echo "::error::Expected Python ${EXPECTED}, got ${actual}"
+            exit 1
+          fi
+
+      - name: Unit tests
+        run: make test
+
+      - name: Integration tests
+        env:
+          MEMINI_TEST_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
+        run: make test-integration
