@@ -28,7 +28,9 @@ name: memini
 
 services:
   db:
-    image: pgvector/pgvector:0.8.7-pg18
+    # Pinned by version and by the digest of its multi-platform index (amd64 and arm64); update
+    # both together, and the same image in .github/workflows/ci.yml.
+    image: pgvector/pgvector:0.8.7-pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
     environment:
       POSTGRES_USER: memini
       POSTGRES_PASSWORD: ${MEMINI_DB_PASSWORD:-memini}
