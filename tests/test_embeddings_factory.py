@@ -74,6 +74,24 @@ async def test_an_openai_compatible_provider(tmp_path: Path) -> None:
     await embedder.aclose()
 
 
+async def test_the_default_model_on_local_ollama() -> None:
+    settings = load_settings(
+        {"MEMINI_DATABASE_URL": FAKE_URL, "MEMINI_EMBEDDING_PROVIDER": "openai_compatible"}
+    )
+
+    embedder = create_embedder(settings)
+
+    assert isinstance(embedder, OpenAICompatibleEmbedder)
+    assert embedder.spec == EmbeddingSpec(
+        provider="openai_compatible",
+        model="qwen3-embedding:0.6b",
+        dimension=1024,
+        digest="ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+    )
+    assert embedder.target == "http://127.0.0.1:11434"
+    await embedder.aclose()
+
+
 def test_a_local_provider_loads_nothing_until_used(tmp_path: Path) -> None:
     settings = load_settings(
         {
@@ -103,12 +121,13 @@ def test_a_local_provider_loads_nothing_until_used(tmp_path: Path) -> None:
 
 
 def test_settings_built_by_hand_without_a_required_value_are_refused() -> None:
+    # model_copy skips validation, and with it the default URL.
     settings = Settings(
         database_url=SecretStr(FAKE_URL),
         embedding_provider="openai_compatible",
         embedding_model="m",
         embedding_dimension=8,
-    )
+    ).model_copy(update={"embedding_url": None})
 
     with pytest.raises(EmbeddingError, match="set MEMINI_EMBEDDING_URL"):
         create_embedder(settings)

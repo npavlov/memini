@@ -1,0 +1,3843 @@
+{
+  "format": 1,
+  "setup": {
+    "memini": "0.0.0",
+    "suite": {
+      "name": "code",
+      "version": 1,
+      "digest": "2830ef3c4ea3bb8f71fe4d0d29ceb72e28d4d20c170d15815022c3ce7ca01abb",
+      "questions": 101,
+      "repositories": 3
+    },
+    "embedding": {
+      "provider": "openai_compatible",
+      "model": "qwen3-embedding:0.6b",
+      "dimension": 1024,
+      "digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+      "pooling": null,
+      "max_tokens": null,
+      "document_prefix": "",
+      "query_prefix": "Instruct: Given a search query, retrieve the relevant code or documentation that can help answer the query\nQuery:",
+      "fake": false
+    },
+    "embedding_description": "model qwen3-embedding:0.6b (openai_compatible, dimension 1024, digest ac6da0dfba84a81fdbfb...)",
+    "embedding_key": "866dbb561b1738641fe336987be043c21e28018971ab3b7e1b3a89ddedd34fb8",
+    "index_fingerprint": "0d1af2bae81b63dad2f496d51ca5eda145d5bdeb76ad5d7aa7b44fa426b5a95b",
+    "chunker": "memini-chunker/2 markdown/1 tree-sitter/0.26.1 tree-sitter-go/0.25.0 tree-sitter-javascript/0.25.0 tree-sitter-python/0.25.0 tree-sitter-ruby/0.23.1 tree-sitter-typescript/0.23.2",
+    "lexical": "tsvector-simple",
+    "reranker": "none",
+    "search": {
+      "candidates": 50,
+      "rrf_k": 60,
+      "rerank_depth": 50
+    }
+  },
+  "k": [
+    1,
+    5,
+    10
+  ],
+  "depth": 50,
+  "modes": {
+    "hybrid": {
+      "groups": {
+        "all": {
+          "n": 96,
+          "recall": {
+            "1": 0.4688,
+            "5": 0.7917,
+            "10": 0.8594
+          },
+          "mrr": 0.6097
+        },
+        "kind:code": {
+          "n": 51,
+          "recall": {
+            "1": 0.3431,
+            "5": 0.7843,
+            "10": 0.8725
+          },
+          "mrr": 0.5152
+        },
+        "kind:document": {
+          "n": 28,
+          "recall": {
+            "1": 0.4464,
+            "5": 0.6786,
+            "10": 0.75
+          },
+          "mrr": 0.5807
+        },
+        "kind:symbol": {
+          "n": 17,
+          "recall": {
+            "1": 0.8824,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.9412
+        },
+        "language:en": {
+          "n": 57,
+          "recall": {
+            "1": 0.5,
+            "5": 0.807,
+            "10": 0.8246
+          },
+          "mrr": 0.6304
+        },
+        "language:ru": {
+          "n": 39,
+          "recall": {
+            "1": 0.4231,
+            "5": 0.7692,
+            "10": 0.9103
+          },
+          "mrr": 0.5795
+        },
+        "tag:cross-language": {
+          "n": 24,
+          "recall": {
+            "1": 0.1458,
+            "5": 0.4583,
+            "10": 0.6458
+          },
+          "mrr": 0.2729
+        },
+        "tag:filtered": {
+          "n": 3,
+          "recall": {
+            "1": 0.3333,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.6667
+        },
+        "tag:multi": {
+          "n": 3,
+          "recall": {
+            "1": 0.1667,
+            "5": 0.5,
+            "10": 0.5
+          },
+          "mrr": 0.4667
+        }
+      },
+      "questions": {
+        "tw-berth-choice": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-started-hour": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "tw-night-extra": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-water-height": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "tw-entry-windows": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-retry-pause": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "tw-wind-closure": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "tw-knots-beaufort": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-keel-water": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "tw-occupancy": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-fee-tests": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            15
+          ]
+        },
+        "tw-ru-night-extra": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "tw-ru-berth-choice": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        },
+        "tw-ru-retry": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.5,
+            "10": 1.0
+          },
+          "rr": 0.1833,
+          "ranks": [
+            5
+          ]
+        },
+        "tw-ru-water-height": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.225,
+          "ranks": [
+            5
+          ]
+        },
+        "tw-ru-wind-closure": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.1056,
+          "ranks": [
+            10
+          ]
+        },
+        "tw-ru-invoice": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.1111,
+          "ranks": [
+            9
+          ]
+        },
+        "tw-ru-hazardous": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            15
+          ]
+        },
+        "bc-lens-stalled": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            20
+          ]
+        },
+        "bc-battery-levels": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            23
+          ]
+        },
+        "bc-fog-horn": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            25
+          ]
+        },
+        "bc-uptime": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-dedupe": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        },
+        "bc-offline": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.5,
+            "10": 0.5
+          },
+          "rr": 0.2,
+          "ranks": [
+            48,
+            5
+          ]
+        },
+        "bc-solar": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.1667,
+          "ranks": [
+            6
+          ]
+        },
+        "bc-ru-lens-stalled": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.1,
+          "ranks": [
+            10
+          ]
+        },
+        "bc-ru-nights": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-ru-sort-alerts": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "bc-ru-escape": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-ru-flashes": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-ru-grey-days": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-starter-mass": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-ru-starter-share": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.4167,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-ru-oven-order": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-preheat": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-writeoff": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-ru-low-stock": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-defect-rate": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-ru-cutoff": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-ru-discount": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-en-starter": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-en-oven-plan": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-en-feeding": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "zh-en-low-flour": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            19
+          ]
+        },
+        "zh-en-order-check": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-en-report": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-en-bulk-price": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "ex-no-berth": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "ex-tide-unavailable": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        },
+        "ex-lens-stalled": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            1
+          ]
+        },
+        "ex-order-cutoff": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "sym-berth-allocator": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            2
+          ]
+        },
+        "sym-night-surcharge": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-height-at": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-safety-margin": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-with-retries": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-fee-berth": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-check-rotation": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-should-sound-horn": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-format-uptime": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-charge-gain": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-plan-batches": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-validate-order": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-oven-overloaded": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-spisat-muku": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-sklad": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-zames": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-dolya": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-tide-format": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-storm": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-pilot": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-spill": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-handover": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-install": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "doc-hazard-berth": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-flash": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-battery-reserve": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-brak": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-en-rye": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            12
+          ]
+        },
+        "doc-en-flour-storage": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            24
+          ]
+        },
+        "doc-en-oven-order": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            19
+          ]
+        },
+        "doc-en-beacon-build": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-en-offline": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            23
+          ]
+        },
+        "doc-en-dues": {
+          "recall": {
+            "1": 0.5,
+            "5": 0.5,
+            "10": 0.5
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            39
+          ]
+        },
+        "doc-ru-arrival": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-storm": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.5,
+            "10": 0.5
+          },
+          "rr": 0.2,
+          "ranks": [
+            5,
+            17
+          ]
+        },
+        "doc-ru-sensors": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-event-log": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-baton": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-report": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-units": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-ru-shift-log": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-fog": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.125,
+          "ranks": [
+            8
+          ]
+        },
+        "doc-ru-pilot": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            19
+          ]
+        },
+        "doc-ru-troubleshoot": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.1,
+          "ranks": [
+            10
+          ]
+        },
+        "doc-ru-proofing": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            26
+          ]
+        }
+      }
+    },
+    "dense": {
+      "groups": {
+        "all": {
+          "n": 75,
+          "recall": {
+            "1": 0.56,
+            "5": 0.9667,
+            "10": 0.9867
+          },
+          "mrr": 0.7263
+        },
+        "kind:code": {
+          "n": 47,
+          "recall": {
+            "1": 0.5106,
+            "5": 0.9787,
+            "10": 0.9894
+          },
+          "mrr": 0.6887
+        },
+        "kind:document": {
+          "n": 28,
+          "recall": {
+            "1": 0.6429,
+            "5": 0.9464,
+            "10": 0.9821
+          },
+          "mrr": 0.7896
+        },
+        "language:en": {
+          "n": 41,
+          "recall": {
+            "1": 0.6463,
+            "5": 0.939,
+            "10": 0.9756
+          },
+          "mrr": 0.7774
+        },
+        "language:ru": {
+          "n": 34,
+          "recall": {
+            "1": 0.4559,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.6647
+        },
+        "tag:cross-language": {
+          "n": 24,
+          "recall": {
+            "1": 0.4792,
+            "5": 0.9792,
+            "10": 0.9792
+          },
+          "mrr": 0.6903
+        },
+        "tag:filtered": {
+          "n": 3,
+          "recall": {
+            "1": 0.3333,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.5278
+        },
+        "tag:multi": {
+          "n": 3,
+          "recall": {
+            "1": 0.3333,
+            "5": 0.5,
+            "10": 0.6667
+          },
+          "mrr": 0.7222
+        }
+      },
+      "questions": {
+        "tw-berth-choice": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-started-hour": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "tw-night-extra": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "tw-water-height": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-entry-windows": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "tw-retry-pause": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-wind-closure": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-knots-beaufort": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-keel-water": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-occupancy": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-fee-tests": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-ru-night-extra": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-ru-berth-choice": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "tw-ru-retry": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-ru-water-height": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-ru-wind-closure": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "tw-ru-invoice": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "tw-ru-hazardous": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "bc-lens-stalled": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "bc-battery-levels": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "bc-fog-horn": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "bc-uptime": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-dedupe": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-offline": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.5
+          },
+          "rr": 0.1667,
+          "ranks": [
+            24,
+            6
+          ]
+        },
+        "bc-solar": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "bc-ru-lens-stalled": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        },
+        "bc-ru-nights": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "bc-ru-sort-alerts": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-ru-escape": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-ru-flashes": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-ru-grey-days": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-ru-starter-mass": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-ru-starter-share": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-ru-oven-order": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "zh-ru-preheat": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-writeoff": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-ru-low-stock": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-ru-defect-rate": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-cutoff": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-discount": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-en-starter": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "zh-en-oven-plan": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-en-feeding": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-en-low-flour": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-en-order-check": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-en-report": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-en-bulk-price": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-tide-format": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-storm": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-pilot": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-spill": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-handover": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-install": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.125,
+          "ranks": [
+            8
+          ]
+        },
+        "doc-hazard-berth": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-flash": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-battery-reserve": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-brak": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "doc-en-rye": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-en-flour-storage": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-en-oven-order": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-en-beacon-build": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-en-offline": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-en-dues": {
+          "recall": {
+            "1": 0.5,
+            "5": 0.5,
+            "10": 0.5
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            13
+          ]
+        },
+        "doc-ru-arrival": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-storm": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            2
+          ]
+        },
+        "doc-ru-sensors": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-event-log": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-baton": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-report": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-units": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "doc-ru-shift-log": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-fog": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        },
+        "doc-ru-pilot": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-ru-troubleshoot": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-ru-proofing": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        }
+      }
+    },
+    "lexical": {
+      "groups": {
+        "all": {
+          "n": 96,
+          "recall": {
+            "1": 0.3281,
+            "5": 0.5356,
+            "10": 0.6061
+          },
+          "mrr": 0.4171
+        },
+        "kind:code": {
+          "n": 51,
+          "recall": {
+            "1": 0.2255,
+            "5": 0.4101,
+            "10": 0.5102
+          },
+          "mrr": 0.3018
+        },
+        "kind:document": {
+          "n": 28,
+          "recall": {
+            "1": 0.3036,
+            "5": 0.5536,
+            "10": 0.6131
+          },
+          "mrr": 0.4071
+        },
+        "kind:symbol": {
+          "n": 17,
+          "recall": {
+            "1": 0.6765,
+            "5": 0.8824,
+            "10": 0.8824
+          },
+          "mrr": 0.7794
+        },
+        "language:en": {
+          "n": 57,
+          "recall": {
+            "1": 0.307,
+            "5": 0.5,
+            "10": 0.5819
+          },
+          "mrr": 0.3836
+        },
+        "language:ru": {
+          "n": 39,
+          "recall": {
+            "1": 0.359,
+            "5": 0.5876,
+            "10": 0.6416
+          },
+          "mrr": 0.466
+        },
+        "tag:cross-language": {
+          "n": 24,
+          "recall": {
+            "1": 0.0,
+            "5": 0.0417,
+            "10": 0.0625
+          },
+          "mrr": 0.0238
+        },
+        "tag:filtered": {
+          "n": 3,
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.3083
+        },
+        "tag:multi": {
+          "n": 3,
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.1667
+          },
+          "mrr": 0.0516
+        }
+      },
+      "questions": {
+        "tw-berth-choice": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-started-hour": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.1548,
+          "ranks": [
+            6
+          ]
+        },
+        "tw-night-extra": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-water-height": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.112,
+          "ranks": [
+            9
+          ]
+        },
+        "tw-entry-windows": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "tw-retry-pause": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "rr": 0.1056,
+          "ranks": [
+            10
+          ]
+        },
+        "tw-wind-closure": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        },
+        "tw-knots-beaufort": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "tw-keel-water": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            14
+          ]
+        },
+        "tw-occupancy": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.225,
+          "ranks": [
+            5
+          ]
+        },
+        "tw-fee-tests": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "tw-ru-night-extra": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "tw-ru-berth-choice": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "tw-ru-retry": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "tw-ru-water-height": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "tw-ru-wind-closure": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "tw-ru-invoice": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "tw-ru-hazardous": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "bc-lens-stalled": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "bc-battery-levels": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "bc-fog-horn": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "bc-uptime": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            19
+          ]
+        },
+        "bc-dedupe": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            34
+          ]
+        },
+        "bc-offline": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null,
+            18
+          ]
+        },
+        "bc-solar": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            41
+          ]
+        },
+        "bc-ru-lens-stalled": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "bc-ru-nights": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "bc-ru-sort-alerts": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.2222
+          },
+          "rr": 0.0235,
+          "ranks": [
+            10
+          ]
+        },
+        "bc-ru-escape": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.4167,
+          "ranks": [
+            2
+          ]
+        },
+        "bc-ru-flashes": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2611,
+          "ranks": [
+            3
+          ]
+        },
+        "bc-ru-grey-days": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-starter-mass": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-starter-share": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-ru-oven-order": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-preheat": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            2
+          ]
+        },
+        "zh-ru-writeoff": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.8
+          },
+          "rr": 0.0958,
+          "ranks": [
+            8
+          ]
+        },
+        "zh-ru-low-stock": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-ru-defect-rate": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.75,
+            "10": 1.0
+          },
+          "rr": 0.2375,
+          "ranks": [
+            5
+          ]
+        },
+        "zh-ru-cutoff": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.1667,
+            "10": 1.0
+          },
+          "rr": 0.1409,
+          "ranks": [
+            10
+          ]
+        },
+        "zh-ru-discount": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "zh-en-starter": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            22
+          ]
+        },
+        "zh-en-oven-plan": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            30
+          ]
+        },
+        "zh-en-feeding": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            40
+          ]
+        },
+        "zh-en-low-flour": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "zh-en-order-check": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            23
+          ]
+        },
+        "zh-en-report": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            18
+          ]
+        },
+        "zh-en-bulk-price": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.4167,
+          "ranks": [
+            2
+          ]
+        },
+        "ex-no-berth": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "ex-tide-unavailable": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            15
+          ]
+        },
+        "ex-lens-stalled": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "ex-order-cutoff": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-berth-allocator": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            2
+          ]
+        },
+        "sym-night-surcharge": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-height-at": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "sym-safety-margin": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-with-retries": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-fee-berth": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "sym-check-rotation": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-should-sound-horn": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-format-uptime": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-charge-gain": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-plan-batches": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-validate-order": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-oven-overloaded": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-spisat-muku": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-sklad": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "sym-zames": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "sym-dolya": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-tide-format": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-storm": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-pilot": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.5,
+            "10": 1.0
+          },
+          "rr": 0.1833,
+          "ranks": [
+            5
+          ]
+        },
+        "doc-spill": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.6667
+          },
+          "rr": 0.0704,
+          "ranks": [
+            9
+          ]
+        },
+        "doc-handover": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-install": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.4167,
+          "ranks": [
+            3
+          ]
+        },
+        "doc-hazard-berth": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "doc-flash": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-battery-reserve": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2917,
+          "ranks": [
+            4
+          ]
+        },
+        "doc-brak": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.2,
+          "ranks": [
+            5
+          ]
+        },
+        "doc-en-rye": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "doc-en-flour-storage": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "doc-en-oven-order": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "doc-en-beacon-build": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            19
+          ]
+        },
+        "doc-en-offline": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "doc-en-dues": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.5
+          },
+          "rr": 0.1548,
+          "ranks": [
+            6,
+            null
+          ]
+        },
+        "doc-ru-arrival": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-storm": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            40,
+            null
+          ]
+        },
+        "doc-ru-sensors": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-event-log": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-baton": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-report": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.75,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-units": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "doc-ru-shift-log": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "doc-ru-fog": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "doc-ru-pilot": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "doc-ru-troubleshoot": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        },
+        "doc-ru-proofing": {
+          "recall": {
+            "1": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "rr": 0.0,
+          "ranks": [
+            null
+          ]
+        }
+      }
+    },
+    "exact": {
+      "groups": {
+        "all": {
+          "n": 19,
+          "recall": {
+            "1": 0.8421,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.8991
+        },
+        "kind:code": {
+          "n": 4,
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "kind:symbol": {
+          "n": 15,
+          "recall": {
+            "1": 0.8,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.8722
+        },
+        "language:en": {
+          "n": 14,
+          "recall": {
+            "1": 0.8571,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.9167
+        },
+        "language:ru": {
+          "n": 5,
+          "recall": {
+            "1": 0.8,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 0.85
+        }
+      },
+      "questions": {
+        "ex-no-berth": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "ex-tide-unavailable": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "ex-lens-stalled": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "ex-order-cutoff": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-berth-allocator": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.3333,
+          "ranks": [
+            3
+          ]
+        },
+        "sym-night-surcharge": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.5,
+          "ranks": [
+            2
+          ]
+        },
+        "sym-safety-margin": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-with-retries": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-check-rotation": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-should-sound-horn": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-format-uptime": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-charge-gain": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-plan-batches": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-validate-order": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-oven-overloaded": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-spisat-muku": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-sklad": {
+          "recall": {
+            "1": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 0.25,
+          "ranks": [
+            4
+          ]
+        },
+        "sym-zames": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-dolya": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        }
+      }
+    },
+    "regex": {
+      "groups": {
+        "all": {
+          "n": 5,
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "kind:code": {
+          "n": 5,
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "language:en": {
+          "n": 5,
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "tag:filtered": {
+          "n": 1,
+          "recall": {
+            "1": 0.3333,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "tag:multi": {
+          "n": 5,
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        }
+      },
+      "questions": {
+        "rx-night-defs": {
+          "recall": {
+            "1": 0.6667,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            1,
+            2
+          ]
+        },
+        "rx-severity": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            2
+          ]
+        },
+        "rx-raise-f": {
+          "recall": {
+            "1": 0.3333,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            2,
+            3
+          ]
+        },
+        "rx-export-alerts": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            2
+          ]
+        },
+        "rx-lamp-methods": {
+          "recall": {
+            "1": 0.5,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1,
+            2
+          ]
+        }
+      }
+    },
+    "symbol": {
+      "groups": {
+        "all": {
+          "n": 17,
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "kind:symbol": {
+          "n": 17,
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "language:en": {
+          "n": 13,
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        },
+        "language:ru": {
+          "n": 4,
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "mrr": 1.0
+        }
+      },
+      "questions": {
+        "sym-berth-allocator": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-night-surcharge": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-height-at": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-safety-margin": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-with-retries": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-fee-berth": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-check-rotation": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-should-sound-horn": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-format-uptime": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-charge-gain": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-plan-batches": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-validate-order": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-oven-overloaded": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-spisat-muku": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-sklad": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-zames": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        },
+        "sym-dolya": {
+          "recall": {
+            "1": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "rr": 1.0,
+          "ranks": [
+            1
+          ]
+        }
+      }
+    }
+  }
+}

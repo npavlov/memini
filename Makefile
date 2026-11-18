@@ -4,10 +4,10 @@ SHELL := /bin/bash
 # `uv run` syncs the environment from uv.lock before each command.
 UV_RUN := uv run
 
-.PHONY: help sync lint format typecheck test test-integration check eval db db-down smoke
+.PHONY: help sync lint format typecheck test test-integration check eval eval-qwen3 db db-down smoke
 
 help: ## List targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-18s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-18s %s\n", $$1, $$2}'
 
 sync: ## Install dependencies into .venv
 	uv sync
@@ -33,6 +33,10 @@ check: lint typecheck test ## Everything a pull request must pass
 
 eval: ## Retrieval eval, FakeEmbedder, against the committed baseline (MEMINI_DATABASE_URL, CREATEDB)
 	$(UV_RUN) memini eval --fake-embeddings --baseline eval/code/baseline-fake.json
+
+eval-qwen3: ## Retrieval eval, every mode, default model from local Ollama, against its baseline
+	MEMINI_EMBEDDING_PROVIDER=openai_compatible $(UV_RUN) memini eval --modes all \
+		--baseline eval/code/baseline-qwen3.json
 
 db: ## Start the development database (Postgres with pgvector) and wait until healthy
 	docker compose up -d --wait db

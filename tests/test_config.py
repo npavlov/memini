@@ -1,6 +1,7 @@
 """Tests for memini.config. Every value here is synthetic."""
 
 import logging
+import re
 import traceback
 from pathlib import Path
 
@@ -9,8 +10,12 @@ from pydantic import ValidationError
 
 from memini.config import (
     CONFIG_FILE_VAR,
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_URL,
+    DEFAULT_MODEL_SETTINGS,
     HANDLE_REGEX,
     ConfigError,
+    Settings,
     environment_variables,
     load_settings,
 )
@@ -339,6 +344,117 @@ def test_reads_an_openai_compatible_provider_from_the_environment(tmp_path: Path
     assert FAKE_EMBEDDING_KEY not in repr(settings)
 
 
+def test_openai_compatible_alone_means_the_default_model_on_local_ollama() -> None:
+    settings = load_settings(
+        {"MEMINI_DATABASE_URL": FAKE_URL, "MEMINI_EMBEDDING_PROVIDER": "openai_compatible"}
+    )
+
+    assert settings.embedding_url == DEFAULT_EMBEDDING_URL == "http://127.0.0.1:11434/v1"
+    assert settings.embedding_model == DEFAULT_EMBEDDING_MODEL == "qwen3-embedding:0.6b"
+    assert settings.embedding_dimension == 1024
+    assert settings.embedding_digest == DEFAULT_MODEL_SETTINGS["embedding_digest"]
+    assert settings.embedding_query_prefix == DEFAULT_MODEL_SETTINGS["embedding_query_prefix"]
+    assert settings.embedding_query_prefix.startswith("Instruct: ")
+    assert settings.embedding_query_prefix.endswith("\nQuery:")
+    assert settings.embedding_document_prefix == ""
+
+
+def test_the_defaults_of_the_default_model_also_apply_when_it_is_named() -> None:
+    settings = load_settings(
+        {
+            "MEMINI_DATABASE_URL": FAKE_URL,
+            "MEMINI_EMBEDDING_PROVIDER": "openai_compatible",
+            "MEMINI_EMBEDDING_MODEL": DEFAULT_EMBEDDING_MODEL,
+            "MEMINI_EMBEDDING_URL": "http://host.docker.internal:11434/v1",
+        }
+    )
+
+    assert settings.embedding_url == "http://host.docker.internal:11434/v1"
+    assert settings.embedding_dimension == 1024
+    assert settings.embedding_digest == DEFAULT_MODEL_SETTINGS["embedding_digest"]
+
+
+def test_set_values_win_over_the_defaults_of_the_default_model(tmp_path: Path) -> None:
+    config = write(tmp_path / "memini.toml", 'embedding_query_prefix = ""\n')
+
+    settings = load_settings(
+        {
+            "MEMINI_DATABASE_URL": FAKE_URL,
+            CONFIG_FILE_VAR: str(config),
+            "MEMINI_EMBEDDING_PROVIDER": "openai_compatible",
+            "MEMINI_EMBEDDING_DIGEST": "synthetic-ollama-digest",
+            "MEMINI_EMBEDDING_DIMENSION": "512",
+        }
+    )
+
+    assert settings.embedding_model == DEFAULT_EMBEDDING_MODEL
+    assert settings.embedding_digest == "synthetic-ollama-digest"
+    assert settings.embedding_dimension == 512
+    # An empty prefix in the config file is a value; in the environment it would count as unset.
+    assert settings.embedding_query_prefix == ""
+
+
+def test_another_model_gets_the_default_url_but_nothing_of_the_default_model() -> None:
+    settings = load_settings(
+        {key: value for key, value in OPENAI_ENV.items() if key != "MEMINI_EMBEDDING_URL"}
+    )
+
+    assert settings.embedding_url == DEFAULT_EMBEDDING_URL
+    assert settings.embedding_model == "synthetic-embed:v1"
+    assert settings.embedding_dimension == 768
+    assert settings.embedding_digest is None
+    assert settings.embedding_query_prefix == ""
+
+
+def test_the_local_provider_gets_no_default_model(tmp_path: Path) -> None:
+    error = config_error(
+        {
+            "MEMINI_DATABASE_URL": FAKE_URL,
+            "MEMINI_EMBEDDING_PROVIDER": "local",
+            "MEMINI_EMBEDDING_DIMENSION": "1024",
+            "MEMINI_EMBEDDING_DIGEST": LOCAL_DIGEST,
+            "MEMINI_EMBEDDING_MODEL_DIR": str(tmp_path),
+        }
+    )
+
+    assert error.problems == (
+        "MEMINI_EMBEDDING_MODEL: required when embedding_provider is local;"
+        " set MEMINI_EMBEDDING_MODEL or embedding_model in the config file",
+    )
+
+
+def test_env_example_shows_what_the_provider_alone_implies() -> None:
+    # .env.example lists the defaults of the default model, commented out; they must stay the ones
+    # the provider alone gets. Compose reads `\n` in a double-quoted value as a line break.
+    text = (Path(__file__).parent.parent / ".env.example").read_text(encoding="utf-8")
+    listed = {
+        key: value[1:-1].replace("\\n", "\n") if value.startswith('"') else value
+        for key, value in re.findall(r"(?m)^# (MEMINI_EMBEDDING_[A-Z_]+)=(.*)$", text)
+    }
+
+    assert {"PROVIDER", "URL", "MODEL", "DIMENSION", "DIGEST", "QUERY_PREFIX"} <= {
+        key.removeprefix("MEMINI_EMBEDDING_") for key in listed
+    }
+    documented = load_settings({"MEMINI_DATABASE_URL": FAKE_URL} | listed)
+    implied = load_settings(
+        {
+            "MEMINI_DATABASE_URL": FAKE_URL,
+            "MEMINI_EMBEDDING_PROVIDER": "openai_compatible",
+            # compose's default, not the service's: inside a container 127.0.0.1 is the container
+            "MEMINI_EMBEDDING_URL": "http://host.docker.internal:11434/v1",
+        }
+    )
+    assert documented == implied
+
+
+def test_the_default_query_prefix_fits_its_setting() -> None:
+    prefix = DEFAULT_MODEL_SETTINGS["embedding_query_prefix"]
+
+    assert isinstance(prefix, str)
+    field = Settings.model_fields["embedding_query_prefix"]
+    assert any(getattr(rule, "max_length", 0) >= len(prefix) for rule in field.metadata)
+
+
 def test_reads_a_local_provider_from_the_config_file(tmp_path: Path) -> None:
     config = write(
         tmp_path / "memini.toml",
@@ -364,14 +480,19 @@ def test_reads_a_local_provider_from_the_config_file(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("provider", "missing"),
+    ("provider", "given", "missing"),
     [
-        ("openai_compatible", ["MODEL", "DIMENSION", "URL"]),
-        ("local", ["MODEL", "DIMENSION", "DIGEST", "MODEL_DIR"]),
+        # Only the default model has a default dimension.
+        ("openai_compatible", {"MEMINI_EMBEDDING_MODEL": "synthetic-embed:v1"}, ["DIMENSION"]),
+        ("local", {}, ["MODEL", "DIMENSION", "DIGEST", "MODEL_DIR"]),
     ],
 )
-def test_what_a_provider_needs_is_named(provider: str, missing: list[str]) -> None:
-    error = config_error({"MEMINI_DATABASE_URL": FAKE_URL, "MEMINI_EMBEDDING_PROVIDER": provider})
+def test_what_a_provider_needs_is_named(
+    provider: str, given: dict[str, str], missing: list[str]
+) -> None:
+    error = config_error(
+        {"MEMINI_DATABASE_URL": FAKE_URL, "MEMINI_EMBEDDING_PROVIDER": provider} | given
+    )
 
     assert error.problems == tuple(
         f"MEMINI_EMBEDDING_{name}: required when embedding_provider is {provider};"

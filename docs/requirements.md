@@ -226,7 +226,7 @@ source again.
 | Step | How |
 |---|---|
 | Chunking | Code: tree-sitter, by class and function, small siblings merged, line windows as fallback. Threads: message groups. Meetings: summary sections and transcript windows. Documents: headings. |
-| Dense vectors | Local multilingual embedding model, pinned in config with its digest. |
+| Dense vectors | Local multilingual embedding model, pinned in config with its digest: Qwen3-Embedding 0.6B through Ollama by default. |
 | Lexical | BM25 in Postgres with a per-language configuration. Trigram index for exact and regex code search. |
 | Rerank | Local cross-encoder, optional. |
 | Decision extraction | One LLM call per new or changed thread or meeting, structured output. Skipped when `llm_policy` is `none`. |
@@ -380,7 +380,7 @@ does not mean migrating data.
 | Database access | psycopg 3, async, plain SQL; `psycopg_pool`; the `pgvector` adapter | The SQL later work needs is Postgres SQL; typed; async like FastAPI and MCP. See below |
 | Migrations | Numbered SQL files and a small runner in `memini.db` | Forward only; one transaction per file; an advisory lock for concurrent starts. See below |
 | Lexical search | Postgres BM25 extension or built-in `tsvector`; `pg_trgm` | Open question 1 |
-| Embeddings | Local, in-process or through an OpenAI-compatible endpoint (Ollama) | Open question 2 |
+| Embeddings | Local, in-process or through an OpenAI-compatible endpoint; by default Qwen3-Embedding 0.6B in Ollama | Open question 2, settled |
 | LLM | OpenAI-compatible endpoint for local models; cloud providers as opt-in | Principle 8 |
 
 **Database access** (decided 2026-11-18). Memini targets one database. What later work needs is Postgres
@@ -432,7 +432,32 @@ pooling, token limit, document prefix and chunker version; each workspace record
 built with (`index_state`), and search or indexing under another one is refused with a message that names
 `memini reindex` (principle 9). A vector is reused by its text hash and the embedding part of the
 fingerprint, so an unchanged text is never embedded twice, also across chunker versions (principle 6).
-Which model ships as the default, and through which provider, is still open question 2.
+The default model is settled in the next paragraph.
+
+**Default embedding model** (decided 2026-11-18; open question 2). Qwen3-Embedding 0.6B
+(`qwen3-embedding:0.6b`, 1024 dimensions, Q8_0), served by Ollama through the OpenAI-compatible
+provider. The local provider cannot run it: it pools by the mean or the first token, Qwen3-Embedding
+by its last one. Embeddings stay off until a provider is set, so the service starts without Ollama.
+`embedding_provider = openai_compatible` and nothing else means the default: the URL
+`http://127.0.0.1:11434/v1` (Ollama on this machine), the model, and for that model only its
+dimension, the digest of the Ollama build the eval measured
+(`ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d`) and its query instruction. A
+value that is set wins; another model gets none of the three and needs its own dimension. The
+defaults live in `memini.config`, so the CLI on the host, the eval and the container agree. The
+digest goes into the fingerprint but is not checked: the OpenAI-compatible API does not report it,
+so after `ollama pull` brings a new build the user sets its digest and reindexes. Qwen3-Embedding
+embeds a query after an instruction, `Instruct: {task}\nQuery:`, and a document as it is; the
+document prefix stays empty. The task, measured on the code suite against seven other wordings
+and none (open question 2), is "Given a search query, retrieve the relevant code or documentation
+that can help answer the query". The query prefix is not in the fingerprint, so changing it needs
+no reindex. The compose stack passes the `MEMINI_EMBEDDING_*` variables from the environment or
+`.env` (`.env.example` lists them, commented out) and, when a provider is set without a URL,
+points the URL at Ollama on the host, `http://host.docker.internal:11434/v1`; an `extra_hosts`
+entry with `host-gateway` makes that name work on Linux too, where Ollama must also listen on the
+Docker bridge. Compose keeps embeddings off by default as well, rather than on with Ollama
+assumed: on a machine without Ollama a default-on stack would accept sources and then fail every
+sync and search on a connection error, while off it names the setting to set; and the smoke test
+in CI needs no model.
 
 **Git mirrors** (decided 2026-11-18). The service runs the `git` CLI as a subprocess, not pygit2 or
 dulwich: the CLI is the reference for every transport and for fetch negotiation, it has documented
@@ -639,8 +664,20 @@ retriever and the reranker are chosen by name from registries of the eval (`--le
 `--reranker`), and `memini.search.search` takes the lexical statement as a parameter: open question
 1 adds its candidates there and measures them against `tsvector-simple`. The committed baseline,
 `eval/code/baseline-fake.json`, covers the modes the FakeEmbedder does not take part in (lexical,
-exact, regex, symbol) and is what CI compares with; baselines of the dense and hybrid modes need a
-real model and are written by open question 2 with `--modes all --write-baseline`.
+exact, regex, symbol) and is what CI compares with. `eval/code/baseline-qwen3.json` covers every
+mode, dense and hybrid included, with the default model (open question 2). It needs Ollama on the
+machine that runs the eval, with `qwen3-embedding:0.6b` pulled, so CI does not run it. Rerun it
+after a change of the model, the chunker, the lexical retriever or the fusion, and write it again
+when a change is meant to move it (about 10 s):
+
+    make eval-qwen3                     # every mode, compared with the baseline
+    MEMINI_EMBEDDING_PROVIDER=openai_compatible memini eval --modes all \
+        --baseline eval/code/baseline-qwen3.json --write-baseline   # write it again
+
+Dense results are the same on every run. Hybrid results move by up to about 0.03 in a group from
+run to run (one of four reruns flagged a drop of 0.021): lexical ties are broken by chunk id, and
+chunk ids derive from the source ids, which are new in every scratch database. Until that is fixed,
+a hybrid regression of that size is noise; compare with `--margin 0.05` to be sure.
 
 ## 11. Later
 
@@ -655,8 +692,37 @@ real model and are written by open question 2 with `--modes all --write-baseline
 1. BM25: `pg_textsearch` (Postgres 17+) or built-in `tsvector`. Needs a check of Russian stemming and
    ranking quality on the eval set.
 2. Settled on 2026-11-18 by the owner: Qwen3-Embedding 0.6B (`qwen3-embedding:0.6b`, 1024 dimensions,
-   multilingual, strong on code), served by Ollama through the OpenAI-compatible provider. The eval
-   records its numbers as the baseline.
+   multilingual, strong on code), served by Ollama through the OpenAI-compatible provider; defaults
+   and compose in section 9 (**Default embedding model**). Measured on the code suite
+   (`eval/code/baseline-qwen3.json`, `simple` lexical leg, no reranker), recall at 10 and MRR:
+
+   | Mode | All | Russian | Cross-language |
+   |---|---|---|---|
+   | dense (75, 34 and 24 questions) | 0.99 / 0.73 | 1.00 / 0.66 | 0.98 / 0.69 |
+   | hybrid (96, 39 and 24) | 0.86 / 0.61 | 0.91 / 0.58 | 0.65 / 0.27 |
+   | lexical (96, 39 and 24) | 0.61 / 0.42 | 0.64 / 0.47 | 0.06 / 0.02 |
+
+   Hybrid and lexical are also asked 21 questions that dense is not: 17 about symbols, 4 quoting a
+   message string. On the 75 questions of dense, hybrid scores 0.82 / 0.53 and lexical 0.54 / 0.32.
+   Hybrid is below dense because the `simple` lexical leg is weak, across languages above all, and
+   rank fusion weighs its top ranks, mostly wrong, as much as those of the dense leg. Improving the
+   lexical leg is open question 1.
+
+   The query instruction, measured in dense mode (R@1, R@5, R@10, MRR; then MRR of the Russian and
+   the cross-language questions):
+
+   | Task in `Instruct: {task}\nQuery:` | R@1 | R@5 | R@10 | MRR | ru | cross |
+   |---|---|---|---|---|---|---|
+   | none (no prefix) | 0.54 | 0.95 | 0.98 | 0.719 | 0.705 | 0.677 |
+   | Given a web search query, retrieve relevant passages that answer the query (the model card's) | 0.52 | 0.91 | 0.99 | 0.700 | 0.656 | 0.639 |
+   | Given a question about a software project, retrieve the code or documentation that answers it | 0.56 | 0.93 | 0.99 | 0.719 | 0.647 | 0.710 |
+   | **Given a search query, retrieve the relevant code or documentation that can help answer the query** | 0.56 | 0.97 | 0.99 | 0.726 | 0.665 | 0.690 |
+
+   Five other wordings (naming both languages, asking for snippets, shorter) scored MRR 0.684 to
+   0.714. The chosen task is the best overall, but only by a question or two over none: every
+   instruction helped the English questions (MRR 0.731 without, up to 0.78 with) and cost the
+   Russian ones (0.705 without, 0.61 to 0.67 with), though with the chosen one every Russian answer
+   is within the first 5. Measure again when the suite grows.
 3. Settled on 2026-11-18 by the owner: Postgres with pgvector is the only store, the vector database
    included; no SQLite and no separate vector database such as Qdrant (see prior-art.md, Storage). It
    runs as its own compose service from the official pgvector image, pinned by digest: it upgrades

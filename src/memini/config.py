@@ -50,6 +50,19 @@ in is the declaration; it is never inferred from the URL. ``llm_cloud_url`` must
 slot needs its URL and model together; a setting of a slot without its URL is an error. No
 provider is configured by default, and then nothing is extracted.
 
+The default model is Qwen3-Embedding 0.6B as Ollama serves it (docs/requirements.md, open question
+2). With ``embedding_provider = openai_compatible`` and nothing else, the settings are:
+
+- ``embedding_url``: :data:`DEFAULT_EMBEDDING_URL`, Ollama on this machine;
+- ``embedding_model``: :data:`DEFAULT_EMBEDDING_MODEL`;
+- and, while the model is that one, ``embedding_dimension``, ``embedding_digest`` and
+  ``embedding_query_prefix`` from :data:`DEFAULT_MODEL_SETTINGS`: 1024, the Ollama digest the eval
+  measured, and the instruction the model expects before a query.
+
+A value that is set wins over its default. Another model gets no dimension, digest or prefix from
+here: it needs its own ``embedding_dimension``. The compose stack sets ``embedding_url`` to the
+host's Ollama when a provider is set (compose.yaml, .env.example).
+
 The ``git_*`` settings configure the git connector (:mod:`memini.git`): where the mirrors live, the
 limits, which transports a source may use and the credentials for remotes. A list setting is a
 TOML array in the config file, or comma-separated in the environment
@@ -71,7 +84,7 @@ import re
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Annotated, Any, Final, Literal, get_args
+from typing import Annotated, Any, Final, Literal, cast, get_args
 
 from pydantic import (
     AfterValidator,
@@ -83,11 +96,15 @@ from pydantic import (
     ValidationError,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 
 __all__ = [
     "CONFIG_FILE_VAR",
     "CREDENTIAL_KEY_BYTES",
+    "DEFAULT_EMBEDDING_MODEL",
+    "DEFAULT_EMBEDDING_URL",
+    "DEFAULT_MODEL_SETTINGS",
     "EMBEDDING_MAX_DIMENSION",
     "ENV_PREFIX",
     "HANDLE_REGEX",
@@ -122,6 +139,30 @@ against the schema in every case."""
 
 EMBEDDING_MAX_DIMENSION: Final = 16000
 """The largest dimension a pgvector ``vector`` column holds."""
+
+DEFAULT_EMBEDDING_URL: Final = "http://127.0.0.1:11434/v1"
+"""Where ``openai_compatible`` sends text when ``embedding_url`` is not set: Ollama on this
+machine, at its default port."""
+
+DEFAULT_EMBEDDING_MODEL: Final = "qwen3-embedding:0.6b"
+"""The model ``openai_compatible`` asks for when ``embedding_model`` is not set: Qwen3-Embedding
+0.6B by its Ollama name (docs/requirements.md, open question 2). ``ollama pull`` it first."""
+
+DEFAULT_MODEL_SETTINGS: Final[Mapping[str, object]] = {
+    "embedding_dimension": 1024,
+    # The digest of the Ollama build the eval baseline was measured with (Q8_0), as
+    # `ollama list` and /api/tags show it. Recorded in the index fingerprint, not checked.
+    "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+    # Qwen3-Embedding embeds a query after an instruction, in the form "Instruct: {task}\nQuery:",
+    # and a document without one. This task scored best of the variants measured on the code
+    # suite (docs/requirements.md, open question 2). Not part of the fingerprint: changing it
+    # needs no reindex.
+    "embedding_query_prefix": (
+        "Instruct: Given a search query, retrieve the relevant code or documentation that can help"
+        " answer the query\nQuery:"
+    ),
+}
+"""The settings :data:`DEFAULT_EMBEDDING_MODEL` gets when they are not set."""
 
 HANDLE_REGEX: Final = r"^[a-z0-9][a-z0-9_-]{0,62}$"
 """A valid name of a principal, as :data:`memini.workspaces.HANDLE_PATTERN` and the database check
@@ -281,7 +322,8 @@ class Settings(BaseModel):
         default=None,
         max_length=500,
         pattern=r"^https?://[^\s/?#]+(/[^\s?#]*)?$",
-        description="the base URL of an OpenAI-compatible API, e.g. http://127.0.0.1:11434/v1",
+        description="the base URL of an OpenAI-compatible API, e.g. http://127.0.0.1:11434/v1"
+        " (the default)",
     )
     embedding_api_key: SecretStr | None = Field(default=None, min_length=1)
     # local only
@@ -476,6 +518,28 @@ class Settings(BaseModel):
         description="seconds per LLM request, more than 0, at most 3600",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _default_embedding_model(cls, data: Any) -> Any:
+        """Fill in the default model of ``openai_compatible`` and its settings (module docstring).
+
+        Runs before validation, on the merged input: a value that is set, even to something
+        invalid, is left for validation to judge."""
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(cast(Mapping[str, object], data))
+        if values.get("embedding_provider") != "openai_compatible":
+            return values
+        if values.get("embedding_url") is None:
+            values["embedding_url"] = DEFAULT_EMBEDDING_URL
+        if values.get("embedding_model") is None:
+            values["embedding_model"] = DEFAULT_EMBEDDING_MODEL
+        if values["embedding_model"] == DEFAULT_EMBEDDING_MODEL:
+            for name, value in DEFAULT_MODEL_SETTINGS.items():
+                if values.get(name) is None:
+                    values[name] = value
+        return values
+
     @field_validator("git_https_token_hosts")
     @classmethod
     def _token_has_hosts(cls, hosts: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:
@@ -667,7 +731,8 @@ _EMBEDDING_ONLY: Final[Mapping[str, EmbeddingProvider]] = {
 """Settings that apply to one provider only."""
 
 _EMBEDDING_REQUIRED: Final[Mapping[EmbeddingProvider, tuple[str, ...]]] = {
-    "openai_compatible": ("embedding_model", "embedding_dimension", "embedding_url"),
+    # The model and the URL have defaults; the dimension has one for the default model only.
+    "openai_compatible": ("embedding_dimension",),
     "local": ("embedding_model", "embedding_dimension", "embedding_digest", "embedding_model_dir"),
 }
 

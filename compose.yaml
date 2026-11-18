@@ -19,6 +19,12 @@
 #   machine, set a strong one before the first start: the database keeps the password it was
 #   created with.
 # - MEMINI_LOG_LEVEL: CRITICAL, ERROR, WARNING, INFO (default) or DEBUG.
+# - MEMINI_EMBEDDING_*: embeddings, off unless MEMINI_EMBEDDING_PROVIDER is set. With
+#   MEMINI_EMBEDDING_PROVIDER=openai_compatible and nothing else, the service embeds with
+#   Qwen3-Embedding 0.6B (qwen3-embedding:0.6b) from Ollama on the host, at
+#   http://host.docker.internal:11434/v1. Without embeddings the service starts and serves, but it
+#   does not sync git sources, and search answers that no embedding provider is configured. See
+#   .env.example.
 #
 # Data lives in named volumes: `memini-db` (the database) and `memini-mirrors` (the bare mirrors
 # of git sources, which can be re-cloned). `docker compose down` keeps them; only
@@ -59,6 +65,26 @@ services:
     environment:
       MEMINI_DATABASE_URL: postgresql://memini:${MEMINI_DB_PASSWORD:-memini}@db:5432/memini
       MEMINI_LOG_LEVEL: ${MEMINI_LOG_LEVEL:-INFO}
+      # Embeddings (.env.example). A variable left empty counts as not set, so the defaults of
+      # the service apply (src/memini/config.py): the model qwen3-embedding:0.6b, its dimension,
+      # digest and query instruction. Only the URL differs from the service's default: inside
+      # the container, 127.0.0.1 is the container itself, so it points at Ollama on the host
+      # when a provider is set, and stays empty (no embedding setting at all) when none is.
+      # The image has no in-process model: openai_compatible is the provider to use here.
+      MEMINI_EMBEDDING_PROVIDER: ${MEMINI_EMBEDDING_PROVIDER:-}
+      MEMINI_EMBEDDING_URL: ${MEMINI_EMBEDDING_URL:-${MEMINI_EMBEDDING_PROVIDER:+http://host.docker.internal:11434/v1}}
+      MEMINI_EMBEDDING_MODEL: ${MEMINI_EMBEDDING_MODEL:-}
+      MEMINI_EMBEDDING_DIMENSION: ${MEMINI_EMBEDDING_DIMENSION:-}
+      MEMINI_EMBEDDING_DIGEST: ${MEMINI_EMBEDDING_DIGEST:-}
+      MEMINI_EMBEDDING_QUERY_PREFIX: ${MEMINI_EMBEDDING_QUERY_PREFIX:-}
+      MEMINI_EMBEDDING_DOCUMENT_PREFIX: ${MEMINI_EMBEDDING_DOCUMENT_PREFIX:-}
+      MEMINI_EMBEDDING_BATCH_SIZE: ${MEMINI_EMBEDDING_BATCH_SIZE:-}
+      MEMINI_EMBEDDING_TIMEOUT: ${MEMINI_EMBEDDING_TIMEOUT:-}
+    # host.docker.internal is the host: Docker Desktop and OrbStack define it, and on Linux this
+    # entry maps it to the host's address on the Docker bridge. Ollama on Linux listens on
+    # 127.0.0.1 only by default; see .env.example for making it reachable from the container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Host side: 127.0.0.1 only. Container side: the port the image listens on.
       - "127.0.0.1:${MEMINI_HTTP_PORT:-6364}:6364"
