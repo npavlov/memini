@@ -17,6 +17,7 @@ from memini.ids import record_id
 from memini.index import IndexCounts, delete_record_chunks
 from memini.index.writer import RUN_COUNTS
 from memini.ingest.checkpoint import advance_checkpoint
+from memini.ingest.filtering import filter_batch, read_source_filters
 from memini.ingest.model import (
     DEFAULT_LIMITS,
     INGESTIBLE_SOURCE_KINDS,
@@ -335,6 +336,9 @@ def _count(run: Run | None, tally: _Tally, batch: PreparedBatch) -> None:
     # What redaction replaced in the batch, by kind (memini.redaction): counts, never values.
     for kind, value in sorted(batch.redactions.items()):
         run.count(f"redacted_{kind}", value)
+    # What the source's filters left out (memini.ingest.filtering): counts, never values.
+    for name, value in sorted(batch.filtered.items()):
+        run.count(name, value)
     for name, value in (
         ("records_inserted", tally.inserted),
         ("records_updated", tally.updated),
@@ -409,6 +413,13 @@ async def ingest(
         raise ValueError("ingest commits its own transactions: pass an idle connection")
     prepared = prepare_batch(batch, limits)
     target = await _resolve(conn, access, workspace, source, prepared.stream)
+    # --- Source filters (memini.filters, memini.ingest.filtering) ------------------------------
+    # The source's rules, applied to the payloads in their stored form (redacted, canonical), as
+    # prune reads them: an excluded record becomes a tombstone of itself, a thread loses the
+    # messages left out. Everything below, the stored bytes, hashes and every hook, sees the
+    # filtered batch.
+    prepared = filter_batch(prepared, await read_source_filters(conn, target.source_id))
+    # --- End of source filters -----------------------------------------------------------------
     if runs is None:
         tally = await _store_once(conn, access, target, prepared, indexer)
         _count(current_run(), tally, prepared)

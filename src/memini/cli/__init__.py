@@ -13,8 +13,10 @@ mirrors and writes run reports; no database credentials leave it::
     memini source add <workspace> <name> --location URL_OR_PATH --ref REF [--ref ...]
                       [--schedule DURATION] [--include GLOB ...] [--exclude GLOB ...]
                       [--no-builtin-excludes]
-    memini source add <workspace> <name> --kind push
-    memini source list <workspace> | show|edit|remove <workspace> <source>
+    memini source add <workspace> <name> --kind push [--allow-channel GLOB ...]
+                      [--allow-domain DOMAIN ...] [--exclude-author GLOB ...]
+                      [--exclude-title GLOB ...] [--exclude-automated]
+    memini source list <workspace> | show|edit|remove|prune <workspace> <source>
     memini streams <workspace> <source>
     memini sync <workspace> <source> [--stream KEY ...] [--wait]
     memini runs <workspace> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]

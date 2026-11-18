@@ -18,6 +18,13 @@ items and the stored size of a payload. A refused batch touches nothing.
 refused, its records come from its mirror. The stream the batch names is created on first use,
 in a transaction of its own, so that the batch's run can name it.
 
+**Filters** (:mod:`memini.filters`, :mod:`memini.ingest.filtering`). The source's rules are
+applied to the payloads in their stored form, redacted and canonical: a thread loses the messages
+they leave out and is put in its stored form again; a record they exclude whole, or a thread
+none of whose messages is kept, becomes a tombstone of itself, so nothing of it is stored and a
+live copy stored before the rule stops being live. The run counts ``records_filtered`` and
+``messages_filtered``.
+
 **One transaction** holds everything else:
 
 1. The stream's row is locked: batches of one stream take turns, and each sees the checkpoint
@@ -59,6 +66,7 @@ the checkpoint is where the first batch left it (principle 6). Each batch writes
 (``redacted_card``); an incomplete window ends it as ``partial``.
 """
 
+from memini.ingest.filtering import filter_batch, read_source_filters, stored_form
 from memini.ingest.indexing import PayloadIndexer
 from memini.ingest.model import (
     DEFAULT_LIMITS,
@@ -129,7 +137,10 @@ __all__ = [
     "WindowGapError",
     "canonical_json",
     "content_hash",
+    "filter_batch",
     "ingest",
     "normalize",
     "prepare_batch",
+    "read_source_filters",
+    "stored_form",
 ]

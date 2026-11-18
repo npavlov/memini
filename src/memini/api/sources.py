@@ -10,11 +10,15 @@
 | ``DELETE …/sources/{source}`` | admin | delete it, its streams, runs and mirror (204) |
 | ``GET …/sources/{source}/streams`` | read | its streams with lag, last run and queued sync |
 | ``POST …/sources/{source}/sync`` | admin | enqueue a sync of its streams (202) |
+| ``POST …/sources/{source}/prune`` | admin | apply its filters to its stored records |
 
 A token limited to one workspace sees and changes nothing in another: such a workspace answers
 404, as one that does not exist. Errors are translated by :mod:`memini.api.admin_errors`.
 """
 
+import logging
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Annotated, Literal, cast
 from uuid import UUID
@@ -22,12 +26,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from memini import sources
+from memini import prune, sources
 from memini.api.admin_errors import admin_errors
 from memini.api.auth import AdminAccess, ReadAccess
 from memini.api.database import Connection
+from memini.api.errors import ApiError
 from memini.config import HANDLE_REGEX, Settings
+from memini.db import Pool
+from memini.embeddings import EmbeddingError
+from memini.filters import MAX_FILTER_PATTERN_LENGTH, MAX_FILTER_PATTERNS, SourceFilters
 from memini.git import GitOptions, MirrorManager
+from memini.index import IndexMismatchError
+from memini.ingest import PayloadIndexer
+from memini.query import QueryServices
 from memini.sources import (
     MAX_LOCATION_LENGTH,
     MAX_PATTERN_LENGTH,
@@ -44,8 +55,11 @@ from memini.sources import (
 from memini.status import STALE_AFTER_SCHEDULES
 
 __all__ = [
+    "FiltersBody",
     "NewPushSource",
     "NewSource",
+    "PruneAccepted",
+    "PruneCounts",
     "SourceChanges",
     "SourceInfo",
     "SourceList",
@@ -56,6 +70,8 @@ __all__ = [
     "build_sources_router",
     "git_options",
 ]
+
+log = logging.getLogger(__name__)
 
 _NAME = (
     "1 to 63 lowercase letters, digits, '-' or '_', starting with a letter or digit; unique in the"
@@ -99,6 +115,74 @@ type _Patterns = Annotated[
     list[Annotated[str, Field(min_length=1, max_length=MAX_PATTERN_LENGTH)]],
     Field(max_length=MAX_PATTERNS),
 ]
+
+type _Globs = Annotated[
+    list[Annotated[str, Field(min_length=1, max_length=MAX_FILTER_PATTERN_LENGTH)]],
+    Field(max_length=MAX_FILTER_PATTERNS),
+]
+
+_GLOBS = (
+    "Globs matched against the whole value, ignoring case: * any characters, ? one, [abc] or"
+    " [a-z] one of a set, [!abc] one not of it; [*] is a *."
+)
+
+
+class FiltersBody(BaseModel):
+    """Which records of a push or mcp source are stored, and which messages of a thread; every
+    rule is optional. A message left out is taken out of its thread, which is stored with the
+    others; a thread none of whose messages is kept, and a record a rule excludes whole, are not
+    stored. Rules apply to the batches after a change; ``POST …/sources/{source}/prune`` applies
+    them to the records stored before."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    allow_channels: _Globs = Field(
+        default_factory=list[str],
+        description="Store a thread only when its channel matches one of these; a thread without"
+        " a channel is not stored while any is set. " + _GLOBS,
+    )
+    allow_domains: _Globs = Field(
+        default_factory=list[str],
+        description="Keep a message only when an e-mail address among its author and recipients"
+        " is in one of these domains or below one (example.test admits eu.example.test); a"
+        " message without such an address is left out. Host names, stored in lower case.",
+    )
+    exclude_authors: _Globs = Field(
+        default_factory=list[str],
+        description="Leave out a message whose author, as the source shows it or the address in"
+        " it, matches one of these (*bot*, build-robot@*). " + _GLOBS,
+    )
+    exclude_titles: _Globs = Field(
+        default_factory=list[str],
+        description="Do not store a meeting, document or thread whose title (a thread's subject)"
+        " matches one of these. " + _GLOBS,
+    )
+    exclude_automated: bool = Field(
+        default=False,
+        strict=True,
+        description="Leave out automated mail: a message from a no-reply address (noreply,"
+        " no-reply, donotreply, mailer-daemon), or whose headers object has Auto-Submitted other"
+        " than no, or Precedence bulk or junk.",
+    )
+
+    def to_filters(self) -> SourceFilters:
+        return SourceFilters(
+            allow_channels=tuple(self.allow_channels),
+            allow_domains=tuple(self.allow_domains),
+            exclude_authors=tuple(self.exclude_authors),
+            exclude_titles=tuple(self.exclude_titles),
+            exclude_automated=self.exclude_automated,
+        )
+
+    @classmethod
+    def of(cls, filters: SourceFilters) -> "FiltersBody":
+        return cls(
+            allow_channels=list(filters.allow_channels),
+            allow_domains=list(filters.allow_domains),
+            exclude_authors=list(filters.exclude_authors),
+            exclude_titles=list(filters.exclude_titles),
+            exclude_automated=filters.exclude_automated,
+        )
 
 
 class NewSource(BaseModel):
@@ -153,6 +237,10 @@ class NewPushSource(BaseModel):
         default=None, ge=1, le=MAX_RETENTION_DAYS, description=_RETENTION
     )
     llm_policy: LlmPolicy = Field(default="local", description=_LLM_POLICY)
+    filters: FiltersBody = Field(
+        default_factory=FiltersBody,
+        description="Which of its records, and messages of threads, it stores; none: all.",
+    )
 
     def to_new(self) -> sources.NewPushSource:
         return sources.NewPushSource(
@@ -160,13 +248,15 @@ class NewPushSource(BaseModel):
             visibility=self.visibility,
             retention_days=self.retention_days,
             llm_policy=self.llm_policy,
+            filters=self.filters.to_filters(),
         )
 
 
 class SourceChanges(BaseModel):
     """Settings to change. A setting left out stays as it is; ``refs``, ``include`` and
-    ``exclude`` replace the whole list. The location cannot change: a different repository is a
-    different source, so delete this one and add a new one."""
+    ``exclude`` replace the whole list, and ``filters`` every filter rule of a push source. The
+    location cannot change: a different repository is a different source, so delete this one and
+    add a new one."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -191,9 +281,22 @@ class SourceChanges(BaseModel):
         default=None, ge=1, le=MAX_RETENTION_DAYS, description=_RETENTION
     )
     llm_policy: LlmPolicy | None = Field(default=None, description=_LLM_POLICY)
+    filters: FiltersBody | None = Field(
+        default=None,
+        description="Push sources: the filter rules, all of them; a rule left out is not set, and"
+        " {} clears every rule. They apply to the batches after the change; prune applies them"
+        " to the records stored before.",
+    )
 
     @field_validator(
-        "name", "refs", "include", "exclude", "builtin_excludes", "visibility", "llm_policy"
+        "name",
+        "refs",
+        "include",
+        "exclude",
+        "builtin_excludes",
+        "visibility",
+        "llm_policy",
+        "filters",
     )
     @classmethod
     def _not_null(cls, value: object) -> object:
@@ -222,6 +325,11 @@ class SourceChanges(BaseModel):
             retention_days=self.retention_days if "retention_days" in given else unset,
             llm_policy=(
                 self.llm_policy if "llm_policy" in given and self.llm_policy is not None else unset
+            ),
+            filters=(
+                self.filters.to_filters()
+                if "filters" in given and self.filters is not None
+                else unset
             ),
         )
 
@@ -253,6 +361,9 @@ class SourceInfo(BaseModel):
     visibility: Visibility
     retention_days: int | None
     llm_policy: LlmPolicy
+    filters: FiltersBody | None = Field(
+        description="Push and mcp sources: which records and messages they store; null for git."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -273,6 +384,7 @@ class SourceInfo(BaseModel):
             visibility=source.visibility,
             retention_days=source.retention_days,
             llm_policy=source.llm_policy,
+            filters=None if source.filters is None else FiltersBody.of(source.filters),
             created_at=source.created_at,
             updated_at=source.updated_at,
         )
@@ -397,6 +509,88 @@ class SyncAccepted(BaseModel):
     jobs: list[SyncJob] = Field(description="One per stream, by key.")
 
 
+class PruneCounts(BaseModel):
+    """Each record read counts once, in deleted, trimmed, unchanged or unreadable."""
+
+    scanned: int = Field(description="Records with a payload read, live ones and deleted ones.")
+    deleted: int = Field(
+        description="Records the filters exclude: deleted with their chunks, not kept as"
+        " tombstones; the filters keep them out of later batches."
+    )
+    trimmed: int = Field(
+        description="Threads written again without the messages the filters leave out, their"
+        " chunks derived again."
+    )
+    messages_removed: int = Field(description="Messages taken out of threads, trimmed or deleted.")
+    unchanged: int = Field(description="Records the filters keep as they are: nothing written.")
+    unreadable: int = Field(description="Payloads the parser of their kind does not read: kept.")
+
+
+class PruneAccepted(BaseModel):
+    run_id: UUID = Field(description="The prune's run; GET /v1/runs/{id} has its report.")
+    rules: bool = Field(
+        description="Whether the source has any filter rule; without one nothing is read."
+    )
+    counts: PruneCounts
+    chunks_deleted: int = Field(description="Chunks of deleted records, and of trimmed ones.")
+    chunks_written: int = Field(description="Chunks of trimmed threads written again.")
+    texts_embedded: int = Field(description="Texts sent to the embedding model.")
+    records_not_indexed: int = Field(
+        description="Trimmed records whose chunks were deleted, not derived again, as no"
+        " embedding provider is configured: memini reindex indexes them."
+    )
+
+    @classmethod
+    def of(cls, result: prune.PruneResult, run_id: UUID) -> "PruneAccepted":
+        index = result.index
+        return cls(
+            run_id=run_id,
+            rules=result.rules,
+            counts=PruneCounts(
+                scanned=result.scanned,
+                deleted=result.deleted,
+                trimmed=result.trimmed,
+                messages_removed=result.messages_removed,
+                unchanged=result.unchanged,
+                unreadable=result.unreadable,
+            ),
+            chunks_deleted=index.deleted,
+            chunks_written=index.inserted + index.updated,
+            texts_embedded=index.embedded,
+            records_not_indexed=result.not_indexed,
+        )
+
+
+@contextmanager
+def _prune_errors() -> Generator[None]:
+    try:
+        yield
+    except prune.NotPrunableError:
+        raise ApiError(
+            409,
+            "not_prunable",
+            "A git source has no filters: its include and exclude rules apply at its next sync.",
+        ) from None
+    except prune.PruneConflictError:
+        raise ApiError(
+            409,
+            "prune_conflict",
+            "Another writer held the same records; what was pruned stays, run the prune again.",
+        ) from None
+    except IndexMismatchError as error:
+        raise ApiError(
+            503, "index_mismatch", f"What was pruned before stays; the rest waits: {error}."
+        ) from None
+    except EmbeddingError as error:
+        log.warning("the trimmed records of a prune could not be embedded: %s", error)
+        raise ApiError(
+            503,
+            "embedding_failed",
+            "Trimmed records could not be embedded; what was pruned before stays, and the server"
+            " log says why. Run the prune again later.",
+        ) from None
+
+
 def git_options(request: Request) -> GitOptions:
     """The git connector's options, from the application's settings."""
     settings = cast(Settings, request.app.state.settings)
@@ -503,5 +697,25 @@ def build_sources_router() -> APIRouter:
                 SyncJob(stream=job.stream, job_id=job.job_id, created=job.created) for job in jobs
             ]
         )
+
+    @router.post("/{source}/prune", summary="Apply a source's filters to its stored records")
+    async def prune_source(
+        workspace: str, source: str, access: AdminAccess, request: Request, conn: Connection
+    ) -> PruneAccepted:
+        """Apply the current filters of a push source to the records it has stored: a record
+        they exclude is deleted with its chunks; a thread loses the messages they leave out and
+        gets its chunks again; the rest is left as it is. Running it again changes nothing. Pages
+        of records commit one by one, so a prune that fails keeps what it pruned; the answer and
+        the run report count what it did. 409 ``not_prunable`` for a git source."""
+        pool = cast(Pool, request.app.state.pool)
+        embedder = cast(QueryServices, request.app.state.services).embedder
+        indexer = None if embedder is None else PayloadIndexer(embedder)
+        with admin_errors(), _prune_errors():
+            result = await prune.prune_source(
+                conn, access, workspace, source, runs=pool, indexer=indexer
+            )
+        if result.run_id is None:  # a run is recorded whenever runs is given
+            raise RuntimeError("the prune recorded no run")
+        return PruneAccepted.of(result, result.run_id)
 
     return router

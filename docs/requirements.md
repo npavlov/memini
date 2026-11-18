@@ -150,8 +150,8 @@ as tombstones or through a full-snapshot reconcile.
 (`POST /v1/workspaces/{workspace}/sources/{source}/records`, scope `ingest`, inside the token's
 workspace limit) and the MCP recipe executors (M3) end in it. It takes batches for push and mcp
 sources; a git source is refused (409 `not_ingestible`), its records come from its mirror. A push
-source is a name and the shared settings (visibility, retention, LLM policy): no location, refs or
-schedule, never synced. An item is a record of kind `thread`, `meeting` or `document` (`code_file`
+source is a name, the shared settings (visibility, retention, LLM policy) and its filters (Source
+filters, below): no location, refs or schedule, never synced. An item is a record of kind `thread`, `meeting` or `document` (`code_file`
 is not ingestible) with `external_id`, `occurred_at` with a zone, an optional http(s)
 `external_url` and a payload, or a tombstone (`deleted`, with the kind and external id only); a
 kind and external id appear once per batch. The payload is a JSON object with the fields its kind
@@ -318,6 +318,49 @@ rule). It writes no audit entry per record. A record knowledge evidence cites ge
 the retention reads `stored` again. Ingest does not refuse a record already past the retention:
 it is stored, then removed by the next pass, and the intake planner never asks for one (above).
 
+**Source filters** (decided 2026-11-18). One library, `memini.filters`, decides which records of a
+push or mcp source are stored and which messages of a thread. The rules are `source.config.filters`,
+set when the source is added and replaced whole by a change (`filters` in the API, filter options of
+`memini source add` and `edit`): `allow_channels` (a thread is stored only when its `channel`
+matches; one without a channel is not, while the list is set), `allow_domains` (a message is kept
+only when an e-mail address among its author and recipients, `ann@example.test` or `Ann <…>`, is in
+a listed domain or below one; one without such an address is left out), `exclude_authors` (the
+author as shown, or the address in it), `exclude_titles` (the title of a meeting, a document or a
+thread) and `exclude_automated` (a no-reply sender: `noreply`, `donotreply`, `mailer-daemon` in the
+local part, separators ignored; or a message's `headers` object, read only here, with
+`Auto-Submitted` other than `no` or `Precedence` `bulk` or `junk`). Patterns are globs (`*`, `?`,
+`[a-z]`, `[!…]`) on the whole value, ignoring case, at most 256 characters and 100 to a list; not
+regular expressions, which can backtrack without end on text a client sends. Each `*` compiles to an
+atomic scan for the next fixed run, so a match costs at most the value's length times the
+pattern's. Domains are host names, stored in lower case. A rule that is not valid is refused when
+the source is added or changed (422 naming `filters.<rule>`, never the value); a git source has no
+filters, its path globs select files. The unit is the message: one left out is taken out of its
+thread's `messages`, and the thread is stored with the rest; a thread none of whose messages is
+kept is not stored, nor is a record a channel or title rule excludes. Ingest applies the rules
+after `prepare_batch`, to each payload in its stored form, redacted and canonical, which is the only
+form prune can read later: the two decide alike, and no rule can match a secret's value, which the
+store never holds. The fields the rules read (names, addresses, channels, titles, headers) hold
+nothing redaction finds in practice, so the decision is the one the payload as sent would get. A
+trimmed thread is put in its stored form again (canonical JSON, content hash, normalized text), so
+a resend of the same thread under the same rules changes nothing (principle 6). A record excluded
+whole becomes a tombstone of itself in the batch: nothing of it is stored, a live copy stored
+before the rule stops being live with its chunks deleted, and a snapshot does not count it as left
+out. Each batch's run counts `records_filtered` and `messages_filtered`. A change of the rules
+applies to later batches; `memini source prune <workspace> <source>`
+(`POST …/sources/{source}/prune`, scope `admin`, `memini.prune`) applies the current rules to the
+records stored before, live ones and tombstones, page by page in transactions of their own that
+lock records in id order, as a batch does. A record now excluded is deleted with its chunks, not
+kept as a tombstone: the rules keep it out of every later batch, so a re-sync does not bring it
+back, and a tombstone would only keep the excluded payload; knowledge items that cite it keep their
+reference (section 3), and lifting the rule lets the next batch that holds it store it again. A
+thread that loses messages is written again in its stored form, and its chunks are derived again
+in the same transaction by the service's indexing hook, which embeds only new texts; without an
+embedding provider its chunks are deleted and `memini reindex` indexes it. A prune run again
+changes nothing. Its run (kind `prune`) counts `records_scanned`, `records_pruned`,
+`records_trimmed`, `messages_pruned`, `records_unchanged`, `records_unreadable` and the index
+counts. The deletion is local to prune for now; it moves to the shared deletion core of forget and
+retention when that lands.
+
 ## 5. Derive pipeline
 
 | Step | How |
@@ -476,8 +519,10 @@ start. An apply-from-file command can come later on top of the same calls; it is
 are under `/v1`: create a workspace; list, add, read, change and delete the sources of a workspace;
 list the streams of a source with their lag, last run and queued sync; trigger a sync; list the runs of
 a workspace, a source or a stream, newest first and paged; read one run with its report. Reads need
-the `read` scope, changes the `admin` scope. A push source is a name and the shared settings; the
-batches sent to it create its streams (section 4). A git source is a location, the refs it tracks and path
+the `read` scope, changes the `admin` scope. A push source is a name, the shared settings and its
+filters, which a change replaces whole (`{}` clears them); the batches sent to it create its streams
+(section 4). `POST …/sources/{source}/prune` applies its current filters to the records it stored
+before (Source filters, section 4); a git source answers 409 `not_prunable`. A git source is a location, the refs it tracks and path
 globs: `source.config` holds `{"location", "include", "exclude"}`, each tracked ref is a stream keyed
 by its full name (`refs/heads/main`), and the schedule is set on all its streams at once. The location
 is checked when the source is added, by the rules the mirror enforces at every fetch (section 9, git

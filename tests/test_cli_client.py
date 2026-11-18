@@ -507,6 +507,153 @@ def test_source_edit_with_nothing_to_change_exits_2(
     assert service.requests == []
 
 
+PUSH: Json = {
+    **SOURCE,
+    "kind": "push",
+    "name": "notes",
+    "location": None,
+    "refs": list[str](),
+    "schedule_seconds": None,
+    "include": list[str](),
+    "builtin_excludes": None,
+    "filters": {
+        "allow_channels": [],
+        "allow_domains": ["example.test"],
+        "exclude_authors": ["*bot*"],
+        "exclude_titles": [],
+        "exclude_automated": False,
+    },
+}
+
+
+def test_source_add_push_sends_its_filters_and_shows_them(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok(PUSH, 201))
+
+    result = cli(
+        "source",
+        "add",
+        "acme",
+        "notes",
+        "--kind",
+        "push",
+        "--exclude-author",
+        "*bot*",
+        "--exclude-author",
+        "noreply@*",
+        "--allow-domain",
+        "example.test",
+        "--exclude-automated",
+    )
+
+    assert result.code == EXIT_OK
+    assert json.loads(service.last.content) == {
+        "kind": "push",
+        "name": "notes",
+        "filters": {
+            "allow_domains": ["example.test"],
+            "exclude_authors": ["*bot*", "noreply@*"],
+            "exclude_automated": True,
+        },
+    }
+    fields = {line[:19].strip(): line[19:] for line in result.out.splitlines()}
+    assert fields["allow domains"] == "example.test"
+    assert fields["exclude authors"] == "*bot*"
+    assert fields["allow channels"] == "any"
+    assert fields["exclude automated"] == "no"
+
+
+def test_source_add_git_refuses_the_filters_of_push_sources(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    result = cli(
+        "source", "add", "acme", "shop", "--location", "/srv/shop", "--ref", "main",
+        "--exclude-author", "*bot*",
+    )  # fmt: skip
+
+    assert result.code == EXIT_USAGE
+    assert "--exclude-author: only for a push source" in result.err
+    assert service.requests == []
+
+
+def test_source_edit_replaces_the_filter_rules_given_and_keeps_the_others(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok(PUSH), ok(PUSH))
+
+    result = cli(
+        "source",
+        "edit",
+        "acme",
+        "notes",
+        "--exclude-title",
+        "Daily stand-up*",
+        "--no-allow-domains",
+        "--exclude-automated",
+    )
+
+    assert result.code == EXIT_OK
+    assert [(r.method, r.url.path) for r in service.requests] == [
+        ("GET", "/v1/workspaces/acme/sources/notes"),
+        ("PATCH", "/v1/workspaces/acme/sources/notes"),
+    ]
+    assert json.loads(service.last.content) == {
+        "filters": {
+            "allow_channels": [],
+            "allow_domains": [],
+            "exclude_authors": ["*bot*"],
+            "exclude_titles": ["Daily stand-up*"],
+            "exclude_automated": True,
+        }
+    }
+
+
+def test_source_edit_no_filters_clears_every_rule(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok(PUSH))
+
+    result = cli("source", "edit", "acme", "notes", "--no-filters")
+
+    assert result.code == EXIT_OK
+    assert [r.method for r in service.requests] == ["PATCH"]
+    assert json.loads(service.last.content) == {"filters": {}}
+
+
+def test_source_prune_prints_what_it_did(cli: Callable[..., Run], service: FakeService) -> None:
+    service.answer(
+        ok(
+            {
+                "run_id": RUN_ID,
+                "rules": True,
+                "counts": {
+                    "scanned": 12,
+                    "deleted": 3,
+                    "trimmed": 2,
+                    "messages_removed": 7,
+                    "unchanged": 7,
+                    "unreadable": 0,
+                },
+                "chunks_deleted": 9,
+                "chunks_written": 4,
+                "texts_embedded": 2,
+                "records_not_indexed": 0,
+            }
+        )
+    )
+
+    result = cli("source", "prune", "acme", "notes")
+
+    assert result.code == EXIT_OK
+    assert service.last.method == "POST"
+    assert service.last.url.path == "/v1/workspaces/acme/sources/notes/prune"
+    fields = {line[:18].strip(): line[18:] for line in result.out.splitlines()}
+    assert (fields["records read"], fields["deleted"], fields["trimmed"]) == ("12", "3", "2")
+    assert fields["messages removed"] == "7"
+    assert fields["run"] == RUN_ID
+
+
 def test_source_remove(cli: Callable[..., Run], service: FakeService) -> None:
     service.answer(raw(204))
 

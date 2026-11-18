@@ -5,6 +5,11 @@ Each is one or a few calls to the HTTP API (:mod:`memini.api.workspaces`,
 :mod:`memini.api.sources`); the service checks scopes and the token's workspace limit, checks a
 source's location and enqueues syncs. Reading needs a token with the ``read`` scope, changing one
 with ``admin``.
+
+The filters of a push source (:mod:`memini.filters`) are set with ``source add --kind push`` and
+changed with ``source edit``: each filter option there replaces that one rule, the others stay
+(the command reads the source first, then sends every rule, as the API takes them).
+``source prune`` applies the current rules to the records the source stored before.
 """
 
 import argparse
@@ -36,12 +41,30 @@ from memini.cli.output import (
 )
 from memini.sources import MAX_RETENTION_DAYS, LlmPolicy, Visibility
 
-__all__ = ["POLL_INTERVAL", "add_commands", "source_path", "sync_command"]
+__all__ = ["FILTER_LISTS", "POLL_INTERVAL", "add_commands", "source_path", "sync_command"]
 
 POLL_INTERVAL: Final = 1.0
 """Seconds between two looks at the streams while ``sync --wait`` waits."""
 
 DEFAULT_WAIT: Final = timedelta(minutes=10)
+
+FILTER_LISTS: Final = (
+    ("allow_channel", "allow_channels", "GLOB", "store only threads posted in a matching channel"),
+    (
+        "allow_domain",
+        "allow_domains",
+        "DOMAIN",
+        "keep only messages from or to an address in this domain or below it",
+    ),
+    ("exclude_author", "exclude_authors", "GLOB", "leave out messages by a matching author"),
+    (
+        "exclude_title",
+        "exclude_titles",
+        "GLOB",
+        "leave out meetings, documents and threads with a matching title",
+    ),
+)
+"""The list rules of a push source's filters: option, rule, metavar, what it does."""
 
 
 def source_path(workspace: str, source: str | None = None) -> str:
@@ -110,13 +133,47 @@ def _print_source(source: Mapping[str, Any]) -> None:
             ("visibility", text(source.get("visibility"))),
             ("retention", "keep records" if retention is None else f"{text(retention)} days"),
             ("llm policy", text(source.get("llm_policy"))),
+            *_filter_fields(source.get("filters")),
             ("created", when(source.get("created_at"))),
             ("updated", when(source.get("updated_at"))),
         ]
     )
 
 
+def _filter_fields(value: object) -> list[tuple[str, str]]:
+    """The filter rules of a push source, one line each; none for a git source."""
+    filters = as_mapping(value)
+    if not isinstance(value, dict):  # null for a source of another kind than push
+        return []
+    fields = [
+        (rule.replace("_", " "), text(filters.get(rule), "any")) for _, rule, _, _ in FILTER_LISTS
+    ]
+    fields.append(("exclude automated", text(filters.get("exclude_automated"), "no")))
+    return fields
+
+
+def _filters_given(args: argparse.Namespace) -> bool:
+    return any(getattr(args, option) is not None for option, _, _, _ in FILTER_LISTS) or bool(
+        getattr(args, "exclude_automated", None)
+    )
+
+
+def _filters(args: argparse.Namespace, current: Mapping[str, Any]) -> Json:
+    """The filter rules to send: ``current`` with the rules the options give replaced."""
+    rules: Json = {rule: list(as_list(current.get(rule))) for _, rule, _, _ in FILTER_LISTS}
+    rules["exclude_automated"] = current.get("exclude_automated") is True
+    for option, rule, _, _ in FILTER_LISTS:
+        if getattr(args, f"no_{rule}", False):
+            rules[rule] = []
+        elif getattr(args, option) is not None:
+            rules[rule] = getattr(args, option)
+    if args.exclude_automated is not None:
+        rules["exclude_automated"] = args.exclude_automated
+    return rules
+
+
 _GIT_ONLY: Final = ("location", "ref", "schedule", "include", "exclude", "no_builtin_excludes")
+_PUSH_ONLY: Final = (*(option for option, _, _, _ in FILTER_LISTS), "exclude_automated")
 
 
 def _option(name: str) -> str:
@@ -135,6 +192,13 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
                 f"a git source needs {' and '.join(missing)}; see `memini source add --help`",
                 EXIT_USAGE,
             )
+        given = [_option(name) for name in _PUSH_ONLY if getattr(args, name)]
+        if given:
+            raise CommandError(
+                f"{', '.join(given)}: only for a push source; a git source selects files with"
+                " --include and --exclude",
+                EXIT_USAGE,
+            )
         body |= {
             "location": args.location,
             "refs": args.ref,
@@ -151,6 +215,8 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
                 " POST …/sources/<name>/records",
                 EXIT_USAGE,
             )
+        if _filters_given(args):
+            body["filters"] = {rule: value for rule, value in _filters(args, {}).items() if value}
     for option in ("visibility", "retention_days", "llm_policy"):
         value = getattr(args, option)
         if value is not None:
@@ -227,11 +293,50 @@ def edit_source_command(args: argparse.Namespace, api: Api) -> int:
     for option in ("visibility", "llm_policy"):
         if getattr(args, option) is not None:
             changes[option] = getattr(args, option)
+    if args.no_filters:
+        changes["filters"] = {}
+    elif _filters_given(args) or any(getattr(args, f"no_{rule}") for _, rule, _, _ in FILTER_LISTS):
+        # The API takes every rule at once: the ones not given here stay as they are.
+        current = api.get(source_path(args.workspace, args.source))
+        changes["filters"] = _filters(args, as_mapping(current.get("filters")))
     if not changes:
         raise CommandError("nothing to change; see `memini source edit --help`", EXIT_USAGE)
     source = api.patch(source_path(args.workspace, args.source), changes)
     message(f"changed source {text(source.get('name'))} of workspace {args.workspace}")
     _print_source(source)
+    return EXIT_OK
+
+
+def prune_source_command(args: argparse.Namespace, api: Api) -> int:
+    """Apply a push source's filters to its stored records and print what that did."""
+    workspace: str = args.workspace
+    source: str = args.source
+    body = api.post(f"{source_path(workspace, source)}/prune")
+    if args.json:
+        print_json(body)
+        return EXIT_OK
+    if body.get("rules") is False:
+        message(f"source {source} has no filters: nothing to prune")
+    counts = as_mapping(body.get("counts"))
+    print_fields(
+        [
+            ("records read", text(counts.get("scanned"))),
+            ("deleted", text(counts.get("deleted"))),
+            ("trimmed", text(counts.get("trimmed"))),
+            ("messages removed", text(counts.get("messages_removed"))),
+            ("unchanged", text(counts.get("unchanged"))),
+            ("unreadable", text(counts.get("unreadable"))),
+            ("chunks deleted", text(body.get("chunks_deleted"))),
+            ("chunks written", text(body.get("chunks_written"))),
+            ("run", text(body.get("run_id"))),
+        ]
+    )
+    not_indexed = body.get("records_not_indexed")
+    if isinstance(not_indexed, int) and not_indexed > 0:
+        message(
+            f"{not_indexed} trimmed records lost their chunks and are not searchable until"
+            " `memini reindex` indexes them"
+        )
     return EXIT_OK
 
 
@@ -396,6 +501,51 @@ def _settings_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _filter_options(parser: argparse.ArgumentParser, *, edit: bool) -> None:
+    """The filter options of ``source add`` and, with ``edit``, of ``source edit``."""
+    for option, rule, metavar, does in FILTER_LISTS:
+        if not edit:
+            parser.add_argument(
+                _option(option),
+                action="append",
+                metavar=metavar,
+                help=f"push: {does}; repeat for more",
+            )
+            continue
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument(
+            _option(option),
+            action="append",
+            metavar=metavar,
+            help=f"{does}; repeat for more; replaces this rule",
+        )
+        group.add_argument(_option(f"no_{rule}"), action="store_true", help=f"clear {rule}")
+    if not edit:
+        parser.add_argument(
+            "--exclude-automated",
+            action="store_const",
+            const=True,
+            help="push: leave out automated mail (no-reply senders, Auto-Submitted, bulk)",
+        )
+        return
+    automated = parser.add_mutually_exclusive_group()
+    automated.add_argument(
+        "--exclude-automated",
+        dest="exclude_automated",
+        action="store_const",
+        const=True,
+        help="leave out automated mail (no-reply senders, Auto-Submitted, bulk)",
+    )
+    automated.add_argument(
+        "--no-exclude-automated",
+        dest="exclude_automated",
+        action="store_const",
+        const=False,
+        help="keep automated mail",
+    )
+    parser.add_argument("--no-filters", action="store_true", help="clear every filter rule")
+
+
 def add_commands(commands: Commands) -> None:
     """Add ``workspace``, ``source``, ``streams`` and ``sync``."""
     workspace = commands.add_client(
@@ -438,7 +588,9 @@ def add_commands(commands: Commands) -> None:
         description="Add a source to a workspace. A git repository (the default kind) needs"
         " --location and --ref, and gets one stream per ref; the service checks the location at"
         " once and fetches it at the first sync. A push source (--kind push) takes batches of"
-        " records that clients send it, and has none of the git options.",
+        " records that clients send it, and has none of the git options; its filters say which"
+        " records and messages it stores. Patterns (GLOB) are matched against the whole value,"
+        " ignoring case: * any characters, ? one, [abc] one of a set.",
     )
     _workspace_argument(add)
     add.add_argument("name", type=parse_source_name, help="the source's name in the workspace")
@@ -485,6 +637,7 @@ def add_commands(commands: Commands) -> None:
         help="delete records older than this; default: keep them",
     )
     _settings_options(add)
+    _filter_options(add, edit=False)
     add.set_defaults(client=add_source_command)
 
     list_sources = source_commands.add_parser(
@@ -506,7 +659,9 @@ def add_commands(commands: Commands) -> None:
         help="change a source's settings (admin)",
         description="Change a source's settings; what is not given stays. --ref, --include and"
         " --exclude replace the whole list; streams of refs left out are deleted with their runs."
-        " A new schedule starts now. The location cannot change: add another source instead.",
+        " A new schedule starts now. The location cannot change: add another source instead. A"
+        " filter option of a push source replaces that rule; the new rules apply to the batches"
+        " after the change, and `memini source prune` applies them to the records stored before.",
     )
     _source_arguments(edit)
     edit.add_argument("--name", type=parse_source_name, help="rename the source")
@@ -548,7 +703,20 @@ def add_commands(commands: Commands) -> None:
     )
     retention.add_argument("--no-retention", action="store_true", help="keep records")
     _settings_options(edit)
+    _filter_options(edit, edit=True)
     edit.set_defaults(client=edit_source_command)
+
+    prune = source_commands.add_parser(
+        "prune",
+        help="apply a push source's filters to its stored records (admin)",
+        description="Apply the current filters of a push source to the records it stored before"
+        " they changed: a record they exclude is deleted with its chunks, a thread loses the"
+        " messages they leave out and is indexed again, the rest stays. Running it again changes"
+        " nothing.",
+    )
+    _source_arguments(prune)
+    _json_option(prune)
+    prune.set_defaults(client=prune_source_command)
 
     remove = source_commands.add_parser(
         "remove",

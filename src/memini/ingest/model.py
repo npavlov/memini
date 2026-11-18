@@ -166,6 +166,9 @@ class PreparedBatch:
     """The window's cursor as a plain JSON object, checked and redacted."""
     redactions: Mapping[RedactionKind, int] = field(default_factory=dict[RedactionKind, int])
     """Secrets and card numbers the batch held, by kind (:mod:`memini.redaction`): counts only."""
+    filtered: Mapping[str, int] = field(default_factory=dict[str, int])
+    """What the source's filters left out, by the name of its count in the run report
+    (:mod:`memini.ingest.filtering`); empty when the source has no rules."""
 
 
 # --- Output --------------------------------------------------------------------------------------

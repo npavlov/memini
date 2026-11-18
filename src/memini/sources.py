@@ -5,9 +5,15 @@ Source configuration lives in the database and is managed through these function
 (requirements, sections 6 and 7). There is no configuration file to apply.
 
 A **push source** is a name and the shared settings below (``visibility``, ``retention_days``,
-``llm_policy``), nothing else: clients send its records through the ingest API
+``llm_policy``), and its filters, nothing else: clients send its records through the ingest API
 (:mod:`memini.ingest`), and its streams are created by the first batch that names them. It has no
 location, refs or schedule, and the service never syncs it (:func:`create_push_source`).
+
+The **filters** of a push or mcp source are its ``source.config``: ``{"filters": {...}}``, the
+rules of :class:`memini.filters.SourceFilters` that are set (allowlists of channels and e-mail
+domains, exclusions of authors, titles and automated mail), or ``{}`` without any. Ingest applies
+them to every batch; a change applies to the batches after it, and ``memini source prune``
+(:mod:`memini.prune`) applies the current rules to the records stored before.
 
 A **git source** is:
 
@@ -56,7 +62,7 @@ until the deletion commits. While a job of the source runs, the deletion is refu
 import enum
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal, get_args
 from uuid import UUID
@@ -66,6 +72,7 @@ from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
 from memini.auth import ReadFilter, WriteAccess
+from memini.filters import FilterError, SourceFilters, check_filters
 from memini.git import (
     GitOptions,
     InvalidRevision,
@@ -101,12 +108,14 @@ __all__ = [
     "Source",
     "SourceBusyError",
     "SourceExistsError",
+    "SourceFilters",
     "SourceKind",
     "SourceUpdate",
     "Stream",
     "SyncJob",
     "Unset",
     "Visibility",
+    "check_filters_setting",
     "check_location",
     "check_patterns",
     "check_ref",
@@ -374,6 +383,20 @@ def check_patterns(setting: str, patterns: Sequence[str]) -> tuple[str, ...]:
     return unique
 
 
+def check_filters_setting(filters: SourceFilters) -> SourceFilters:
+    """The filter rules of a push or mcp source as they are stored (:func:`memini.filters.
+    check_filters`), or :class:`InvalidSourceError` naming the rule (``filters.allow_domains``)."""
+    try:
+        return check_filters(filters)
+    except FilterError as error:
+        raise InvalidSourceError(f"filters.{error.setting}", error.reason) from None
+
+
+def _filters_config(filters: SourceFilters) -> dict[str, Any]:
+    """``source.config`` of a push or mcp source: its filters, if it has any."""
+    return {} if filters.empty else {"filters": filters.to_json()}
+
+
 def check_schedule(schedule: timedelta | None) -> timedelta | None:
     """``schedule`` if it is from :data:`MIN_SCHEDULE` to :data:`MAX_SCHEDULE`, or ``None`` (only
     when triggered)."""
@@ -436,6 +459,8 @@ class NewPushSource:
     visibility: Visibility = "private"
     retention_days: int | None = None
     llm_policy: LlmPolicy = "local"
+    filters: SourceFilters = field(default_factory=SourceFilters)
+    """Which records, and messages of threads, it stores (:mod:`memini.filters`)."""
 
 
 class Unset(enum.Enum):
@@ -452,8 +477,9 @@ UNSET: Final = Unset.UNSET
 class SourceUpdate:
     """What :func:`update_source` changes; every setting left :data:`UNSET` stays as it is.
 
-    ``refs``, ``include`` and ``exclude`` replace the whole list. ``schedule`` and
-    ``retention_days`` take ``None`` for none. The location cannot change.
+    ``refs``, ``include`` and ``exclude`` replace the whole list, and ``filters`` every rule of a
+    push or mcp source (an empty :class:`~memini.filters.SourceFilters` clears them). ``schedule``
+    and ``retention_days`` take ``None`` for none. The location cannot change.
     """
 
     name: str | Unset = UNSET
@@ -465,6 +491,7 @@ class SourceUpdate:
     visibility: Visibility | Unset = UNSET
     retention_days: int | Unset | None = UNSET
     llm_policy: LlmPolicy | Unset = UNSET
+    filters: SourceFilters | Unset = UNSET
 
 
 @dataclass(frozen=True, slots=True)
@@ -489,6 +516,8 @@ class Source:
     llm_policy: LlmPolicy
     created_at: datetime
     updated_at: datetime
+    filters: SourceFilters | None = None
+    """The filter rules of a push or mcp source (:mod:`memini.filters`); ``None`` for git."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -595,6 +624,7 @@ def _source(row: Sequence[Any]) -> Source:
         llm_policy=llm_policy,
         created_at=created_at,
         updated_at=updated_at,
+        filters=None if kind == "git" else SourceFilters.from_json(config.get("filters")),
     )
 
 
@@ -827,14 +857,23 @@ async def create_push_source(
     visibility = _check_choice("visibility", new.visibility, get_args(Visibility))
     retention_days = _check_retention(new.retention_days)
     llm_policy = _check_choice("llm_policy", new.llm_policy, get_args(LlmPolicy))
+    filters = check_filters_setting(new.filters)
     try:
         async with conn.transaction():
             found = await get_writable_workspace(conn, access, workspace)
             cur = await conn.execute(
-                "INSERT INTO source (workspace_id, owner_id, name, kind, visibility,"
-                " retention_days, llm_policy) VALUES (%s, %s, %s, 'push', %s, %s, %s)"
+                "INSERT INTO source (workspace_id, owner_id, name, kind, config, visibility,"
+                " retention_days, llm_policy) VALUES (%s, %s, %s, 'push', %s, %s, %s, %s)"
                 " RETURNING id",
-                (found.id, access.owner_id, name, visibility, retention_days, llm_policy),
+                (
+                    found.id,
+                    access.owner_id,
+                    name,
+                    Jsonb(_filters_config(filters)),
+                    visibility,
+                    retention_days,
+                    llm_policy,
+                ),
             )
             row = await cur.fetchone()
             if row is None:  # INSERT ... RETURNING always returns the row
@@ -897,6 +936,9 @@ async def update_source(
         if isinstance(changes.llm_policy, Unset)
         else _check_choice("llm_policy", changes.llm_policy, get_args(LlmPolicy))
     )
+    filters = (
+        UNSET if isinstance(changes.filters, Unset) else check_filters_setting(changes.filters)
+    )
     try:
         async with conn.transaction():
             source = await _writable_source(conn, access, workspace, name)
@@ -905,6 +947,12 @@ async def update_source(
                 raise InvalidSourceError(
                     "refs" if not isinstance(refs, Unset) else "include",
                     f"refs and path rules are settings of git sources, not of {source.kind}",
+                )
+            if git is not None and not isinstance(filters, Unset):
+                raise InvalidSourceError(
+                    "filters",
+                    "filters are settings of push and mcp sources; a git source selects files by"
+                    " include and exclude",
                 )
             if source.kind == "push" and schedule is not None and not isinstance(schedule, Unset):
                 raise InvalidSourceError(
@@ -931,6 +979,10 @@ async def update_source(
                     ),
                 )
                 assign("config", Jsonb(config.to_json()))
+            if not isinstance(filters, Unset):
+                # Only the filters of the configuration: an mcp source keeps the rest of it.
+                assignments.append(sql.SQL("config = (config - 'filters') || %s"))
+                params.append(Jsonb(_filters_config(filters)))
             if not isinstance(visibility, Unset):
                 assign("visibility", visibility)
             if not isinstance(retention_days, Unset):
