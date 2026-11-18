@@ -117,6 +117,11 @@ Over MCP, and over HTTP with the same arguments as query parameters. All need a 
 | `search_code` | `GET /v1/search/code` | Code search: `semantic`, `exact`, `regex` or `symbol`; filters by repository, path glob, language |
 | `get_symbol` | `GET /v1/symbols` | Definitions of a symbol, by name or qualified name |
 | `read_source` | `GET /v1/workspaces/{ws}/sources/{src}/files/{path}` | A file or line range, or a directory listing |
+| `list_meetings` | `GET /v1/meetings` | Meetings a person took part in (default: me), by time and topic words |
+| `get_meeting` | `GET /v1/meetings/{record_id}` | Title, participants, summary, action items; transcript on request |
+| `list_messages` | `GET /v1/messages` | Messages to, mentioning or from a person, one by one, by source, time and topic |
+| `get_thread` | `GET /v1/threads/{record_id}` | A whole thread, messages in order |
+| `add_document` | `POST /v1/workspaces/{ws}/sources/{src}/documents` | Store a document in a push source (ingest scope) |
 | `status` | | Stream lag, last runs, and whether the base is current |
 
 Every hit carries its source, a timestamp and a locator: `shop@3f2a…:src/app.py#L12-L30` for code,

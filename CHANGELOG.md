@@ -117,6 +117,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Decision eval: `memini eval decisions` scores an extractor on labelled synthetic threads and meetings
   (English and Russian, reversals, duplicates, traps): extraction precision and recall, supersession
   accuracy; a keyword stub sets the first baseline.
+- Comms tools over MCP and HTTP: `list_meetings` (default: meetings I attended), `get_meeting`,
+  `list_messages` (to me, mentioning me, or from a person), `get_thread`, `add_document`; search filters by
+  person and role.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
