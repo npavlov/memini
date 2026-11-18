@@ -1,0 +1,10 @@
+{
+  "kind": "document",
+  "external_id": "wiki/runbooks/nightly-export",
+  "occurred_at": "2026-11-05T08:00:00Z",
+  "external_url": "https://wiki.example.invalid/runbooks/nightly-export",
+  "payload": {
+    "title": "Runbook: the nightly export",
+    "text": "# The nightly export\n\nRuns every night at 04:30 UTC and writes to the archive bucket, which keeps exports for 120 days.\n\n## When it fails\n\nTwo failures in a row page the on-call person. Run it again by hand from the scheduler."
+  }
+}

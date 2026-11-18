@@ -1,0 +1,22 @@
+{
+  "kind": "meeting",
+  "external_id": "notes/2026-11-04-platform-weekly",
+  "occurred_at": "2026-11-04T14:00:00Z",
+  "external_url": "https://notes.example.invalid/meetings/2026-11-04-platform-weekly",
+  "payload": {
+    "title": "Platform weekly",
+    "started_at": "2026-11-04T14:00:00Z",
+    "ended_at": "2026-11-04T14:30:00Z",
+    "participants": ["Ana Example", "Ben Sample", "Chloe Placeholder"],
+    "summary": "The nightly export now runs at 04:30 UTC. The archive bucket keeps exports for 120 days.",
+    "action_items": [
+      {"text": "Update the note on the reporting dashboard", "owner": "Ben Sample", "due": "2026-11-06"},
+      "Check the export's run time after a week"
+    ],
+    "transcript": [
+      {"id": "s01", "speaker": "Ana Example", "start": 15, "end": 32, "text": "The export moved to 04:30 UTC on Monday and has not failed since."},
+      {"id": "s02", "speaker": "Chloe Placeholder", "start": 33, "end": 47, "text": "And the archive keeps them for 120 days now, as legal asked."},
+      {"id": "s03", "speaker": "Ben Sample", "start": 48, "end": 55, "text": "I will update the dashboard note by Friday."}
+    ]
+  }
+}

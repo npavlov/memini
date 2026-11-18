@@ -12,8 +12,8 @@ searches them with a read-only token.
 
 - **Docker with Compose 2.24.0 or later.** Docker Desktop or OrbStack on macOS, Docker Engine with
   the compose plugin on Linux. Check: `docker compose version`.
-- **git**, to clone the repository, and **curl** 7.55.0 or later (`curl --version`), to push the
-  example thread.
+- **git**, to clone the repository. Optionally **curl** 7.55.0 or later (`curl --version`), for the
+  curl form of step 7.
 - **[Ollama](https://ollama.com)**, which runs the embedding model on this machine: no text leaves
   it. Install it, then pull the model (about 640 MB):
 
@@ -173,24 +173,42 @@ repository needs a token or an ssh key: [configuration.md](configuration.md), "G
 
 ## 7. Push a chat thread
 
-Messages and meeting notes come in through the push API: a push source takes batches of records
-that a client sends it. Add one, and give the client a token that may only push into this
-workspace (scope `ingest`). curl reads the header with the token from a file, so the token is on no
-command line:
+Messages, mail and meeting notes come in through the push API: a push source takes the records
+that a client or an agent sends it. Add one, and make a token that may only push into this
+workspace (scope `ingest`), kept in a file only you can read. Then push the example thread with it:
 
 ```sh
 memini source add demo chat --kind push
-(umask 077; printf 'Authorization: Bearer %s\n' "$(memini token create --scope ingest --workspace demo --name push)" > ~/.config/memini/ingest.header)
+(umask 077; memini token create --scope ingest --workspace demo --name push > ~/.config/memini/ingest.token)
+MEMINI_TOKEN_FILE=~/.config/memini/ingest.token memini push --workspace demo --source chat - < docs/examples/thread.json
+```
+
+`memini push` reads the records from stdin (`-`): `bin/memini` runs the command inside the
+service's container, which cannot read a path on the host. It prints:
+
+```
+sent 1 record in 1 batch to demo/chat (stream chat/platform)
+stored 1 (inserted 1, updated 0, revived 0), deleted 0, unchanged 0
+```
+
+[`docs/examples/thread.json`](examples/thread.json) is one batch with one invented thread. Pushing
+it again changes nothing (`unchanged 1`). Without an embedding provider a third line says the
+thread was stored but not indexed (see Troubleshooting). The shapes of chat and mail threads,
+meetings and documents, with an example of each, and the rules for an agent that pushes what it
+reads: [intake.md](intake.md).
+
+The same batch with curl instead, which reads the header with the token from a file, so the token
+is on no command line:
+
+```sh
+(umask 077; printf 'Authorization: Bearer %s\n' "$(cat ~/.config/memini/ingest.token)" > ~/.config/memini/ingest.header)
 curl -sS -X POST -H @"$HOME/.config/memini/ingest.header" -H 'Content-Type: application/json' \
   --data-binary @docs/examples/thread.json \
   http://127.0.0.1:6364/v1/workspaces/demo/sources/chat/records
 ```
 
-[`docs/examples/thread.json`](examples/thread.json) is one batch with one invented thread. The
-answer counts it `"inserted":1`, and `"index":{"indexed":true,…}` says its chunks are embedded.
-Sending the same batch again changes nothing (`"unchanged":1`). The format of a batch, threads,
-meetings and documents: [requirements.md](requirements.md), section 4, "One ingest contract" and
-"Payloads". Search everything:
+Its answer counts the thread (`"unchanged":1` after the push above), and
+`"index":{"indexed":true,…}` says its chunks are embedded. Search everything:
 
 ```sh
 memini search "when does the nightly export run" --limit 3

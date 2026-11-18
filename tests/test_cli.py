@@ -216,6 +216,7 @@ def test_help_lists_client_and_operator_commands_apart(
         "decision",
         "extract",
         "forget",
+        "push",
         "person",
     }
     operator_part = operator.split("\n\n")[0]

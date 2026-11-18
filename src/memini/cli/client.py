@@ -17,7 +17,9 @@ The global options ``--url`` and ``--token-file`` override them for one run. The
 text from elsewhere is redacted before it is printed.
 
 An error of the API (``{"error": {"code", "message", "request_id", "details"}}``) becomes one line,
-``memini: <message> (<code>, HTTP <status>, request <id>)``, and an exit code:
+``memini: <message> (<code>, HTTP <status>, request <id>)``, and an exit code, raised as a
+:class:`RequestFailed` that also carries the status, the error code, the locations of the fields
+that failed and ``Retry-After``, for a command that retries or splits its requests (``push``):
 
 - 401 and 403: :data:`~memini.cli.common.EXIT_DENIED`, the token was refused;
 - 503 ``unavailable``, and a 502, 503 or 504 without the API's error body (a proxy in front):
@@ -65,6 +67,7 @@ __all__ = [
     "ClientConfigError",
     "ClientSettings",
     "Json",
+    "RequestFailed",
     "load_client_settings",
     "quiet_http_logs",
     "segment",
@@ -87,10 +90,44 @@ HTTP_LOGGERS: Final = ("httpx2", "httpcore2")
 
 type Json = dict[str, Any]
 type Params = Mapping[str, str | int | Sequence[str] | None]
+type FieldFailure = tuple[tuple[str | int, ...], str]
+"""A field that failed validation: its location (``("body", "records", 3, "occurred_at")``) and
+the type of the failure (``missing``)."""
 
 
 class ClientConfigError(Exception):
     """The service URL or the token is missing or invalid. The text never holds a value."""
+
+
+class RequestFailed(CommandError):
+    """A call that did not succeed: the service refused it, or did not answer.
+
+    ``text`` and ``exit_code`` are those of every :class:`~memini.cli.common.CommandError`; the
+    rest is what a command that retries or splits its requests needs to know.
+    """
+
+    def __init__(
+        self,
+        text: str,
+        exit_code: int = EXIT_FAILURE,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        message: str | None = None,
+        fields: tuple[FieldFailure, ...] = (),
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(text, exit_code)
+        self.status = status
+        """The HTTP status; ``None`` when no answer came (unreachable, timed out)."""
+        self.code = code
+        """The API's error code; ``None`` without the API's error body."""
+        self.message = message
+        """The API's message, redacted and printable: it names fields, never values."""
+        self.fields = fields
+        """The fields that failed validation, from the error's ``details``."""
+        self.retry_after = retry_after
+        """Seconds the service asked to wait (``Retry-After``), if it said."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,25 +289,42 @@ class Api:
         return self.request("DELETE", path)
 
     def request(
-        self, method: str, path: str, *, params: Params | None = None, body: Json | None = None
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Params | None = None,
+        body: Json | None = None,
+        content: bytes | None = None,
     ) -> Json | None:
         """One call; the JSON object of a successful answer, or ``None`` for one without a body.
 
+        ``content``, a body already encoded as JSON, is sent as it is, in place of ``body``.
+
         Raises:
-            CommandError: the service cannot be reached, did not answer in time, refused the call
+            RequestFailed: the service cannot be reached, did not answer in time, refused the call
                 or answered with something that is not the API's.
         """
         query = None if params is None else {k: v for k, v in params.items() if v is not None}
         try:
-            response = self._http.request(method, path, params=query, json=body)
+            if content is None:
+                response = self._http.request(method, path, params=query, json=body)
+            else:
+                response = self._http.request(
+                    method,
+                    path,
+                    params=query,
+                    content=content,
+                    headers={"Content-Type": "application/json"},
+                )
         except httpx2.TimeoutException:
-            raise CommandError(
+            raise RequestFailed(
                 f"the service at {self.settings.url} did not answer within {self._timeout:g}"
                 " seconds",
                 EXIT_UNAVAILABLE,
             ) from None
         except httpx2.TransportError as error:
-            raise CommandError(
+            raise RequestFailed(
                 f"cannot reach the service at {self.settings.url}: {self._reason(error)}",
                 EXIT_UNAVAILABLE,
             ) from None
@@ -305,25 +359,31 @@ class Api:
             )
         return body
 
-    def _failure(self, response: httpx2.Response) -> CommandError:
-        """The :class:`CommandError` for an answer that is not a success."""
+    def _failure(self, response: httpx2.Response) -> RequestFailed:
+        """The :class:`RequestFailed` for an answer that is not a success."""
         status = response.status_code
+        retry_after = _retry_after(response)
         error = _error_body(response)
         if error is None:
             if status in (502, 503, 504):
-                return CommandError(
+                return RequestFailed(
                     f"the service at {self.settings.url} is unavailable (HTTP {status})",
                     EXIT_UNAVAILABLE,
+                    status=status,
+                    retry_after=retry_after,
                 )
             if 300 <= status < 400:
-                return CommandError(
+                return RequestFailed(
                     f"the service at {self.settings.url} answered with a redirect (HTTP {status}),"
                     " which is not followed; check MEMINI_URL",
                     EXIT_USAGE,
+                    status=status,
                 )
-            return CommandError(
+            return RequestFailed(
                 f"the service at {self.settings.url} answered HTTP {status} without the API's"
-                " error body; is MEMINI_URL the Memini service?"
+                " error body; is MEMINI_URL the Memini service?",
+                status=status,
+                retry_after=retry_after,
             )
         code = _text(error.get("code")) or "error"
         text = self.settings.redact(_text(error.get("message")) or f"HTTP {status}")
@@ -333,13 +393,23 @@ class Api:
         fields = _fields(error.get("details"))
         if fields:
             line += f"; not valid: {fields}"
+        exit_code = EXIT_FAILURE
         if status == 401:
-            return CommandError(f"{line}; check {self.settings.origin}", EXIT_DENIED)
-        if status == 403:
-            return CommandError(line, EXIT_DENIED)
-        if status == 503 and code == "unavailable":
-            return CommandError(line, EXIT_UNAVAILABLE)
-        return CommandError(line, EXIT_FAILURE)
+            line += f"; check {self.settings.origin}"
+            exit_code = EXIT_DENIED
+        elif status == 403:
+            exit_code = EXIT_DENIED
+        elif status == 503 and code == "unavailable":
+            exit_code = EXIT_UNAVAILABLE
+        return RequestFailed(
+            line,
+            exit_code,
+            status=status,
+            code=code,
+            message=text,
+            fields=_field_failures(error.get("details")),
+            retry_after=retry_after,
+        )
 
 
 def _error_body(response: httpx2.Response) -> Mapping[str, object] | None:
@@ -358,6 +428,39 @@ def _error_body(response: httpx2.Response) -> Mapping[str, object] | None:
 
 def _text(value: object) -> str:
     return printable(value) if isinstance(value, str) else ""
+
+
+MAX_RETRY_AFTER: Final = 3600.0
+"""The longest ``Retry-After`` taken as it is, in seconds; a longer one counts as this."""
+
+
+def _retry_after(response: httpx2.Response) -> float | None:
+    """The seconds of a ``Retry-After`` header; ``None`` without one, and for an HTTP date."""
+    value = response.headers.get("retry-after", "").strip()
+    if not (value.isascii() and value.isdigit()):
+        return None
+    return min(float(value), MAX_RETRY_AFTER)
+
+
+def _field_failures(details: object) -> tuple[FieldFailure, ...]:
+    """Each entry of ``details`` as its location (the parts that are strings or numbers) and its
+    type."""
+    if not isinstance(details, list):
+        return ()
+    found: list[FieldFailure] = []
+    for detail in cast(list[object], details):
+        if not isinstance(detail, dict):
+            continue
+        entry = cast(dict[str, object], detail)
+        location = entry.get("location")
+        parts = cast(list[object], location) if isinstance(location, list) else []
+        where = tuple(
+            printable(p) if isinstance(p, str) else p
+            for p in parts
+            if isinstance(p, str | int) and not isinstance(p, bool)
+        )
+        found.append((where, _text(entry.get("type")) or "invalid"))
+    return tuple(found)
 
 
 def _fields(details: object) -> str:

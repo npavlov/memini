@@ -19,6 +19,8 @@ mirrors and writes run reports; no database credentials leave it::
     memini source list <workspace> | show|edit|remove|prune <workspace> <source>
     memini streams <workspace> <source>
     memini sync <workspace> <source> [--stream KEY ...] [--wait]
+    memini push --workspace NAME --source NAME [--stream KEY] [--batch-size N] [--dry-run]
+                [--json] FILE|-
     memini runs <workspace> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
     memini run <run-id>
     memini status [--gate]
@@ -36,6 +38,10 @@ mirrors and writes run reports; no database credentials leave it::
 They read ``MEMINI_URL`` (default ``http://127.0.0.1:6364``) and the token from ``MEMINI_TOKEN`` or
 ``MEMINI_TOKEN_FILE`` (:mod:`memini.cli.client`); ``--url`` and ``--token-file`` override them.
 No option takes the token itself. Read commands take ``--json`` for the API's answer as it is.
+
+``push`` sends records (chat and mail threads, meetings, documents, tombstones) from a JSON or
+JSON lines file, or stdin, to a push source in batches, checking each record first and retrying
+while the service is busy (:mod:`memini.cli.push`); it needs the ``ingest`` scope.
 
 Operator commands work on the database directly, with the service's settings, inside the service's
 container (``docker compose exec memini memini <command>``): they run before a token exists, or
@@ -108,11 +114,13 @@ Exit codes:
   failed, or an index built with another fingerprint; for ``eval`` a search that failed, or an
   expected result of the suite not in the index; for ``eval decisions`` an extractor or a
   classifier that failed; for ``replay`` a job of the source that is running, a parser that failed
-  or a window fetched from another server.
+  or a window fetched from another server; for ``push`` a record that was rejected (the others
+  were sent).
 - 2: wrong usage or invalid configuration: arguments, the service's settings, the service URL, no
   token or a malformed one; also no embedding provider for ``reindex`` and ``eval`` (without
   ``--fake-embeddings``), a suite, set or baseline file of ``eval`` and ``eval decisions`` that is
-  not valid, and for ``replay`` a recipe file that is not valid or a parser this build lacks.
+  not valid, for ``replay`` a recipe file that is not valid or a parser this build lacks, and for
+  ``push`` input that cannot be read or is not JSON or JSON lines.
 - 3: unreachable: the service (client commands) did not answer, or answered that it is unavailable;
   the database (operator commands) cannot be reached.
 - 4: ``eval`` and ``eval decisions`` only: a tracked metric fell below the baseline by more than the
@@ -145,6 +153,7 @@ from memini.cli import (
     forget,
     index,
     persons,
+    push,
     recipes,
     replay,
     runs,
@@ -381,6 +390,7 @@ def build_parser() -> argparse.ArgumentParser:
     decisions.add_commands(commands)
     extract.add_commands(commands)
     forget.add_commands(commands)
+    push.add_commands(commands)
     person = commands.add_client("person", help=persons.HELP, description=persons.DESCRIPTION)
     persons.configure_parser(person)
 

@@ -1,0 +1,27 @@
+{
+  "kind": "thread",
+  "external_id": "<20261103101500.4417@mail.example.test>",
+  "occurred_at": "2026-11-03T11:02:00Z",
+  "payload": {
+    "title": "Retention of the archive bucket",
+    "channel": "inbox",
+    "messages": [
+      {
+        "id": "<20261103101500.4417@mail.example.test>",
+        "author": "Dana Placeholder <dana@example.test>",
+        "sent_at": "2026-11-03T10:15:00Z",
+        "recipients": ["Ana Example <ana@example.test>"],
+        "cc": ["Ben Sample <ben@example.test>"],
+        "text": "Hi Ana,\n\nhow long do we keep the nightly exports in the archive bucket? Legal asks for at least 90 days.\n\nDana"
+      },
+      {
+        "id": "<20261103110200.5120@mail.example.test>",
+        "author": "Ana Example <ana@example.test>",
+        "sent_at": "2026-11-03T11:02:00Z",
+        "recipients": ["Dana Placeholder <dana@example.test>"],
+        "cc": ["Ben Sample <ben@example.test>"],
+        "text": "Hi Dana,\n\nwe keep them for 30 days today. I will raise it to 120 days this week.\n\nAna"
+      }
+    ]
+  }
+}
