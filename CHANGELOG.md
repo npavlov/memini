@@ -65,6 +65,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Git sync: a ref deleted at the remote is marked missing and its files tombstoned instead of failing;
   `builtin_excludes` can be switched off per source; each file gets the time of the last commit that
   changed it; reindex reads repository files in batches (about 5x faster).
+- Ingest API: `POST /v1/workspaces/{ws}/sources/{src}/records` takes record batches for push sources,
+  with window claims that move the checkpoint in the same transaction, tombstones, snapshot reconcile
+  and size limits; a resent batch changes nothing.
+- Credential store for sources: AES-256-GCM with a key from the environment, crash-safe OAuth refresh,
+  `memini credentials set|list|delete|rotate-key`.
+- LLM provider layer: a local and a cloud OpenAI-compatible slot behind one `llm_policy` gate; content of
+  a source whose policy is `local` or `none` never reaches a cloud model; `memini workspace llm`.
+- Knowledge journal: decisions and open questions with evidence and supersession links, append-only and
+  enforced by the database.
+- Qwen3-Embedding 0.6B served by Ollama is the default embedding model; setting
+  `MEMINI_EMBEDDING_PROVIDER=openai_compatible` is enough (`.env.example`).
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end.
 
