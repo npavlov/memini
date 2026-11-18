@@ -204,6 +204,10 @@ async def run_http_server(app: ASGIApp, settings: Settings) -> bool:
         log_config=None,  # logging is configured by configure_logging
         access_log=False,
         server_header=False,
+        # No X-Forwarded-For: the client address is the peer's. Trusting the header (uvicorn trusts
+        # it from 127.0.0.1 by default) would let a local process pick the address its requests
+        # are rate-limited under.
+        proxy_headers=False,
         timeout_graceful_shutdown=SHUTDOWN_GRACE,
     )
     server = uvicorn.Server(config)

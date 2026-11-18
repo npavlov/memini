@@ -47,7 +47,9 @@ services:
       # Postgres 18 images keep data under /var/lib/postgresql/<major>/; mount the parent.
       - memini-db:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U memini -d memini"]
+      # Over TCP: on first start the image runs a temporary server that listens on the socket only
+      # while it initialises; checking the socket would report healthy before the real server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U memini -d memini"]
       interval: 2s
       timeout: 3s
       retries: 30
