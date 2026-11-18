@@ -20,7 +20,8 @@ Layout of the application :func:`create_app` builds:
   search, symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools;
   meetings, messages, threads and adding a document (:mod:`memini.api.comms`), the same calls as
   the MCP comms tools. Knowledge: recording, superseding, closing and retracting decisions by hand
-  (:mod:`memini.api.decisions`), the same calls as the MCP write tools.
+  (:mod:`memini.api.decisions`), the same calls as the MCP write tools; enqueuing the extraction of
+  stored records the current extractor has not read (:mod:`memini.api.extract`).
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
   bearer tokens, the ``read`` scope for every request. It is an ASGI app of its own: it gets request
   ids from the outer middleware, and its session manager runs in the application's lifespan.
@@ -58,6 +59,7 @@ from memini.api.auth import authenticate_request
 from memini.api.comms import build_comms_router
 from memini.api.decisions import build_decisions_router
 from memini.api.errors import ERROR_RESPONSES, install_error_handlers
+from memini.api.extract import build_extract_router
 from memini.api.forget import build_forget_router
 from memini.api.health import DEFAULT_READINESS_TIMEOUT, ReadinessCheck, build_health_router
 from memini.api.ingest import build_ingest_router
@@ -259,6 +261,7 @@ def create_app(
         build_query_router(),
         build_comms_router(),
         build_decisions_router(),
+        build_extract_router(),
         build_forget_router(),
     ):
         v1.include_router(router)

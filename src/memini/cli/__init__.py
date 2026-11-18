@@ -29,6 +29,7 @@ mirrors and writes run reports; no database credentials leave it::
     memini meetings [QUERY] [--person ME_ID_OR_ALIAS] [--since TIME] [--until TIME] ...
     memini messages [QUERY] [--person ME_ID_OR_ALIAS] [--role {recipient,mention,author} ...] ...
     memini forget <workspace> (--record ID | --source NAME --external-id ID [--kind KIND])
+    memini extract <workspace> [--source NAME ...] [--since TIME] [--dry-run]
     memini person list|show|lookup|add|rename|merge|split|me <workspace> ...
     memini person alias add|remove <workspace> <person-id> ...
 
@@ -140,6 +141,7 @@ from memini.cli import (
     decisions,
     evaluate,
     evaluate_decisions,
+    extract,
     forget,
     index,
     persons,
@@ -377,6 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_commands(commands)
     comms.add_commands(commands)
     decisions.add_commands(commands)
+    extract.add_commands(commands)
     forget.add_commands(commands)
     person = commands.add_client("person", help=persons.HELP, description=persons.DESCRIPTION)
     persons.configure_parser(person)

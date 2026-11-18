@@ -214,6 +214,7 @@ def test_help_lists_client_and_operator_commands_apart(
         "meetings",
         "messages",
         "decision",
+        "extract",
         "forget",
         "person",
     }

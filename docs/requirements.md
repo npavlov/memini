@@ -590,8 +590,8 @@ retention when that lands.
 | Supersession | For each extracted item: fetch the top-k similar active items of the workspace, one LLM call classifies it as new, duplicate, or replacing or answering specific items. |
 
 Extraction is idempotent per record content hash and extractor version. A new extractor version can re-run
-over stored records. The user can add, supersede or retract items by hand; manual items are never
-overwritten by extraction.
+over stored records (`memini extract`, Re-extraction below). The user can add, supersede or retract
+items by hand; manual items are never overwritten by extraction.
 
 **Decision extraction** (decided 2026-11-18). One `extract` job per thread or meeting
 (`memini.extraction.job`). Ingest enqueues it in the transaction that writes the record new or
@@ -617,8 +617,9 @@ three become items. It names the anchors of each; one that is not a part of the 
 and an item left without one is rejected (principle 2). `decided_at` is the time of the first
 cited part that has one, else the record's; the participants are the authors of the cited
 messages, or the participants of a meeting, as ingest linked them. Then each item in turn is
-checked against the `extraction_candidates` (8) most similar active items of the workspace and
-the items already taken from the record, in one call that names the record's source and the
+checked against the `extraction_candidates` (8) most similar active items of the workspace, the
+items already taken from the record and the record's items that are no longer active
+(Re-extraction, below), in one call that names the record's source and the
 sources of every candidate, so the gate holds it to the strictest policy; an item whose evidence
 comes from a source the granted provider may not read is no candidate. The model states the
 matter and the new value, then, for each existing item about the same matter, its value and
@@ -640,6 +641,49 @@ larger one it is found only when the two statements share a word. Embedding stat
 work. Some endpoints write the fields of a JSON schema in the order of their names, whatever the
 schema's order (Ollama does): the names follow the order of the reasoning (`anchors`, `basis`,
 `statement`; `about`, `matches`; `item`, `its_value`, `says`). Ollama takes `json_schema`.
+
+**Re-extraction** (decided 2026-11-19). `memini extract <workspace> [--source NAME ...] [--since
+TIME] [--dry-run]`, a client of `POST /v1/workspaces/{workspace}/extract` (scope `admin`; 202, 200
+for a dry run), enqueues an `extract` job for every live thread and meeting of the workspace (of
+the sources named; that occurred at or after `since`) whose current content the current extractor
+has not read (`memini.extraction.reextract`). It is the backfill of records stored before a
+provider was configured, which ingest does not enqueue, and the re-run after the extractor changes:
+a new prompt version or another model. The current extractor of a source is the one its jobs would
+record now: the provider that the policies of the workspace and the source allow among those
+configured (the gate's rule), and the prompt version. A source no LLM may read (`policy_none`), or
+that no configured provider may serve (`no_provider`), is skipped and its records counted; nothing
+of it is enqueued. A record with an extraction row for its content hash and that extractor is
+counted `current` and skipped. The others get the job ingest would give them, under the same
+dedupe key (record id and content hash), so a record whose job is queued or running already gets
+no second one (`queued`): a second run enqueues nothing while the jobs wait, and nothing once they
+have run, and each record is read once. Records go oldest first (`occurred_at`, then id), in pages
+of 500, each committed on its own; a worker runs a source's jobs in that order, so a later record
+is read after the earlier ones and its links point back in time (jobs of two sources may run side
+by side). The answer counts `records`, `current`, `enqueued`, `queued` and `skipped`, in total and
+per source with its extractor or the reason it is skipped. There is no option to read again what
+the current extractor has read: a job of the same content and extractor writes nothing, so another
+reading needs another extractor. The jobs share their source's queue with its syncs, which wait
+behind them; `--source` and `--since` bound a large backfill. An admin route and a client command
+rather than an operator command: it only enqueues, and the jobs run only in the service.
+
+Items of an earlier extractor version stay; the journal is append-only, and a re-extraction never
+changes, retracts or deletes an item, and never touches one recorded by hand (the database refuses
+an extracted item that supersedes or answers one). The new reading goes through the supersession
+check as any extraction, and the record's own items come first among its candidates: one that the
+new version reads the same is a duplicate and is not stored, so the earlier item stays, active,
+under its own extractor; one that it reads differently replaces it, or answers it, and the earlier
+item leaves the default view linked to its successor. An earlier item that the new version does
+not find stays active: an item left out is no evidence that it was wrong (a new version can lose
+recall), and a retraction is a person's judgment (`memini decision retract`). So that a new
+reading does not bring back what was settled, the check also shows the record's items that are no
+longer active (superseded, closed or retracted; at most `extraction_candidates`, the latest
+recorded first) as duplicate targets only: a new item that says the same as one is not stored, so
+a decision a later one replaced, a question a decision answered and an item a person retracted do
+not come back active; a link to one is dropped, since only an active item is superseded. This
+holds for a changed record read by the same extractor too. A new reading that changes the value
+of a settled item is stored as a new item. Linking a new version's items to the previous
+version's as replacements wholesale was not chosen: two readings do not pair one to one, a link
+needs a newer item for each earlier one, and a reading that finds nothing could retire nothing.
 
 **Code chunks** (decided 2026-11-18). One chunk per definition: function, method, class, type,
 constant. A comment block right above a definition, and its decorators, belong to it; statements
@@ -747,7 +791,8 @@ or a person that is not found is a 404, a field the journal refuses a 422. Reads
 
 Mirrors the MCP tools and adds administration: workspaces, sources, streams, runs, tokens, ingest,
 recipe plans, persons and aliases, reindex, forget (hard delete of a record, its raw responses and
-its index; knowledge items that cite it stay and keep their reference, section 3).
+its index; knowledge items that cite it stay and keep their reference, section 3), re-extraction
+(the extraction of stored records the current extractor has not read, section 5).
 
 **Forget** (decided 2026-11-18). `POST /v1/workspaces/{workspace}/forget` (scope `admin`) and
 `memini forget <workspace> (--record ID | --source NAME --external-id ID [--kind KIND])` delete one

@@ -19,12 +19,15 @@ runs:
 3. **Extraction**: one LLM call (:meth:`LlmDecisions.extract`). Items without a valid anchor are
    rejected (``items_rejected``).
 4. **Supersession**, item by item, in the order extracted: the top ``candidates`` similar active
-   items of the workspace (:func:`similar_active_items`) and the items already taken from this
-   record, one LLM call that names the record's source and every candidate's sources, so the gate
-   holds it to the strictest of their policies. A duplicate is not stored (``items_duplicate``).
-   A link to a manual item, to an item of this record not stored yet, or to an item another new
-   item already links, is dropped (``links_dropped``): extraction never supersedes or answers an
-   item recorded by hand.
+   items of the workspace (:func:`similar_active_items`), the items already taken from this
+   record, and the record's earlier items that are no longer active
+   (:func:`memini.extraction.reextract.earlier_items`), one LLM call that names the record's
+   source and every candidate's sources, so the gate holds it to the strictest of their policies.
+   A duplicate is not stored (``items_duplicate``), also one of an earlier item that is no longer
+   active: a new reading of the record does not bring back what was replaced, answered or
+   retracted. A link to a manual item, to an item that is not active, to an item of this record
+   not stored yet, or to an item another new item already links, is dropped (``links_dropped``):
+   extraction never supersedes or answers an item recorded by hand.
 5. **Store** the items with their evidence (the record and the anchors), participants (the
    authors of the cited messages, or a meeting's participants, as ingest linked them) and links
    through :func:`memini.knowledge.record_extraction`, in one transaction, with the extraction
@@ -69,6 +72,7 @@ from memini.extraction.model import (
     RecordInput,
     RecordRef,
 )
+from memini.extraction.reextract import earlier_items
 from memini.jobs import EXTRACT_KIND, Handler, Job
 from memini.knowledge import (
     EvidenceRef,
@@ -351,6 +355,10 @@ async def _supersession(
     record_id = record.input.record_id or ""
     pending: list[Candidate] = []
     taken: set[UUID] = set()
+    # Duplicate targets only: never in by_id, so a link to one is dropped.
+    earlier = await earlier_items(
+        conn, workspace_id=workspace_id, record_id=record_id, policies=policies, limit=limit
+    )
     for item in items:
         stored = await similar_active_items(
             conn,
@@ -362,7 +370,7 @@ async def _supersession(
         )
         by_id = {each.candidate.id: each for each in stored}
         sources = {record.source_id}
-        for each in stored:
+        for each in (*stored, *earlier):
             sources |= each.source_ids
         verdict = await decisions.classify(
             conn,
@@ -370,7 +378,11 @@ async def _supersession(
             source_ids=sources,
             item=item,
             record=record.input,
-            candidates=[*pending, *(each.candidate for each in stored)],
+            candidates=[
+                *pending,
+                *(each.candidate for each in stored),
+                *(each.candidate for each in earlier),
+            ],
         )
         if verdict.duplicate_of is not None:
             plan.duplicates += 1
