@@ -54,6 +54,12 @@ def chunk_id(record_id: str, key: Key) -> str:
     return hash_fields(CHUNK_ID_DOMAIN, record_id.encode(), *(part.encode() for part in key))
 
 
+def decode_text(data: bytes) -> str:
+    """``data`` as text Postgres can store: UTF-8, with every invalid byte and every NUL byte
+    replaced by U+FFFD. One character per NUL, so character counts do not change."""
+    return data.decode("utf-8", "replace").replace("\0", "\N{REPLACEMENT CHARACTER}")
+
+
 def chunker_fingerprint() -> str:
     """:data:`CHUNKER_VERSION` and the versions of tree-sitter and of every grammar package.
 
@@ -80,14 +86,11 @@ def chunk_file(
     Safe to call from several threads at once: each call has its own parser.
 
     Raises ``ValueError`` for a record id that is not 64 lowercase hex characters, a path that is
-    not valid Unicode, or an unknown language.
+    not valid Unicode or holds a NUL character, or an unknown language.
     """
     if _RECORD_ID.fullmatch(record_id) is None:
         raise ValueError("a record id is 64 lowercase hex characters")
-    try:
-        path.encode()
-    except UnicodeEncodeError:
-        raise ValueError("the path is not valid Unicode") from None
+    check_path(path)
     if language is not None and language not in LANGUAGES:
         raise ValueError(f"unknown language {language!r}; expected one of {list(LANGUAGES)}")
     language = language or detect_language(path)
@@ -112,13 +115,24 @@ def chunk_file(
     return _assemble(record_id, path, language, fallback, syntax_errors, lines, builder, drafts)
 
 
+def check_path(path: str) -> None:
+    """Refuse a path that cannot be stored as text: not valid Unicode, or with a NUL character
+    (git paths never have one)."""
+    try:
+        path.encode()
+    except UnicodeEncodeError:
+        raise ValueError("the path is not valid Unicode") from None
+    if "\0" in path:
+        raise ValueError("the path holds a NUL character")
+
+
 class _Lines:
     """The rows of a file: byte offsets, decoded text, character counts."""
 
     def __init__(self, content: bytes) -> None:
         self.content = content
         raw = content.split(b"\n")
-        self.text = [row.decode("utf-8", "replace") for row in raw]
+        self.text = [decode_text(row) for row in raw]
         self._starts: list[int] = []
         self._chars = [0]  # characters before each row, newlines included
         offset = 0
@@ -147,7 +161,7 @@ class _Lines:
 
     def slice(self, first: int, last: int, byte_range: tuple[int, int] | None) -> str:
         if byte_range is not None:
-            return self.content[byte_range[0] : byte_range[1]].decode("utf-8", "replace")
+            return decode_text(self.content[byte_range[0] : byte_range[1]])
         return "\n".join(self.text[first : last + 1])
 
 

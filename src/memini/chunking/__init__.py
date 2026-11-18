@@ -9,9 +9,10 @@ Languages
     chosen by file extension (:data:`memini.chunking.languages.EXTENSIONS`) or by the ``language``
     argument. Any other file is cut into line windows, and so is a file larger than
     ``max_parse_bytes``. A file with a NUL byte in its first 8000 bytes is binary and gives no
-    chunks. Bytes that are not UTF-8 are decoded with U+FFFD in their place; offsets are always
-    into the original bytes. tree-sitter recovers from syntax errors; the parts it cannot place
-    become ``code`` chunks, and :attr:`FileChunks.syntax_errors` says so.
+    chunks. Bytes that are not UTF-8, and NUL bytes further on, are decoded with U+FFFD in their
+    place, so a chunk's text is what the database stores and its content hash is computed over
+    it; offsets are always into the original bytes. tree-sitter recovers from syntax errors; the
+    parts it cannot place become ``code`` chunks, and :attr:`FileChunks.syntax_errors` says so.
 
 Chunks
     The members of a file are its top-level statements and definitions. Each definition is one

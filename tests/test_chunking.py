@@ -480,6 +480,31 @@ def test_a_binary_file_has_no_chunks() -> None:
     assert (result.chunks, result.symbols, result.fallback) == ((), (), "binary")
 
 
+@pytest.mark.parametrize("path", ["settings.py", "settings.txt"])
+def test_a_nul_byte_past_the_binary_probe_becomes_a_replacement_character(path: str) -> None:
+    # Not binary: the NUL is past the first 8000 bytes. Postgres text cannot hold it.
+    content = b"x = 1\n" * 2000 + b"y = '\x00'\n"
+
+    result = chunk_file(RID, path, content)
+
+    assert result.fallback != "binary"
+    assert result.chunks
+    assert not any("\0" in chunk.text for chunk in result.chunks)
+    (chunk,) = [c for c in result.chunks if "\N{REPLACEMENT CHARACTER}" in c.content]
+    assert chunk.content.endswith("y = '\N{REPLACEMENT CHARACTER}'")
+    assert chunk.content_hash == hashlib.sha256(chunk.text.encode()).hexdigest()
+    assert chunk.end_byte == len(content) - 1  # offsets are into the original bytes
+
+
+def test_a_nul_byte_in_a_piece_of_a_long_line_is_replaced() -> None:
+    content = b"x = 1\n" * 2000 + b"y = '" + b"a\x00" * 2000 + b"'\n"
+
+    result = chunk_file(RID, "data.txt", content)
+
+    assert not any("\0" in chunk.text for chunk in result.chunks)
+    assert sum(chunk.content.count("\N{REPLACEMENT CHARACTER}") for chunk in result.chunks) == 2000
+
+
 def test_bytes_that_are_not_utf8_are_replaced_and_offsets_kept() -> None:
     source = b"# caf\xe9 au lait\ndef brew():\n    return 'cr\xe8me'\n"
 
@@ -539,6 +564,8 @@ def test_bad_input_is_refused() -> None:
         chunk_file(RID, "a.rs", b"fn main() {}\n", language="rust")  # pyright: ignore[reportArgumentType]
     with pytest.raises(ValueError, match="not valid Unicode"):
         chunk_file(RID, "caf\udce9.py", b"x = 1\n")
+    with pytest.raises(ValueError, match="NUL character"):
+        chunk_file(RID, "a\0.py", b"x = 1\n")
 
 
 @pytest.mark.parametrize(

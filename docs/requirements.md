@@ -174,8 +174,10 @@ constant. A comment block right above a definition, and its decorators, belong t
 outside definitions are chunks of their own. A class or module of more than 40 lines is split into
 its members; neighbours of at most 6 lines merge while the merged chunk spans at most 40 lines;
 anything over 80 lines or 3000 characters is cut into windows of 60 lines that overlap by 10. A file
-without a grammar, or larger than 1 MiB, is cut into windows only; a binary file gives no chunks.
-The text embedded is a header line (path and qualified names) and the source lines. A chunk id is a
+without a grammar, or larger than 1 MiB, is cut into windows only; a binary file (a NUL byte in
+its first 8000 bytes) gives no chunks. Bytes that are not UTF-8, and NUL bytes further on, become
+U+FFFD in the chunk text: Postgres text cannot hold a NUL, and the content hash is computed over
+the text that is stored. The text embedded is a header line (path and qualified names) and the source lines. A chunk id is a
 hash of the record id and a structural key: the qualified name of the definition with an ordinal
 for repeated names, or for statements a count from the definition before them. Line numbers and
 content are not in the key, so editing one function changes the content hash of its chunk and

@@ -28,8 +28,9 @@ the record row removes them as well (ON DELETE CASCADE): forget and retention ne
 Both return :class:`IndexCounts` and add them to the run report of the job, if one is being
 recorded (:func:`memini.runs.current_run`), so a caller does not count them again.
 
-The text stored and embedded is the chunk's text, except that a NUL character, which Postgres text
-cannot hold, becomes U+FFFD; the text hash is computed over what is stored.
+The text stored and embedded is the chunk's text as the chunker made it. Postgres text cannot hold a
+NUL character, so the chunker replaces NUL bytes (:mod:`memini.chunking`); a chunk that still holds
+one is refused before anything is written.
 """
 
 from collections.abc import Mapping, Sequence
@@ -166,8 +167,8 @@ async def index_record(
 
     Raises:
         RecordNotFoundError: no record ``record_id``.
-        ValueError: the record is a tombstone (use :func:`delete_record_chunks`), or ``chunks``
-            holds one chunk id twice.
+        ValueError: the record is a tombstone (use :func:`delete_record_chunks`), ``chunks``
+            holds one chunk id twice, or a chunk's text holds a NUL character.
         IndexMismatchError: the workspace's index was built with another fingerprint than the
             embedder's spec and this chunker make; it must be rebuilt first (``memini reindex``).
         EmbeddingError: the model failed; nothing is written.
@@ -264,12 +265,11 @@ class _ChunkRow:
         return f"{self.header}\n{self.content}"
 
 
-def _clean(text: str) -> str:
-    return text.replace("\x00", "�")
-
-
 def _chunk_row(record: RecordRef, chunk: Chunk, path: str | None, key: str) -> _ChunkRow:
-    header, content = _clean(chunk.header), _clean(chunk.content)
+    header, content = chunk.header, chunk.content
+    # Postgres text cannot hold a NUL character; the chunker replaces them, so this is a bug.
+    if "\0" in header or "\0" in content:
+        raise ValueError(f"chunk {chunk.key} of {record.id} holds a NUL character")
     stored = (
         chunk.id,
         record.owner_id,

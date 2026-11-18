@@ -18,10 +18,13 @@ __all__ = [
     "SymbolKind",
 ]
 
-CHUNKER_VERSION: Final = 1
+CHUNKER_VERSION: Final = 2
 """Version of the chunking rules. It changes whenever the output for some input can change: chunk
 boundaries, ids, texts, headers, symbols or the default sizes. The index fingerprint includes it
-(principle 9); :func:`memini.chunking.chunker_fingerprint` adds the grammar versions."""
+(principle 9); :func:`memini.chunking.chunker_fingerprint` adds the grammar versions.
+
+2: a NUL byte past the binary probe becomes U+FFFD in the chunk text, so the content hash is
+computed over the text that is stored."""
 
 CHUNK_ID_DOMAIN: Final = "memini.chunk.v1"
 """Domain tag of chunk ids (see :mod:`memini.chunking`). A new rule gets a new tag."""
@@ -125,7 +128,8 @@ class Chunk:
     header: str
     """One line: the path, then the definitions the chunk holds, or the one it is a part of."""
     content: str
-    """The source lines, decoded as UTF-8 with invalid bytes replaced by U+FFFD."""
+    """The source lines, decoded as UTF-8 with invalid bytes and NUL bytes replaced by U+FFFD:
+    Postgres text cannot hold a NUL character."""
     content_hash: str
     """SHA-256 of :attr:`text` in UTF-8, 64 lowercase hex characters."""
 

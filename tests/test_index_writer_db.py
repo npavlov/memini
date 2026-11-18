@@ -3,6 +3,7 @@ vanished. Acceptance of memini-sg8: indexing unchanged input again makes no embe
 changes no row. Every value is synthetic; vectors come from the FakeEmbedder."""
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -317,11 +318,31 @@ async def test_a_nul_character_is_stored_as_a_replacement_character(
     content = b"x = 1\n" * 2000 + b"y = '\x00'\n"
     path = "data/settings.txt"
 
-    _, counts = await index_file(db, fake, scope, content, path=path)
+    rid, counts = await index_file(db, fake, scope, content, path=path)
 
     assert counts.inserted > 0
-    found = await rows(db, "SELECT count(*) FROM chunk WHERE strpos(content, U&'\\FFFD') > 0")
-    assert found == [(1,)]
+    found = await rows(db, "SELECT id, text_hash FROM chunk WHERE strpos(content, U&'\\FFFD') > 0")
+    (chunk,) = [
+        c for c in chunk_file(rid, path, content).chunks if "\N{REPLACEMENT CHARACTER}" in c.content
+    ]
+    # The chunker replaced it, so the stored text is the chunk's text, hash and all.
+    assert found == [(chunk.id, chunk.content_hash)]
+
+
+async def test_a_chunk_with_a_nul_character_is_refused_and_nothing_is_written(
+    db: Conn, scope: Scope, fake: FakeEmbedder
+) -> None:
+    rid, _ = await index_file(db, fake, scope, FILE_V1)
+    before = await versions(db)
+    good = chunk_file(rid, PATH, FILE_V1)
+    bad = replace(good, chunks=(replace(good.chunks[0], content="x = '\x00'"), *good.chunks[1:]))
+    fake.reset()
+
+    with pytest.raises(ValueError, match="holds a NUL character"):
+        await index_record(db, fake, record_id=rid, path=PATH, chunks=bad)
+
+    assert fake.batches == []
+    assert await versions(db) == before
 
 
 # --- Refusals ------------------------------------------------------------------------------------
