@@ -114,6 +114,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   names the calls that would complete it.
 - Observability: `GET /metrics` (Prometheus format, its own bearer token, no names or ids in labels), a
   slow-statement log without parameters, and the freshness gate (`memini status --gate`).
+- Decision eval: `memini eval decisions` scores an extractor on labelled synthetic threads and meetings
+  (English and Russian, reversals, duplicates, traps): extraction precision and recall, supersession
+  accuracy; a keyword stub sets the first baseline.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
