@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "memini",
+  "project_id": "2a9eff75-e2fc-4f99-b232-fa8bad99b774"
+}
