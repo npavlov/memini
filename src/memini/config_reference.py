@@ -203,6 +203,16 @@ GROUPS: Final[tuple[Group, ...]] = (
         " URL. Each slot needs its URL and its model. No provider is configured by default, and"
         " then nothing is extracted.",
     ),
+    Group(
+        "Decision extraction",
+        ("extraction_",),
+        "With an LLM provider, each thread or meeting that ingest stores new or changed gets an"
+        " `extract` job: one LLM call extracts its decisions and open questions, each with the"
+        " messages or segments that say it, and one call per item checks it against the most"
+        " similar active items of the workspace (a duplicate, or replacing or answering some)."
+        " A source or workspace whose `llm_policy` is `none` is skipped. Without a provider no job"
+        " is enqueued.",
+    ),
     Group("Other settings", (), "Settings that no group above takes yet."),
 )
 """The blocks of the reference, in order. A setting goes to the first group with a prefix of its
@@ -298,6 +308,8 @@ NOTES: Final[Mapping[str, str]] = {
     "llm_cloud_structured_output": "Only with `llm_cloud_url`. The reply is validated against"
     " the schema in every case.",
     "llm_timeout": "Only with `llm_local_url` or `llm_cloud_url`.",
+    "extraction_candidates": "Found by the words of the statements; items whose evidence the"
+    " provider may not read are left out. A larger number costs more input tokens per check.",
 }
 """Sentences after a setting's description: what it is for, or a rule across settings."""
 

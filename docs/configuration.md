@@ -201,6 +201,14 @@ At most two OpenAI-compatible chat APIs, declared by the slot they are set in: `
 | `llm_cloud_structured_output`<br>`MEMINI_LLM_CLOUD_STRUCTURED_OUTPUT` | one of `json_schema`, `json_object`, `none` | `json_schema` | restart | json_schema, json_object or none: how the cloud API is asked for JSON. Only with `llm_cloud_url`. The reply is validated against the schema in every case. |
 | `llm_timeout`<br>`MEMINI_LLM_TIMEOUT` | number, more than 0, at most 3600 | `300` | restart | Seconds per LLM request, more than 0, at most 3600. Only with `llm_local_url` or `llm_cloud_url`. |
 
+### Decision extraction
+
+With an LLM provider, each thread or meeting that ingest stores new or changed gets an `extract` job: one LLM call extracts its decisions and open questions, each with the messages or segments that say it, and one call per item checks it against the most similar active items of the workspace (a duplicate, or replacing or answering some). A source or workspace whose `llm_policy` is `none` is skipped. Without a provider no job is enqueued.
+
+| Setting | Values | Default | Change needs | Description |
+| --- | --- | --- | --- | --- |
+| `extraction_candidates`<br>`MEMINI_EXTRACTION_CANDIDATES` | integer, 1 to 50 | `8` | restart | Active items, 1 to 50, that a new item is checked against for duplicates, replacements and answers. Found by the words of the statements; items whose evidence the provider may not read are left out. A larger number costs more input tokens per check. |
+
 ### Other settings
 
 Settings that no group above takes yet.

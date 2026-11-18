@@ -7,10 +7,13 @@
   to the queue.
 - `Scheduler` enqueues a sync of each stream whose schedule is due, and a retention pass of each
   source whose retention is due.
+- `enqueue_extraction` adds the decision extraction of one thread or meeting (`EXTRACT_KIND`);
+  ingest calls it for the records it writes.
 
 Every attempt runs through `execute_job`, which looks up the handler of the job's kind.
 """
 
+from memini.jobs.extraction import EXTRACT_KIND, enqueue_extraction, extraction_dedupe_key
 from memini.jobs.queue import (
     DEFAULT_MAX_ATTEMPTS,
     SOURCE_LOCK_NAMESPACE,
@@ -35,6 +38,7 @@ from memini.jobs.worker import Handler, RetryPolicy, Worker, describe_error, exe
 __all__ = [
     "DEFAULT_MAX_ATTEMPTS",
     "DEFAULT_RETENTION_INTERVAL",
+    "EXTRACT_KIND",
     "RETENTION_KIND",
     "SOURCE_LOCK_NAMESPACE",
     "SYNC_KINDS",
@@ -49,7 +53,9 @@ __all__ = [
     "enqueue",
     "enqueue_due_retention",
     "enqueue_due_streams",
+    "enqueue_extraction",
     "execute_job",
+    "extraction_dedupe_key",
     "source_dedupe_key",
     "source_lock_key",
     "stream_dedupe_key",

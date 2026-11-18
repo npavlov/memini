@@ -30,7 +30,7 @@ import subprocess
 import tempfile
 import uuid
 from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
@@ -82,6 +82,7 @@ __all__ = [
     "header_trails",
     "hit_matches",
     "run_eval",
+    "scratch_database",
     "summarize",
 ]
 
@@ -294,6 +295,19 @@ async def _scratch_database(server_url: str, *, keep: bool) -> AsyncGenerator[tu
                 await admin.execute(
                     sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
                 )
+
+
+def scratch_database(
+    server_url: str, *, keep: bool = False
+) -> AbstractAsyncContextManager[tuple[str, str]]:
+    """A new, empty database on the server of ``server_url``, as :func:`run_eval` makes one: its
+    name and connection string; dropped on exit unless ``keep``. The decision eval's LLM variant
+    uses it for the policies the LLM gate reads.
+
+    Raises:
+        EvalSetupError: the role may not create a database.
+    """
+    return _scratch_database(server_url, keep=keep)
 
 
 async def _build_index(

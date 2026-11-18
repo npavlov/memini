@@ -32,6 +32,10 @@ whose index was built with another embedding model or chunker refuses the batch:
 503 ``embedding_failed``. Nothing is stored either way, and the batch can be sent again. Without
 a provider, records are stored without chunks, as the answer's ``index`` says; ``memini reindex``
 indexes them once one is set.
+
+Extraction. With an LLM provider configured, each thread and meeting the batch writes new or
+changed gets an ``extract`` job in the batch's transaction (:mod:`memini.extraction.job`), which
+the service's worker runs; the run report of the batch counts ``extractions_enqueued``.
 """
 
 import json
@@ -53,6 +57,7 @@ from memini.api.errors import ApiError
 from memini.config import Settings
 from memini.db import Pool
 from memini.embeddings import EmbeddingError
+from memini.extraction.job import extraction_enabled
 from memini.index import IndexMismatchError
 from memini.query import QueryServices
 from memini.workspaces import NotFoundError
@@ -457,6 +462,7 @@ def build_ingest_router() -> APIRouter:
                 limits=ingest.IngestLimits.from_settings(settings),
                 runs=pool,
                 indexer=indexer,
+                extract=extraction_enabled(settings),
             )
         return IngestAccepted.of(result, indexed=indexer is not None)
 

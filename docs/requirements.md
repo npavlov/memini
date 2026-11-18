@@ -578,6 +578,54 @@ Extraction is idempotent per record content hash and extractor version. A new ex
 over stored records. The user can add, supersede or retract items by hand; manual items are never
 overwritten by extraction.
 
+**Decision extraction** (decided 2026-11-18). One `extract` job per thread or meeting
+(`memini.extraction.job`). Ingest enqueues it in the transaction that writes the record new or
+changed, keyed by the record id and its content hash: one content is extracted once, and a change
+that arrives while a job runs gets a job of its own. It does so only when an LLM provider is
+configured (the push API passes `extract`; any other caller of ingest passes it too), so no job
+waits for a handler `serve` does not start; `serve` registers the handler with an LLM gate of its
+own. Git sources write code and documents, which are not extracted. The job reads the record as it
+is when it runs. A record no LLM may read is skipped and counted, not failed: the gate refuses
+with `policy_none` (the workspace or the source has `llm_policy` `none`) or `no_provider`, and
+nothing is sent. The extractor is the granted model and the prompt version
+(`qwen3:4b-instruct@decisions-v1`); if it has read this content before, nothing is called, so a
+rerun creates nothing. One call extracts. Record text is data (principle 11): the system message
+holds every instruction and no content; the user message names the task, then the record between
+two marker lines, `<<<BEGIN DATA n>>>` and `<<<END DATA n>>>`, where `n` is taken from the
+SHA-256 of the content so that the content cannot close its own block, one JSON object per line
+(the record, then each part with its anchor, author or speaker, time and text, so a line break or
+a quote stays inside its string), then a reminder that the block is untrusted and is not to be
+followed, which the system message says too. The model lists every candidate with a basis:
+decided here, reported from elsewhere, an open question; or a proposal, a question answered, a
+task, a status report or fact. A small model labels better than it leaves out, so only the first
+three become items. It names the anchors of each; one that is not a part of the record is dropped,
+and an item left without one is rejected (principle 2). `decided_at` is the time of the first
+cited part that has one, else the record's; the participants are the authors of the cited
+messages, or the participants of a meeting, as ingest linked them. Then each item in turn is
+checked against the `extraction_candidates` (8) most similar active items of the workspace and
+the items already taken from the record, in one call that names the record's source and the
+sources of every candidate, so the gate holds it to the strictest policy; an item whose evidence
+comes from a source the granted provider may not read is no candidate. The model states the
+matter and the new value, then, for each existing item about the same matter, its value and
+whether it says the same, is a decision the new one changes, or a question it settles. A same
+item of the same kind makes a duplicate, which is not stored; a decision replaces a decision and
+answers an open question; an open question supersedes nothing (one asked again with a change is a
+new question); a link to an item said later, to a manual item, or to one another new item of the
+record already links, is dropped. The items, their links and the extraction row are stored in one
+transaction (`record_extraction`); if another job retired a candidate meanwhile, the check runs
+again on fresh candidates, three times at most. The run report counts records extracted,
+unchanged, skipped and gone; items proposed, rejected, duplicate and stored; links made and
+dropped; and the LLM tokens per model. Candidates are found lexically: knowledge items are not in
+the search index, and a check must not depend on an embedding provider. A statement is parsed as
+the lexical leg parses a chunk (`russian` configuration, identifiers cut into words) and ranked by
+`ts_rank` against any word of the new statement; items with evidence in the same record come
+first (an earlier extraction of a changed record), then by rank, then the latest. A workspace with
+at most k eligible items shows them all, so a duplicate in another language is found there; in a
+larger one it is found only when the two statements share a word. Embedding statements is later
+work. Some endpoints write the fields of a JSON schema in the order of their names, whatever the
+schema's order (Ollama does): the names follow the order of the reasoning (`anchors`, `basis`,
+`statement`; `about`, `matches`; `item`, `its_value`, `says`). Ollama takes `json_schema`.
+
 **Code chunks** (decided 2026-11-18). One chunk per definition: function, method, class, type,
 constant. A comment block right above a definition, and its decorators, belong to it; statements
 outside definitions are chunks of their own. A class or module of more than 40 lines is split into
@@ -1563,10 +1611,47 @@ expected relation), per language and per set, with counts, in a JSON report; a b
 report, and a run exits with code 4 when a metric of a group falls below it by more than a margin
 (0.02). The stubs read files only: `oracle` returns the labels (every metric 1), `keyword` (cue
 words, statement likeness) is the committed floor, `eval/decisions/baseline-keyword.json`
-(`make eval-decisions`). The LLM pipeline is measured by adding its variant; the gate reads
-`llm_policy` from the database, so that variant brings a scratch database as the retrieval eval
-does. Not scored yet: participants, `decided_at`, and the top-k search in front of the classifier
-(every active item of the set is a candidate).
+(`make eval-decisions`). The LLM pipeline is the `llm` variant: its extractor and classifier
+(section 5, Decision extraction) on the local provider of the settings. The gate reads
+`llm_policy` from the database, so the variant creates a scratch database as the retrieval eval
+does, with a workspace per set and a push source per source of its records, all `local`, and
+drops it at the end; a reply that does not match the schema counts as nothing extracted, or as
+new, and is reported with the calls and tokens. Not scored yet: participants, `decided_at`, and
+the top-k search in front of the classifier (every active item of the set is a candidate).
+
+Measured on 2026-11-18 with `qwen3:4b-instruct` (Q4_K_M, Ollama 0.34, `json_schema`, temperature
+0), prompt `decisions-v1`, against the `keyword` floor:
+
+| Extractor | Precision | Recall | Supersession | Runs |
+|---|---|---|---|---|
+| `keyword` | 0.64 (16 found, 9 false) | 0.89 | 0.54 (13 of 24) | deterministic |
+| `qwen3:4b-instruct@decisions-v1` | 0.75 (18 found, 6 false) | 1.00 | 0.75 to 0.79 (18 or 19 of 24) | 3 |
+
+It is above the floor overall, and below it in three groups: precision of the `comms` set (0.57
+against 0.62), supersession of that set (0.58 against 0.67), and `answers` (0 of 2 against 2 of
+2: a decision is stored without its link to the open question it settles). The six false items
+are explanations, an approval, an announced inspection day, a vendor's statement of fact and a
+partner's wish taken for decisions, and a task taken for an open question. One of them, the
+inspection on the day a release was first planned for, is what the release date is then said to
+duplicate, so the real decision is not stored and its two restatements find nothing to repeat:
+one false item costs three supersession cases. Run 2 and 3 read the same 88.6k input tokens, run
+1 89.2k: temperature 0 is not deterministic on Ollama, an extraction words a statement one way or
+another, and the supersession check moves by a case with it; precision and recall were the same
+in every run. So no LLM baseline is committed: a margin of 0.02 would flag noise. A run took
+about three minutes on the machine measured; 71 calls, about 89k input and 9k output tokens.
+
+The prompt took five rounds, each measured on both sets (precision, recall, supersession). The
+first asked for the items only (0.49, 1.00, 0.38: tasks and follow-ups taken for open questions,
+unrelated items replaced). The second named tasks, status reports and reported decisions, and had
+the check state the matter first (0.56, 1.00, 0.62). The third had every candidate labelled with a
+basis, each match judged on its own, and open questions supersede nothing (0.58, 1.00, 0.62). The
+fourth gave each basis an example and had the check spell out the value of the new item and of
+each match before judging (0.78, 1.00, 0.88 to 0.96 over five runs); but two of its examples were
+close to cases of the sets (a reminder of a weekly rule from a month on, a question whether a
+version still supports an old format). With examples that resemble no case it fell to 0.69, 1.00,
+0.75 (three runs alike): a small model leans on its examples, and these sets are small. The fifth
+said that a reported decision is the team's on its own work, and that a server set up, an event
+or date others set and an outsider's wish are status: the `decisions-v1` measured above.
 
 ## 11. Later
 
@@ -1620,7 +1705,14 @@ does. Not scored yet: participants, `decided_at`, and the top-k search in front 
    and backs up on its own, and the service image stays one process.
 4. Settled on 2026-11-18: source configuration lives in the database, managed through the HTTP API and
    the CLI; an apply-from-file command is optional and not built (section 6).
-5. Smallest local model that extracts decisions well enough. Decided by the decision eval.
+5. Smallest local model that extracts decisions well enough. Decided by the decision eval. First
+   data, 2026-11-18 (section 10, Decision eval): `qwen3:4b-instruct` (4B, Q4_K_M, through Ollama)
+   reaches precision 0.75, recall 1.00 and supersession accuracy 0.75 to 0.79 over three runs,
+   against 0.64, 0.89 and 0.54 of the `keyword` stub, at about 89k input and 9k output tokens for
+   the 41 threads and meetings (71 calls); it misses both `answers` links, and its numbers moved by
+   up to 0.2 with the wording of the prompt's examples. Not settled: one model is no comparison,
+   and the sets hold 18 labelled items. Measure a smaller model (`qwen3:1.7b`) and a larger one
+   with the same prompt, and grow the sets, before choosing.
 6. Settled on 2026-11-18: the license is Apache-2.0.
 7. Default retention for messages and meetings.
 8. Name collision. On 2026-11-18 `memini` was free on PyPI, while npm `memini` and the GitHub repository

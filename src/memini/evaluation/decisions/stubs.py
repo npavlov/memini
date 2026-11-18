@@ -14,11 +14,11 @@ settings) and returns a :class:`~memini.evaluation.decisions.runner.Pipeline`.
   statements are (:func:`~memini.evaluation.decisions.matching.similarity`). Its numbers are the
   committed baseline (``eval/decisions/baseline-keyword.json``): the floor a model must clear.
 
-Adding the LLM pipeline (memini-mpf): an :class:`ExtractorVariant` whose ``create`` builds an
-extractor and a classifier on :class:`memini.llm.LlmGate` from the settings, and an ``aclose``
-that closes the gate. The gate decides by the ``llm_policy`` of a workspace and its sources in
-the database, so such a variant prepares a scratch database with the sets' workspaces and
-sources, as the retrieval eval does (:mod:`memini.evaluation.runner`).
+- ``llm`` is the pipeline's own extractor and classifier (:mod:`memini.extraction.llm`) through
+  :class:`memini.llm.LlmGate`, on the local provider of the settings. The gate decides by the
+  ``llm_policy`` of a workspace and its sources in the database, so the variant prepares a scratch
+  database with the sets' workspaces and sources, as the retrieval eval does
+  (:mod:`memini.evaluation.decisions.llm`), and its ``aclose`` drops it and closes the gate.
 """
 
 import re
@@ -29,6 +29,7 @@ from typing import Final
 
 from memini.config import Settings
 from memini.evaluation.decisions.dataset import DecisionSet
+from memini.evaluation.decisions.llm import create_llm_pipeline
 from memini.evaluation.decisions.matching import similarity, targets_of, terms
 from memini.evaluation.decisions.runner import Pipeline
 from memini.extraction import (
@@ -262,6 +263,10 @@ def _keyword(context: VariantContext) -> Pipeline:
     return Pipeline(stub, stub)
 
 
+def _llm(context: VariantContext) -> Pipeline:
+    return create_llm_pipeline(context.sets, context.settings)
+
+
 EXTRACTORS: Final[Mapping[str, ExtractorVariant]] = {
     "keyword": ExtractorVariant(
         "keyword",
@@ -269,5 +274,12 @@ EXTRACTORS: Final[Mapping[str, ExtractorVariant]] = {
         _keyword,
     ),
     "oracle": ExtractorVariant("oracle", "stub: returns the labels; every metric is 1", _oracle),
+    "llm": ExtractorVariant(
+        "llm",
+        "the extraction pipeline on the local LLM provider of the settings"
+        " (MEMINI_LLM_LOCAL_URL, MEMINI_LLM_LOCAL_MODEL), with a scratch database for the"
+        " policies (CREATEDB)",
+        _llm,
+    ),
 }
 DEFAULT_EXTRACTOR: Final = "keyword"

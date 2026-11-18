@@ -767,6 +767,18 @@ class Settings(BaseModel):
         description="seconds per LLM request, more than 0, at most 3600",
     )
 
+    # --- Decision extraction (memini.extraction.job). Runs only with an LLM provider. -----------
+    # Each new or changed thread or meeting gets an extract job: one LLM call extracts its
+    # decisions and open questions, and one call per item checks it against the most similar
+    # active items of the workspace.
+    extraction_candidates: int = Field(
+        default=8,
+        ge=1,
+        le=50,
+        description="active items, 1 to 50, that a new item is checked against for duplicates,"
+        " replacements and answers",
+    )
+
     # --- Observability (memini.metrics, memini.api.metrics, memini.db.statements) ----------------
     # GET /metrics serves Prometheus metrics, counts only, to a scraper that sends metrics_token
     # as its bearer token; without it there is no such route. A Memini token is not accepted

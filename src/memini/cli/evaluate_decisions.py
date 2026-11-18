@@ -6,8 +6,10 @@ file is refused before anything runs; builds the extractor named by ``--extracto
 needs nothing else); runs; prints the three metrics and the groups to stdout and progress to
 stderr; writes the JSON report and the baseline when asked; and compares with the baseline.
 
-The stubs read the sets' files only: no database, no model. An extractor of the LLM pipeline
-takes its provider from the service's settings, which every operator command loads.
+The stubs read the sets' files only: no database, no model. The ``llm`` extractor takes its
+provider from the service's settings, which every operator command loads, and a scratch database
+on the server of ``MEMINI_DATABASE_URL`` (the role needs ``CREATEDB``) for the policies the LLM
+gate reads (:mod:`memini.evaluation.decisions.llm`).
 
 Exit codes (besides those of every command): 0 when nothing fell; 1 when the extractor or the
 classifier failed; 2 for a set or baseline file that is not valid; :data:`EXIT_REGRESSION` when
@@ -131,7 +133,10 @@ async def decisions_command(args: argparse.Namespace, settings: Settings) -> int
         f"decision eval of {len(sets)} sets ({sum(len(s.records) for s in sets)} threads and"
         f" meetings, {sum(len(s.items) for s in sets)} labelled items) with {variant.name}"
     )
-    pipeline = variant.create(VariantContext(sets, settings))
+    try:
+        pipeline = variant.create(VariantContext(sets, settings))
+    except DecisionEvalError as error:
+        raise CommandError(str(error)) from None
     try:
         report = await run_decision_eval(sets, pipeline, variant=variant.name, say=message)
     except DecisionEvalError as error:
@@ -139,6 +144,8 @@ async def decisions_command(args: argparse.Namespace, settings: Settings) -> int
     finally:
         if pipeline.aclose is not None:
             await pipeline.aclose()
+    if pipeline.summary is not None:
+        message(pipeline.summary())
 
     to_stdout = json_path is not None and str(json_path) == "-"
     if not to_stdout:

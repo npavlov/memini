@@ -34,6 +34,7 @@ from memini.ingest.model import (
     StreamChangedError,
 )
 from memini.ingest.validate import MAX_CLOCK_SKEW, prepare_batch
+from memini.jobs.extraction import enqueue_extraction
 from memini.persons import LinkCounts, link_records
 from memini.removal import forgotten_record_ids
 from memini.runs import Run, current_run, record_run
@@ -45,6 +46,10 @@ type Conn = AsyncConnection[TupleRow]
 
 RUN_KIND: Final = "ingest"
 """The kind of the run row each batch writes."""
+
+_EXTRACTED_KINDS: Final = frozenset({"thread", "meeting"})
+"""The kinds of record whose new or changed content gets an extraction job (requirements,
+section 5; :data:`memini.extraction.EXTRACTED_KINDS`): documents and code are not extracted."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +171,8 @@ class _Tally:
     """Records written without an indexing hook."""
     persons: LinkCounts = field(default_factory=LinkCounts)
     """Persons, aliases and links the batch's records made; reported after it commits."""
+    extractions: int = 0
+    """Extraction jobs the batch enqueued (or found queued) for its threads and meetings."""
 
 
 async def _tombstone(conn: Conn, tally: _Tally, source_id: UUID, ids: Sequence[str]) -> int:
@@ -193,6 +200,7 @@ async def _store(
     target: _Target,
     batch: PreparedBatch,
     indexer: RecordIndexer | None,
+    extract: bool,
 ) -> _Tally:
     tally = _Tally()
     window = batch.window
@@ -326,6 +334,21 @@ async def _store(
                 records=written,
             )
 
+        if extract:
+            # The extraction hook (memini.jobs.extraction): a job for each thread and meeting whose
+            # content is new or changed, visible to workers when the batch commits.
+            for record in sorted(written, key=lambda record: record.id):
+                if record.kind in _EXTRACTED_KINDS and record.content_changed:
+                    await enqueue_extraction(
+                        conn,
+                        workspace_id=target.workspace_id,
+                        owner_id=access.owner_id,
+                        source_id=target.source_id,
+                        record_id=record.id,
+                        content_hash=record.content_hash,
+                    )
+                    tally.extractions += 1
+
         if after is not None and before is not None:
             cur = await conn.execute(
                 _MOVE_CHECKPOINT,
@@ -374,6 +397,7 @@ def _count(run: Run | None, tally: _Tally, batch: PreparedBatch) -> None:
         ("person_links_inserted", tally.persons.links_inserted),
         ("person_links_updated", tally.persons.links_updated),
         ("person_links_deleted", tally.persons.links_deleted),
+        ("extractions_enqueued", tally.extractions),
     ):
         run.count(name, value)
 
@@ -384,9 +408,10 @@ async def _store_once(
     target: _Target,
     batch: PreparedBatch,
     indexer: RecordIndexer | None,
+    extract: bool,
 ) -> _Tally:
     try:
-        return await _store(conn, access, target, batch, indexer)
+        return await _store(conn, access, target, batch, indexer, extract)
     except errors.DeadlockDetected:
         raise BatchConflictError(
             "another batch held the same records at the same time; send the batch again"
@@ -405,6 +430,7 @@ async def ingest(
     limits: IngestLimits = DEFAULT_LIMITS,
     runs: AsyncConnectionPool[Any] | AsyncConnection[Any] | None = None,
     indexer: RecordIndexer | None = None,
+    extract: bool = False,
 ) -> IngestResult:
     """Store a batch of records for the source ``source`` of the workspace ``workspace``.
 
@@ -419,6 +445,10 @@ async def ingest(
             :class:`~memini.ingest.PayloadIndexer`; ``None``: records are stored without their
             chunks (counted as ``records_not_indexed``), and ``memini reindex`` indexes them
             later.
+        extract: enqueue an extraction job (:data:`memini.jobs.EXTRACT_KIND`) for each thread and
+            meeting the batch writes with new or changed content, in the batch's transaction.
+            The service passes it when an LLM provider is configured, and so a worker runs them;
+            without one, nothing is enqueued and nothing waits for a handler that never comes.
 
     Raises:
         ValueError: ``conn`` has a transaction open.
@@ -445,7 +475,7 @@ async def ingest(
     prepared = filter_batch(prepared, await read_source_filters(conn, target.source_id))
     # --- End of source filters -----------------------------------------------------------------
     if runs is None:
-        tally = await _store_once(conn, access, target, prepared, indexer)
+        tally = await _store_once(conn, access, target, prepared, indexer, extract)
         _count(current_run(), tally, prepared)
         return _result(target, prepared, tally, run_id=None)
     async with record_run(
@@ -458,7 +488,7 @@ async def ingest(
         progress_interval=None,
     ) as run:
         async with run.step("store"):
-            tally = await _store_once(conn, access, target, prepared, indexer)
+            tally = await _store_once(conn, access, target, prepared, indexer, extract)
         _count(run, tally, prepared)
         window = prepared.window
         if window is not None and not window.complete:

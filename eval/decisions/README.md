@@ -10,12 +10,17 @@ implements: `src/memini/extraction`.
     memini eval decisions --extractor oracle                 # the labels: every metric is 1
     memini eval decisions --baseline eval/decisions/baseline-keyword.json   # make eval-decisions
     memini eval decisions --baseline eval/decisions/baseline-keyword.json --write-baseline
+    MEMINI_LLM_LOCAL_URL=http://127.0.0.1:11434/v1 MEMINI_LLM_LOCAL_MODEL=qwen3:4b-instruct \
+        memini eval decisions --extractor llm --baseline eval/decisions/baseline-keyword.json
 
 It is an operator command: it loads the service's settings as every operator command does
 (`MEMINI_DATABASE_URL` must be set), though the stubs read the sets' files only and connect to
-nothing. Exit codes: 0 no regression; 1 the extractor or the classifier failed; 2 a set or
-baseline file that is not valid; 4 a tracked metric fell below the baseline by more than the
-margin (0.02).
+nothing. The `llm` extractor is the pipeline's own (`src/memini/extraction/llm.py`) on the local
+LLM provider of the settings; it creates a scratch database on the server of
+`MEMINI_DATABASE_URL` for the policies the LLM gate reads (the role needs `CREATEDB`) and drops
+it at the end, and prints its calls, tokens and the items it rejected. Exit codes: 0 no
+regression; 1 the extractor or the classifier failed; 2 a set or baseline file that is not valid;
+4 a tracked metric fell below the baseline by more than the margin (0.02).
 
 ## Layout
 
@@ -80,3 +85,10 @@ falls below it by more than the margin.
 "решили", "договорились"; a question mark after "should", "нужно ли"), statement likeness for
 supersession. It is the floor a model must clear, and `make eval-decisions` compares with it.
 Write it again when the sets or the stub change on purpose.
+
+No baseline of the `llm` extractor is committed: at temperature 0 Ollama still words an
+extraction differently from run to run, and the supersession accuracy moves by a case or two
+with it. `qwen3:4b-instruct` with the prompt `decisions-v1` measured precision 0.75, recall 1.00
+and supersession accuracy 0.75 to 0.79 over three runs (docs/requirements.md, section 10, with
+the rounds the prompt took). Compare a run of a new model or prompt with the keyword floor, and
+read the groups that fall below it.

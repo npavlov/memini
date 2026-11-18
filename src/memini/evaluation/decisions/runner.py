@@ -83,6 +83,9 @@ class Pipeline:
     classifier: SupersessionClassifier
     aclose: Callable[[], Awaitable[None]] | None = None
     """Releases what they hold (an HTTP client); the caller calls it after the run."""
+    summary: Callable[[], str] | None = None
+    """What the run cost and what it refused (calls, tokens, rejected items), for the caller to
+    print after the run; not part of the report."""
 
 
 @dataclass(frozen=True, slots=True)

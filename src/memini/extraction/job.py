@@ -1,0 +1,531 @@
+"""The ``extract`` job: the decisions and open questions of one thread or meeting, extracted,
+checked against similar active items, and stored (requirements, section 5).
+
+Ingest enqueues one job per thread or meeting whose content a batch writes new or changed
+(:mod:`memini.jobs.extraction`), when an LLM provider is configured; ``serve`` registers the handler
+(:func:`extract_handler`) then. :func:`run_extraction` does, for the record as it is when the job
+runs:
+
+1. **Skip** a record that is gone or a tombstone (counted ``records_gone``), and one no LLM may
+   read: the gate (:meth:`memini.llm.LlmGate.check`) refuses with ``policy_none`` when the
+   workspace or the record's source has ``llm_policy`` ``none``, or ``no_provider`` when no
+   provider that policy allows is configured. A skip is counted
+   (``records_skipped_policy_none``, ``records_skipped_no_provider``) and the job succeeds;
+   nothing is sent anywhere.
+2. **Idempotency.** The extractor is the model the gate grants and the prompt version
+   (:func:`memini.extraction.llm.extractor_name`). If that extractor has read this content of the
+   record before, nothing is called and nothing is written (``records_unchanged``): a job run
+   again, or enqueued twice for one content, creates no duplicates.
+3. **Extraction**: one LLM call (:meth:`LlmDecisions.extract`). Items without a valid anchor are
+   rejected (``items_rejected``).
+4. **Supersession**, item by item, in the order extracted: the top ``candidates`` similar active
+   items of the workspace (:func:`similar_active_items`) and the items already taken from this
+   record, one LLM call that names the record's source and every candidate's sources, so the gate
+   holds it to the strictest of their policies. A duplicate is not stored (``items_duplicate``).
+   A link to a manual item, to an item of this record not stored yet, or to an item another new
+   item already links, is dropped (``links_dropped``): extraction never supersedes or answers an
+   item recorded by hand.
+5. **Store** the items with their evidence (the record and the anchors), participants (the
+   authors of the cited messages, or a meeting's participants, as ingest linked them) and links
+   through :func:`memini.knowledge.record_extraction`, in one transaction, with the extraction
+   row even when nothing was found. If another job retired a candidate in the meantime
+   (:class:`~memini.knowledge.NotActiveError`), step 4 runs again on fresh candidates, up to
+   :data:`STORE_ATTEMPTS` times.
+
+Every count goes to the run report of the job (:func:`memini.runs.current_run`), with the LLM
+tokens, which the gate's endpoint records.
+
+**Candidates.** Knowledge items are not in the search index, and a supersession check must not
+depend on an embedding provider being configured: the similar items are found lexically, as
+search's lexical leg finds chunks. Each statement is parsed with the ``russian`` text search
+configuration after :func:`memini.search.retrieval.split_identifiers` (English and Russian
+stemming), and ranked with ``ts_rank`` against any word of the new statement. Items with
+evidence in the same record come first (an earlier extraction of a changed record), then by rank,
+then the most recent. A workspace with at most ``candidates`` eligible items shows them all, so a
+duplicate in another language is found there; in a larger one it is found only when the two
+statements share a word. Only items every source of whose evidence the granted provider may read
+are candidates: the supersession call is then granted the same provider as the extraction.
+"""
+
+import json
+import logging
+from collections.abc import AsyncGenerator, Collection, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from typing import Any, Final, Literal
+from uuid import UUID
+
+from psycopg import AsyncConnection, sql
+
+from memini.auth import WriteAccess
+from memini.config import Settings
+from memini.db import Pool
+from memini.extraction.inputs import record_input
+from memini.extraction.llm import LlmDecisions, extractor_name
+from memini.extraction.model import (
+    EXTRACTED_KINDS,
+    Candidate,
+    ProposedItem,
+    RecordInput,
+    RecordRef,
+)
+from memini.jobs import EXTRACT_KIND, Handler, Job
+from memini.knowledge import (
+    EvidenceRef,
+    NewItem,
+    NotActiveError,
+    NotFoundError,
+    SupersedesRef,
+    record_extraction,
+)
+from memini.llm import Grant, LlmGate, LlmRefused, configured_providers
+from memini.runs import current_run
+from memini.search.patterns import lexical_terms
+from memini.search.retrieval import LEXICAL_CONFIG
+
+__all__ = [
+    "DEFAULT_CANDIDATES",
+    "EXTRACT_KIND",
+    "STORE_ATTEMPTS",
+    "ExtractionOutcome",
+    "StoredCandidate",
+    "extract_handler",
+    "extraction_enabled",
+    "run_extraction",
+    "similar_active_items",
+]
+
+log = logging.getLogger(__name__)
+
+DEFAULT_CANDIDATES: Final = 8
+"""Similar active items shown to a supersession check, unless the settings say otherwise."""
+STORE_ATTEMPTS: Final = 3
+"""Times step 4 and 5 run when other jobs keep retiring the candidates in between."""
+
+_EXPECTED_REFUSALS: Final = frozenset({"policy_none", "no_provider"})
+
+type Status = Literal["extracted", "unchanged", "skipped", "gone"]
+
+
+def extraction_enabled(settings: Settings) -> bool:
+    """Whether decisions are extracted: an LLM provider is configured. Ingest enqueues extraction
+    jobs, and ``serve`` runs them, only then."""
+    return bool(configured_providers(settings))
+
+
+@dataclass(slots=True)
+class ExtractionOutcome:
+    """What one extraction job did."""
+
+    status: Status
+    reason: str | None = None
+    """Why it skipped (``policy_none``, ``no_provider``) or found the record gone."""
+    extractor: str | None = None
+    item_ids: tuple[UUID, ...] = ()
+    """The items stored (``extracted``), or stored by the earlier extraction (``unchanged``)."""
+    proposed: int = 0
+    rejected: int = 0
+    duplicates: int = 0
+    replaces: int = 0
+    answers: int = 0
+    dropped: int = 0
+
+    def report(self) -> None:
+        """Add the counts to the run being recorded, if any."""
+        run = current_run()
+        if run is None:
+            return
+        key = {
+            "extracted": "records_extracted",
+            "unchanged": "records_unchanged",
+            "gone": "records_gone",
+            "skipped": f"records_skipped_{self.reason}",
+        }[self.status]
+        run.count(key)
+        for name, value in (
+            ("items_proposed", self.proposed),
+            ("items_rejected", self.rejected),
+            ("items_duplicate", self.duplicates),
+            ("items_stored", len(self.item_ids) if self.status == "extracted" else 0),
+            ("links_replaces", self.replaces),
+            ("links_answers", self.answers),
+            ("links_dropped", self.dropped),
+        ):
+            run.count(name, value)
+        if self.extractor is not None:
+            run.detail("extractor", self.extractor)
+
+
+# --- The record ----------------------------------------------------------------------------------
+
+_RECORD: Final = """
+SELECT r.source_id, r.kind, r.external_id, r.external_url, r.content_hash, r.occurred_at,
+       r.payload, r.deleted_at IS NOT NULL, w.name, s.name
+FROM record r
+JOIN workspace w ON w.id = r.workspace_id
+JOIN source s ON s.id = r.source_id
+WHERE r.id = %s AND r.workspace_id = %s
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class _Record:
+    source_id: UUID
+    content_hash: str
+    input: RecordInput
+
+
+async def _load(conn: AsyncConnection[Any], workspace_id: UUID, record_id: str) -> _Record | None:
+    cur = await conn.execute(_RECORD, (record_id, workspace_id))
+    row = await cur.fetchone()
+    if row is None:
+        return None
+    source_id, kind, external_id, url, content_hash, occurred_at, payload, deleted = row[:8]
+    if deleted or payload is None or kind not in EXTRACTED_KINDS:
+        return None
+    workspace, source = row[8], row[9]
+    data = json.loads(bytes(payload))
+    return _Record(
+        source_id=source_id,
+        content_hash=content_hash,
+        input=record_input(
+            workspace=workspace,
+            ref=RecordRef(source, kind, external_id),
+            occurred_at=occurred_at,
+            payload=data,
+            external_url=url,
+            record_id=record_id,
+        ),
+    )
+
+
+async def _extracted_before(
+    conn: AsyncConnection[Any], workspace_id: UUID, record_id: str, content_hash: str, name: str
+) -> bool:
+    cur = await conn.execute(
+        "SELECT 1 FROM knowledge_extraction WHERE workspace_id = %s AND record_id = %s"
+        " AND content_hash = %s AND extractor = %s",
+        (workspace_id, record_id, content_hash, name),
+    )
+    return await cur.fetchone() is not None
+
+
+async def _participants(
+    conn: AsyncConnection[Any], record_id: str, kind: str, anchors: Sequence[str]
+) -> list[UUID]:
+    """The persons of an item: the authors of the messages it cites, or the participants of the
+    meeting, as ingest linked them (:mod:`memini.persons`)."""
+    if kind == "thread":
+        cur = await conn.execute(
+            "SELECT DISTINCT person_id FROM record_person WHERE record_id = %s"
+            " AND role = 'author' AND anchor = ANY(%s) ORDER BY person_id",
+            (record_id, list(anchors)),
+        )
+    else:
+        cur = await conn.execute(
+            "SELECT DISTINCT person_id FROM record_person WHERE record_id = %s"
+            " AND role = 'participant' ORDER BY person_id",
+            (record_id,),
+        )
+    return [row[0] for row in await cur.fetchall()]
+
+
+# --- Candidates ----------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class StoredCandidate:
+    """An active item a new one is checked against."""
+
+    candidate: Candidate
+    """``id`` is the item's id as text."""
+    manual: bool
+    source_ids: frozenset[UUID]
+    """The sources of its evidence: their content is in the supersession request."""
+
+    @property
+    def item_id(self) -> UUID:
+        return UUID(self.candidate.id)
+
+
+_SIMILAR: Final = sql.SQL("""
+SELECT i.id, i.kind, i.statement, i.decided_at, i.extractor = 'manual',
+       array(SELECT DISTINCT e.source_id FROM knowledge_evidence e WHERE e.item_id = i.id),
+       EXISTS (
+           SELECT 1 FROM knowledge_evidence e WHERE e.item_id = i.id AND e.record_id = {record}
+       ) AS same_record,
+       {rank} AS rank
+FROM knowledge_item i
+WHERE i.workspace_id = {workspace} AND i.status = 'active'
+  AND NOT EXISTS (
+      SELECT 1 FROM knowledge_evidence e LEFT JOIN source s ON s.id = e.source_id
+      WHERE e.item_id = i.id AND (s.id IS NULL OR s.llm_policy <> ALL({policies}::text[]))
+  )
+ORDER BY same_record DESC, rank DESC, i.decided_at DESC, i.id
+LIMIT {limit}
+""")
+
+
+def _rank(statement: str, params: list[Any]) -> sql.Composable:
+    """``ts_rank`` of an item's statement against any word of ``statement``, as search's lexical
+    leg ranks chunks; 0 for a statement without words."""
+    terms = lexical_terms(statement)
+    if not terms:
+        return sql.SQL("0::real")
+    config = sql.Literal(LEXICAL_CONFIG)
+    queries: list[sql.Composable] = []
+    for term in terms:
+        params.append(term)
+        queries.append(sql.SQL("plainto_tsquery({}::regconfig, lexical_text(%s))").format(config))
+    return sql.SQL("ts_rank(to_tsvector({}::regconfig, lexical_text(i.statement)), {})").format(
+        config, sql.SQL(" || ").join(queries)
+    )
+
+
+async def similar_active_items(
+    conn: AsyncConnection[Any],
+    *,
+    workspace_id: UUID,
+    record_id: str,
+    statement: str,
+    policies: Collection[str],
+    limit: int = DEFAULT_CANDIDATES,
+) -> list[StoredCandidate]:
+    """The ``limit`` active items of the workspace most like ``statement`` (see the module):
+    those with evidence in ``record_id`` first, then by lexical rank, then the latest. Only items
+    whose every evidence source has a policy in ``policies``: what the provider may read."""
+    rank_params: list[Any] = []
+    rank = _rank(statement, rank_params)
+    query = _SIMILAR.format(
+        record=sql.Placeholder(),
+        rank=rank,
+        workspace=sql.Placeholder(),
+        policies=sql.Placeholder(),
+        limit=sql.Literal(limit),
+    )
+    # In the order of the placeholders: the record, the words of the rank, the workspace.
+    params = [record_id, *rank_params, workspace_id, sorted(policies)]
+    cur = await conn.execute(query, params)
+    found: list[StoredCandidate] = []
+    for item_id, kind, text, decided, manual, sources, _, _ in await cur.fetchall():
+        found.append(
+            StoredCandidate(
+                candidate=Candidate(id=str(item_id), kind=kind, statement=text, decided_at=decided),
+                manual=bool(manual),
+                source_ids=frozenset(sources),
+            )
+        )
+    return found
+
+
+def _readable_by(grant: Grant) -> tuple[str, ...]:
+    """The source policies whose content the granted provider may read: a cloud provider only
+    ``cloud``; the local one ``local`` and ``cloud``."""
+    return ("cloud",) if grant.provider_class == "cloud" else ("local", "cloud")
+
+
+# --- The run -------------------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class _Plan:
+    items: list[NewItem] = field(default_factory=list[NewItem])
+    duplicates: int = 0
+    replaces: int = 0
+    answers: int = 0
+    dropped: int = 0
+
+
+async def _supersession(
+    conn: AsyncConnection[Any],
+    decisions: LlmDecisions,
+    record: _Record,
+    workspace_id: UUID,
+    items: Sequence[ProposedItem],
+    grant: Grant,
+    limit: int,
+) -> _Plan:
+    """Step 4 of the module: the items to store, with their links."""
+    plan = _Plan()
+    policies = _readable_by(grant)
+    record_id = record.input.record_id or ""
+    pending: list[Candidate] = []
+    taken: set[UUID] = set()
+    for item in items:
+        stored = await similar_active_items(
+            conn,
+            workspace_id=workspace_id,
+            record_id=record_id,
+            statement=item.statement,
+            policies=policies,
+            limit=limit,
+        )
+        by_id = {each.candidate.id: each for each in stored}
+        sources = {record.source_id}
+        for each in stored:
+            sources |= each.source_ids
+        verdict = await decisions.classify(
+            conn,
+            workspace_id=workspace_id,
+            source_ids=sources,
+            item=item,
+            record=record.input,
+            candidates=[*pending, *(each.candidate for each in stored)],
+        )
+        if verdict.duplicate_of is not None:
+            plan.duplicates += 1
+            continue
+        links: list[SupersedesRef] = []
+        for link in verdict.supersedes:
+            target = by_id.get(link.candidate_id)
+            if target is None or target.manual or target.item_id in taken:
+                plan.dropped += 1
+                continue
+            taken.add(target.item_id)
+            links.append(SupersedesRef(target.item_id, link.relation))
+            if link.relation == "replaces":
+                plan.replaces += 1
+            else:
+                plan.answers += 1
+        plan.items.append(
+            NewItem(
+                kind=item.kind,
+                statement=item.statement,
+                decided_at=item.decided_at,
+                evidence=[EvidenceRef(record_id, anchor) for anchor in item.anchors],
+                participants=await _participants(
+                    conn, record_id, record.input.ref.kind, item.anchors
+                ),
+                supersedes=links,
+            )
+        )
+        pending.append(
+            Candidate(
+                id=f"new-{len(pending) + 1}",
+                kind=item.kind,
+                statement=item.statement,
+                decided_at=item.decided_at,
+            )
+        )
+    return plan
+
+
+async def run_extraction(
+    conn: AsyncConnection[Any],
+    decisions: LlmDecisions,
+    access: WriteAccess,
+    *,
+    workspace_id: UUID,
+    record_id: str,
+    candidates: int = DEFAULT_CANDIDATES,
+) -> ExtractionOutcome:
+    """Extract, check and store the items of the record ``record_id`` (see the module), and
+    report the counts to the run being recorded.
+
+    ``conn`` is in autocommit mode: the LLM calls are made outside any transaction, and
+    :func:`~memini.knowledge.record_extraction` commits its own.
+
+    Raises:
+        LlmError: a provider failed, or answered with something that does not match the schema;
+            the job is retried.
+        LlmRefused: a refusal other than ``policy_none`` and ``no_provider``.
+    """
+    outcome = await _run(conn, decisions, access, workspace_id, record_id, candidates)
+    outcome.report()
+    return outcome
+
+
+async def _run(
+    conn: AsyncConnection[Any],
+    decisions: LlmDecisions,
+    access: WriteAccess,
+    workspace_id: UUID,
+    record_id: str,
+    candidates: int,
+) -> ExtractionOutcome:
+    record = await _load(conn, workspace_id, record_id)
+    if record is None:
+        return ExtractionOutcome("gone", "the record is gone, deleted or not a thread or meeting")
+    sources = {record.source_id}
+    try:
+        grant = await decisions.gate.check(conn, workspace_id=workspace_id, source_ids=sources)
+        name = extractor_name(grant.model)
+        if await _extracted_before(conn, workspace_id, record_id, record.content_hash, name):
+            return ExtractionOutcome("unchanged", extractor=name)
+        extracted = await decisions.extract(
+            conn, workspace_id=workspace_id, source_ids=sources, record=record.input
+        )
+    except LlmRefused as refusal:
+        if refusal.reason not in _EXPECTED_REFUSALS:
+            raise
+        log.info("extraction of record %s skipped: %s", record_id, refusal.reason)
+        return ExtractionOutcome("skipped", refusal.reason)
+    grant = extracted.grant
+    name = extractor_name(grant.model)
+    outcome = ExtractionOutcome(
+        "extracted", extractor=name, proposed=len(extracted.items), rejected=extracted.rejected
+    )
+    for attempt in range(1, STORE_ATTEMPTS + 1):
+        plan = await _supersession(
+            conn, decisions, record, workspace_id, extracted.items, grant, candidates
+        )
+        try:
+            stored = await record_extraction(
+                conn,
+                access,
+                record_id=record_id,
+                content_hash=record.content_hash,
+                extractor=name,
+                items=plan.items,
+            )
+        except NotActiveError:
+            if attempt == STORE_ATTEMPTS:
+                raise
+            log.info("record %s: a candidate was retired meanwhile; checking again", record_id)
+            continue
+        except NotFoundError:
+            return ExtractionOutcome("gone", "the record was deleted during the extraction")
+        outcome.status = "extracted" if stored.created else "unchanged"
+        outcome.item_ids = stored.item_ids
+        outcome.duplicates = plan.duplicates
+        outcome.replaces, outcome.answers = plan.replaces, plan.answers
+        outcome.dropped = plan.dropped
+        break
+    return outcome
+
+
+# --- The handler ---------------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def _autocommit(pool: Pool) -> AsyncGenerator[AsyncConnection[Any]]:
+    """A pooled connection in autocommit mode, given back as the pool lends them."""
+    async with pool.connection() as conn:
+        await conn.set_autocommit(True)
+        try:
+            yield conn
+        finally:
+            if not conn.closed:
+                await conn.set_autocommit(False)
+
+
+def extract_handler(pool: Pool, gate: LlmGate, *, candidates: int = DEFAULT_CANDIDATES) -> Handler:
+    """The handler of ``extract`` jobs: :func:`run_extraction` of the job's record, as the
+    principal that enqueued it. ``gate`` is the service's; the caller closes it."""
+    decisions = LlmDecisions(gate)
+
+    async def handle(job: Job) -> None:
+        record_id = job.args.get("record_id")
+        if not isinstance(record_id, str):
+            raise ValueError(f"{EXTRACT_KIND} job {job.id} names no record")
+        async with _autocommit(pool) as conn:
+            await run_extraction(
+                conn,
+                decisions,
+                WriteAccess.for_owner(job.owner_id),
+                workspace_id=job.workspace_id,
+                record_id=record_id,
+                candidates=candidates,
+            )
+
+    return handle

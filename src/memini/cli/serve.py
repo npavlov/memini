@@ -46,10 +46,19 @@ from memini.credentials import Keyring
 from memini.db import Pool, connect, database_check, migrate, open_pool
 from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_embedder
 from memini.executors.service import MCP_SYNC, ServiceOptions, mcp_sync_handler
+from memini.extraction.job import extract_handler, extraction_enabled
 from memini.git import GitOptions, MirrorManager
 from memini.gitsync import GIT_SYNC, git_sync_handler, mirrors_unusable
 from memini.ingest import PayloadIndexer
-from memini.jobs import DEFAULT_RETENTION_INTERVAL, SYNC_KINDS, Handler, Scheduler, Worker
+from memini.jobs import (
+    DEFAULT_RETENTION_INTERVAL,
+    EXTRACT_KIND,
+    SYNC_KINDS,
+    Handler,
+    Scheduler,
+    Worker,
+)
+from memini.llm import LlmGate, create_llm_gate
 from memini.removal import RETENTION, retention_handler
 from memini.runs import wait_for_run_writes
 
@@ -112,7 +121,9 @@ async def job_handlers(
     (:mod:`memini.executors.service`): an mcp sync without an embedding provider stores its
     records without chunks, as the push API does, and ``memini reindex`` indexes them later; a
     source whose credential needs ``credential_key`` fails its runs with a message naming it,
-    while sources without a credential sync. ``git_sync`` (:mod:`memini.gitsync`) is
+    while sources without a credential sync. ``extract`` (:mod:`memini.extraction.job`) is there
+    when an LLM provider is configured, with an LLM gate of its own that is closed at the end;
+    ingest enqueues its jobs only then. ``git_sync`` (:mod:`memini.gitsync`) is
     there when an embedding provider is configured and
     mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
     and written. Code is synced only into an index: without embeddings there is none to write, and
@@ -132,8 +143,16 @@ async def job_handlers(
             embedder = create_embedder(settings)
         except EmbeddingsNotConfiguredError as error:
             log.warning("git sources are not synced: %s", error)
+    gate: LlmGate | None = None
     try:
         handlers[MCP_SYNC] = _mcp_handler(settings, pool, embedder)
+        if extraction_enabled(settings):
+            gate = create_llm_gate(settings)
+            handlers[EXTRACT_KIND] = extract_handler(
+                pool, gate, candidates=settings.extraction_candidates
+            )
+        else:
+            log.info("decisions are not extracted: no LLM provider is configured")
         if embedder is not None:
             options = GitOptions.from_settings(settings)
             problem = mirrors_unusable(options)
@@ -148,6 +167,8 @@ async def job_handlers(
                 log.warning("git sources are not synced: %s", problem)
         yield handlers
     finally:
+        if gate is not None:
+            await gate.aclose()
         if owned and embedder is not None:
             await embedder.aclose()
 
