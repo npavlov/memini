@@ -15,5 +15,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Python project skeleton managed with uv: `make lint`, `make typecheck`, `make test` and `make check`.
 - Development database in `compose.yaml`: Postgres 18 with pgvector 0.8.7 and pg_trgm, on
   `127.0.0.1:55432`.
+- Typed configuration from `MEMINI_*` environment variables and an optional TOML file
+  (`MEMINI_CONFIG_FILE`); secrets from the environment or a `*_FILE` path, never in logs or errors.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
