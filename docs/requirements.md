@@ -211,7 +211,8 @@ v1 has one user. The design keeps the door open without building the feature:
 
 - `workspace_id` and `owner_id` on every row; `visibility` on every source.
 - Tokens resolve to a principal.
-- Every read goes through one authorization filter. In v1 it lets everything through.
+- Every read goes through one authorization filter. In v1 it lets everything through except what the
+  token itself limits: a token limited to one workspace reads only that workspace.
 
 Adding users later means adding login, filling the filter and capturing source permissions at ingest. It
 does not mean migrating data.
