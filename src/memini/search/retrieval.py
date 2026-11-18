@@ -41,6 +41,7 @@ from psycopg.rows import TupleRow
 
 from memini.auth import ReadFilter
 from memini.embeddings import Vector
+from memini.gitsync.model import read_pin
 from memini.ids import RecordKind
 from memini.index import VectorIndex
 from memini.search.model import (
@@ -316,13 +317,18 @@ def pinned_commit(kind: SourceKind, cursor: object) -> str | None:
     """The commit a code record is pinned at, from the cursor of the stream that stored it.
 
     A code record is a file at the pinned commit of a git ref, and the stream of that ref holds
-    the commit in its cursor (``stream.cursor``; it moves in the transaction that stores the
-    files, principle 7). The cursor's shape belongs to the git connector, which does not record
-    pins yet: until it does, the commit is unknown and this returns ``None``. The connector fills
-    this function in; it is the only place search reads a pin.
+    the commit in its cursor (``stream.cursor``, read by :func:`memini.gitsync.model.read_pin`; it
+    moves in the transaction that stores the last files, principle 7). ``None`` when the source is
+    not git, the stream has no complete sync yet, or its last sync failed part way (``partial``):
+    then some records are already past the pin and the commit of a given file is unknown. This is
+    the only place search reads a pin.
     """
-    del kind, cursor
-    return None
+    if kind != "git":
+        return None
+    pin = read_pin(cursor)
+    if pin is None or pin.partial:
+        return None
+    return pin.commit
 
 
 @dataclass(frozen=True, slots=True)

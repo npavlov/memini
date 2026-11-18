@@ -50,6 +50,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Incremental git sync: a pinned commit per tracked ref, only changed files read and embedded, deleted
   and skipped files tombstoned, the pin advanced only when the run succeeds; `memini reindex` reads code
   from the mirrors.
+- Search library: hybrid (dense and full-text with reciprocal rank fusion), dense, lexical, exact, regex
+  (under a statement timeout) and symbol modes; filters by workspace, source, repository, kind,
+  language, path glob and time; code hits carry `repo@sha:path#lines`; a stale index is refused.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main

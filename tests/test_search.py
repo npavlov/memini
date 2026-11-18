@@ -4,6 +4,7 @@ options and the hit's locator. Every value is synthetic. The SQL runs in test_se
 import re
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 import pytest
 
@@ -16,6 +17,7 @@ from memini.search import (
     SearchOptions,
     SearchQuery,
     glob_regex,
+    pinned_commit,
     reciprocal_rank_fusion,
 )
 from memini.search.patterns import (
@@ -345,3 +347,26 @@ def test_another_hit_is_located_by_its_url_or_external_id() -> None:
     assert document.locator == "notes:decision-watering"
     linked = hit(source_kind="push", external_url="https://notes.example.invalid/1", path=None)
     assert linked.locator == "https://notes.example.invalid/1"
+
+
+# --- The pinned commit of a code hit -------------------------------------------------------------
+
+_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def test_a_git_hit_carries_the_commit_of_its_stream_pin() -> None:
+    assert pinned_commit("git", {"commit": _SHA, "rules": "r1"}) == _SHA
+
+
+@pytest.mark.parametrize(
+    ("kind", "cursor"),
+    [
+        ("git", None),  # no complete sync yet
+        ("git", {"commit": _SHA, "rules": "r1", "partial": True}),  # records may be past the pin
+        ("git", {"commit": "not-a-sha", "rules": "r1"}),
+        ("git", {"rules": "r1"}),
+        ("push", {"commit": _SHA, "rules": "r1"}),  # not a git source
+    ],
+)
+def test_the_commit_is_unknown_without_a_complete_pin(kind: Any, cursor: object) -> None:
+    assert pinned_commit(kind, cursor) is None
