@@ -80,6 +80,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Qwen3-Embedding 0.6B served by Ollama is the default embedding model; setting
   `MEMINI_EMBEDDING_PROVIDER=openai_compatible` is enough (`.env.example`).
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
-  builds the image and runs the compose stack end to end.
+  builds the image and runs the compose stack end to end; the retrieval eval
+  gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
