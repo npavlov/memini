@@ -1,0 +1,54 @@
+{
+  "stream": "beacon",
+  "window": {
+    "from": "2026-09-13T23:00:00Z",
+    "to": "2026-09-21T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1789466700.000100",
+      "occurred_at": "2026-09-15T10:20:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789466700000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1789466700.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-09-15T10:05:00Z",
+            "text": "The staging receiver is up: rx-staging.saltreed.example.test, port 7700. It logs every packet it cannot parse.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789466700000100"
+          },
+          {
+            "id": "1789467600.000100",
+            "author": "U07RAFE",
+            "sent_at": "2026-09-15T10:20:00Z",
+            "text": "Thanks, pointing the dashboard at it.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789467600000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1789660920.000100",
+      "occurred_at": "2026-09-17T16:02:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789660920000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1789660920.000100",
+            "author": "U07RAFE",
+            "sent_at": "2026-09-17T16:02:00Z",
+            "mentions": ["U01MIRA"],
+            "text": "@Mira, I heard in the kitchen that the CBOR switch moves to v2.4. Is that true?",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789660920000100"
+          }
+        ]
+      }
+    }
+  ]
+}

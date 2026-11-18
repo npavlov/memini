@@ -1,0 +1,86 @@
+{
+  "stream": "inbox",
+  "window": {
+    "from": "2026-09-13T23:00:00Z",
+    "to": "2026-09-21T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "20260914091200.priya@saltreed.example.test",
+      "occurred_at": "2026-09-17T08:05:00Z",
+      "payload": {
+        "title": "Tide table format for Tidewater 1.8",
+        "messages": [
+          {
+            "id": "20260914091200.priya@saltreed.example.test",
+            "author": "Priya Lanthorn <priya.lanthorn@saltreed.example.test>",
+            "sent_at": "2026-09-14T09:12:00Z",
+            "recipients": [
+              "Ines Calderwood <ines.calderwood@hollinmere.example.org>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>",
+              "Tobias Wrenfield <tobias.wrenfield@saltreed.example.test>"
+            ],
+            "cc": [
+              "Mira Castellane <mira.castellane@saltreed.example.test>",
+              "Tobias Wrenfield <tobias.wrenfield@saltreed.example.test>"
+            ],
+            "text": "Hi Ines,\n\nTidewater 1.8 is close. Today the harbour office sends us tide tables in local harbour time. Could your new tide software export them in UTC instead? Then we could drop the local-time format, which causes most of our daylight-saving bugs.\n\nBest,\nPriya"
+          },
+          {
+            "id": "20260916144700.ines@hollinmere.example.org",
+            "author": "Ines Calderwood <ines.calderwood@hollinmere.example.org>",
+            "sent_at": "2026-09-16T14:47:00Z",
+            "recipients": [
+              "Priya Lanthorn <priya.lanthorn@saltreed.example.test>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>",
+              "Tobias Wrenfield <tobias.wrenfield@saltreed.example.test>"
+            ],
+            "cc": [
+              "Mira Castellane <mira.castellane@saltreed.example.test>",
+              "Tobias Wrenfield <tobias.wrenfield@saltreed.example.test>"
+            ],
+            "text": "Hi Priya,\n\nYes. Since August our tide software exports UTC, and we would rather use it. Please accept UTC tables only; we will stop sending the local-time files.\n\nInes\n\nOn 14 Sep 2026, at 09:12, Priya Lanthorn wrote:\n> Hi Ines,\n>\n> Tidewater 1.8 is close. Today the harbour office sends us tide tables in local harbour time. Could your new tide software export them in UTC instead? Then we could drop the local-time format, which causes most of our daylight-saving bugs.\n>\n> Best,\n> Priya"
+          },
+          {
+            "id": "20260917080500.priya@saltreed.example.test",
+            "author": "Priya Lanthorn <priya.lanthorn@saltreed.example.test>",
+            "sent_at": "2026-09-17T08:05:00Z",
+            "recipients": [
+              "Ines Calderwood <ines.calderwood@hollinmere.example.org>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>",
+              "Tobias Wrenfield <tobias.wrenfield@saltreed.example.test>"
+            ],
+            "cc": [
+              "Mira Castellane <mira.castellane@saltreed.example.test>",
+              "Tobias Wrenfield <tobias.wrenfield@saltreed.example.test>"
+            ],
+            "text": "Thank you, Ines. Then it is decided: from Tidewater 1.8 we accept tide tables in UTC only, and the local-time format is dropped. Tobias will make the loader refuse local-time files with a clear message.\n\nPriya\n\nOn 16 Sep 2026, at 14:47, Ines Calderwood wrote:\n> Yes. Since August our tide software exports UTC, and we would rather use it. Please accept UTC tables only; we will stop sending the local-time files."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "20260918133000.lev@saltreed.example.test",
+      "occurred_at": "2026-09-18T13:30:00Z",
+      "payload": {
+        "title": "RX-40 and CBOR telemetry packets",
+        "messages": [
+          {
+            "id": "20260918133000.lev@saltreed.example.test",
+            "author": "Lev Zarechny <lev.zarechny@saltreed.example.test>",
+            "sent_at": "2026-09-18T13:30:00Z",
+            "recipients": [
+              "Bertram Fogg <bertram.fogg@fogbell.example.org>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>"
+            ],
+            "cc": ["Mira Castellane <mira.castellane@saltreed.example.test>"],
+            "text": "Hello Bertram,\n\nFrom Beacon v2.3 we plan to send telemetry packets as CBOR instead of JSON. Does the RX-40 shore receiver with firmware 4.x parse CBOR? If not, what are our options?\n\nRegards,\nLev Zarechny\nSaltreed Harbourworks"
+          }
+        ]
+      }
+    }
+  ]
+}

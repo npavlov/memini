@@ -1,0 +1,35 @@
+{
+  "stream": "tidewater",
+  "window": {
+    "from": "2026-09-20T23:00:00Z",
+    "to": "2026-09-28T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1790168700.000100",
+      "occurred_at": "2026-09-23T13:20:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790168700000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1790168700.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-23T13:05:00Z",
+            "text": "The UTC-only tide table loader is merged (PR 241). A table in local time is now refused, with the line number in the message.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790168700000100"
+          },
+          {
+            "id": "1790169600.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-09-23T13:20:00Z",
+            "text": "Added a local-time table to the regression set.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790169600000100"
+          }
+        ]
+      }
+    }
+  ]
+}

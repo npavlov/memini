@@ -1,0 +1,45 @@
+{
+  "stream": "dm",
+  "window": {
+    "from": "2026-09-13T23:00:00Z",
+    "to": "2026-10-05T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "D0MIRATOB1/1789725720.000100",
+      "occurred_at": "2026-09-18T11:15:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/D0MIRATOB1/p1789725720000100",
+      "payload": {
+        "channel": "direct message",
+        "messages": [
+          {
+            "id": "1789725720.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-18T10:02:00Z",
+            "recipients": ["U01MIRA"],
+            "text": "Could you review PR 241? It's the UTC-only tide table loader, after Priya's mail with the harbour office.",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRATOB1/p1789725720000100"
+          },
+          {
+            "id": "1789727400.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-09-18T10:30:00Z",
+            "recipients": ["U02TOBIAS"],
+            "text": "Looking now.",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRATOB1/p1789727400000100"
+          },
+          {
+            "id": "1789730100.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-09-18T11:15:00Z",
+            "recipients": ["U02TOBIAS"],
+            "text": "Approved, with one nit about the error message.",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRATOB1/p1789730100000100"
+          }
+        ]
+      }
+    }
+  ]
+}

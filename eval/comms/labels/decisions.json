@@ -1,0 +1,208 @@
+{
+  "labels": true,
+  "about": "LABELS, not data: the answers the decision eval (docs/requirements.md, section 10) scores an extractor against, over the threads and meetings of eval/comms as they stand after every batch is ingested. Written by hand, like the records. A record reference names a record as the decision tools do (source, record_kind, external_id); evidence adds an anchor: the id of a message in a thread, the id of a transcript segment in a meeting, or 'summary' / 'action-items' for a meeting's notes. An item is found in a record when an extracted item cites any of its anchors there. Participants and people are keys of people.json.",
+  "version": 1,
+  "workspace": "harbor",
+  "items": [
+    {
+      "id": "d-cbor",
+      "kind": "decision",
+      "statement": "Beacon v2.3 sends its telemetry packets as CBOR instead of JSON.",
+      "decided_at": "2026-09-08T09:44:00Z",
+      "language": "en",
+      "participants": ["lev", "mira", "rafe"],
+      "evidence": [
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1788858900.000100", "anchor": "1788860640.000100"},
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1788858900.000100", "anchor": "1788858900.000100"}
+      ],
+      "status": "superseded"
+    },
+    {
+      "id": "d-json-gzip",
+      "kind": "decision",
+      "statement": "Beacon v2.3 drops CBOR and sends gzip-compressed JSON packets, because the Fogbell RX-40 receivers read JSON only.",
+      "decided_at": "2026-09-23T09:12:00Z",
+      "language": "en",
+      "participants": ["lev", "mira", "rafe"],
+      "evidence": [
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1790152800.000100", "anchor": "1790154720.000100"},
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1790152800.000100", "anchor": "1790152800.000100"}
+      ],
+      "status": "active"
+    },
+    {
+      "id": "q-local-csv",
+      "kind": "open_question",
+      "statement": "Must Tidewater 1.8 still accept tide tables in local harbour time for Hollin Mere, or can it take UTC only?",
+      "decided_at": "2026-09-09T08:20:00Z",
+      "language": "en",
+      "participants": ["tobias", "priya"],
+      "evidence": [
+        {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1788942000.000100", "anchor": "1788942000.000100"},
+        {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1788942000.000100", "anchor": "1788942840.000100"}
+      ],
+      "status": "closed"
+    },
+    {
+      "id": "d-utc-only",
+      "kind": "decision",
+      "statement": "From Tidewater 1.8, tide tables are accepted in UTC only; the local-time format is dropped.",
+      "decided_at": "2026-09-17T08:05:00Z",
+      "language": "en",
+      "participants": ["priya", "ines"],
+      "evidence": [
+        {"source": "mail", "record_kind": "thread", "external_id": "20260914091200.priya@saltreed.example.test", "anchor": "20260917080500.priya@saltreed.example.test"},
+        {"source": "mail", "record_kind": "thread", "external_id": "20260914091200.priya@saltreed.example.test", "anchor": "20260916144700.ines@hollinmere.example.org"}
+      ],
+      "status": "active"
+    },
+    {
+      "id": "d-battery-delay",
+      "kind": "decision",
+      "statement": "The Beacon battery alarm fires only when the voltage stays below 11.5 V for ten minutes in a row, so the fog horn's short dips no longer raise it.",
+      "decided_at": "2026-09-11T13:00:31Z",
+      "language": "ru",
+      "participants": ["lev", "oksana", "gleb"],
+      "evidence": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0911-firmware-review", "anchor": "s04"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0911-firmware-review", "anchor": "s03"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0911-firmware-review", "anchor": "summary"}
+      ],
+      "status": "active"
+    },
+    {
+      "id": "q-fees-display",
+      "kind": "open_question",
+      "statement": "Should skippers see the berth fees in the app during the Hollin Mere pilot?",
+      "decided_at": "2026-09-16T15:00:35Z",
+      "language": "en",
+      "participants": ["hallie", "ines"],
+      "evidence": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0916-pilot-check-in", "anchor": "s05"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0916-pilot-check-in", "anchor": "summary"}
+      ],
+      "status": "active"
+    },
+    {
+      "id": "d-release-date",
+      "kind": "decision",
+      "statement": "Tidewater 1.8 ships on Tuesday 6 October 2026, not on Thursday 1 October, the day of the harbour's quarterly inspection.",
+      "decided_at": "2026-09-24T10:00:25Z",
+      "language": "en",
+      "participants": ["mira", "priya", "tobias", "hallie"],
+      "evidence": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0924-release-planning", "anchor": "s04"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0924-release-planning", "anchor": "s05"}
+      ],
+      "status": "active"
+    },
+    {
+      "id": "q-north-basin",
+      "kind": "open_question",
+      "statement": "Should the Hollin Mere pilot cover the north basin as well as the main quay?",
+      "decided_at": "2026-09-25T10:20:00Z",
+      "language": "en",
+      "participants": ["ines", "mira"],
+      "evidence": [
+        {"source": "mail", "record_kind": "thread", "external_id": "20260925102000.ines@hollinmere.example.org", "anchor": "20260925102000.ines@hollinmere.example.org"},
+        {"source": "mail", "record_kind": "thread", "external_id": "20260925102000.ines@hollinmere.example.org", "anchor": "20260925120200.mira@saltreed.example.test"}
+      ],
+      "status": "active"
+    }
+  ],
+  "links": [
+    {"from": "d-json-gzip", "to": "d-cbor", "relation": "replaces"},
+    {"from": "d-utc-only", "to": "q-local-csv", "relation": "answers"}
+  ],
+  "restatements": [
+    {
+      "item": "d-cbor",
+      "record": {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0910-telemetry-sync"},
+      "anchors": ["summary", "s02", "s03"]
+    },
+    {
+      "item": "d-json-gzip",
+      "record": {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0930-weekly-sync"},
+      "anchors": ["summary", "s02"]
+    },
+    {
+      "item": "d-release-date",
+      "record": {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0930-weekly-sync"},
+      "anchors": ["summary", "s04", "s05"]
+    },
+    {
+      "item": "d-release-date",
+      "record": {"source": "chat", "record_kind": "thread", "external_id": "C0GENERAL1/1790956800.000100"},
+      "anchors": ["1790956800.000100"]
+    }
+  ],
+  "traps": [
+    {
+      "id": "t-release-thursday",
+      "kind": "decision",
+      "statement": "Tidewater 1.8 ships on Thursday 1 October.",
+      "record": {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0924-release-planning"},
+      "anchors": ["summary"],
+      "why": "The note-taker's summary is wrong. In the transcript Thursday 1 October is proposed (s02) and turned down for Tuesday 6 October (s03 to s05). An extracted item with this statement is a false positive."
+    }
+  ],
+  "corrections": [
+    {
+      "id": "c-release-date",
+      "corrects": "t-release-thursday",
+      "operation": "record_decision",
+      "body": {
+        "kind": "decision",
+        "statement": "Tidewater 1.8 ships on Tuesday 6 October 2026; the meeting summary's Thursday 1 October is wrong.",
+        "decided_at": "2026-09-24T10:00:25Z",
+        "evidence": [
+          {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0924-release-planning", "anchor": "s04"}
+        ],
+        "participants": ["mira", "priya"],
+        "supersedes": [{"label": "t-release-thursday", "relation": "replaces"}]
+      },
+      "expect": "Where an extractor recorded t-release-thursday, a person records this manual item with that extracted item in supersedes. The extracted item becomes superseded and the manual one is active; extraction never supersedes or answers a manual item, so a second extraction of the meeting leaves it active."
+    }
+  ],
+  "no_items": [
+    {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1789005600.000100", "why": "bot: a build result"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1789144800.000100", "why": "a flaky test found and fixed"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1790168700.000100", "why": "d-utc-only carried out, not decided again"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1790647200.000100", "why": "bot: a build result"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1790780400.000100", "why": "a test result"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789128600.000100", "why": "a build status, in Russian"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789466700.000100", "why": "a staging receiver is set up; its first message is edited later"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1790679600.000100", "why": "a test result, in Russian"},
+    {"source": "chat", "record_kind": "thread", "external_id": "C0GENERAL1/1789135200.000100", "why": "chatter, in Russian"},
+    {"source": "chat", "record_kind": "thread", "external_id": "D0MIRAPRI1/1789053600.000100", "why": "a review request"},
+    {"source": "chat", "record_kind": "thread", "external_id": "D0MIRATOB1/1789725720.000100", "why": "a review request"},
+    {"source": "mail", "record_kind": "thread", "external_id": "20260918133000.lev@saltreed.example.test", "why": "a vendor's answer: the reason for d-json-gzip, which is decided in #beacon"},
+    {"source": "mail", "record_kind": "thread", "external_id": "20260911180000.noreply@saltreed.example.test", "why": "automated mail"},
+    {"source": "mail", "record_kind": "thread", "external_id": "20260925180000.noreply@saltreed.example.test", "why": "automated mail"},
+    {"source": "mail", "record_kind": "thread", "external_id": "20260921080000.hallie@saltreed.example.test", "why": "an announcement of the harbour's inspection day"}
+  ],
+  "scenarios": {
+    "reversal": {
+      "replaced": "d-cbor",
+      "by": "d-json-gzip",
+      "expect": "Thread B (#beacon, 23 September) reverses thread A (#beacon, 8 September): d-cbor becomes superseded, the default list shows d-json-gzip and not d-cbor, and the history shows the chain with the evidence of both threads (plan.md, M4)."
+    },
+    "duplicate": {
+      "item": "d-cbor",
+      "expect": "The telemetry sync of 10 September restates d-cbor: the supersession check classifies what is extracted there as a duplicate of d-cbor, not a new decision."
+    },
+    "answered_question": {
+      "question": "q-local-csv",
+      "answer": "d-utc-only",
+      "expect": "Asked in #tidewater on 9 September, answered by mail on 17 September: the question becomes closed."
+    },
+    "open_questions": {
+      "items": ["q-fees-display", "q-north-basin"],
+      "expect": "Asked and never answered: they stay active."
+    },
+    "manual_correction": {
+      "correction": "c-release-date",
+      "expect": "See corrections."
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "labels": true,
+  "about": "LABELS, not data: where each ingest case of the timeline happens, and what the store holds after every batch is ingested in order. Written by hand. A delivery is a batch file, named by its path under batches/. A record reference names a record as the decision tools do (source, record_kind, external_id).",
+  "version": 1,
+  "workspace": "harbor",
+  "scenarios": {
+    "late_reply": {
+      "record": {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1789144800.000100"},
+      "first": "chat/01-tidewater.json",
+      "again": "chat/05-tidewater.json",
+      "new_messages": ["1789377000.000100", "1789377900.000100"],
+      "expect": "Two replies to a thread of the first week arrive in the second week's window: the thread is written again with four messages and its occurred_at moves to the last reply."
+    },
+    "edited_message": {
+      "record": {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789466700.000100"},
+      "first": "chat/06-beacon.json",
+      "again": "chat/08-beacon.json",
+      "message": "1789466700.000100",
+      "expect": "The same message id with new text (and an edited_at the parsers do not read): the thread is written again, its occurred_at stays."
+    },
+    "deleted_thread": {
+      "record": {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789660920.000100"},
+      "first": "chat/06-beacon.json",
+      "tombstone": "chat/08-beacon.json",
+      "expect": "A tombstone deletes the thread and its chunks."
+    },
+    "growing_mail_thread": {
+      "record": {"source": "mail", "record_kind": "thread", "external_id": "20260918133000.lev@saltreed.example.test"},
+      "deliveries": ["mail/02-inbox.json", "mail/03-inbox.json", "mail/04-inbox.json"],
+      "expect": "One message in the second week, three from the third; the third delivery sends the same three again and changes nothing."
+    },
+    "incomplete_window": {
+      "delivery": "mail/03-inbox.json",
+      "retried_by": "mail/04-inbox.json",
+      "expect": "The third week of mail is incomplete: its records are stored and the checkpoint stays at 2026-09-21T00:00:00Z. The next delivery starts at the same place, holds the whole rest and moves the checkpoint to 2026-10-05T00:00:00Z."
+    },
+    "snapshot_deletion": {
+      "record": {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0929-quick-call"},
+      "first": "meetings/03-notes.json",
+      "snapshot": "meetings/04-notes.json",
+      "expect": "The notes of a two-minute call are deleted in the note-taker. The last meetings delivery is a snapshot of its window and leaves them out, so the record becomes a tombstone (reconciled)."
+    }
+  },
+  "final": {
+    "streams": [
+      {"source": "chat", "stream": "tidewater", "checked_from": "2026-09-07T00:00:00Z", "checked_until": "2026-10-05T00:00:00Z"},
+      {"source": "chat", "stream": "beacon", "checked_from": "2026-09-07T00:00:00Z", "checked_until": "2026-10-05T00:00:00Z"},
+      {"source": "chat", "stream": "general", "checked_from": "2026-09-07T00:00:00Z", "checked_until": "2026-10-05T00:00:00Z"},
+      {"source": "chat", "stream": "dm", "checked_from": "2026-09-07T00:00:00Z", "checked_until": "2026-10-05T00:00:00Z"},
+      {"source": "mail", "stream": "inbox", "checked_from": "2026-09-07T00:00:00Z", "checked_until": "2026-10-05T00:00:00Z"},
+      {"source": "meetings", "stream": "notes", "checked_from": "2026-09-07T00:00:00Z", "checked_until": "2026-10-05T00:00:00Z"}
+    ],
+    "live": {"chat": 15, "mail": 6, "meetings": 5, "docs": 3},
+    "deleted": [
+      {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789660920.000100"},
+      {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0929-quick-call"}
+    ]
+  }
+}

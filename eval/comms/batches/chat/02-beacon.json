@@ -1,0 +1,75 @@
+{
+  "stream": "beacon",
+  "window": {
+    "from": "2026-09-07T00:00:00Z",
+    "to": "2026-09-14T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1788858900.000100",
+      "occurred_at": "2026-09-08T09:46:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1788858900000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1788858900.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-09-08T09:15:00Z",
+            "mentions": ["U01MIRA"],
+            "text": "Proposal for v2.3: send telemetry packets as CBOR instead of JSON. A full packet shrinks from 412 to 158 bytes, which matters on the 1200 baud radio link. @Mira, can you sign off?",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1788858900000100"
+          },
+          {
+            "id": "1788859860.000100",
+            "author": "U07RAFE",
+            "sent_at": "2026-09-08T09:31:00Z",
+            "text": "The dashboard would need a CBOR decoder; there is a small one we can vendor. Fine by me.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1788859860000100"
+          },
+          {
+            "id": "1788860640.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-09-08T09:44:00Z",
+            "text": "Agreed: Beacon v2.3 sends telemetry packets as CBOR. Lev, please update the packet format doc.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1788860640000100"
+          },
+          {
+            "id": "1788860760.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-09-08T09:46:00Z",
+            "text": "Will do.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1788860760000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1789128600.000100",
+      "occurred_at": "2026-09-11T12:30:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789128600000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1789128600.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-09-11T12:10:00Z",
+            "text": "Собрал 2.3-rc1, пакеты уже уходят в CBOR. На стенде всё читается.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789128600000100"
+          },
+          {
+            "id": "1789129800.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-09-11T12:30:00Z",
+            "text": "Ок, на следующей неделе подниму приёмник на стенде.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789129800000100"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "stream": "dm",
+  "window": {
+    "from": "2026-09-07T00:00:00Z",
+    "to": "2026-09-14T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "D0MIRAPRI1/1789053600.000100",
+      "occurred_at": "2026-09-11T09:41:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/D0MIRAPRI1/p1789053600000100",
+      "payload": {
+        "channel": "direct message",
+        "messages": [
+          {
+            "id": "1789053600.000100",
+            "author": "U05PRIYA",
+            "sent_at": "2026-09-10T15:20:00Z",
+            "recipients": ["U01MIRA"],
+            "text": "Could you review the Hollin Mere pilot plan before Monday? It's in the wiki: 'Hollin Mere pilot plan'.",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRAPRI1/p1789053600000100"
+          },
+          {
+            "id": "1789055280.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-09-10T15:48:00Z",
+            "recipients": ["U05PRIYA"],
+            "text": "Yes, on Friday morning.",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRAPRI1/p1789055280000100"
+          },
+          {
+            "id": "1789119000.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-09-11T09:30:00Z",
+            "recipients": ["U05PRIYA"],
+            "text": "Reviewed the pilot plan and left two comments in the wiki.",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRAPRI1/p1789119000000100"
+          },
+          {
+            "id": "1789119660.000100",
+            "author": "U05PRIYA",
+            "sent_at": "2026-09-11T09:41:00Z",
+            "recipients": ["U01MIRA"],
+            "text": "Thanks!",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRAPRI1/p1789119660000100"
+          }
+        ]
+      }
+    }
+  ]
+}

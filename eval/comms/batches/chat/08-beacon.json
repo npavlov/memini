@@ -1,0 +1,81 @@
+{
+  "stream": "beacon",
+  "window": {
+    "from": "2026-09-20T23:00:00Z",
+    "to": "2026-09-28T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1789466700.000100",
+      "occurred_at": "2026-09-15T10:20:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789466700000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1789466700.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-09-15T10:05:00Z",
+            "text": "The staging receiver is up: rx-staging.saltreed.example.test, port 7701 (7700 is taken by the old logger). It logs every packet it cannot parse.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789466700000100",
+            "edited_at": "2026-09-22T08:00:00Z"
+          },
+          {
+            "id": "1789467600.000100",
+            "author": "U07RAFE",
+            "sent_at": "2026-09-15T10:20:00Z",
+            "text": "Thanks, pointing the dashboard at it.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1789467600000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1790152800.000100",
+      "occurred_at": "2026-09-23T09:15:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1790152800000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1790152800.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-09-23T08:40:00Z",
+            "mentions": ["U01MIRA"],
+            "text": "Bad news from Fogbell (see Bertram's mail): the RX-40 receivers read JSON only, and CBOR is not on their plan before next year. All our shore stations run RX-40. @Mira, proposal: drop CBOR, stay on JSON and gzip the packets. Firmware 4.2 inflates gzip, and a packet comes to about 190 bytes.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1790152800000100"
+          },
+          {
+            "id": "1790153700.000100",
+            "author": "U07RAFE",
+            "sent_at": "2026-09-23T08:55:00Z",
+            "text": "The dashboard already reads JSON, so that's less work for me.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1790153700000100"
+          },
+          {
+            "id": "1790154720.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-09-23T09:12:00Z",
+            "text": "Agreed. We drop CBOR: Beacon v2.3 sends gzip-compressed JSON packets. Lev, please update the packet format doc again.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1790154720000100"
+          },
+          {
+            "id": "1790154900.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-09-23T09:15:00Z",
+            "text": "Понял, сегодня обновлю документ.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1790154900000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1789660920.000100",
+      "deleted": true
+    }
+  ]
+}

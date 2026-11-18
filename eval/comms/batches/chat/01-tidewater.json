@@ -1,0 +1,86 @@
+{
+  "stream": "tidewater",
+  "window": {
+    "from": "2026-09-07T00:00:00Z",
+    "to": "2026-09-14T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1788942000.000100",
+      "occurred_at": "2026-09-09T08:36:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1788942000000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1788942000.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-09T08:20:00Z",
+            "mentions": ["U05PRIYA"],
+            "text": "I'm writing the tide table loader for 1.8. @Priya, do we still have to accept the old CSV tables in local harbour time for Hollin Mere, or can we take UTC only? Supporting both doubles the daylight-saving tests.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1788942000000100"
+          },
+          {
+            "id": "1788942840.000100",
+            "author": "U05PRIYA",
+            "sent_at": "2026-09-09T08:34:00Z",
+            "text": "Good question, and I don't know. The harbour office still sends local time today. I'll ask Ines whether their new tide software can export UTC.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1788942840000100"
+          },
+          {
+            "id": "1788942960.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-09T08:36:00Z",
+            "text": "Thanks. I'll leave the format question open in the PR.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1788942960000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1789005600.000100",
+      "occurred_at": "2026-09-10T02:00:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789005600000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1789005600.000100",
+            "author": "U09HBOT",
+            "sent_at": "2026-09-10T02:00:00Z",
+            "text": "Build #412 on main passed: 214 tests, 0 failures. https://ci.saltreed.example.test/tidewater/builds/412",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789005600000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1789144800.000100",
+      "occurred_at": "2026-09-11T16:52:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789144800000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1789144800.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-09-11T16:40:00Z",
+            "text": "test_night_surcharge fails about once in ten runs. Every failure is on 25 October, the day the clocks go back.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789144800000100"
+          },
+          {
+            "id": "1789145520.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-11T16:52:00Z",
+            "text": "Probably the test builds the night from local midnight. I'll look on Monday.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789145520000100"
+          }
+        ]
+      }
+    }
+  ]
+}

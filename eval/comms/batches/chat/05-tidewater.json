@@ -1,0 +1,49 @@
+{
+  "stream": "tidewater",
+  "window": {
+    "from": "2026-09-13T23:00:00Z",
+    "to": "2026-09-21T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1789144800.000100",
+      "occurred_at": "2026-09-14T09:25:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789144800000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1789144800.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-09-11T16:40:00Z",
+            "text": "test_night_surcharge fails about once in ten runs. Every failure is on 25 October, the day the clocks go back.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789144800000100"
+          },
+          {
+            "id": "1789145520.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-11T16:52:00Z",
+            "text": "Probably the test builds the night from local midnight. I'll look on Monday.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789145520000100"
+          },
+          {
+            "id": "1789377000.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-14T09:10:00Z",
+            "text": "Found it: the test built the night window from local midnight, so on that day the night had an extra hour. Fixed the test in PR 233.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789377000000100"
+          },
+          {
+            "id": "1789377900.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-09-14T09:25:00Z",
+            "text": "Ran it 200 times, all green. Thanks!",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1789377900000100"
+          }
+        ]
+      }
+    }
+  ]
+}

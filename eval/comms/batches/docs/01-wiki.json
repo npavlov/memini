@@ -1,0 +1,34 @@
+{
+  "records": [
+    {
+      "kind": "document",
+      "external_id": "wiki/hollin-mere-pilot-plan",
+      "occurred_at": "2026-09-10T14:00:00Z",
+      "external_url": "https://wiki.saltreed.example.test/pages/hollin-mere-pilot-plan",
+      "payload": {
+        "title": "Hollin Mere pilot plan",
+        "text": "# Goal\n\nRun Tidewater at the Port of Hollin Mere for six weeks and compare its berth plans with the ones the harbour office makes by hand.\n\n# Scope\n\n- The main quay, berths Q1 to Q6.\n- Tide tables from the harbour office's tide software.\n\n# Timeline\n\nThe pilot starts after the Tidewater 1.8 release. In week one Tidewater plans next to the harbour office; from week two the harbour office works from Tidewater's plan and corrects it where needed.\n\n# Rollback\n\nIf a plan is wrong twice in one week, the harbour office goes back to planning by hand and we look for the cause together.\n"
+      }
+    },
+    {
+      "kind": "document",
+      "external_id": "wiki/beacon-packet-format",
+      "occurred_at": "2026-09-23T15:00:00Z",
+      "external_url": "https://wiki.saltreed.example.test/pages/beacon-packet-format",
+      "payload": {
+        "title": "Формат пакета телеметрии Beacon v2.3",
+        "text": "# Формат пакета\n\nНачиная с v2.3 пакет телеметрии — это JSON, сжатый gzip. Несжатый пакет занимает около 412 байт, сжатый — около 190.\n\n# Заголовок кадра\n\nПервый байт заголовка — версия формата (2), второй — кодировка: 0 — JSON без сжатия, 1 — JSON со сжатием gzip. Приёмники Fogbell RX-40 читают кодировку 1 начиная с прошивки 4.2.\n\n# История\n\n- 8 сентября решили перейти на CBOR.\n- 23 сентября от CBOR отказались: приёмники RX-40 читают только JSON.\n"
+      }
+    },
+    {
+      "kind": "document",
+      "external_id": "wiki/release-checklist",
+      "occurred_at": "2026-09-25T12:00:00Z",
+      "external_url": "https://wiki.saltreed.example.test/pages/release-checklist",
+      "payload": {
+        "title": "Release checklist",
+        "text": "# Before the release\n\n- The full regression passes on the release candidate.\n- The release date is not a harbour inspection day: check the harbour calendar.\n- The harbour office knows the date a week ahead.\n\n# On the day\n\n1. Tag the release on main.\n2. Deploy to the harbour's staging system, then to production.\n3. Post in #general.\n\n# After\n\nWatch the berth plans of the next two days for anything unusual.\n"
+      }
+    }
+  ]
+}

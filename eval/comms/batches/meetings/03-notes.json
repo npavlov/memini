@@ -1,0 +1,93 @@
+{
+  "stream": "notes",
+  "window": {
+    "from": "2026-09-20T23:00:00Z",
+    "to": "2026-09-30T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "meeting",
+      "external_id": "notes-0924-release-planning",
+      "occurred_at": "2026-09-24T10:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-0924-release-planning",
+      "payload": {
+        "title": "Tidewater 1.8 release planning",
+        "started_at": "2026-09-24T10:00:00Z",
+        "ended_at": "2026-09-24T10:40:00Z",
+        "participants": ["Mira Castellane", "Tobias Wrenfield", "Priya Lanthorn", "Oksana Peregud", "Hallie Marsh"],
+        "summary": "Release planning for Tidewater 1.8.\n\n## Decisions\n\n- Tidewater 1.8 ships on Thursday 1 October.\n\n## Notes\n\n- rc2 is ready on Monday and goes to the full regression.\n- The UTC-only tide table loader is in.",
+        "action_items": [
+          {
+            "id": "a1",
+            "owner": "Oksana Peregud",
+            "text": "Run the full regression on 1.8-rc2",
+            "due": "2026-09-30"
+          },
+          {
+            "id": "a2",
+            "owner": "Priya Lanthorn",
+            "text": "Tell the harbour office the release date"
+          }
+        ],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Priya Lanthorn",
+            "start": 0,
+            "end": 5,
+            "text": "Release date for 1.8. Proposals?"
+          },
+          {
+            "id": "s02",
+            "speaker": "Tobias Wrenfield",
+            "start": 6,
+            "end": 13,
+            "text": "rc2 is ready on Monday. We could ship on Thursday the first."
+          },
+          {
+            "id": "s03",
+            "speaker": "Hallie Marsh",
+            "start": 14,
+            "end": 24,
+            "text": "The first is the harbour's quarterly inspection. The harbour office asks for no changes to its systems that day."
+          },
+          {
+            "id": "s04",
+            "speaker": "Mira Castellane",
+            "start": 25,
+            "end": 32,
+            "text": "Then not Thursday. Let's ship on Tuesday the sixth of October."
+          },
+          {
+            "id": "s05",
+            "speaker": "Priya Lanthorn",
+            "start": 33,
+            "end": 39,
+            "text": "Tuesday the sixth, agreed. I'll tell the harbour office."
+          },
+          {
+            "id": "s06",
+            "speaker": "Oksana Peregud",
+            "start": 40,
+            "end": 48,
+            "text": "Then I run the full regression on rc2 by Wednesday."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "meeting",
+      "external_id": "notes-0929-quick-call",
+      "occurred_at": "2026-09-29T07:58:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-0929-quick-call",
+      "payload": {
+        "title": "Quick call: 1.8 release",
+        "started_at": "2026-09-29T07:58:00Z",
+        "ended_at": "2026-09-29T08:00:00Z",
+        "participants": ["Tobias Wrenfield", "Mira Castellane"],
+        "summary": "The call ended after two minutes; no notes were taken."
+      }
+    }
+  ]
+}

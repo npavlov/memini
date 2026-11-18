@@ -1,0 +1,139 @@
+{
+  "stream": "notes",
+  "window": {
+    "from": "2026-09-07T00:00:00Z",
+    "to": "2026-09-14T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "meeting",
+      "external_id": "notes-0910-telemetry-sync",
+      "occurred_at": "2026-09-10T10:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-0910-telemetry-sync",
+      "payload": {
+        "title": "Telemetry sync",
+        "started_at": "2026-09-10T10:00:00Z",
+        "ended_at": "2026-09-10T10:30:00Z",
+        "participants": ["Mira Castellane", "Lev Zarechny", "Rafe Okonkwo-Lind", "Gleb Tumanov"],
+        "summary": "Weekly sync of the telemetry team.\n\n## Decisions\n\n- Beacon v2.3 packets go out as CBOR, as agreed in #beacon on Tuesday.\n\n## Notes\n\n- The staging receiver is not set up yet.\n- Battery alarms fire on foggy mornings; Lev looks into it with Oksana.",
+        "action_items": [
+          {
+            "id": "a1",
+            "owner": "Rafe Okonkwo-Lind",
+            "text": "Add a CBOR decoder to the dashboard",
+            "due": "2026-09-18"
+          },
+          {
+            "id": "a2",
+            "owner": "Gleb Tumanov",
+            "text": "Set up the staging receiver",
+            "due": "2026-09-15"
+          }
+        ],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Mira Castellane",
+            "start": 0,
+            "end": 5,
+            "text": "Let's start with the packet format."
+          },
+          {
+            "id": "s02",
+            "speaker": "Lev Zarechny",
+            "start": 6,
+            "end": 14,
+            "text": "We agreed on CBOR on Tuesday. rc1 will have it by Friday."
+          },
+          {
+            "id": "s03",
+            "speaker": "Mira Castellane",
+            "start": 15,
+            "end": 21,
+            "text": "Good, so v2.3 is CBOR. Rafe, what about the dashboard?"
+          },
+          {
+            "id": "s04",
+            "speaker": "Rafe Okonkwo-Lind",
+            "start": 22,
+            "end": 29,
+            "text": "I'll add a decoder next week."
+          },
+          {
+            "id": "s05",
+            "speaker": "Gleb Tumanov",
+            "start": 30,
+            "end": 40,
+            "text": "I still need to set up the staging receiver; Tuesday at the latest."
+          },
+          {
+            "id": "s06",
+            "speaker": "Lev Zarechny",
+            "start": 41,
+            "end": 55,
+            "text": "Battery alarms fire every foggy morning. I'll look at it with Oksana."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "meeting",
+      "external_id": "notes-0911-firmware-review",
+      "occurred_at": "2026-09-11T13:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-0911-firmware-review",
+      "payload": {
+        "title": "Ревью прошивки Beacon 2.3-rc1",
+        "started_at": "2026-09-11T13:00:00Z",
+        "ended_at": "2026-09-11T13:45:00Z",
+        "participants": ["Лев Заречный", "Оксана Перегуд", "Глеб Туманов"],
+        "summary": "Разобрали прошивку 2.3-rc1.\n\n## Решения\n\n- Тревога по батарее срабатывает, только если напряжение держится ниже 11,5 В десять минут подряд: туманный горн на минуту-две просаживает батарею.\n\n## Заметки\n\n- Пакеты в CBOR на стенде читаются без ошибок.",
+        "action_items": [
+          {
+            "id": "a1",
+            "owner": "Лев Заречный",
+            "text": "Добавить задержку тревоги по батарее в 2.3-rc2",
+            "due": "2026-09-18"
+          }
+        ],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Лев Заречный",
+            "start": 0,
+            "end": 8,
+            "text": "Начнём с батареи. Тревога срабатывает каждое туманное утро."
+          },
+          {
+            "id": "s02",
+            "speaker": "Оксана Перегуд",
+            "start": 9,
+            "end": 19,
+            "text": "Это горн: на минуту-две напряжение падает ниже 11,5 вольта."
+          },
+          {
+            "id": "s03",
+            "speaker": "Глеб Туманов",
+            "start": 20,
+            "end": 30,
+            "text": "Предлагаю поднимать тревогу, только если ниже 11,5 держится десять минут."
+          },
+          {
+            "id": "s04",
+            "speaker": "Лев Заречный",
+            "start": 31,
+            "end": 39,
+            "text": "Согласен, так и делаем. Задержку добавлю в rc2."
+          },
+          {
+            "id": "s05",
+            "speaker": "Оксана Перегуд",
+            "start": 40,
+            "end": 48,
+            "text": "Пакеты в CBOR на стенде читаются, ошибок нет."
+          }
+        ]
+      }
+    }
+  ]
+}

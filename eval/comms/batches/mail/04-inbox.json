@@ -1,0 +1,119 @@
+{
+  "stream": "inbox",
+  "window": {
+    "from": "2026-09-20T23:00:00Z",
+    "to": "2026-10-05T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "20260921080000.hallie@saltreed.example.test",
+      "occurred_at": "2026-09-21T08:00:00Z",
+      "payload": {
+        "title": "Quarterly inspection on 1 October",
+        "messages": [
+          {
+            "id": "20260921080000.hallie@saltreed.example.test",
+            "author": "Hallie Marsh <hallie.marsh@saltreed.example.test>",
+            "sent_at": "2026-09-21T08:00:00Z",
+            "recipients": ["All staff <all-staff@saltreed.example.test>"],
+            "text": "Hello all,\n\nA reminder that the harbour's quarterly inspection is on Thursday 1 October. The quay and the harbour office are closed to visitors that day, and the harbour office asks us not to change any of its systems while the inspection runs.\n\nHallie"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "20260918133000.lev@saltreed.example.test",
+      "occurred_at": "2026-09-22T08:30:00Z",
+      "payload": {
+        "title": "RX-40 and CBOR telemetry packets",
+        "messages": [
+          {
+            "id": "20260918133000.lev@saltreed.example.test",
+            "author": "Lev Zarechny <lev.zarechny@saltreed.example.test>",
+            "sent_at": "2026-09-18T13:30:00Z",
+            "recipients": [
+              "Bertram Fogg <bertram.fogg@fogbell.example.org>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>"
+            ],
+            "cc": ["Mira Castellane <mira.castellane@saltreed.example.test>"],
+            "text": "Hello Bertram,\n\nFrom Beacon v2.3 we plan to send telemetry packets as CBOR instead of JSON. Does the RX-40 shore receiver with firmware 4.x parse CBOR? If not, what are our options?\n\nRegards,\nLev Zarechny\nSaltreed Harbourworks"
+          },
+          {
+            "id": "20260922075500.bertram@fogbell.example.org",
+            "author": "Bertram Fogg <bertram.fogg@fogbell.example.org>",
+            "sent_at": "2026-09-22T07:55:00Z",
+            "recipients": [
+              "Lev Zarechny <lev.zarechny@saltreed.example.test>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>"
+            ],
+            "cc": ["Mira Castellane <mira.castellane@saltreed.example.test>"],
+            "text": "Hi Lev,\n\nRX-40 firmware 4.x reads JSON only, and CBOR is not on our plan before next year. What 4.2 and later do support is gzip-compressed JSON: set the encoding byte of the frame header to 1.\n\nBest regards,\nBertram Fogg\nFogbell Instruments, support\n\n> Does the RX-40 shore receiver with firmware 4.x parse CBOR? If not, what are our options?"
+          },
+          {
+            "id": "20260922083000.lev@saltreed.example.test",
+            "author": "Lev Zarechny <lev.zarechny@saltreed.example.test>",
+            "sent_at": "2026-09-22T08:30:00Z",
+            "recipients": [
+              "Bertram Fogg <bertram.fogg@fogbell.example.org>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>"
+            ],
+            "cc": ["Mira Castellane <mira.castellane@saltreed.example.test>"],
+            "text": "Thank you, that is clear. We will look at gzip.\n\nLev"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "20260925102000.ines@hollinmere.example.org",
+      "occurred_at": "2026-09-25T12:02:00Z",
+      "payload": {
+        "title": "Pilot scope: north basin?",
+        "messages": [
+          {
+            "id": "20260925102000.ines@hollinmere.example.org",
+            "author": "Ines Calderwood <ines.calderwood@hollinmere.example.org>",
+            "sent_at": "2026-09-25T10:20:00Z",
+            "recipients": [
+              "Mira Castellane <mira.castellane@saltreed.example.test>",
+              "Priya Lanthorn <priya.lanthorn@saltreed.example.test>"
+            ],
+            "cc": ["Priya Lanthorn <priya.lanthorn@saltreed.example.test>"],
+            "text": "Dear Mira,\n\nOne question from our harbourmaster before the pilot starts: should the Hollin Mere pilot cover the north basin as well, or only the main quay? The north basin has its own tide gauge, which may matter for your scheduler.\n\nKind regards,\nInes Calderwood\nHarbour office, Port of Hollin Mere"
+          },
+          {
+            "id": "20260925120200.mira@saltreed.example.test",
+            "author": "Mira Castellane <mira.castellane@saltreed.example.test>",
+            "sent_at": "2026-09-25T12:02:00Z",
+            "recipients": [
+              "Ines Calderwood <ines.calderwood@hollinmere.example.org>",
+              "Priya Lanthorn <priya.lanthorn@saltreed.example.test>"
+            ],
+            "cc": ["Priya Lanthorn <priya.lanthorn@saltreed.example.test>"],
+            "text": "Dear Ines,\n\nGood question; we have not decided yet. I will discuss it with Priya and come back to you next week.\n\nMira\n\n> should the Hollin Mere pilot cover the north basin as well, or only the main quay?"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "20260925180000.noreply@saltreed.example.test",
+      "occurred_at": "2026-09-25T18:00:00Z",
+      "payload": {
+        "title": "Weekly build report",
+        "messages": [
+          {
+            "id": "20260925180000.noreply@saltreed.example.test",
+            "author": "Saltreed CI <noreply@saltreed.example.test>",
+            "sent_at": "2026-09-25T18:00:00Z",
+            "recipients": ["Engineering <engineering@saltreed.example.test>"],
+            "text": "tidewater: 19 builds, 19 passed.\nbeacon: 14 builds, 13 passed, 1 failed.\n\nThis message was sent automatically. Do not reply."
+          }
+        ]
+      }
+    }
+  ]
+}

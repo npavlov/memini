@@ -1,0 +1,70 @@
+{
+  "stream": "inbox",
+  "window": {
+    "from": "2026-09-20T23:00:00Z",
+    "to": "2026-09-28T00:00:00Z",
+    "complete": false
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "20260921080000.hallie@saltreed.example.test",
+      "occurred_at": "2026-09-21T08:00:00Z",
+      "payload": {
+        "title": "Quarterly inspection on 1 October",
+        "messages": [
+          {
+            "id": "20260921080000.hallie@saltreed.example.test",
+            "author": "Hallie Marsh <hallie.marsh@saltreed.example.test>",
+            "sent_at": "2026-09-21T08:00:00Z",
+            "recipients": ["All staff <all-staff@saltreed.example.test>"],
+            "text": "Hello all,\n\nA reminder that the harbour's quarterly inspection is on Thursday 1 October. The quay and the harbour office are closed to visitors that day, and the harbour office asks us not to change any of its systems while the inspection runs.\n\nHallie"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "20260918133000.lev@saltreed.example.test",
+      "occurred_at": "2026-09-22T08:30:00Z",
+      "payload": {
+        "title": "RX-40 and CBOR telemetry packets",
+        "messages": [
+          {
+            "id": "20260918133000.lev@saltreed.example.test",
+            "author": "Lev Zarechny <lev.zarechny@saltreed.example.test>",
+            "sent_at": "2026-09-18T13:30:00Z",
+            "recipients": [
+              "Bertram Fogg <bertram.fogg@fogbell.example.org>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>"
+            ],
+            "cc": ["Mira Castellane <mira.castellane@saltreed.example.test>"],
+            "text": "Hello Bertram,\n\nFrom Beacon v2.3 we plan to send telemetry packets as CBOR instead of JSON. Does the RX-40 shore receiver with firmware 4.x parse CBOR? If not, what are our options?\n\nRegards,\nLev Zarechny\nSaltreed Harbourworks"
+          },
+          {
+            "id": "20260922075500.bertram@fogbell.example.org",
+            "author": "Bertram Fogg <bertram.fogg@fogbell.example.org>",
+            "sent_at": "2026-09-22T07:55:00Z",
+            "recipients": [
+              "Lev Zarechny <lev.zarechny@saltreed.example.test>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>"
+            ],
+            "cc": ["Mira Castellane <mira.castellane@saltreed.example.test>"],
+            "text": "Hi Lev,\n\nRX-40 firmware 4.x reads JSON only, and CBOR is not on our plan before next year. What 4.2 and later do support is gzip-compressed JSON: set the encoding byte of the frame header to 1.\n\nBest regards,\nBertram Fogg\nFogbell Instruments, support\n\n> Does the RX-40 shore receiver with firmware 4.x parse CBOR? If not, what are our options?"
+          },
+          {
+            "id": "20260922083000.lev@saltreed.example.test",
+            "author": "Lev Zarechny <lev.zarechny@saltreed.example.test>",
+            "sent_at": "2026-09-22T08:30:00Z",
+            "recipients": [
+              "Bertram Fogg <bertram.fogg@fogbell.example.org>",
+              "Mira Castellane <mira.castellane@saltreed.example.test>"
+            ],
+            "cc": ["Mira Castellane <mira.castellane@saltreed.example.test>"],
+            "text": "Thank you, that is clear. We will look at gzip.\n\nLev"
+          }
+        ]
+      }
+    }
+  ]
+}

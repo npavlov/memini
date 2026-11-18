@@ -1,0 +1,27 @@
+{
+  "stream": "inbox",
+  "window": {
+    "from": "2026-09-07T00:00:00Z",
+    "to": "2026-09-14T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "20260911180000.noreply@saltreed.example.test",
+      "occurred_at": "2026-09-11T18:00:00Z",
+      "payload": {
+        "title": "Weekly build report",
+        "messages": [
+          {
+            "id": "20260911180000.noreply@saltreed.example.test",
+            "author": "Saltreed CI <noreply@saltreed.example.test>",
+            "sent_at": "2026-09-11T18:00:00Z",
+            "recipients": ["Engineering <engineering@saltreed.example.test>"],
+            "text": "tidewater: 23 builds, 22 passed, 1 failed.\nbeacon: 11 builds, 11 passed.\n\nThis message was sent automatically. Do not reply."
+          }
+        ]
+      }
+    }
+  ]
+}

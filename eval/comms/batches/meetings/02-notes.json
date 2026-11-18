@@ -1,0 +1,75 @@
+{
+  "stream": "notes",
+  "window": {
+    "from": "2026-09-13T23:00:00Z",
+    "to": "2026-09-21T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "meeting",
+      "external_id": "notes-0916-pilot-check-in",
+      "occurred_at": "2026-09-16T15:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-0916-pilot-check-in",
+      "payload": {
+        "title": "Hollin Mere pilot check-in",
+        "started_at": "2026-09-16T15:00:00Z",
+        "ended_at": "2026-09-16T15:30:00Z",
+        "participants": ["Mira Castellane", "Priya Lanthorn", "Ines Calderwood", "Hallie Marsh"],
+        "summary": "Check-in with the harbour office of Hollin Mere on the Tidewater pilot.\n\n## Notes\n\n- The harbour office would like to start in October; we come back with a start date.\n- Ines sends the list of berths with their depths by the end of the month.\n\n## Open questions\n\n- Should skippers see the berth fees in the app during the pilot? Ines asks the harbourmaster.",
+        "action_items": [
+          {
+            "id": "a1",
+            "owner": "Ines Calderwood",
+            "text": "Send the list of berths with their depths",
+            "due": "2026-09-30"
+          }
+        ],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Priya Lanthorn",
+            "start": 0,
+            "end": 6,
+            "text": "Thanks for joining. A quick check on the pilot."
+          },
+          {
+            "id": "s02",
+            "speaker": "Ines Calderwood",
+            "start": 7,
+            "end": 17,
+            "text": "We would like to start in October."
+          },
+          {
+            "id": "s03",
+            "speaker": "Mira Castellane",
+            "start": 18,
+            "end": 25,
+            "text": "We'll come back to you with a start date."
+          },
+          {
+            "id": "s04",
+            "speaker": "Ines Calderwood",
+            "start": 26,
+            "end": 34,
+            "text": "I'll send the list of berths with their depths by the end of the month."
+          },
+          {
+            "id": "s05",
+            "speaker": "Hallie Marsh",
+            "start": 35,
+            "end": 43,
+            "text": "Will skippers see the berth fees in the app during the pilot?"
+          },
+          {
+            "id": "s06",
+            "speaker": "Ines Calderwood",
+            "start": 44,
+            "end": 52,
+            "text": "I have to ask the harbourmaster about that."
+          }
+        ]
+      }
+    }
+  ]
+}

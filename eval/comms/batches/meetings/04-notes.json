@@ -1,0 +1,69 @@
+{
+  "stream": "notes",
+  "window": {
+    "from": "2026-09-27T23:00:00Z",
+    "to": "2026-10-05T00:00:00Z",
+    "complete": true,
+    "snapshot": true
+  },
+  "records": [
+    {
+      "kind": "meeting",
+      "external_id": "notes-0930-weekly-sync",
+      "occurred_at": "2026-09-30T09:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-0930-weekly-sync",
+      "payload": {
+        "title": "Еженедельная синхронизация инженеров",
+        "started_at": "2026-09-30T09:00:00Z",
+        "ended_at": "2026-09-30T09:30:00Z",
+        "participants": ["Мира Кастелан", "Лев Заречный", "Оксана Перегуд", "Глеб Туманов", "Tobias Wrenfield"],
+        "summary": "## Beacon\n\n- В v2.3 пакеты уходят в JSON со сжатием gzip. От CBOR отказались: приёмники Fogbell RX-40 его не читают.\n- 2.3-rc3 прошла стенд без ошибок.\n\n## Tidewater\n\n- Релиз 1.8 — во вторник, 6 октября.\n- Регрессия на 1.8-rc2 пройдена.",
+        "action_items": [
+          {
+            "id": "a1",
+            "owner": "Глеб Туманов",
+            "text": "Обновить приёмники на береговых станциях до прошивки 4.2",
+            "due": "2026-10-09"
+          }
+        ],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Мира Кастелан",
+            "start": 0,
+            "end": 4,
+            "text": "Начнём с Beacon."
+          },
+          {
+            "id": "s02",
+            "speaker": "Лев Заречный",
+            "start": 5,
+            "end": 15,
+            "text": "В 2.3 пакеты идут в JSON с gzip, от CBOR отказались. Документ я обновил."
+          },
+          {
+            "id": "s03",
+            "speaker": "Глеб Туманов",
+            "start": 16,
+            "end": 27,
+            "text": "Приёмники на станциях ещё на прошивке 4.1. Обновлю до 4.2 к следующей пятнице."
+          },
+          {
+            "id": "s04",
+            "speaker": "Tobias Wrenfield",
+            "start": 28,
+            "end": 35,
+            "text": "Tidewater: the regression on rc2 is green, so we ship on Tuesday."
+          },
+          {
+            "id": "s05",
+            "speaker": "Мира Кастелан",
+            "start": 36,
+            "end": 42,
+            "text": "Хорошо. Релиз во вторник, шестого."
+          }
+        ]
+      }
+    }
+  ]
+}

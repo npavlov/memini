@@ -1,0 +1,146 @@
+{
+  "labels": true,
+  "about": "LABELS, not data: the expected answers of the M2 checks (docs/plan.md) over eval/comms after every batch is ingested: meetings I attended about X, messages to me about X, the records retention removes and the records of bots. Written by hand. A record reference names a record as the decision tools do (source, record_kind, external_id). Me is the person 'mira' of people.json, with every alias there attached, those marked needs_merge included. A message is to me when its recipients (to and cc) or its mentions name me; 'messages' lists those of a record that are to me and about the topic. A not_expected record says why it must not come back: absent (I did not attend), not_to_me (no message names me), off_topic (mine, about something else), deleted (tombstoned by the batches).",
+  "version": 1,
+  "workspace": "harbor",
+  "me": "mira",
+  "meetings_attended": [
+    {
+      "id": "mq-cbor",
+      "text": "Which meetings did I attend about the CBOR packet format?",
+      "language": "en",
+      "expect": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0910-telemetry-sync"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0930-weekly-sync"}
+      ],
+      "not_expected": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0911-firmware-review", "why": "absent"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0916-pilot-check-in", "why": "off_topic"}
+      ]
+    },
+    {
+      "id": "mq-release-date",
+      "text": "Which meetings did I attend about the Tidewater 1.8 release date?",
+      "language": "en",
+      "expect": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0924-release-planning"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0930-weekly-sync"}
+      ],
+      "not_expected": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0929-quick-call", "why": "deleted"},
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0910-telemetry-sync", "why": "off_topic"}
+      ]
+    },
+    {
+      "id": "mq-pilot",
+      "text": "На каких встречах про пилот Hollin Mere я был?",
+      "language": "ru",
+      "expect": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0916-pilot-check-in"}
+      ],
+      "not_expected": [
+        {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0924-release-planning", "why": "off_topic"}
+      ]
+    }
+  ],
+  "messages_to_me": [
+    {
+      "id": "msg-cbor",
+      "text": "Messages to me about CBOR packets",
+      "language": "en",
+      "expect": [
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1788858900.000100", "messages": ["1788858900.000100"]},
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1790152800.000100", "messages": ["1790152800.000100"]},
+        {
+          "source": "mail",
+          "record_kind": "thread",
+          "external_id": "20260918133000.lev@saltreed.example.test",
+          "messages": [
+            "20260918133000.lev@saltreed.example.test",
+            "20260922075500.bertram@fogbell.example.org",
+            "20260922083000.lev@saltreed.example.test"
+          ]
+        }
+      ],
+      "not_expected": [
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789128600.000100", "why": "not_to_me"},
+        {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789660920.000100", "why": "deleted"}
+      ]
+    },
+    {
+      "id": "msg-utc-tables",
+      "text": "Messages to me about UTC tide tables",
+      "language": "en",
+      "expect": [
+        {
+          "source": "mail",
+          "record_kind": "thread",
+          "external_id": "20260914091200.priya@saltreed.example.test",
+          "messages": [
+            "20260914091200.priya@saltreed.example.test",
+            "20260916144700.ines@hollinmere.example.org",
+            "20260917080500.priya@saltreed.example.test"
+          ]
+        },
+        {"source": "chat", "record_kind": "thread", "external_id": "D0MIRATOB1/1789725720.000100", "messages": ["1789725720.000100"]}
+      ],
+      "not_expected": [
+        {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1788942000.000100", "why": "not_to_me"},
+        {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1790168700.000100", "why": "not_to_me"}
+      ]
+    },
+    {
+      "id": "msg-pilot",
+      "text": "Сообщения мне про пилот Hollin Mere",
+      "language": "ru",
+      "expect": [
+        {"source": "chat", "record_kind": "thread", "external_id": "D0MIRAPRI1/1789053600.000100", "messages": ["1789053600.000100"]},
+        {"source": "mail", "record_kind": "thread", "external_id": "20260925102000.ines@hollinmere.example.org", "messages": ["20260925102000.ines@hollinmere.example.org"]}
+      ],
+      "not_expected": [
+        {"source": "chat", "record_kind": "thread", "external_id": "D0MIRATOB1/1789725720.000100", "why": "off_topic"}
+      ]
+    }
+  ],
+  "retention": {
+    "as_of": "2026-10-05T00:00:00Z",
+    "retention_days": 21,
+    "sources": ["chat", "mail", "meetings"],
+    "rule": "With retention_days on the sources chat, mail and meetings (docs keeps none), a record expires when its occurred_at is before as_of less retention_days, 2026-09-14T00:00:00Z. Its chunks go with it; the knowledge items it is evidence of (d-cbor, q-local-csv) stay and keep their reference.",
+    "expired": [
+      {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1788858900.000100"},
+      {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1788942000.000100"},
+      {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1789005600.000100"},
+      {"source": "chat", "record_kind": "thread", "external_id": "D0MIRAPRI1/1789053600.000100"},
+      {"source": "chat", "record_kind": "thread", "external_id": "C0BEACON01/1789128600.000100"},
+      {"source": "chat", "record_kind": "thread", "external_id": "C0GENERAL1/1789135200.000100"},
+      {"source": "mail", "record_kind": "thread", "external_id": "20260911180000.noreply@saltreed.example.test"},
+      {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0910-telemetry-sync"},
+      {"source": "meetings", "record_kind": "meeting", "external_id": "notes-0911-firmware-review"}
+    ],
+    "kept_at_the_edge": [
+      {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "C0TIDEWATR/1789144800.000100",
+        "why": "It starts on 11 September, but its late replies of 14 September move its occurred_at past the cutoff."
+      },
+      {
+        "source": "docs",
+        "record_kind": "document",
+        "external_id": "wiki/hollin-mere-pilot-plan",
+        "why": "Older than the cutoff, but the docs source keeps no retention."
+      }
+    ]
+  },
+  "bots": {
+    "authors": {"chat": ["U09HBOT"], "mail": ["noreply@saltreed.example.test"]},
+    "records": [
+      {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1789005600.000100"},
+      {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1790647200.000100"},
+      {"source": "mail", "record_kind": "thread", "external_id": "20260911180000.noreply@saltreed.example.test"},
+      {"source": "mail", "record_kind": "thread", "external_id": "20260925180000.noreply@saltreed.example.test"}
+    ],
+    "rule": "Every message of these records is by a bot (people.json, bot: true) and no other record holds a bot's message, so a filter that excludes the bots' authors excludes exactly these records."
+  }
+}

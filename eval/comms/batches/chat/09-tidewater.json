@@ -1,0 +1,53 @@
+{
+  "stream": "tidewater",
+  "window": {
+    "from": "2026-09-27T23:00:00Z",
+    "to": "2026-10-05T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1790647200.000100",
+      "occurred_at": "2026-09-29T02:00:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790647200000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1790647200.000100",
+            "author": "U09HBOT",
+            "sent_at": "2026-09-29T02:00:00Z",
+            "text": "Build #431 on main passed: 221 tests, 0 failures. https://ci.saltreed.example.test/tidewater/builds/431",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790647200000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1790780400.000100",
+      "occurred_at": "2026-09-30T15:04:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790780400000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1790780400.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-09-30T15:00:00Z",
+            "text": "1.8-rc2 passed the full regression.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790780400000100"
+          },
+          {
+            "id": "1790780640.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-30T15:04:00Z",
+            "text": "Great, thanks Oksana.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1790780640000100"
+          }
+        ]
+      }
+    }
+  ]
+}

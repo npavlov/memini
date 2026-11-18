@@ -1,0 +1,35 @@
+{
+  "stream": "general",
+  "window": {
+    "from": "2026-09-07T00:00:00Z",
+    "to": "2026-09-14T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0GENERAL1/1789135200.000100",
+      "occurred_at": "2026-09-11T14:05:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1789135200000100",
+      "payload": {
+        "channel": "general",
+        "messages": [
+          {
+            "id": "1789135200.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-09-11T14:00:00Z",
+            "text": "В переговорке «Маяк» торт в честь пятницы, угощайтесь!",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1789135200000100"
+          },
+          {
+            "id": "1789135500.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-09-11T14:05:00Z",
+            "text": "Thank you, Oksana!",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1789135500000100"
+          }
+        ]
+      }
+    }
+  ]
+}

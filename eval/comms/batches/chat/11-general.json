@@ -1,0 +1,35 @@
+{
+  "stream": "general",
+  "window": {
+    "from": "2026-09-13T23:00:00Z",
+    "to": "2026-10-05T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0GENERAL1/1790956800.000100",
+      "occurred_at": "2026-10-02T16:12:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1790956800000100",
+      "payload": {
+        "channel": "general",
+        "messages": [
+          {
+            "id": "1790956800.000100",
+            "author": "U05PRIYA",
+            "sent_at": "2026-10-02T16:00:00Z",
+            "text": "Tidewater 1.8 goes out on Tuesday 6 October. Thanks to everyone who tested the release candidates!",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1790956800000100"
+          },
+          {
+            "id": "1790957520.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-10-02T16:12:00Z",
+            "text": "Ура!",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1790957520000100"
+          }
+        ]
+      }
+    }
+  ]
+}

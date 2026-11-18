@@ -1,0 +1,182 @@
+{
+  "synthetic": true,
+  "about": "The cast of the comms fixtures: one invented company, its customer and its vendor. Every name, address and id is made up; see SYNTHETIC.md. An alias is a string exactly as the batches show it: an email address (inside 'Name <address>' in mail), a chat user id (authors, recipients and mentions in chat), or a display name (participants, speakers and owners in meetings). Emails and chat user ids are deterministic keys. A display name is not: one equal to the person's name (as their mail shows it) can be matched by that name, and one marked needs_merge matches nothing else and is attached to its person by hand, a manual merge.",
+  "workspace": "harbor",
+  "me": "mira",
+  "organisations": [
+    {
+      "key": "saltreed",
+      "name": "Saltreed Harbourworks",
+      "domain": "saltreed.example.test",
+      "about": "Builds Tidewater (berth scheduling for small tidal harbours) and Beacon (a telemetry agent for automated lighthouses), the two products of eval/code."
+    },
+    {
+      "key": "hollinmere",
+      "name": "Port of Hollin Mere",
+      "domain": "hollinmere.example.org",
+      "about": "A harbour that pilots Tidewater; its harbour office sends the tide tables."
+    },
+    {
+      "key": "fogbell",
+      "name": "Fogbell Instruments",
+      "domain": "fogbell.example.org",
+      "about": "Makes the RX-40 shore receiver that reads Beacon's packets."
+    }
+  ],
+  "people": [
+    {
+      "key": "mira",
+      "name": "Mira Castellane",
+      "me": true,
+      "organisation": "saltreed",
+      "team": "engineering",
+      "role": "Engineering lead for Tidewater and Beacon",
+      "aliases": [
+        {"kind": "email", "value": "mira.castellane@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U01MIRA"},
+        {"kind": "display_name", "value": "Mira Castellane"},
+        {"kind": "display_name", "value": "Мира Кастелан", "needs_merge": true}
+      ]
+    },
+    {
+      "key": "tobias",
+      "name": "Tobias Wrenfield",
+      "organisation": "saltreed",
+      "team": "tidewater",
+      "role": "Backend engineer",
+      "aliases": [
+        {"kind": "email", "value": "tobias.wrenfield@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U02TOBIAS"},
+        {"kind": "display_name", "value": "Tobias Wrenfield"}
+      ]
+    },
+    {
+      "key": "lev",
+      "name": "Lev Zarechny",
+      "organisation": "saltreed",
+      "team": "beacon",
+      "role": "Firmware engineer",
+      "aliases": [
+        {"kind": "email", "value": "lev.zarechny@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U03LEV"},
+        {"kind": "display_name", "value": "Lev Zarechny"},
+        {"kind": "display_name", "value": "Лев Заречный", "needs_merge": true}
+      ]
+    },
+    {
+      "key": "oksana",
+      "name": "Oksana Peregud",
+      "organisation": "saltreed",
+      "team": "qa",
+      "role": "QA engineer for both products",
+      "aliases": [
+        {"kind": "email", "value": "oksana.peregud@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U04OKSANA"},
+        {"kind": "display_name", "value": "Oksana Peregud"},
+        {"kind": "display_name", "value": "Оксана Перегуд", "needs_merge": true}
+      ]
+    },
+    {
+      "key": "priya",
+      "name": "Priya Lanthorn",
+      "organisation": "saltreed",
+      "team": "product",
+      "role": "Product manager, owns the Hollin Mere pilot",
+      "aliases": [
+        {"kind": "email", "value": "priya.lanthorn@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U05PRIYA"},
+        {"kind": "display_name", "value": "Priya Lanthorn"}
+      ]
+    },
+    {
+      "key": "gleb",
+      "name": "Gleb Tumanov",
+      "organisation": "saltreed",
+      "team": "beacon",
+      "role": "Infrastructure: receivers and test stand",
+      "aliases": [
+        {"kind": "email", "value": "gleb.tumanov@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U06GLEB"},
+        {"kind": "display_name", "value": "Gleb Tumanov"},
+        {"kind": "display_name", "value": "Глеб Туманов", "needs_merge": true}
+      ]
+    },
+    {
+      "key": "rafe",
+      "name": "Rafe Okonkwo-Lind",
+      "organisation": "saltreed",
+      "team": "beacon",
+      "role": "Web dashboard",
+      "aliases": [
+        {"kind": "email", "value": "rafe.okonkwo-lind@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U07RAFE"},
+        {"kind": "display_name", "value": "Rafe Okonkwo-Lind"}
+      ]
+    },
+    {
+      "key": "hallie",
+      "name": "Hallie Marsh",
+      "organisation": "saltreed",
+      "team": "operations",
+      "role": "Liaison with the harbour offices",
+      "aliases": [
+        {"kind": "email", "value": "hallie.marsh@saltreed.example.test"},
+        {"kind": "chat_user_id", "value": "U08HALLIE"},
+        {"kind": "display_name", "value": "Hallie Marsh"}
+      ]
+    },
+    {
+      "key": "ines",
+      "name": "Ines Calderwood",
+      "organisation": "hollinmere",
+      "role": "Harbour office",
+      "aliases": [
+        {"kind": "email", "value": "ines.calderwood@hollinmere.example.org"},
+        {"kind": "display_name", "value": "Ines Calderwood"}
+      ]
+    },
+    {
+      "key": "bertram",
+      "name": "Bertram Fogg",
+      "organisation": "fogbell",
+      "role": "Support engineer",
+      "aliases": [
+        {"kind": "email", "value": "bertram.fogg@fogbell.example.org"}
+      ]
+    },
+    {
+      "key": "harbourbot",
+      "name": "Harbourbot",
+      "bot": true,
+      "organisation": "saltreed",
+      "role": "Chat bot that posts CI results in #tidewater",
+      "aliases": [
+        {"kind": "chat_user_id", "value": "U09HBOT"}
+      ]
+    },
+    {
+      "key": "saltreed-ci",
+      "name": "Saltreed CI",
+      "bot": true,
+      "organisation": "saltreed",
+      "role": "Sends the weekly build report by mail",
+      "aliases": [
+        {"kind": "email", "value": "noreply@saltreed.example.test"}
+      ]
+    }
+  ],
+  "lists": [
+    {
+      "key": "engineering",
+      "name": "Engineering",
+      "address": "engineering@saltreed.example.test",
+      "members": ["mira", "tobias", "lev", "oksana", "gleb", "rafe"]
+    },
+    {
+      "key": "all-staff",
+      "name": "All staff",
+      "address": "all-staff@saltreed.example.test",
+      "members": ["mira", "tobias", "lev", "oksana", "priya", "gleb", "rafe", "hallie"]
+    }
+  ]
+}
