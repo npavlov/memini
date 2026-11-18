@@ -36,6 +36,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `workspace create|list`, `token create|list|revoke`.
 - Service image (non-root, read-only root filesystem, healthcheck on `/readyz`) and a compose stack
   that runs the service and the database, published on localhost only; `make smoke` runs the M0 check.
+- Embedding providers (an OpenAI-compatible endpoint; an in-process ONNX model with the optional
+  `local-embeddings` extra, files pinned by digest) and a per-workspace index fingerprint that refuses
+  search on a mismatched index and names `memini reindex`.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
