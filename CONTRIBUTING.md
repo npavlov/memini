@@ -44,10 +44,13 @@ uv sync
 | `make lint` | `ruff check` and `ruff format --check` |
 | `make format` | `ruff format` and `ruff check --fix` |
 | `make typecheck` | `pyright` |
-| `make test` | `pytest` |
-| `make check` | lint, typecheck and test together |
+| `make test` | unit tests (`pytest -m "not integration"`); no database needed |
+| `make test-integration` | tests marked `integration`, against Postgres (`make db` first) |
+| `make check` | lint, typecheck and unit tests together |
 
-`make check` must pass before you open a pull request.
+`make check` and `make test-integration` must pass before you open a pull request. Integration tests read
+the server from `MEMINI_TEST_DATABASE_URL` (default: the `make db` database), create a new empty database
+per test and drop it afterwards, so the role needs the right to create databases.
 
 ## Project rules
 

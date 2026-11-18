@@ -17,5 +17,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `127.0.0.1:55432`.
 - Typed configuration from `MEMINI_*` environment variables and an optional TOML file
   (`MEMINI_CONFIG_FILE`); secrets from the environment or a `*_FILE` path, never in logs or errors.
+- Database access with psycopg 3 (async, plain SQL) and forward-only SQL migrations with a concurrency-safe
+  runner; the first migration creates the `vector` and `pg_trgm` extensions.
+- CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main

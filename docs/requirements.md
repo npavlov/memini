@@ -245,8 +245,10 @@ needs SQLAlchemy models. Migrations are files `src/memini/db/migrations/NNNN_nam
 time waits and then finds nothing to do. Each file and its row in `schema_migration` commit in one
 transaction. The checksum of every applied file is kept; an edited migration, or a database migrated by a
 newer build, stops the runner. Migrations go forward only; a backup is the way back (section 7). A step
-that cannot run in a transaction, such as `CREATE INDEX CONCURRENTLY`, is not supported yet. `vector` and
-`pg_trgm` are trusted extensions, so the owner of the database can create them without superuser rights.
+that cannot run in a transaction, such as `CREATE INDEX CONCURRENTLY`, is not supported yet. `pg_trgm` is
+a trusted extension, so the owner of the database can create it. `vector` is not: on a server where the
+service role is not a superuser, an administrator runs `CREATE EXTENSION vector` once before the first
+migration. The compose database runs as a superuser and needs nothing extra.
 
 ## 10. Quality
 
