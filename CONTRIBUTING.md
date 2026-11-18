@@ -32,9 +32,12 @@ Prerequisites:
 git clone https://github.com/npavlov/memini.git
 cd memini
 uv sync
+make hooks
 ```
 
-`uv sync` installs the dependencies into `.venv`. `make db` starts only Postgres with pgvector on
+`uv sync` installs the dependencies into `.venv`. `make hooks`, once per clone, points git at the hooks
+this repository versions (`core.hooksPath` = `.beads/hooks`) and fetches the pinned secret scanner
+([Secret scan](#secret-scan)). `make db` starts only Postgres with pgvector on
 `127.0.0.1:55432` (the `db` service of `compose.yaml`) and `make db-down` stops the compose services;
 the data stays in a named volume.
 
@@ -76,6 +79,8 @@ from the host: health, the localhost-only port, a non-root user, the first admin
 | `make test` | unit tests (`pytest -m "not integration"`); no database needed |
 | `make test-integration` | tests marked `integration`, against Postgres (`make db` first) |
 | `make check` | lint, typecheck and unit tests together |
+| `make hooks` | use the versioned git hooks and fetch the secret scanner |
+| `make secret-scan` | scan every commit of `HEAD` for secrets, as CI does |
 
 `make check` and `make test-integration` must pass before you open a pull request. Integration tests read
 the server from `MEMINI_TEST_DATABASE_URL` (default: the `make db` database), create a new empty database
@@ -89,8 +94,35 @@ per test and drop it afterwards, so the role needs the right to create databases
 - **Shell scripts run on bash 3.2**, the macOS default. No associative arrays, no `mapfile`, no `${var,,}`.
 - **Fixtures are synthetic.** Write them by hand. Never commit real messages, meeting notes, transcripts,
   names of real people or companies, tokens or keys, and do not derive fixtures from real data.
+  Fixture data lives in a set: a directory directly under `eval/` or `tests/fixtures/`, whose root
+  holds a `SYNTHETIC.md` that starts with `# SYNTHETIC DATA` and says the content is invented. E-mail
+  addresses and links in fixtures use reserved names only: `example.test`, `example.org`, `.invalid`
+  and the like (RFC 2606). `tests/test_synthetic_fixtures.py` checks both.
 - **Scope lives in the requirements.** A change of scope or of a principle goes into
   [docs/requirements.md](docs/requirements.md) in the same pull request as the code.
+
+## Secret scan
+
+[gitleaks](https://github.com/gitleaks/gitleaks), at the version and SHA-256 checksums pinned in
+`scripts/secret-scan.sh`, scans for keys and tokens with its default rules plus those of
+`.gitleaks.toml`:
+
+- **Before each commit**, after `make hooks`: the `pre-commit` hook in `.beads/hooks` scans what the
+  commit adds and blocks it on a finding. The beads hooks in the same files run only where `bd` is
+  installed; `bd hooks install` keeps the scan, which sits outside the beads markers.
+- **In CI**, the `Secret scan` job scans every commit reachable from the checked-out ref, so a key that
+  a later commit deletes still fails the run, and proves in a throwaway repository that the hook
+  blocks a fake key (`tests/test_secret_scan.py`). `make secret-scan` runs the same scan locally.
+
+The first scan downloads gitleaks into `~/.cache/memini/tools` (`MEMINI_TOOLS_DIR` moves it) and checks
+its checksum; later scans run offline. Findings print the rule, file and line, never the secret.
+
+On a finding, remove the secret from the commit and rotate it if it is real. A key a test needs is
+fake and assembled at run time (`tests/redaction_helpers.py`), so that no literal of it is committed.
+A value that only looks like a key, such as a digest or an id, goes into the allowlist of
+`.gitleaks.toml`: by its shape, for the one rule it trips, with the reason. Not by path or commit, not
+with a `gitleaks:allow` comment (the scan ignores those), not in a `.gitleaksignore`. Bypassing the hook
+with `git commit --no-verify` does not get past CI.
 
 ## Propose a change
 

@@ -57,3 +57,14 @@ if command -v bd >/dev/null 2>&1; then
   if [ "$_bd_exit" -ne 0 ]; then exit "$_bd_exit"; fi
 fi
 # --- END BEADS INTEGRATION v1.3.1 ---
+
+# --- Memini: secret scan ---
+# Outside the beads markers, which `bd hooks install` keeps. Scans what this commit adds with the
+# pinned gitleaks and the rules of .gitleaks.toml; a finding blocks the commit (CONTRIBUTING.md,
+# "Secret scan"). `make hooks` points git at this directory.
+_memini_scan="$(git rev-parse --show-toplevel)/scripts/secret-scan.sh"
+if [ -x "$_memini_scan" ]; then
+  "$_memini_scan" staged || exit 1
+else
+  echo >&2 "memini: this checkout has no scripts/secret-scan.sh; the secret scan did not run"
+fi

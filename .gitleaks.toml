@@ -1,0 +1,47 @@
+# The rules of the secret scan: gitleaks, pinned in scripts/secret-scan.sh. The pre-commit hook
+# (make hooks) scans what a commit adds, CI and `make secret-scan` every commit of the history.
+#
+# The default rules of the pinned gitleaks, one rule for Memini's own tokens, and an allowlist of
+# values that look like keys to the generic rule but are not secrets. Keep the allowlist small:
+# an entry names one shape of value and says why it is safe. Allow by shape, never by path or by
+# commit, and never for a value that only looks fake: a key that is meant to be fake goes into a
+# test assembled at run time (tests/redaction_helpers.py), so that no literal of it is committed.
+# `gitleaks:allow` comments are ignored (scripts/secret-scan.sh passes --ignore-gitleaks-allow).
+
+title = "memini"
+
+[extend]
+useDefault = true
+
+# A Memini API token: memini_ and 43 base64url characters, the encoding of 32 random bytes
+# (src/memini/auth/tokens.py). The entropy floor lets placeholders such as memini_xxxx… pass.
+[[rules]]
+id = "memini-token"
+description = "Memini API token"
+regex = '''\b(memini_[A-Za-z0-9_-]{43})(?:[^A-Za-z0-9_-]|$)'''
+secretGroup = 1
+entropy = 3.5
+keywords = ["memini_"]
+
+# Keys of payload chunks (src/memini/chunking/payloads.py) in the chunking fixtures: msg- or seg-
+# and the id of the first message or segment, 16 hex characters there.
+[[allowlists]]
+description = "Payload chunk keys: msg- or seg- and 16 hex characters"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^(?:msg|seg)-[0-9a-f]{16}$''']
+
+# The embedding key of an index fingerprint (memini.index.IndexFingerprint.embedding_key): a
+# SHA-256 over the embedding model's name, digest and dimension, recorded in the eval baselines.
+[[allowlists]]
+description = "Index fingerprint embedding keys: a SHA-256 in hex"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''embedding_key\W{1,8}[0-9a-f]{64}(?:\W|$)''']
+
+# Code, not a value: a keyword argument passed a variable (stdin=api_key).
+[[allowlists]]
+description = "A keyword argument passed a variable"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^[a-z_]+=[a-z_]+$''']

@@ -41,6 +41,18 @@ backup-test: ## Dump a filled test database, restore it into an empty one and co
 
 check: lint typecheck test ## Everything a pull request must pass
 
+.PHONY: hooks secret-scan
+hooks: ## Use the versioned git hooks (.beads/hooks): a secret scan before each commit; fetch gitleaks
+	@previous="$$(git config --get core.hooksPath || true)"; \
+	if [ -n "$$previous" ] && [ "$$previous" != .beads/hooks ]; then \
+		echo "core.hooksPath was $$previous"; \
+	fi
+	git config core.hooksPath .beads/hooks
+	scripts/secret-scan.sh install
+
+secret-scan: ## Scan every commit of HEAD for secrets (pinned gitleaks, rules in .gitleaks.toml)
+	scripts/secret-scan.sh history
+
 .PHONY: config-docs
 config-docs: ## Regenerate docs/configuration.md from the settings model (a test checks it is current)
 	$(UV_RUN) python -m memini.config_reference docs/configuration.md

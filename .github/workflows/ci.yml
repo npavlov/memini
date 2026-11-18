@@ -52,6 +52,46 @@ jobs:
       - name: Type check (pyright)
         run: make typecheck
 
+  # The secret scan: gitleaks, pinned and checked by SHA-256 in scripts/secret-scan.sh, with the
+  # rules of .gitleaks.toml, over every commit reachable from the checked-out ref (for a pull
+  # request, the merge commit: main and every commit of the branch). The whole history rather than
+  # the diff, so a key that a later commit removes still fails the run. Then the proof that the
+  # pre-commit hook of `make hooks` blocks a commit with a fake key, in a throwaway repository.
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks (pinned version and checksum)
+        run: scripts/secret-scan.sh install
+
+      - name: Scan every commit (make secret-scan)
+        run: make secret-scan
+
+      # No python-version: the interpreter comes from .python-version, as it does locally.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: secrets
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # In the test job these tests skip, as gitleaks is not installed there; here they must run.
+      - name: The pre-commit hook blocks a fake key
+        env:
+          MEMINI_REQUIRE_GITLEAKS: "1"
+        run: uv run pytest tests/test_secret_scan.py
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
