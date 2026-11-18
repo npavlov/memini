@@ -39,6 +39,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Embedding providers (an OpenAI-compatible endpoint; an in-process ONNX model with the optional
   `local-embeddings` extra, files pinned by digest) and a per-workspace index fingerprint that refuses
   search on a mismatched index and names `memini reindex`.
+- Tree-sitter code chunker for Python, TypeScript/JavaScript, Ruby and Go, with a symbol table and
+  line windows for other files; chunk ids stable across runs and unaffected by edits elsewhere.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
