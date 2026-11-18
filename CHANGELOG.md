@@ -94,6 +94,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Search hits of messages and meetings carry an anchor and a link into the record.
 - Stream health: `GET /v1/status`, `memini status` and the `status` tool show each stream's last result
   and error line, failures, lag, how far history is loaded, unindexed records and stale indexes.
+- `memini decision record|supersede|close|retract`; an MCP call of a write tool counts against the write
+  rate budget; compose passes the request-limit settings through.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.

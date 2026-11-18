@@ -153,6 +153,11 @@ memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME]
                     [--expires-in DURATION]      # prints the token alone, once
 memini token list | revoke <id-or-prefix>
 memini search <query> [--code] [--mode MODE] [--workspace NAME] [--repository NAME] [--limit N]
+memini decision record <ws> --statement TEXT [--kind decision|open_question] [--decided-at TIME]
+                       --evidence SOURCE:EXTERNAL_ID[#ANCHOR] [--participant PERSON_ID ...]
+                       [--supersedes ITEM_ID[:replaces|answers] ...]   # needs the ingest scope
+memini decision supersede <ws> <item-id> --supersedes ITEM_ID[:replaces|answers] [...]
+memini decision close|retract <ws> <item-id>
 ```
 
 Operator commands work on the database directly, so they run inside the service's container:
