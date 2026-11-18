@@ -192,6 +192,7 @@ async def reindex(
         async with _step("rebuild_records"):
             async for record in _records(conn, workspace_id, page_size):
                 counts, wrote = await _rebuild_record(conn, embedder, record, raw, chunkers)
+                counts.report()  # the record's transaction has committed
                 totals += counts
                 records += 1
                 indexed += wrote
@@ -329,7 +330,8 @@ async def _rebuild_record(
     raw: RawContent,
     chunkers: Mapping[RecordKind, RecordChunker],
 ) -> tuple[IndexCounts, bool]:
-    """Write one record again from raw. Returns the counts and whether it was indexed."""
+    """Write one record again from raw, in a transaction that has committed when it returns.
+    Returns the counts, not yet reported, and whether it was indexed."""
     chunker = chunkers.get(record.kind)
     prepared = await _prepare(record, raw, chunker)
     async with conn.transaction():

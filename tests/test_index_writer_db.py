@@ -311,6 +311,58 @@ async def test_counts_go_to_the_run_report(
     assert counts["chunks_unchanged"] == 0
 
 
+class _RolledBack(Exception):
+    pass
+
+
+async def test_in_the_callers_transaction_counts_are_left_to_the_caller(
+    db: Conn, migrated_database_url: str, scope: Scope, fake: FakeEmbedder
+) -> None:
+    rid = await add_record(
+        db,
+        workspace_id=scope.acme,
+        owner_id=scope.owner,
+        source_id=scope.repo,
+        external_id=f"main:{PATH}",
+        content=FILE_V1,
+    )
+
+    async def rolled_back_batch() -> None:
+        async with db.transaction():
+            counts = await index_record(
+                db, fake, record_id=rid, path=PATH, chunks=chunks_of(rid, FILE_V1)
+            )
+            assert counts.inserted == 4
+            raise _RolledBack
+
+    async with (
+        connect(migrated_database_url, autocommit=True) as reports,
+        record_run(reports, workspace_id=scope.acme, owner_id=scope.owner, kind="git_sync") as run,
+    ):
+        # A batch that rolls back: what its writer counted never reaches the report.
+        with pytest.raises(_RolledBack):
+            await rolled_back_batch()
+        assert run.report()["counts"] == {}
+        assert await rows(db, "SELECT count(*) FROM chunk") == [(0,)]
+
+        # A batch that commits: the caller reports after the commit.
+        async with db.transaction():
+            counts = await index_record(
+                db, fake, record_id=rid, path=PATH, chunks=chunks_of(rid, FILE_V1)
+            )
+        assert run.report()["counts"] == {}
+        counts.report()
+        assert run.report()["counts"]["chunks_inserted"] == 4
+
+        # In a transaction of its own, the writer reports after its commit.
+        await db.execute("UPDATE record SET deleted_at = now() WHERE id = %s", (rid,))
+        await delete_record_chunks(db, record_id=rid)
+        report = run.report()["counts"]
+
+    assert report["chunks_deleted"] == 4
+    assert report["symbols_deleted"] == 5
+
+
 async def test_a_nul_character_is_stored_as_a_replacement_character(
     db: Conn, scope: Scope, fake: FakeEmbedder
 ) -> None:

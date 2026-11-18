@@ -391,8 +391,9 @@ deleted source) deletes its chunks and symbols. The writer runs in the caller's 
 locks the record, checks the fingerprint, compares each chunk with the stored row of the same id
 and writes only what differs. A vector is computed only for a text that has none in the workspace
 under the embedding key; a chunk that only moved keeps its vector. Writing unchanged input again
-embeds nothing and changes no row. The vector column has no dimension, so a change of model needs
-no migration. The HNSW index is one partial index per embedding key on a cast of the column
+embeds nothing and changes no row. Its counts reach the run report only once the transaction
+that wrote them has committed, so a batch that rolls back reports nothing. The vector column has
+no dimension, so a change of model needs no migration. The HNSW index is one partial index per embedding key on a cast of the column
 (`vector` up to 2000 dimensions, `halfvec` up to 4000, none above), created by the service before
 the first chunk of the key is written, and dropped by the rebuild that leaves it unused; a search
 orders by the same expression, with the key as a literal. The lexical column is a `tsvector` with

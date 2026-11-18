@@ -25,8 +25,13 @@ offsets, and keep their vectors; otherwise no other row is touched.
 :func:`delete_record_chunks` removes the chunks and symbols of a record, for a tombstone. Deleting
 the record row removes them as well (ON DELETE CASCADE): forget and retention need nothing here.
 
-Both return :class:`IndexCounts` and add them to the run report of the job, if one is being
-recorded (:func:`memini.runs.current_run`), so a caller does not count them again.
+Both return :class:`IndexCounts`. Counts reach the run report of the job
+(:func:`memini.runs.current_run`) only for writes that committed. In a transaction of its own,
+:func:`index_record` or :func:`delete_record_chunks` adds them after the commit; in the caller's
+transaction (a savepoint), the caller adds them (:meth:`IndexCounts.report`) once its transaction
+has committed, so a batch that rolls back leaves nothing in the report.
+:func:`write_record_chunks` and :func:`clear_record_chunks` run in the caller's transaction and
+never report.
 
 The text stored and embedded is the chunk's text as the chunker made it. Postgres text cannot hold a
 NUL character, so the chunker replaces NUL bytes (:mod:`memini.chunking`); a chunk that still holds
@@ -37,7 +42,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 from typing import Any, Final
 
-from psycopg import AsyncConnection, sql
+from psycopg import AsyncConnection, pq, sql
 from psycopg.rows import TupleRow
 
 from memini.chunking import Chunk, FileChunks, Symbol
@@ -106,7 +111,9 @@ class IndexCounts:
         return self.inserted + self.updated + self.unchanged
 
     def report(self) -> None:
-        """Add the counts to the run being recorded, if any, under :data:`RUN_COUNTS` names."""
+        """Add the counts to the run being recorded, if any, under :data:`RUN_COUNTS` names.
+
+        Call it once the writes counted have committed."""
         run = current_run()
         if run is None:
             return
@@ -163,7 +170,9 @@ async def index_record(
 
     Runs in the caller's transaction if there is one (as a savepoint), else in one of its own. See
     the module for the steps. ``path`` is the file's path in its repository, required for a code
-    file; ``chunks`` is what :func:`memini.chunking.chunk_file` made of the record's content.
+    file; ``chunks`` is what :func:`memini.chunking.chunk_file` made of the record's content. In a
+    transaction of its own it adds the counts to the run report after the commit; in the caller's,
+    the caller does once its transaction commits.
 
     Raises:
         RecordNotFoundError: no record ``record_id``.
@@ -173,6 +182,7 @@ async def index_record(
             embedder's spec and this chunker make; it must be rebuilt first (``memini reindex``).
         EmbeddingError: the model failed; nothing is written.
     """
+    own = _owns_transaction(conn)
     async with conn.transaction():
         record = await lock_record(conn, record_id)
         if record is None:
@@ -185,19 +195,33 @@ async def index_record(
             owner_id=record.owner_id,
             expected=current_fingerprint(embedder.spec),
         )
-        return await write_record_chunks(conn, embedder, record, path=path, chunks=chunks)
+        counts = await write_record_chunks(conn, embedder, record, path=path, chunks=chunks)
+    if own:
+        counts.report()
+    return counts
 
 
 async def delete_record_chunks(conn: Conn, *, record_id: str) -> IndexCounts:
     """Delete the chunks and symbols of the record, for a tombstone. Nothing if there is no record.
 
     Needs no fingerprint check: removing rows from an index is right whatever it was built with.
+    Reports its counts as :func:`index_record` does.
     """
+    own = _owns_transaction(conn)
     async with conn.transaction():
         record = await lock_record(conn, record_id)
         if record is None:  # gone, and its chunks with it
             return IndexCounts()
-        return await clear_record_chunks(conn, record)
+        counts = await clear_record_chunks(conn, record)
+    if own:
+        counts.report()
+    return counts
+
+
+def _owns_transaction(conn: Conn) -> bool:
+    """Whether ``conn.transaction()`` starts a transaction that commits when its block ends,
+    rather than a savepoint in the caller's transaction."""
+    return conn.info.transaction_status == pq.TransactionStatus.IDLE
 
 
 # --- The writes, without the checks: for index_record and a rebuild -----------------------------
@@ -318,7 +342,8 @@ async def write_record_chunks(
     """Steps 3 to 6 of :func:`index_record`, for a record the caller has locked and checked.
 
     No fingerprint check: :func:`index_record` makes it, and a rebuild writes under the new
-    fingerprint while the stored one is still the old one. Call it in a transaction.
+    fingerprint while the stored one is still the old one. Call it in a transaction, and report
+    the counts once it has committed.
     """
     key = embedding_key(embedder.spec)
     await ensure_vector_index(conn, VectorIndex(key, embedder.spec.dimension))
@@ -393,7 +418,7 @@ async def write_record_chunks(
         )
         deleted = cur.rowcount
 
-    counts = IndexCounts(
+    return IndexCounts(
         inserted=len(inserts),
         updated=len(updates),
         unchanged=unchanged,
@@ -405,21 +430,18 @@ async def write_record_chunks(
         symbols_unchanged=symbols[2],
         symbols_deleted=symbols[3],
     )
-    counts.report()
-    return counts
 
 
 async def clear_record_chunks(conn: Conn, record: RecordRef) -> IndexCounts:
-    """Delete every chunk and symbol of a record the caller has locked. Call it in a transaction."""
+    """Delete every chunk and symbol of a record the caller has locked. Call it in a transaction,
+    and report the counts once it has committed."""
     cur = await conn.execute("DELETE FROM symbol WHERE record_id = %s", (record.id,))
     symbols = cur.rowcount
     cur = await conn.execute(
         "DELETE FROM chunk WHERE workspace_id = %s AND source_id = %s AND record_id = %s",
         (record.workspace_id, record.source_id, record.id),
     )
-    counts = IndexCounts(deleted=cur.rowcount, symbols_deleted=symbols)
-    counts.report()
-    return counts
+    return IndexCounts(deleted=cur.rowcount, symbols_deleted=symbols)
 
 
 async def _vectors(

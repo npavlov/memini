@@ -690,6 +690,58 @@ async def test_a_failure_in_a_one_batch_sync_changes_nothing(env: Env) -> None:
     await assert_consistent(env, src)
 
 
+def index_counts(run: Mapping[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = run["report"]["counts"]
+    prefixes = ("chunks_", "texts_", "vectors_", "symbols_")
+    return {name: count for name, count in counts.items() if name.startswith(prefixes)}
+
+
+async def test_the_counts_of_a_batch_that_rolled_back_are_not_reported(env: Env) -> None:
+    src, _ = await start_with_four_files(env)
+    change_three_delete_one(env.repo)
+
+    # One batch: a.py and b.py are written and embedded, c.py fails, and all of it rolls back.
+    with pytest.raises(EmbeddingError):
+        await sync(env, src, embedder=FlakyEmbedder(fail_at=3))
+
+    run = await last_run(env, src)
+    assert run["status"] == "failed"
+    assert index_counts(run) == {}
+    assert file_counts(run) == {"files_unchanged": 0, "files_skipped": 0}
+
+    # A batch per file: a.py commits, b.py rolls back. Only what committed is in the report.
+    with pytest.raises(EmbeddingError):
+        await sync(env, src, embedder=FlakyEmbedder(fail_at=2), limits=SyncLimits(batch_files=1))
+
+    run = await last_run(env, src)
+    assert file_counts(run) == {
+        "files_added": 0,
+        "files_changed": 1,
+        "files_deleted": 0,
+        "files_unchanged": 0,
+        "files_skipped": 0,
+    }
+    assert index_counts(run) == {
+        "chunks_inserted": 0,
+        "chunks_updated": 1,
+        "chunks_unchanged": 0,
+        "chunks_deleted": 0,
+        "texts_embedded": 1,
+        "vectors_reused": 0,
+        "symbols_inserted": 0,
+        "symbols_updated": 1,
+        "symbols_unchanged": 0,
+        "symbols_deleted": 0,
+    }
+
+    # The last batch also deletes the chunks of the tombstones; they are counted with it.
+    run = await sync(env, src)
+
+    assert run["status"] == "succeeded", run["error"]
+    assert index_counts(run)["chunks_deleted"] == 1  # d.py's one chunk
+    await assert_consistent(env, src)
+
+
 async def test_a_failed_read_of_a_later_batch_keeps_what_was_committed(env: Env) -> None:
     src, _ = await start_with_four_files(env)
     cursor, _ = await stream_row(env, src)

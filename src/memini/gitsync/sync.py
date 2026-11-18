@@ -395,14 +395,18 @@ async def _prepare(
     return [(file, file_chunks) for (file, _), file_chunks in zip(contents, chunks, strict=True)]
 
 
-async def _tombstone(conn: Conn, query: QueryNoTemplate, params: Sequence[object]) -> int:
+async def _tombstone(
+    conn: Conn, query: QueryNoTemplate, params: Sequence[object]
+) -> tuple[int, IndexCounts]:
     """Turn live records into tombstones with ``query`` (an UPDATE that returns their ids), and
-    delete their chunks and symbols. Returns how many."""
+    delete their chunks and symbols, in the caller's transaction. Returns how many records, and
+    the chunks and symbols deleted (not reported yet)."""
     cur = await conn.execute(query, params)
     record_ids: list[str] = [row[0] for row in await cur.fetchall()]
+    counts = IndexCounts()
     for rid in record_ids:
-        await delete_record_chunks(conn, record_id=rid)
-    return len(record_ids)
+        counts += await delete_record_chunks(conn, record_id=rid)
+    return len(record_ids), counts
 
 
 @dataclass(slots=True)
@@ -412,6 +416,11 @@ class _Tally:
     deleted: int = 0
     binary: int = 0
     index: IndexCounts = field(default_factory=IndexCounts)
+
+    def tombstoned(self, done: tuple[int, IndexCounts]) -> None:
+        records, counts = done
+        self.deleted += records
+        self.index += counts
 
 
 async def _apply(
@@ -467,11 +476,11 @@ async def _apply(
                 else:
                     step.added += 1
             if binary:
-                step.deleted += await _tombstone(conn, _TOMBSTONE, (binary,))
+                step.tombstoned(await _tombstone(conn, _TOMBSTONE, (binary,)))
             if last:
                 if plan.tombstones:
-                    step.deleted += await _tombstone(conn, _TOMBSTONE, (list(plan.tombstones),))
-                step.deleted += await _tombstone(conn, _UNTRACKED, (source.id,))
+                    step.tombstoned(await _tombstone(conn, _TOMBSTONE, (list(plan.tombstones),)))
+                step.tombstoned(await _tombstone(conn, _UNTRACKED, (source.id,)))
                 if plan.relinks:
                     await conn.execute(
                         "UPDATE record SET stream_id = %s WHERE id = ANY(%s)",
@@ -490,11 +499,13 @@ async def _apply(
                 if cur.rowcount != 1:
                     raise StreamChangedError(f"stream {stream.id} changed while it synced")
                 expected, previous = Jsonb(marked), read_pin(marked)
+        # The batch has committed: only now do its counts go to the run report.
         tally.added += step.added
         tally.changed += step.changed
         tally.deleted += step.deleted
         tally.binary += step.binary
         tally.index += step.index
+        step.index.report()
         if run is not None:
             run.count("files_added", step.added)
             run.count("files_changed", step.changed)
@@ -537,7 +548,8 @@ async def sync_stream(
     ``checked_until`` is the database time before that fetch. The run report of the job, if one is
     recorded, gets the steps (``diff`` or ``list``, ``index``) and the counts ``files_added``,
     ``files_changed``, ``files_deleted``, ``files_unchanged``, ``files_skipped`` and
-    ``files_skipped_<reason>``; the index writer adds its own.
+    ``files_skipped_<reason>``, and those of the index writer (``chunks_inserted``, ...), each
+    batch's once it has committed: a batch that rolls back adds none.
 
     Raises:
         ValueError: ``conn`` has a transaction open.
