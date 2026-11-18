@@ -4,10 +4,10 @@ SHELL := /bin/bash
 # `uv run` syncs the environment from uv.lock before each command.
 UV_RUN := uv run
 
-.PHONY: help sync lint format typecheck test check db db-down
+.PHONY: help sync lint format typecheck test test-integration check db db-down
 
 help: ## List targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-18s %s\n", $$1, $$2}'
 
 sync: ## Install dependencies into .venv
 	uv sync
@@ -23,8 +23,11 @@ format: ## Format and apply safe lint fixes (ruff)
 typecheck: ## Type check (pyright, strict)
 	$(UV_RUN) pyright
 
-test: ## Run tests (pytest)
-	$(UV_RUN) pytest
+test: ## Run unit tests (pytest); no database needed
+	$(UV_RUN) pytest -m "not integration"
+
+test-integration: ## Run integration tests against Postgres (make db, or MEMINI_TEST_DATABASE_URL)
+	$(UV_RUN) pytest -m integration
 
 check: lint typecheck test ## Everything a pull request must pass
 

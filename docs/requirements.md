@@ -222,9 +222,31 @@ does not mean migrating data.
 | API | FastAPI | — |
 | MCP | Official Python SDK, server and client | — |
 | Database | Postgres with pgvector | One stateful store; cursors, records and jobs in one transaction |
+| Database access | psycopg 3, async, plain SQL; `psycopg_pool`; the `pgvector` adapter | The SQL later work needs is Postgres SQL; typed; async like FastAPI and MCP. See below |
+| Migrations | Numbered SQL files and a small runner in `memini.db` | Forward only; one transaction per file; an advisory lock for concurrent starts. See below |
 | Lexical search | Postgres BM25 extension or built-in `tsvector`; `pg_trgm` | Open question 1 |
 | Embeddings | Local, in-process or through an OpenAI-compatible endpoint (Ollama) | Open question 2 |
 | LLM | OpenAI-compatible endpoint for local models; cloud providers as opt-in | Principle 8 |
+
+**Database access** (decided 2026-11-18). Memini targets one database. What later work needs is Postgres
+SQL: a stream cursor and the records of its window in one transaction, jobs claimed with
+`FOR UPDATE SKIP LOCKED`, per-source advisory locks, upserts by deterministic id with `ON CONFLICT`,
+`vector` columns. psycopg 3 runs that SQL as written. SQLAlchemy Core would add a second language over the
+same SQL, and its async mode runs through a greenlet bridge; its main gain, portability across databases,
+is not needed. asyncpg is async only and is not a typed package. psycopg types queries as
+`LiteralString`, so a query cannot be built by string formatting; identifiers go through `psycopg.sql`.
+Access is async because FastAPI, the MCP server and the MCP client are async; CPU-bound work (embeddings,
+parsing) goes to threads either way. The CLI runs the same code with `asyncio.run`. One `psycopg_pool`
+pool serves the process; each pooled connection registers the pgvector types.
+
+**Migrations** (decided 2026-11-18). Alembic is built on SQLAlchemy, and its main gain, autogenerate,
+needs SQLAlchemy models. Migrations are files `src/memini/db/migrations/NNNN_name.sql`, numbered from
+0001 without gaps. The runner takes a session advisory lock, so a second process that starts at the same
+time waits and then finds nothing to do. Each file and its row in `schema_migration` commit in one
+transaction. The checksum of every applied file is kept; an edited migration, or a database migrated by a
+newer build, stops the runner. Migrations go forward only; a backup is the way back (section 7). A step
+that cannot run in a transaction, such as `CREATE INDEX CONCURRENTLY`, is not supported yet. `vector` and
+`pg_trgm` are trusted extensions, so the owner of the database can create them without superuser rights.
 
 ## 10. Quality
 

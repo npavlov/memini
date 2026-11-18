@@ -14,6 +14,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "pgvector>=0.5.1",
+    "psycopg[binary,pool]>=3.3.9",
     "pydantic>=2.14.3",
 ]
 
@@ -26,6 +28,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "anyio>=4.16.0",
     "pyright[nodejs]>=1.1.414",
     "pytest>=9.2.0",
     "ruff>=0.17.5",
@@ -64,3 +67,6 @@ venv = ".venv"
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
+markers = [
+    "integration: needs Postgres with pgvector (make db, or MEMINI_TEST_DATABASE_URL); make test-integration",
+]
