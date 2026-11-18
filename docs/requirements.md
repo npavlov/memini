@@ -321,11 +321,11 @@ parse of a window deletes the stream's earlier attempts at the same window (a re
 same pinned `as_of`) and its earlier windows never parsed (a run that died). Each run's windows
 otherwise keep their calls until retention: bodies, not calls, are what dedup saves. The parser
 protocol is `memini.recipes.parsing`: a window's responses in, records and completeness out, each
-record naming the responses it was built from; memini-n74 adds the checks every recipe gets to
-the same `parse_window`. Each response keeps the ids of the records it was built into, written
-before the records are ingested. An executor ends a window with `ingest_window`: parse, record
-the attribution, ingest the records in batches of `ingest_max_records`, the last claiming the
-window (complete when every check passed, a snapshot when the recipe says so). `memini replay
+record naming the responses it was built from; `parse_window` adds the checks of the recipe
+(Parsers and completeness, below). Each response keeps the ids of the records it was built into,
+written before the records are ingested. An executor ends a window with `ingest_window`: parse,
+record the attribution, ingest the records in batches of `ingest_max_records`, the last claiming
+the window (complete when every check passed, a snapshot when the recipe says so). `memini replay
 --workspace W --source S --recipe PATH [--stream K] [--run ID]` is an operator command, as
 `reindex` is: it re-derives stored data once a build with a fixed parser is deployed, works on the
 database and needs no token. It holds the source's job lock, parses every chosen window and every
@@ -348,6 +348,38 @@ a forgotten record, the list page that held its item included, keeps the call an
 attribution, marks the window pruned, and deletes the source's windows never parsed, which have
 no attribution yet. The capture hook's route belongs to the agent executor's session API
 (memini-2wl), which knows the call it handed out and stores only that.
+
+**Parsers and completeness** (decided 2026-11-18). The completeness checks run on a window's
+stored responses, with the recipe's selectors and nothing else (`memini.recipes.reading`), in
+`parse_window` whatever the parser, so no parser can call a window complete that the recipe does
+not. A call is known by its identity, as the store keeps it (kind, tool, arguments; stored
+arguments are redacted, so a call is also looked up redacted). The listing is walked from its
+first call, rendered for the stream and the window, by its paging rule; each item that
+`detail.when` selects is walked from its detail call the same way. A window fails when a call
+failed or cannot be decoded, an item cannot be read (no id; a time or a reply count that is not
+one), a page the rule asks for is missing (the first call, a cursor not followed, a next page
+number or offset), a cursor page says more follow but names no cursor (truncated), the listing
+reached `max_pages`, an item has no detail call, or a declared check fails: page numbers
+(stated as asked, read on to `total_pages`), reply counts against the replies of every detail
+page, totals. Each failure names the call that would make it pass, a `MissingCall` (call, tool,
+arguments, page, item, the check, a reason that names positions and never a value, and `repeat`
+when the window holds the call already, so making it again is a retry). `missing_calls(window)`
+is how both executors find their calls: with nothing stored it names the listing's first call,
+then each next page and each detail call, until nothing is missing; the service executor makes
+them (retries within the budget, never past `max_pages`), the agent executor hands them out as
+next calls. Every list page is read for items, the pages a walk did not reach too, and an item
+whose list page forget removed is still read from its detail call, so a replayed record keeps
+the attribution forget needs. A list call without `{from}`
+and `{to}` lists everything: an ordered one ends after the first page past the window, and only
+the items inside the window are the window's, so a history window fetches no details of newer
+items; a windowed listing keeps all it returns (records are upserted). Parsers are written as
+item parsers: the reading gives one item at a time (the values the list call read, the decoded
+detail pages, the replies), the item parser returns one record or none, and `item_parser`
+attributes each record to every response of its item; an item not complete yet (a transcript
+still being made) is an `IncompleteItem`, stored as far as it goes, with its call named again.
+`ingest_window` returns the missing calls and adds each incomplete window to the run report
+(`details.incomplete_windows`: bounds, reasons, at most 50 calls; counts `windows_incomplete`,
+`missing_calls`); its claim is incomplete, so the checkpoint stays.
 
 ### Scheduling and hygiene
 

@@ -39,7 +39,12 @@ merged: each run's window keeps its own calls until retention removes them.
 :func:`ingest_window` parses the window (:func:`memini.recipes.parsing.parse_window`), records
 which records each response was built into (:func:`record_parse`), and ingests the records in
 batches, the last one claiming the window: complete when every check passed, a snapshot when the
-recipe says so.
+recipe says so. An incomplete window stores what it got and leaves the checkpoint where it was;
+its result names the calls that would complete it (``missing``), and the current run's report
+lists them under ``details.incomplete_windows``. Before that, an executor finds the next calls of
+a window from what is stored: :func:`memini.recipes.missing_calls` over the window's responses
+(:func:`load_window`) names the first call of the listing, then each next page and each detail
+call, until nothing is missing.
 
 **Replay** (:func:`replay`, ``memini replay``) takes a recipe and its parser and goes through the
 parsed windows of a source, of one stream or of one run, in the order they were started, with the
@@ -70,6 +75,8 @@ attribution yet.
 """
 
 from memini.responses.replay import (
+    INCOMPLETE_DETAIL,
+    MAX_REPORTED_MISSING,
     RUN_KIND,
     ReplayError,
     ReplayResult,
@@ -102,6 +109,8 @@ from memini.responses.store import (
 
 __all__ = [
     "CALL_KEY_DOMAIN",
+    "INCOMPLETE_DETAIL",
+    "MAX_REPORTED_MISSING",
     "MAX_RESPONSE_SIZE",
     "RUN_KIND",
     "InvalidResponseError",

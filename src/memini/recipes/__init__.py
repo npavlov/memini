@@ -19,13 +19,26 @@ evaluate:
 - :mod:`memini.recipes.selectors`: paths and patterns.
 - :mod:`memini.recipes.templates`: argument placeholders and their rendering.
 - :mod:`memini.recipes.times`: durations, window bound formats, timestamp formats.
+- :mod:`memini.recipes.calls`: a window's stored calls (:class:`RawResponse`,
+  :class:`WindowInput`) and the calls that would complete it (:class:`MissingCall`).
+- :mod:`memini.recipes.reading`: a window read with its recipe's selectors, its items and the
+  completeness checks (:func:`read_window`, :func:`missing_calls`).
 - :mod:`memini.recipes.parsing`: the parser protocol (a window's raw responses in, records and
-  completeness out), the registry of parsers by name, and :func:`parse_window`.
+  completeness out), item parsers, the registry of parsers by name, and :func:`parse_window`.
 
 ``memini recipe validate`` and ``memini recipe schema`` (:mod:`memini.cli.recipes`) are the
 commands; both read files only.
 """
 
+from memini.recipes.calls import (
+    CHECKS,
+    CallKind,
+    Check,
+    MissingCall,
+    RawResponse,
+    ResponseDecodeError,
+    WindowInput,
+)
 from memini.recipes.model import (
     RECIPE_FORMAT,
     Checks,
@@ -48,20 +61,30 @@ from memini.recipes.model import (
     recipe_json_schema,
 )
 from memini.recipes.parsing import (
-    CallKind,
+    IncompleteItem,
+    ItemParser,
     ParsedRecord,
     ParsedWindow,
     ParserError,
     ParserNotFoundError,
-    RawResponse,
-    ResponseDecodeError,
-    WindowInput,
+    RecipeParser,
     WindowParser,
     get_parser,
+    item_parser,
     parse_window,
     register_parser,
     registered_parsers,
     unregister_parser,
+)
+from memini.recipes.reading import (
+    DetailPage,
+    Item,
+    ListedItem,
+    WindowReading,
+    item_key,
+    missing_calls,
+    read_window,
+    repeat_call,
 )
 from memini.recipes.selectors import (
     JsonPath,
@@ -91,15 +114,23 @@ from memini.recipes.validate import (
 )
 
 __all__ = [
+    "CHECKS",
     "RECIPE_FORMAT",
     "CallKind",
+    "Check",
     "Checks",
     "CursorPaging",
     "Decode",
     "DetailCall",
+    "DetailPage",
+    "IncompleteItem",
+    "Item",
+    "ItemParser",
     "JsonPath",
     "ListCall",
     "ListItem",
+    "ListedItem",
+    "MissingCall",
     "NoPaging",
     "OffsetPaging",
     "Order",
@@ -117,6 +148,7 @@ __all__ = [
     "RecipeError",
     "RecipeFileError",
     "RecipeIssue",
+    "RecipeParser",
     "ResponseDecodeError",
     "SelectorSyntaxError",
     "Server",
@@ -127,10 +159,14 @@ __all__ = [
     "Window",
     "WindowInput",
     "WindowParser",
+    "WindowReading",
     "check_recipe",
     "format_bound",
     "get_parser",
+    "item_key",
+    "item_parser",
     "load_recipe",
+    "missing_calls",
     "parse_duration",
     "parse_path",
     "parse_pattern",
@@ -140,10 +176,12 @@ __all__ = [
     "parse_window",
     "placeholders",
     "read_recipe",
+    "read_window",
     "recipe_digest",
     "recipe_json_schema",
     "register_parser",
     "registered_parsers",
     "render_arguments",
+    "repeat_call",
     "unregister_parser",
 ]

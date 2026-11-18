@@ -16,7 +16,8 @@ so the sync loop is deterministic (principle 5).
 - Schema: [`schemas/recipe.schema.json`](../schemas/recipe.schema.json) (JSON Schema 2020-12), for
   editors; `memini recipe schema` prints it.
 - Check: `memini recipe validate PATH...`.
-- Code: `memini.recipes` (model, selectors, placeholders, times, validation).
+- Code: `memini.recipes` (model, selectors, placeholders, times, validation; reading a window
+  and its checks; parsers).
 
 ## A full example
 
@@ -326,6 +327,47 @@ A server whose count includes the item (`3 messages` for a root and two replies)
 of the recipe, not a check that silently passes. An incomplete window stores what it got, leaves
 the checkpoint where it was and lists the calls that would complete it.
 
+### How the checks read a window
+
+The checks run on the stored responses of a window (`memini.recipes.reading.read_window`), with
+the recipe's selectors and nothing else:
+
+- A call is known by its identity, as the store keeps it: list or detail, the tool and the
+  arguments. The listing is walked from its first call (the arguments rendered for the stream and
+  the window) by its paging rule: the next call carries the cursor a page named, the next page
+  number or the items seen so far. Each item `when` selects is walked the same way from its
+  detail call's arguments.
+- Every list page is read for items, the ones a walk did not reach too. An item listed twice
+  (pages that overlap) is one item. An item without an id, or with a time or a reply count that
+  cannot be read, fails the window.
+- A list call without `{from}` and `{to}` lists everything: with an `order` it ends after the
+  first page that reaches past the window, and only the items inside the window are the
+  window's, so a history window does not fetch the details of newer items. A windowed listing
+  keeps every item it returns.
+- `page_numbers` also reads on to the stated `total_pages` when a short page would end the
+  listing; `totals` compares a walk's items with the last total a page stated.
+
+Each failed check names the call that would make it pass, a `MissingCall`: the call (list or
+detail), the tool, the arguments, the page and the item it is stored with, the check, a reason
+for the run report (the call by its position in the window, never a value of a response), and
+`repeat` when the window holds that call already, so that making it again is a retry:
+
+| Check | Fails when | Missing call |
+|---|---|---|
+| `failed` | a call has `isError`, or `decode` cannot read its result | the same call |
+| `page` | a page the paging rule asks for is not in the window: the listing's first call, the page a cursor names, the next page number or offset, an item's next detail page | that page |
+| `truncated` | a page says more follow (`has_more`) but names no cursor, or names a page read before | the same page |
+| `max_pages` | the listing reached `max_pages` before its last page | its next page |
+| `detail` | an item `when` selects has no detail call | its first detail call |
+| `item` | an item cannot be read, or the parser found it incomplete | the call that holds it |
+| `page_numbers` | a page states another number than it was asked for, or the pages end before `total_pages` | that page, or the next |
+| `reply_counts` | an item's replies differ from its `reply_count` | its detail call |
+| `totals` | a walk's items differ from its `total` | the next page when short, the first when over |
+
+A window with no calls yet misses the first call of its listing; once that is stored, the next
+page and the detail calls of the listed items; and so on until nothing is missing. That is how
+both executors find their calls (below).
+
 ## `[rate]`: the budget
 
 | Key | Type | Meaning |
@@ -352,28 +394,55 @@ key, the window, and the window's responses in the order the calls were made, ea
 `RawResponse` with its call, tool, arguments, page, listed item and stored result;
 `RawResponse.decode` reads a result by `decode`) and returns a `ParsedWindow`: the records, each
 with the positions of every response it was built from (the list page that holds its item, each
-page of its detail call: forget removes those responses with the record), and whether the window
-is complete. A parser is registered under its name with `register_parser`; the executors and
-replay run it through `parse_window`, which checks its output and adds the checks every recipe
-gets.
+page of its detail call: forget removes those responses with the record), whether the window is
+complete, and the calls that would complete it. A parser is registered under its name with
+`register_parser`; the executors and replay run it through `parse_window`, which checks its
+output and adds the checks of the recipe, whatever the parser said.
+
+Most parsers need not read responses at all. An item parser is the part that knows the payload:
+the recipe's selectors read the window, and the item parser gets one `Item` at a time (its
+listing, with the id, time, reply count and fields the list call read, and the decoded pages of
+its detail call, with the replies `detail.items` selects) and returns one record of the stream's
+`kind`, or none. `item_parser(parse)` makes it a parser to register; it names the item's
+responses for each record, so none is left out of forget. An item its responses do not hold all
+of yet (a meeting whose transcript is still being made) is an `IncompleteItem`, with what it
+gave so far: the window stays incomplete and the call that holds the item is named again.
+
+```python
+def hearth_thread(item: Item, window: WindowInput) -> RecordIn | IncompleteItem | None:
+    root = item.listed.value if item.listed else item.detail_items[0]
+    messages = [root, *item.replies]
+    return RecordIn(kind="thread", external_id=f"{window.stream}/{item.key}", ...)
+
+register_parser("hearth.thread", item_parser(hearth_thread))
+```
 
 ## How the executors use a recipe
 
+Both executors find their calls the same way: `memini.recipes.missing_calls` over the window's
+stored responses. With none stored it names the list call's first page; once a page is stored,
+its next page and the detail calls of its items; and so on until nothing is missing, so the
+calls follow from the recipe and what the server answered, never from an executor's own loop. A
+missing call with `repeat` is a retry, made while the budget allows; one past `max_pages` is not
+made.
+
 **Service executor.** The built-in MCP client opens a session with the source's endpoint and
 credential, checks the server for drift, and for each due stream asks the planner for windows. For
-each window it renders the list call's arguments, calls page after page by the paging rule,
-decodes each result and reads the items, then makes the detail call for each item `when` selects,
-paging it too. Calls keep to `[rate]`. Each raw result is stored as it came (after redaction)
-before anything is parsed. The completeness checks then run on the stored responses, the parser
-turns them into records, and one ingest batch stores the records and claims the window, complete
-or not.
+each window it makes the missing calls, up to `rate.concurrency` at once and within `[rate]`,
+storing each raw result as it came (after redaction) before anything is parsed, until none is
+missing or the budget is spent. The parser then turns the stored responses into records, the
+checks run on them, and one ingest batch stores the records and claims the window, complete or
+not.
 
 **Agent executor.** For servers reachable only inside an interactive agent session. The service
-plans the same calls from the same recipe and hands them out one at a time ("next call": a tool
-and its arguments). The agent makes the call; a hook posts the raw result verbatim to the
-service, which reads the next cursor or the items with the same selectors and hands out the next
-call. The agent never rewrites a response. When the plan is done, the same checks and the same
-parser run on the server side.
+hands out the missing calls one at a time ("next call": a tool and its arguments). The agent
+makes the call; a hook posts the raw result verbatim to the service, which stores it and hands
+out the next missing call. The agent never rewrites a response. When nothing is missing, or the
+session ends, the same checks and the same parser run on the server side.
+
+An incomplete window keeps the stream's checkpoint, and the run report lists, for each such
+window, its bounds, why it is incomplete and the calls that would complete it
+(`details.incomplete_windows`, at most 50 calls a window); the next run plans the window again.
 
 Both executors therefore make the same calls with the same arguments and store the same raw
 responses, and the records are a function of those responses and the parser: one recipe run by

@@ -1,15 +1,18 @@
 """Hearth, the invented chat server of docs/recipes.md, for the tests of the raw response store and
 replay: a fake server with a channel of threads, a client of it that counts its calls, a minimal
-executor of the hearth recipe, and a trivial parser for it. Every name, id and text is made up.
+executor of the hearth recipe, and a trivial parser for it, registered through the item parser
+interface. Every name, id and text is made up.
 
-The executor here is a test double, not the service executor (memini-bz1): it runs one window of
-the recipe's list call with cursor paging and a detail call per item with replies, stores each
-result with :func:`memini.responses.store_response`, and ends with
-:func:`memini.responses.ingest_window`, as both executors do.
+The executors here are test doubles, not the service executor (memini-bz1). :func:`sync_window`
+runs one window of the recipe's list call with cursor paging and a detail call per item with
+replies, stores each result with :func:`memini.responses.store_response`, and ends with
+:func:`memini.responses.ingest_window`, as both executors do. :func:`run_window` and, without a
+database, :func:`drive` make whatever :func:`memini.recipes.missing_calls` names until nothing is
+missing or their budget is spent: the loop both executors run.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,17 +26,29 @@ from memini.auth import WriteAccess
 from memini.ingest import RecordIn
 from memini.intake import PlannedWindow
 from memini.recipes import (
-    ParsedRecord,
-    ParsedWindow,
+    IncompleteItem,
+    Item,
+    MissingCall,
+    RawResponse,
     Recipe,
+    RecipeParser,
     WindowInput,
     WindowParser,
+    item_parser,
     load_recipe,
+    missing_calls,
     parse_timestamp,
     recipe_digest,
     render_arguments,
 )
-from memini.responses import ServerInfo, WindowIngest, begin_window, ingest_window, store_response
+from memini.responses import (
+    ServerInfo,
+    WindowIngest,
+    begin_window,
+    ingest_window,
+    load_window,
+    store_response,
+)
 from redaction_helpers import GITHUB
 
 type Conn = AsyncConnection[TupleRow]
@@ -157,6 +172,42 @@ class FakeHearth:
         return _result({"messages": messages, "next_cursor": None})
 
 
+def rewrite(result: dict[str, Any], change: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+    """A Hearth result with its JSON document changed by ``change``."""
+    document = json.loads(result["content"][0]["text"])
+    change(document)
+    return _result(document)
+
+
+@dataclass
+class TruncatedHearth(FakeHearth):
+    """A server whose first page says more pages follow but names no cursor."""
+
+    def channel_history(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        def cut(document: dict[str, Any]) -> None:
+            document["next_cursor"] = None
+
+        return rewrite(super().channel_history(arguments), cut)
+
+
+@dataclass
+class LossyHearth(FakeHearth):
+    """A server that loses a reply: Cy's thread has a third reply, which the listing counts and
+    ``thread_replies`` leaves out."""
+
+    def __post_init__(self) -> None:
+        self.threads[2].replies.append(
+            Message(ts(T0 + DAY + 12 * HOUR), "U0002", "Bo Sample", "Spare set in the shed.")
+        )
+
+    def thread_replies(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        def drop(document: dict[str, Any]) -> None:
+            if len(document["messages"]) == 4:
+                document["messages"].pop()
+
+        return rewrite(super().thread_replies(arguments), drop)
+
+
 @dataclass
 class FakeClient:
     """A client of :class:`FakeHearth` that counts every call: replay must make none."""
@@ -251,6 +302,128 @@ async def sync_window(
     return await ingest_window(conn, access, raw.id, recipe=recipe, parser=parser)
 
 
+# --- Executors driven by the missing calls -------------------------------------------------------
+
+
+def _identity(call: MissingCall) -> str:
+    return json.dumps([call.call, call.tool, call.arguments], sort_keys=True)
+
+
+def _next_calls(
+    window: WindowInput, repeats: dict[str, int], max_repeats: int
+) -> list[MissingCall]:
+    """The missing calls of ``window`` an executor makes now: not past ``max_pages``, and a call
+    already made (a retry) at most ``max_repeats`` times."""
+    todo: list[MissingCall] = []
+    for call in missing_calls(window):
+        if call.check == "max_pages":
+            continue
+        if call.repeat:
+            key = _identity(call)
+            if repeats.get(key, 0) >= max_repeats:
+                continue
+            repeats[key] = repeats.get(key, 0) + 1
+        todo.append(call)
+    return todo
+
+
+def drive(
+    recipe: Recipe,
+    window: PlannedWindow,
+    call_tool: Callable[[str, Mapping[str, Any]], dict[str, Any]],
+    *,
+    stream: str = CHANNEL,
+    max_calls: int = 1000,
+    max_repeats: int = 0,
+) -> WindowInput:
+    """Run one window of ``recipe`` in memory: make the missing calls, round by round, until none
+    is missing or ``max_calls`` are made. A call made again replaces its result, as the store
+    does. Returns the window as a parser reads it."""
+    responses: list[RawResponse] = []
+    repeats: dict[str, int] = {}
+    made = 0
+    while True:
+        current = WindowInput(recipe, stream, window.start, window.end, tuple(responses))
+        todo = _next_calls(current, repeats, max_repeats)
+        if not todo or made >= max_calls:
+            return current
+        for call in todo[: max_calls - made]:
+            made += 1
+            result = call_tool(call.tool, call.arguments)
+            identity = _identity(call)
+            index = next(
+                (
+                    i
+                    for i, r in enumerate(responses)
+                    if json.dumps([r.call, r.tool, r.arguments], sort_keys=True) == identity
+                ),
+                None,
+            )
+            position = len(responses) + 1 if index is None else responses[index].position
+            response = RawResponse(
+                position=position,
+                call=call.call,
+                tool=call.tool,
+                arguments=dict(call.arguments),
+                page=call.page,
+                item_id=call.item_id,
+                result=result,
+            )
+            if index is None:
+                responses.append(response)
+            else:
+                responses[index] = response
+
+
+async def run_window(
+    conn: Conn,
+    call_tool: Callable[[str, Mapping[str, Any]], Awaitable[dict[str, Any]]],
+    target: Target,
+    window: PlannedWindow,
+    *,
+    recipe: Recipe,
+    parser: WindowParser,
+    access: WriteAccess,
+    stream: str = CHANNEL,
+    max_calls: int = 1000,
+    max_repeats: int = 0,
+) -> WindowIngest:
+    """Run one window of ``recipe`` as both executors do: store each call, read the stored
+    window for its missing calls, make them, until none is missing or ``max_calls`` are made;
+    then parse and ingest the window."""
+    raw = await begin_window(
+        conn,
+        workspace_id=target.workspace_id,
+        owner_id=target.owner_id,
+        source_id=target.source_id,
+        stream_id=target.stream_id,
+        window=window,
+        recipe_digest=recipe_digest(recipe),
+        server=SERVER,
+    )
+    repeats: dict[str, int] = {}
+    made = 0
+    while made < max_calls:
+        _, responses = await load_window(conn, raw.id)
+        current = WindowInput(recipe, stream, window.start, window.end, responses)
+        todo = _next_calls(current, repeats, max_repeats)
+        if not todo:
+            break
+        for call in todo[: max_calls - made]:
+            made += 1
+            await store_response(
+                conn,
+                raw.id,
+                call=call.call,
+                tool=call.tool,
+                arguments=call.arguments,
+                result=await call_tool(call.tool, call.arguments),
+                page=call.page,
+                item_id=call.item_id,
+            )
+    return await ingest_window(conn, access, raw.id, recipe=recipe, parser=parser)
+
+
 # --- The parser ----------------------------------------------------------------------------------
 
 
@@ -258,86 +431,47 @@ def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-def hearth_parser(*, names: bool = False, count_root: bool = False) -> WindowParser:
-    """A trivial parser for the hearth recipe. A thread record per root message listed or fetched
-    in the window, keyed ``{channel}/{ts}``, with the root and its replies.
+def hearth_parser(*, names: bool = False, count_root: bool = False) -> RecipeParser:
+    """A trivial parser for the hearth recipe, written as an item parser
+    (:func:`memini.recipes.item_parser`): a thread record per item of the window, keyed
+    ``{channel}/{ts}``, with the root and its replies. The recipe's selectors and checks do the
+    rest: the listing's pages, the detail calls, the reply counts.
 
     ``names``: authors as display names (``user_name``); else as user ids (``user``): the
-    "parser fix" of the tests. ``count_root``: a bug that counts the root among the replies, so a
-    thread with replies never matches its ``reply_count`` and the window is never complete.
+    "parser fix" of the tests. ``count_root``: a bug that counts the root among the replies, so
+    the parser finds a thread with replies short of its ``reply_count`` and the window is never
+    complete.
     """
 
-    def parse(window: WindowInput) -> ParsedWindow:
+    def parse(item: Item, window: WindowInput) -> RecordIn | IncompleteItem:
         url = str(window.recipe.parser.options["message_url"])
-        roots: dict[str, tuple[dict[str, Any], int]] = {}
-        details: dict[str, list[tuple[int, list[dict[str, Any]]]]] = {}
-        incomplete: list[str] = []
-        listed_last_page = False
-        for response in window.responses:
-            if response.is_error:
-                continue
-            document = response.decode("json")
-            if response.call == "list":
-                for message in document["messages"]:
-                    roots[message["ts"]] = (message, response.position)
-                listed_last_page = listed_last_page or not document.get("has_more")
-            else:
-                assert response.item_id is not None
-                details.setdefault(response.item_id, []).append(
-                    (response.position, document["messages"])
-                )
-        if not listed_last_page:
-            incomplete.append("the listing did not reach its last page")
-
-        records: list[ParsedRecord] = []
-        for root_ts in sorted(set(roots) | set(details)):
-            positions: list[int] = []
-            root: dict[str, Any] | None = None
-            if root_ts in roots:
-                root, position = roots[root_ts]
-                positions.append(position)
-            replies: list[dict[str, Any]] = []
-            for position, messages in details.get(root_ts, []):
-                positions.append(position)
-                for message in messages:
-                    if message["ts"] == root_ts:
-                        root = root or message
-                    if message["ts"] != root_ts or count_root:
-                        replies.append(message)
-            assert root is not None
-            expected = root.get("reply_count")
-            if expected is not None and expected > 0:
-                if root_ts not in details:
-                    incomplete.append(f"no detail call for the item of call {positions[0]}")
-                elif len(replies) != expected:
-                    incomplete.append(f"the replies of the item of call {positions[0]} differ")
-            messages = [root, *(m for m in replies if m["ts"] != root_ts)]
-            times = [parse_timestamp(m["ts"], "unix") for m in messages]
-            records.append(
-                ParsedRecord(
-                    record=RecordIn(
-                        kind="thread",
-                        external_id=f"{window.stream}/{root_ts}",
-                        occurred_at=max(times),
-                        payload={
-                            "channel": window.stream,
-                            "messages": [
-                                {
-                                    "id": m["ts"],
-                                    "author": m["user_name"] if names else m["user"],
-                                    "sent_at": _iso(when),
-                                    "text": m["text"],
-                                }
-                                for m, when in zip(messages, times, strict=True)
-                            ],
-                        },
-                        external_url=url.format(stream=window.stream, id=root_ts),
-                    ),
-                    responses=tuple(sorted(set(positions))),
-                )
-            )
-        return ParsedWindow(
-            records=tuple(records), complete=not incomplete, incomplete=tuple(incomplete)
+        root_ts = item.key
+        fetched: list[dict[str, Any]] = list(item.detail_items)
+        root = item.listed.value if item.listed else next(m for m in fetched if m["ts"] == root_ts)
+        replies = [m for m in fetched if m["ts"] != root_ts]
+        messages = [root, *replies]
+        times = [parse_timestamp(m["ts"], "unix") for m in messages]
+        record = RecordIn(
+            kind="thread",
+            external_id=f"{window.stream}/{root_ts}",
+            occurred_at=max(times),
+            payload={
+                "channel": window.stream,
+                "messages": [
+                    {
+                        "id": m["ts"],
+                        "author": m["user_name"] if names else m["user"],
+                        "sent_at": _iso(when),
+                        "text": m["text"],
+                    }
+                    for m, when in zip(messages, times, strict=True)
+                ],
+            },
+            external_url=url.format(stream=window.stream, id=root_ts),
         )
+        expected = item.listed.reply_count if item.listed else None
+        if count_root and expected and item.details and len(fetched) != expected:
+            return IncompleteItem("its replies differ from its reply count", record)
+        return record
 
-    return parse
+    return item_parser(parse)

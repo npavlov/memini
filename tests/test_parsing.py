@@ -10,6 +10,7 @@ import pytest
 from hearth_helpers import WINDOW_1, hearth_recipe
 from memini.ingest import RecordIn
 from memini.recipes import (
+    MissingCall,
     ParsedRecord,
     ParsedWindow,
     ParserError,
@@ -25,17 +26,26 @@ from memini.recipes import (
 )
 
 AT = datetime(2026, 3, 2, 9, tzinfo=UTC)
+FIRST_CALL = {
+    "channel": "C0042",
+    "oldest": int(WINDOW_1.start.timestamp()),
+    "latest": int(WINDOW_1.end.timestamp()),
+    "limit": 100,
+}
+"""The hearth recipe's first list call for channel C0042 and WINDOW_1."""
+EMPTY = '{"messages": [], "has_more": false}'
 
 
 def response(position: int = 1, **result: Any) -> RawResponse:
+    """The first list call of the window; by default an empty listing, its only page."""
     return RawResponse(
         position=position,
         call="list",
         tool="channel_history",
-        arguments={"channel": "C0042"},
+        arguments=FIRST_CALL,
         page=0,
         item_id=None,
-        result=result or {"content": [{"type": "text", "text": '{"messages": []}'}]},
+        result=result or {"content": [{"type": "text", "text": EMPTY}]},
     )
 
 
@@ -101,6 +111,32 @@ def test_a_failed_call_leaves_the_window_incomplete() -> None:
 
     assert not parsed.complete
     assert parsed.incomplete == ("call 2 (channel_history) failed",)
+    assert parsed.missing == (
+        MissingCall(
+            call="list",
+            tool="channel_history",
+            arguments=FIRST_CALL,
+            page=0,
+            item_id=None,
+            check="failed",
+            reason="call 2 (channel_history) failed",
+            repeat=True,
+        ),
+    )
+
+
+def test_the_recipe_s_checks_apply_to_every_parser() -> None:
+    """A parser that says its window is complete does not make it so: this listing names a next
+    page that is not in the window."""
+    more = '{"messages": [], "has_more": true, "next_cursor": "cur-2"}'
+
+    parsed = parse_window(returning(), window(response(content=[{"type": "text", "text": more}])))
+
+    assert not parsed.complete
+    assert parsed.incomplete == ("the cursor of call 1 (the listing) was not followed",)
+    assert [(c.check, c.arguments, c.page, c.repeat) for c in parsed.missing] == [
+        ("page", {**FIRST_CALL, "cursor": "cur-2"}, 1, False)
+    ]
 
 
 @pytest.mark.parametrize(

@@ -28,6 +28,7 @@ from memini.ingest import (
     prepare_batch,
 )
 from memini.jobs import source_lock_key
+from memini.recipes.calls import MissingCall
 from memini.recipes.model import Recipe
 from memini.recipes.parsing import (
     ParsedRecord,
@@ -49,6 +50,8 @@ from memini.sources import SourceBusyError
 from memini.workspaces import NotFoundError, get_writable_workspace
 
 __all__ = [
+    "INCOMPLETE_DETAIL",
+    "MAX_REPORTED_MISSING",
     "RUN_KIND",
     "ReplayError",
     "ReplayResult",
@@ -63,6 +66,13 @@ log = logging.getLogger(__name__)
 
 RUN_KIND: Final = "replay"
 """The kind of the run a replay records."""
+
+INCOMPLETE_DETAIL: Final = "incomplete_windows"
+"""The name, in a run report's ``details``, of the windows the run left incomplete: for each, its
+bounds, why, and the calls that would complete it."""
+
+MAX_REPORTED_MISSING: Final = 50
+"""Missing calls a run report lists per window; the rest are counted."""
 
 
 class ReplayError(Exception):
@@ -93,6 +103,9 @@ class WindowIngest:
     checkpoint_moved: bool = False
     attribution_changed: int = 0
     """Responses whose recorded records changed with this parse."""
+    missing: tuple[MissingCall, ...] = ()
+    """The calls that would complete the window (:class:`~memini.recipes.calls.MissingCall`):
+    the executors make them next, or hand them out; empty when it is complete."""
 
 
 # --- One window ----------------------------------------------------------------------------------
@@ -203,7 +216,34 @@ def _tally(
         reconciled=sum(r.reconciled for r in results),
         checkpoint_moved=any(r.checkpoint_moved for r in results),
         attribution_changed=changed,
+        missing=parsed.missing,
     )
+
+
+def _report_incomplete(window: RawWindow, done: WindowIngest) -> None:
+    """Add an incomplete window to the current run's report: ``details.incomplete_windows``
+    gets its bounds, the reasons and the calls that would complete it (the first
+    :data:`MAX_REPORTED_MISSING`), and ``windows_incomplete`` and ``missing_calls`` count."""
+    run = current_run()
+    if run is None or done.complete:
+        return
+    run.count("windows_incomplete")
+    run.count("missing_calls", len(done.missing))
+    entry: dict[str, Any] = {
+        "window_id": str(window.id),
+        "stream": window.stream,
+        "kind": window.kind,
+        "from": window.start.isoformat(),
+        "to": window.end.isoformat(),
+        "incomplete": list(done.incomplete),
+        "missing_calls": [call.to_json() for call in done.missing[:MAX_REPORTED_MISSING]],
+    }
+    if len(done.missing) > MAX_REPORTED_MISSING:
+        entry["missing_calls_omitted"] = len(done.missing) - MAX_REPORTED_MISSING
+    details = run.report().get("details", {})
+    listed = details.get(INCOMPLETE_DETAIL)
+    earlier = cast(list[Any], listed) if isinstance(listed, list) else []
+    run.detail(INCOMPLETE_DETAIL, [*earlier, entry])
 
 
 async def ingest_window(
@@ -224,7 +264,10 @@ async def ingest_window(
     attribution is recorded (:func:`~memini.responses.record_parse`), then every record goes to
     ingest in batches of at most ``limits.max_records``, the last one claiming the window:
     complete when every check passed, a snapshot when the recipe's ``stream.snapshot`` says so.
-    ``conn`` is idle: each step commits its own transaction.
+    An incomplete window stores what it got and leaves the checkpoint where it was; the result
+    names the calls that would complete it (``missing``), and the current run's report lists
+    them (``details.incomplete_windows``). ``conn`` is idle: each step commits its own
+    transaction.
 
     Raises:
         WindowNotFoundError: no such window.
@@ -251,7 +294,9 @@ async def ingest_window(
         indexer=indexer,
         gap_as_incomplete=False,
     )
-    return _tally(window, parsed, complete, len(records), results, changed)
+    done = _tally(window, parsed, complete, len(records), results, changed)
+    _report_incomplete(window, done)
+    return done
 
 
 # --- Replay --------------------------------------------------------------------------------------
@@ -560,6 +605,7 @@ async def _replay(
             gap_as_incomplete=True,
         )
         done = _tally(window, parsed, complete, len(records), results, changed)
+        _report_incomplete(window, done)
         add("windows", 1)
         add("windows_complete", int(complete))
         add("responses", len(responses))
