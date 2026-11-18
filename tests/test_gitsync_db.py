@@ -1209,7 +1209,14 @@ async def test_a_readme_section_is_found_by_search_as_a_document(env: Env) -> No
     question = "How many infusions does oolong take in the gaiwan?"
     documents = SearchFilters(kinds=("document",))
 
-    hits = await search(env.db, env.embedder, access, SearchQuery(text=question, filters=documents))
+    # Lexical: the FakeEmbedder's vectors carry no meaning, and hybrid fusion weights the dense
+    # ranks (k = 1, weight 3), so a hybrid top hit here would be decided by noise.
+    hits = await search(
+        env.db,
+        env.embedder,
+        access,
+        SearchQuery(text=question, mode="lexical", filters=documents),
+    )
 
     top = hits[0]
     assert (top.record_kind, top.source_kind, top.chunk_kind) == ("document", "git", "group")
