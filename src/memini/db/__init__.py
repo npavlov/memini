@@ -1,6 +1,6 @@
 """Database access: psycopg 3, async, plain SQL; numbered SQL migrations."""
 
-from memini.db.connection import Pool, connect, open_pool
+from memini.db.connection import Pool, connect, database_check, open_pool
 from memini.db.migrate import (
     Migration,
     MigrationError,
@@ -16,6 +16,7 @@ __all__ = [
     "Pool",
     "check_sequence",
     "connect",
+    "database_check",
     "load_migrations",
     "migrate",
     "open_pool",

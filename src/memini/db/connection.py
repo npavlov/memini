@@ -4,7 +4,7 @@ Memini talks to Postgres through psycopg 3, asynchronously, in plain SQL. A URL 
 connection string, usually `postgresql://user:password@host:port/dbname`.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from pgvector.psycopg import register_vector_async
@@ -59,3 +59,17 @@ async def open_pool(
         yield pool
     finally:
         await pool.close()
+
+
+def database_check(pool: Pool) -> Callable[[], Awaitable[None]]:
+    """A readiness check for the HTTP API: borrow a pooled connection and run ``SELECT 1``.
+
+    Returns when the database answers and raises when it does not. The caller bounds the time;
+    the API's readiness route runs each check under its own timeout.
+    """
+
+    async def check() -> None:
+        async with pool.connection() as conn:
+            await conn.execute("SELECT 1")
+
+    return check

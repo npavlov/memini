@@ -19,6 +19,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`MEMINI_CONFIG_FILE`); secrets from the environment or a `*_FILE` path, never in logs or errors.
 - Database access with psycopg 3 (async, plain SQL) and forward-only SQL migrations with a concurrency-safe
   runner; the first migration creates the `vector` and `pg_trgm` extensions.
+- HTTP API skeleton (FastAPI): `/healthz`, `/readyz` (checks the database), `/version`, `/openapi.json`;
+  one error body for every error, without echoing request input; `X-Request-ID` on every response.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
