@@ -490,7 +490,10 @@ search and sync, so a local model is loaded once.
 - Secrets come from the environment or a secrets file, never from the database in clear text.
   The credentials of sources are stored encrypted, under a key from the environment (section 9).
 - Health and status endpoints, structured logs, run reports.
-- Backup is a database dump. Repository mirrors are re-cloned.
+- Backup is a database dump. Repository mirrors are re-cloned. The dump (`pg_dump`, custom format)
+  holds every table and index, the HNSW indexes and the journal's triggers included, and
+  credentials as ciphertext only; the credential key is backed up apart. `scripts/backup.sh` and
+  `scripts/restore.sh`; procedure in [operations/backup.md](operations/backup.md).
 
 **Request limits** (decided 2026-11-18). One middleware applies them to every HTTP request, the MCP
 endpoint included; every limit is a setting, and each error is in the API's error shape.

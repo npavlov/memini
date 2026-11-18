@@ -4,6 +4,10 @@ CLAUDE.local.md
 __pycache__/
 .DS_Store
 
+# Backups (scripts/backup.sh): they hold private data
+*.dump
+*.dump.partial
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

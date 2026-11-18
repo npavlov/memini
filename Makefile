@@ -35,6 +35,10 @@ test: ## Run unit tests (pytest); no database needed
 test-integration: ## Run integration tests against Postgres (make db, or MEMINI_TEST_DATABASE_URL)
 	$(UV_RUN) pytest -m integration
 
+.PHONY: backup-test
+backup-test: ## Dump a filled test database, restore it into an empty one and compare (Postgres as above)
+	$(UV_RUN) pytest -m integration tests/test_backup_db.py
+
 check: lint typecheck test ## Everything a pull request must pass
 
 .PHONY: config-docs
