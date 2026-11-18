@@ -113,7 +113,9 @@ Over MCP, and over HTTP with the same arguments as query parameters. All need a 
 | `read_source` | `GET /v1/workspaces/{ws}/sources/{src}/files/{path}` | A file or line range, or a directory listing |
 | `status` | | Stream lag, last runs, and whether the base is current |
 
-Every hit carries its source, a timestamp and, for code, a locator such as `shop@3f2a…:src/app.py#L12-L30`.
+Every hit carries its source, a timestamp and a locator: `shop@3f2a…:src/app.py#L12-L30` for code,
+`chat:general/1772323200.000100#msg-1772323260.000200` for a message, with a `link` to it and an
+`anchor` that `record_decision` takes as evidence.
 `read_source` reads the service's own mirror at the pinned commit by default, so it matches search
 results; `ref` takes a branch, a tag or a full commit id. Search needs an embedding provider
 (`MEMINI_EMBEDDING_*`); reading files does not. An `index_mismatch` error means the embedding model or
