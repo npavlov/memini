@@ -474,6 +474,58 @@ class Settings(BaseModel):
         " with K, M or G",
     )
 
+    # --- HTTP request limits (memini.api.limits, memini.db.limits) -------------------------------
+    # Limits of every HTTP and MCP request. The body: refused by its Content-Length before it is
+    # read, or as soon as more of it arrives (the ingest route has its own, ingest_max_body_size).
+    # The time of each database statement and of an idle transaction a request runs (search sets
+    # its own statement limit, search_timeout); 0 leaves the database's default. Rate limits: per
+    # token, a budget of reads and one of writes; per client address, one for requests whose token
+    # is not known to be valid. Each budget is a minute's worth of requests, refilled steadily.
+    http_max_body_size: _ByteSize = Field(
+        default=1024**2,
+        ge=1024,
+        le=1024**3,
+        description="the largest request body outside the ingest route, 1K to 1G: bytes, or a"
+        " number with K, M or G",
+    )
+    http_statement_timeout: float = Field(
+        default=30.0,
+        ge=0,
+        le=86400,
+        description="seconds one database statement of a request may run, 0 to 86400; 0: the"
+        " database's default",
+    )
+    http_idle_in_transaction_timeout: float = Field(
+        default=300.0,
+        ge=0,
+        le=86400,
+        description="seconds a request's transaction may stay idle, 0 to 86400; 0: the database's"
+        " default",
+    )
+    http_rate_limit: bool = Field(
+        default=True,
+        description="true or false: limit requests per token and per client address",
+    )
+    http_rate_limit_reads: int = Field(
+        default=600,
+        ge=1,
+        le=1_000_000,
+        description="reads (GET, and every MCP request) per minute per token, 1 to 1000000",
+    )
+    http_rate_limit_writes: int = Field(
+        default=120,
+        ge=1,
+        le=1_000_000,
+        description="writes (POST, PUT, PATCH, DELETE) per minute per token, 1 to 1000000",
+    )
+    http_rate_limit_unauthenticated: int = Field(
+        default=60,
+        ge=1,
+        le=1_000_000,
+        description="requests per minute per client address whose token is not known to be"
+        " valid, 1 to 1000000",
+    )
+
     # --- LLM providers (memini.llm). Rules across these fields: _llm_problems. -------------------
     # Two OpenAI-compatible chat APIs, declared by the slot they are set in: the local one may
     # read content of sources whose llm_policy is local or cloud, the cloud one only content of

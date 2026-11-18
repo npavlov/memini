@@ -45,6 +45,7 @@ from memini.api.decisions import build_decisions_router
 from memini.api.errors import ERROR_RESPONSES, install_error_handlers
 from memini.api.health import DEFAULT_READINESS_TIMEOUT, ReadinessCheck, build_health_router
 from memini.api.ingest import build_ingest_router
+from memini.api.limits import RequestLimitsMiddleware
 from memini.api.mcp import mcp_route
 from memini.api.query import build_query_router
 from memini.api.request_id import RequestIdMiddleware
@@ -166,6 +167,7 @@ def create_app(
         authenticator = pool_authenticator(pool)
     app.state.authenticator = authenticator
     install_error_handlers(app)
+    app.add_middleware(RequestLimitsMiddleware, settings=settings)
 
     app.include_router(build_health_router(readiness_checks or {}, readiness_timeout))
 

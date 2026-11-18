@@ -993,6 +993,13 @@ async def delete_source(
         row = await cur.fetchone()
         if row is None or not row[0]:
             raise SourceBusyError(f"a job of source {source.name} is running")
+        # The cascade to every record, chunk and symbol takes as long as the source is large, and
+        # the mirror is removed inside the transaction: neither is cut by a request's time limits
+        # (memini.db.limits). The database's own defaults still apply.
+        await conn.execute(
+            "SET LOCAL statement_timeout TO DEFAULT;"
+            " SET LOCAL idle_in_transaction_session_timeout TO DEFAULT"
+        )
         await conn.execute("DELETE FROM source WHERE id = %s", (source.id,))
         if source.kind == "git":
             try:

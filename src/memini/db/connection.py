@@ -12,6 +12,8 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 from psycopg_pool import AsyncConnectionPool
 
+from memini.db.limits import prepare_connection
+
 APPLICATION_NAME = "memini"
 """Shown in `pg_stat_activity`, so a lock holder or a slow query can be traced to the service."""
 
@@ -41,7 +43,9 @@ async def open_pool(
 
     Waits until `min_size` connections are open, so a wrong URL fails here and not on the first
     request. Every connection knows the pgvector types, so migrate the database first. A connection
-    is checked before it is handed out, so a database restart does not reach the caller as an error.
+    is checked before it is handed out, so a database restart does not reach the caller as an error;
+    the same round trip sets its time limits: a request's inside :func:`~memini.db.session_limits`,
+    the database's defaults outside it (:mod:`memini.db.limits`).
     """
     pool: Pool = AsyncConnectionPool(
         url,
@@ -50,7 +54,7 @@ async def open_pool(
         timeout=timeout,
         kwargs={"application_name": APPLICATION_NAME},
         configure=register_vector_async,
-        check=AsyncConnectionPool.check_connection,
+        check=prepare_connection,
         name=APPLICATION_NAME,
         open=False,
     )

@@ -23,7 +23,7 @@ from mcp_types import Tool as ToolDefinition
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from memini.auth import Principal, Scope
-from memini.db import Pool
+from memini.db import TIMEOUT_ERRORS, Pool
 from memini.query import QueryServices
 
 __all__ = ["NoArguments", "Tool", "ToolCall", "ToolDefinition", "ToolError"]
@@ -99,6 +99,14 @@ class Tool[ArgumentsT: BaseModel, ResultT: BaseModel]:
             result = await self.run(call, parsed)
         except ToolError as error:
             return _error_result(str(error))
+        except TIMEOUT_ERRORS as exc:
+            _log.warning(
+                "tool %s stopped by a database time limit (%s)", self.name, type(exc).__name__
+            )
+            return _error_result(
+                f"The {self.name} tool was stopped: a database statement ran past its time limit."
+                " Try again later, or ask for less."
+            )
         except Exception:
             _log.exception("tool %s failed", self.name)
             return _error_result(f"The {self.name} tool failed; the server log has the details.")

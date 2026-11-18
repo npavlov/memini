@@ -407,6 +407,31 @@ search and sync, so a local model is loaded once.
 - Health and status endpoints, structured logs, run reports.
 - Backup is a database dump. Repository mirrors are re-cloned.
 
+**Request limits** (decided 2026-11-18). One middleware applies them to every HTTP request, the MCP
+endpoint included; every limit is a setting, and each error is in the API's error shape.
+
+- Rate limits, counted in the service process (principle 12: no shared store; the budgets start full
+  again after a restart). A token has a budget of reads (`http_rate_limit_reads`, 600 a minute: `GET`
+  and every MCP request) and one of writes (`http_rate_limit_writes`, 120 a minute: every other
+  method), keyed by the token's id, over `/v1` and MCP alike. A request whose token is not known to be
+  valid yet (none, malformed, or not yet seen to authenticate) is counted against its client address
+  (`http_rate_limit_unauthenticated`, 60 a minute) before the token is looked up, so guessing tokens
+  is slow and costs no database work once that budget is spent. Each budget is a token bucket that
+  holds a minute's worth and refills steadily. Over budget: 429 `rate_limited` with `Retry-After` in
+  seconds. The public routes are not counted. Buckets that have refilled are forgotten and at most
+  10,000 are kept per budget, so memory stays bounded. `http_rate_limit = false` turns them off.
+- Body size: at most `http_max_body_size` (1 MiB) on every route but the batch route, which keeps
+  `ingest_max_body_size` (16 MiB). A body over it is refused by its `Content-Length` before it is
+  read, or as soon as more of it arrives: 413 `content_too_large`.
+- Query time: every database statement a request runs, on whichever path and in whichever task (an
+  MCP tool, the token lookup), stops after `http_statement_timeout` (30 s), and a transaction it
+  leaves idle ends the session after `http_idle_in_transaction_timeout` (5 min); 0 leaves the
+  database's default. The pool sets them on a connection each time it lends it out (one round trip
+  with its liveness check): a request's limits inside a request, the database's defaults outside, so
+  jobs, the scheduler and the CLI are not cut. Past either limit: 503 `query_timeout`, or a tool error
+  over MCP. Search keeps its own, `search_timeout` (5 s, 422 `search_timeout`, the query's to
+  narrow); deleting a source is exempt, since its cascade grows with the source.
+
 ## 8. Growing to several users
 
 v1 has one user. The design keeps the door open without building the feature:

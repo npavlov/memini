@@ -12,10 +12,13 @@ an unhandled exception::
 - ``details`` lists the fields that failed validation, by location and error type only. It is empty
   for other errors. Request input values are never echoed: a body can hold private text or a token.
 
-A 500 never says more than "internal error"; the exception goes to the server log.
+A 500 never says more than "internal error"; the exception goes to the server log. A database
+statement or transaction of the request stopped by its time limit (:mod:`memini.db.limits`) answers
+503 ``query_timeout``; search reports its own limit as 422 ``search_timeout`` before it gets here.
 """
 
 import http.client
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any, Final, cast
 
@@ -27,6 +30,7 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
 from memini.api.request_id import current_request_id, new_request_id
+from memini.db import TIMEOUT_ERRORS
 
 __all__ = [
     "ERROR_RESPONSES",
@@ -111,6 +115,9 @@ _CODES: Final[Mapping[int, str]] = {
 
 _VALIDATION_ERROR: Final = "validation_error"
 _INTERNAL_ERROR: Final = "internal_error"
+_QUERY_TIMEOUT: Final = "query_timeout"
+
+_log = logging.getLogger(__name__)
 
 
 def _code_for(status_code: int) -> str:
@@ -174,6 +181,19 @@ async def _handle_validation_error(request: Request, exc: Exception) -> Response
     return error_response(422, _VALIDATION_ERROR, "The request is not valid.", details=details)
 
 
+async def _handle_database_timeout(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, TIMEOUT_ERRORS):  # registered for these only
+        raise exc
+    # The type only: the request's path and query can hold private text.
+    _log.warning("request stopped by a database time limit (%s)", type(exc).__name__)
+    return error_response(
+        503,
+        _QUERY_TIMEOUT,
+        "A database statement of the request ran past its time limit and was stopped; try again"
+        " later, or ask for less.",
+    )
+
+
 async def _handle_unexpected(request: Request, exc: Exception) -> Response:
     # Starlette re-raises the exception after this response is sent, so the server logs it.
     return error_response(500, _INTERNAL_ERROR, "Internal server error.")
@@ -183,4 +203,6 @@ def install_error_handlers(app: FastAPI) -> None:
     """Make every error ``app`` returns use the error shape."""
     app.add_exception_handler(HTTPException, _handle_http_exception)
     app.add_exception_handler(RequestValidationError, _handle_validation_error)
+    for timeout in TIMEOUT_ERRORS:
+        app.add_exception_handler(timeout, _handle_database_timeout)
     app.add_exception_handler(Exception, _handle_unexpected)
