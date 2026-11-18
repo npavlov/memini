@@ -110,4 +110,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
 
+### Security
+
+- A secret scan before each commit (`make hooks`) and over the whole history in CI (gitleaks, pinned and
+  checksum-verified); fixture directories must carry a `SYNTHETIC.md` marker.
+
 [Unreleased]: https://github.com/npavlov/memini/commits/main
