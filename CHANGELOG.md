@@ -128,6 +128,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   skill and a capture hook (`integrations/claude-code`); the agent sees a receipt, not the payload.
 - Service executor (`mcp_sync`): MCP recipes run headlessly over streamable HTTP or stdio, with an egress
   allowlist, internal-address refusal, a rate budget and retries; mcp source admin in the API and CLI.
+- Decision extraction: with an LLM provider configured, new or changed threads and meetings get an
+  `extract` job (record text isolated as data, items need a valid anchor, supersession checked against
+  similar active items); `memini eval decisions --extractor llm` measures a model.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
