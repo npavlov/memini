@@ -47,6 +47,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no embedding call and no row change; `memini reindex --workspace NAME` rebuilds from raw.
 - Source administration over HTTP: create workspaces, add, edit and delete git sources with tracked refs
   and a schedule, list streams, trigger a sync, list runs and read run reports.
+- Incremental git sync: a pinned commit per tracked ref, only changed files read and embedded, deleted
+  and skipped files tombstoned, the pin advanced only when the run succeeds; `memini reindex` reads code
+  from the mirrors.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main
