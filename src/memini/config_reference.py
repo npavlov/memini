@@ -277,6 +277,13 @@ COMPOSE_SERVICE_SETTINGS: Final = (
     "embedding_document_prefix",
     "embedding_batch_size",
     "embedding_timeout",
+    "http_max_body_size",
+    "http_statement_timeout",
+    "http_idle_in_transaction_timeout",
+    "http_rate_limit",
+    "http_rate_limit_reads",
+    "http_rate_limit_writes",
+    "http_rate_limit_unauthenticated",
 )
 """The settings compose.yaml passes from its environment, or ``.env``, into the service's
 container. A test reads compose.yaml."""
