@@ -1,0 +1,102 @@
+{
+  "stream": "tidewater",
+  "window": {"from": "2026-10-05T00:00:00Z", "to": "2026-10-26T00:00:00Z", "complete": true},
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1791277200.000100",
+      "occurred_at": "2026-10-06T09:20:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791277200000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1791277200.000100",
+            "author": "U05PRIYA",
+            "sent_at": "2026-10-06T09:00:00Z",
+            "text": "For the Hollin Mere pilot: when a skipper requests a berth, Tidewater holds it for 30 minutes, and without a confirmation it goes back to the pool. OK with everyone?",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791277200000100"
+          },
+          {
+            "id": "1791277920.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-10-06T09:12:00Z",
+            "text": "Works for me, it is one setting.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791277920000100"
+          },
+          {
+            "id": "1791278400.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-10-06T09:20:00Z",
+            "text": "Yes, 30 minutes it is.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791278400000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1791889200.000100",
+      "occurred_at": "2026-10-13T11:22:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791889200000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1791889200.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-10-13T11:00:00Z",
+            "text": "The planner reads the berth table on every plan request. Let's put a Redis cache in front of it.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791889200000100"
+          },
+          {
+            "id": "1791889740.000100",
+            "author": "U05PRIYA",
+            "sent_at": "2026-10-13T11:09:00Z",
+            "text": "Do we need a cache at all? Hollin Mere has 40 berths.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791889740000100"
+          },
+          {
+            "id": "1791890100.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-10-13T11:15:00Z",
+            "text": "Fair point, that is 40 rows. No cache then: the planner reads the table directly.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791890100000100"
+          },
+          {
+            "id": "1791890520.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-10-13T11:22:00Z",
+            "text": "Agreed, no cache.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1791890520000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0TIDEWATR/1792166400.000100",
+      "occurred_at": "2026-10-16T16:06:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1792166400000100",
+      "payload": {
+        "channel": "tidewater",
+        "messages": [
+          {
+            "id": "1792166400.000100",
+            "author": "U08HALLIE",
+            "sent_at": "2026-10-16T16:00:00Z",
+            "text": "Heads-up for support: from Monday 19 October a berth request holds the berth for two hours, not 30 minutes.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1792166400000100"
+          },
+          {
+            "id": "1792166760.000100",
+            "author": "U05PRIYA",
+            "sent_at": "2026-10-16T16:06:00Z",
+            "text": "Thanks, Hallie.",
+            "url": "https://chat.saltreed.example.test/archives/C0TIDEWATR/p1792166760000100"
+          }
+        ]
+      }
+    }
+  ]
+}

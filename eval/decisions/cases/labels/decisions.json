@@ -1,0 +1,344 @@
+{
+  "labels": true,
+  "about": "LABELS, not data: the hard cases of the decision eval (docs/requirements.md, section 10), in the format of eval/comms/labels/decisions.json, over the threads and meetings of eval/decisions/cases/batches. Written by hand, like the records. Participants and people are keys of eval/comms/people.json: the same invented company and cast, a month later, in a workspace of its own.",
+  "version": 1,
+  "workspace": "harbor-cases",
+  "cast": "../../comms/people.json",
+  "items": [
+    {
+      "id": "d-hold-30",
+      "kind": "decision",
+      "statement": "During the Hollin Mere pilot, Tidewater holds a requested berth for 30 minutes; without a confirmation it returns to the pool.",
+      "decided_at": "2026-10-06T09:20:00Z",
+      "language": "en",
+      "participants": ["priya", "tobias", "mira"],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0TIDEWATR/1791277200.000100",
+          "anchor": "1791278400.000100"
+        },
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0TIDEWATR/1791277200.000100",
+          "anchor": "1791277200.000100"
+        }
+      ],
+      "status": "superseded"
+    },
+    {
+      "id": "q-firmware-3x",
+      "kind": "open_question",
+      "statement": "Must Beacon 2.4 support RX-40 receivers on firmware 3.x?",
+      "decided_at": "2026-10-07T10:30:00Z",
+      "language": "ru",
+      "participants": ["gleb", "lev"],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0BEACON01/1791369000.000100",
+          "anchor": "1791369000.000100"
+        },
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0BEACON01/1791369000.000100",
+          "anchor": "1791369660.000100"
+        }
+      ],
+      "status": "closed"
+    },
+    {
+      "id": "d-tag-rc4",
+      "kind": "decision",
+      "statement": "Beacon 2.3.0 is tagged from rc4 on Friday 9 October 2026.",
+      "decided_at": "2026-10-08T14:10:00Z",
+      "language": "en",
+      "participants": ["lev", "mira", "gleb"],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0BEACON01/1791468120.000100",
+          "anchor": "1791468600.000100"
+        },
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0BEACON01/1791468120.000100",
+          "anchor": "1791468120.000100"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "d-logs-90",
+      "kind": "decision",
+      "statement": "The test stand keeps its logs for 90 days.",
+      "decided_at": "2026-10-09T11:03:15Z",
+      "language": "ru",
+      "participants": ["gleb", "oksana", "lev"],
+      "evidence": [
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1009-stand-review",
+          "anchor": "s04"
+        },
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1009-stand-review",
+          "anchor": "s03"
+        },
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1009-stand-review",
+          "anchor": "summary"
+        }
+      ],
+      "status": "superseded"
+    },
+    {
+      "id": "d-no-cache",
+      "kind": "decision",
+      "statement": "Tidewater's planner reads the berth table directly, without a cache.",
+      "decided_at": "2026-10-13T11:22:00Z",
+      "language": "en",
+      "participants": ["tobias", "priya", "mira"],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0TIDEWATR/1791889200.000100",
+          "anchor": "1791890520.000100"
+        },
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0TIDEWATR/1791889200.000100",
+          "anchor": "1791890100.000100"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "d-hold-2h",
+      "kind": "decision",
+      "statement": "From Monday 19 October 2026, Tidewater holds a requested berth for two hours.",
+      "decided_at": "2026-10-15T15:03:05Z",
+      "language": "en",
+      "participants": ["priya", "hallie", "ines", "mira"],
+      "evidence": [
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1015-pilot-week-2",
+          "anchor": "s04"
+        },
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1015-pilot-week-2",
+          "anchor": "s03"
+        },
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1015-pilot-week-2",
+          "anchor": "summary"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "d-on-call-weekly",
+      "kind": "decision",
+      "statement": "From November 2026, Tidewater and Beacon share a weekly on-call rota with the handover on Mondays.",
+      "decided_at": "2026-10-16T13:00:55Z",
+      "language": "en",
+      "participants": ["mira", "lev"],
+      "evidence": [
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1016-on-call-planning",
+          "anchor": "s02"
+        },
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1016-on-call-planning",
+          "anchor": "summary"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "q-on-call-allowance",
+      "kind": "open_question",
+      "statement": "Is there an on-call allowance for the people on the rota?",
+      "decided_at": "2026-10-16T13:02:20Z",
+      "language": "en",
+      "participants": ["tobias", "mira"],
+      "evidence": [
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1016-on-call-planning",
+          "anchor": "s04"
+        },
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1016-on-call-planning",
+          "anchor": "summary"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "d-no-firmware-3x",
+      "kind": "decision",
+      "statement": "Beacon 2.4 does not support RX-40 receivers on firmware 3.x, which Fogbell stops supporting in December.",
+      "decided_at": "2026-10-20T10:02:15Z",
+      "language": "ru",
+      "participants": ["mira", "lev", "gleb"],
+      "evidence": [
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1020-beacon-2-4-planning",
+          "anchor": "s04"
+        },
+        {
+          "source": "meetings",
+          "record_kind": "meeting",
+          "external_id": "notes-1020-beacon-2-4-planning",
+          "anchor": "summary"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "d-logs-30",
+      "kind": "decision",
+      "statement": "The test stand keeps its logs for 30 days.",
+      "decided_at": "2026-10-22T13:15:00Z",
+      "language": "ru",
+      "participants": ["gleb", "oksana", "mira"],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0BEACON01/1792674000.000100",
+          "anchor": "1792674900.000100"
+        },
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "C0BEACON01/1792674000.000100",
+          "anchor": "1792674000.000100"
+        }
+      ],
+      "status": "active"
+    }
+  ],
+  "links": [
+    {"from": "d-hold-2h", "to": "d-hold-30", "relation": "replaces"},
+    {"from": "d-no-firmware-3x", "to": "q-firmware-3x", "relation": "answers"},
+    {"from": "d-logs-30", "to": "d-logs-90", "relation": "replaces"}
+  ],
+  "restatements": [
+    {
+      "item": "d-hold-2h",
+      "record": {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1792166400.000100"},
+      "anchors": ["1792166400.000100"]
+    },
+    {
+      "item": "d-on-call-weekly",
+      "record": {"source": "chat", "record_kind": "thread", "external_id": "C0GENERAL1/1792573200.000100"},
+      "anchors": ["1792573200.000100"]
+    }
+  ],
+  "traps": [
+    {
+      "id": "t-redis-cache",
+      "kind": "decision",
+      "statement": "Tidewater's planner puts a Redis cache in front of the berth table.",
+      "record": {"source": "chat", "record_kind": "thread", "external_id": "C0TIDEWATR/1791889200.000100"},
+      "anchors": ["1791889200.000100"],
+      "why": "Proposed with \"let's\" in the first message and dropped in the same thread: d-no-cache is what was decided. An extracted item with this statement is a false positive."
+    }
+  ],
+  "corrections": [],
+  "no_items": [
+    {
+      "source": "mail",
+      "record_kind": "thread",
+      "external_id": "20261012162000.tobias@saltreed.example.test",
+      "why": "a hedged proposal: nobody decides, and it says so"
+    },
+    {
+      "source": "chat",
+      "record_kind": "thread",
+      "external_id": "C0GENERAL1/1791970200.000100",
+      "why": "a hedged proposal, in Russian, left for the retro"
+    },
+    {
+      "source": "chat",
+      "record_kind": "thread",
+      "external_id": "D0MIRATOB1/1792051800.000100",
+      "why": "a question answered at once"
+    },
+    {
+      "source": "chat",
+      "record_kind": "thread",
+      "external_id": "C0GENERAL1/1792411200.000100",
+      "why": "chatter: a question answered at once, in Russian"
+    }
+  ],
+  "cases": {
+    "implicit_reversal": {
+      "replaced": "d-hold-30",
+      "by": "d-hold-2h",
+      "expect": "The pilot check-in of 15 October sets two hours without naming the 30 minutes of #tidewater (6 October): d-hold-2h replaces d-hold-30."
+    },
+    "implicit_reversal_ru": {
+      "replaced": "d-logs-90",
+      "by": "d-logs-30",
+      "expect": "#beacon (22 October) sets 30 days without naming the 90 days of the stand review (9 October): d-logs-30 replaces d-logs-90."
+    },
+    "decision_as_a_question": {
+      "items": ["d-tag-rc4", "d-logs-90"],
+      "expect": "Proposed as a question and confirmed ('Right.', 'Да, договорились'): a decision, said when it was confirmed."
+    },
+    "answered_question_ru": {
+      "question": "q-firmware-3x",
+      "answer": "d-no-firmware-3x",
+      "expect": "Asked in #beacon on 7 October, answered in the Beacon 2.4 planning on 20 October: the question becomes closed."
+    },
+    "proposal_dropped": {
+      "trap": "t-redis-cache",
+      "item": "d-no-cache",
+      "expect": "The first proposal of the thread is dropped; only the last one is decided."
+    },
+    "hedged_proposals": {
+      "records": ["mail 20261012162000.tobias@saltreed.example.test", "chat C0GENERAL1/1791970200.000100"],
+      "expect": "'Maybe we should', 'Может, попробуем': no decision."
+    },
+    "cross_language_duplicate": {
+      "item": "d-on-call-weekly",
+      "expect": "Lev restates the English decision in Russian in #general: a duplicate."
+    },
+    "restatement_naming_the_old_value": {
+      "item": "d-hold-2h",
+      "expect": "Hallie's heads-up names both two hours and 30 minutes: a duplicate of d-hold-2h, not another replacement of d-hold-30."
+    },
+    "open_question": {"items": ["q-on-call-allowance"], "expect": "Asked and never answered: it stays active."}
+  }
+}

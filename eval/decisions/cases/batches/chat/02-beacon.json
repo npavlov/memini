@@ -1,0 +1,96 @@
+{
+  "stream": "beacon",
+  "window": {"from": "2026-10-05T00:00:00Z", "to": "2026-10-26T00:00:00Z", "complete": true},
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1791369000.000100",
+      "occurred_at": "2026-10-07T10:41:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1791369000000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1791369000.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-10-07T10:30:00Z",
+            "text": "Вопрос к 2.4: нужно ли поддерживать приёмники на прошивке 3.x? На станциях 7 и 9 её ещё не обновили.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1791369000000100"
+          },
+          {
+            "id": "1791369660.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-10-07T10:41:00Z",
+            "text": "Не знаю. Спрошу у Fogbell, сколько ещё они будут поддерживать 3.x.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1791369660000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1791468120.000100",
+      "occurred_at": "2026-10-08T14:11:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1791468120000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1791468120.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-10-08T14:02:00Z",
+            "mentions": ["U01MIRA"],
+            "text": "rc4 has run on the stand for three days without an error. So we tag 2.3.0 from rc4 on Friday, right, @Mira?",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1791468120000100"
+          },
+          {
+            "id": "1791468600.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-10-08T14:10:00Z",
+            "text": "Right.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1791468600000100"
+          },
+          {
+            "id": "1791468660.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-10-08T14:11:00Z",
+            "text": "+1",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1791468660000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0BEACON01/1792674000.000100",
+      "occurred_at": "2026-10-22T13:15:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1792674000000100",
+      "payload": {
+        "channel": "beacon",
+        "messages": [
+          {
+            "id": "1792674000.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-10-22T13:00:00Z",
+            "text": "Диск стенда заполнен на 95%. Предлагаю хранить логи 30 дней: ошибки мы всё равно разбираем в первую неделю.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1792674000000100"
+          },
+          {
+            "id": "1792674480.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-10-22T13:08:00Z",
+            "text": "Мне 30 дней хватит.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1792674480000100"
+          },
+          {
+            "id": "1792674900.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-10-22T13:15:00Z",
+            "text": "Хорошо, ставим 30 дней.",
+            "url": "https://chat.saltreed.example.test/archives/C0BEACON01/p1792674900000100"
+          }
+        ]
+      }
+    }
+  ]
+}

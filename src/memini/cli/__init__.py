@@ -47,6 +47,8 @@ below the API::
     memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--margin M] [--k 1,5,10]
                 [--modes MODE,...] [--fake-embeddings] [--lexical NAME] [--reranker NAME]
                 [--json PATH] [--keep]
+    memini eval decisions [--set DIR ...] [--extractor NAME] [--baseline PATH [--write-baseline]]
+                          [--margin M] [--json PATH]
     memini credentials set --workspace <name> --source <name> --kind {api_key,oauth}  < secret
     memini credentials list [--workspace <name>]
     memini credentials delete --workspace <name> --source <name>
@@ -75,6 +77,10 @@ build and ingests the records, without calling the source (:mod:`memini.cli.repl
 the suite's fixture repositories into a scratch database it creates on the configured server and
 drops afterwards, prints recall@k and MRR per mode, kind and language, and compares them with a
 baseline report. It never reads or writes the configured database itself; the role needs CREATEDB.
+``eval decisions`` runs the decision eval (:mod:`memini.cli.evaluate_decisions`,
+:mod:`memini.evaluation.decisions`) on the labelled synthetic threads and meetings: extraction
+precision and recall and supersession accuracy, compared with a baseline. Its stub extractors read
+files only.
 
 ``credentials`` stores the API keys and OAuth tokens of sources, encrypted with
 ``MEMINI_CREDENTIAL_KEY``, and re-encrypts them under a new key (:mod:`memini.cli.credentials`).
@@ -97,15 +103,17 @@ Exit codes:
   succeed, a migration that failed or is pending, a server that did not start; for ``reindex`` also
   a rebuild that is running already, raw content that cannot be read, an embedding model that
   failed, or an index built with another fingerprint; for ``eval`` a search that failed, or an
-  expected result of the suite not in the index; for ``replay`` a job of the source that is
-  running, a parser that failed or a window fetched from another server.
+  expected result of the suite not in the index; for ``eval decisions`` an extractor or a
+  classifier that failed; for ``replay`` a job of the source that is running, a parser that failed
+  or a window fetched from another server.
 - 2: wrong usage or invalid configuration: arguments, the service's settings, the service URL, no
   token or a malformed one; also no embedding provider for ``reindex`` and ``eval`` (without
-  ``--fake-embeddings``), a suite or baseline file of ``eval`` that is not valid, and for
-  ``replay`` a recipe file that is not valid or a parser this build lacks.
+  ``--fake-embeddings``), a suite, set or baseline file of ``eval`` and ``eval decisions`` that is
+  not valid, and for ``replay`` a recipe file that is not valid or a parser this build lacks.
 - 3: unreachable: the service (client commands) did not answer, or answered that it is unavailable;
   the database (operator commands) cannot be reached.
-- 4: ``eval`` only: a tracked metric fell below the baseline by more than the margin.
+- 4: ``eval`` and ``eval decisions`` only: a tracked metric fell below the baseline by more than the
+  margin.
 - 5: client commands: the service refused the token: unknown, revoked or expired (401), or without
   the scope or the workspace the command needs (403).
 - 130: interrupted by Ctrl-C.
@@ -128,6 +136,7 @@ from memini.cli import (
     credentials,
     decisions,
     evaluate,
+    evaluate_decisions,
     forget,
     index,
     persons,
@@ -515,6 +524,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="keep the scratch database and the temporary repositories, for inspection",
     )
     evaluation.set_defaults(command=evaluate.eval_command)
+    evals = evaluation.add_subparsers(
+        title="other evals", metavar="<eval>", dest="eval", required=False
+    )
+    evaluate_decisions.configure_parser(
+        commands.add_operator_subcommand(
+            evals.add_parser,
+            "eval",
+            "decisions",
+            help=evaluate_decisions.HELP,
+            description=evaluate_decisions.DESCRIPTION,
+        )
+    )
     credentials.configure_parser(
         commands.add_parser(
             "credentials", help=credentials.HELP, description=credentials.DESCRIPTION

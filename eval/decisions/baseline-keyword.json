@@ -1,0 +1,880 @@
+{
+  "format": 1,
+  "kind": "decisions",
+  "setup": {
+    "sets": [
+      {
+        "name": "comms",
+        "workspace": "harbor",
+        "digest": "19b3f098ed284fbe133052363cd2126cd30fb2270e5879af0ecd7bab92cd83a2",
+        "records": 26,
+        "items": 8,
+        "links": 2,
+        "restatements": 4,
+        "traps": 1,
+        "no_items": 15
+      },
+      {
+        "name": "cases",
+        "workspace": "harbor-cases",
+        "digest": "ad5b9f78b72c1b70155850c5fda678e80f9ce79f2d7df570b827e1335f640ce2",
+        "records": 15,
+        "items": 10,
+        "links": 3,
+        "restatements": 2,
+        "traps": 1,
+        "no_items": 4
+      }
+    ],
+    "extractor": "stub-keyword/1",
+    "variant": "keyword",
+    "matching": {
+      "similarity": "dice-terms/1",
+      "threshold": 0.5
+    }
+  },
+  "metrics": {
+    "precision": 0.64,
+    "recall": 0.8889,
+    "supersession_accuracy": 0.5417
+  },
+  "extraction": {
+    "groups": {
+      "all": {
+        "items": 18,
+        "found": 16,
+        "proposed": 34,
+        "false": 9,
+        "traps": 2,
+        "duplicates": 7,
+        "restatements": 2,
+        "precision": 0.64,
+        "recall": 0.8889
+      },
+      "kind:decision": {
+        "items": 13,
+        "found": 11,
+        "proposed": 26,
+        "false": 7,
+        "traps": 2,
+        "duplicates": 6,
+        "restatements": 2,
+        "precision": 0.6111,
+        "recall": 0.8462
+      },
+      "kind:open_question": {
+        "items": 5,
+        "found": 5,
+        "proposed": 8,
+        "false": 2,
+        "traps": 0,
+        "duplicates": 1,
+        "restatements": 0,
+        "precision": 0.7143,
+        "recall": 1.0
+      },
+      "language:en": {
+        "items": 13,
+        "found": 11,
+        "proposed": 25,
+        "false": 9,
+        "traps": 2,
+        "duplicates": 4,
+        "restatements": 1,
+        "precision": 0.55,
+        "recall": 0.8462
+      },
+      "language:ru": {
+        "items": 5,
+        "found": 5,
+        "proposed": 9,
+        "false": 0,
+        "traps": 0,
+        "duplicates": 3,
+        "restatements": 1,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "set:comms": {
+        "items": 8,
+        "found": 8,
+        "proposed": 19,
+        "false": 5,
+        "traps": 1,
+        "duplicates": 4,
+        "restatements": 2,
+        "precision": 0.6154,
+        "recall": 1.0
+      },
+      "set:cases": {
+        "items": 10,
+        "found": 8,
+        "proposed": 15,
+        "false": 4,
+        "traps": 1,
+        "duplicates": 3,
+        "restatements": 0,
+        "precision": 0.6667,
+        "recall": 0.8
+      }
+    },
+    "items": {
+      "comms/d-cbor": {
+        "found": true,
+        "kind": "decision",
+        "language": "en"
+      },
+      "comms/d-json-gzip": {
+        "found": true,
+        "kind": "decision",
+        "language": "en"
+      },
+      "comms/q-local-csv": {
+        "found": true,
+        "kind": "open_question",
+        "language": "en"
+      },
+      "comms/d-utc-only": {
+        "found": true,
+        "kind": "decision",
+        "language": "en"
+      },
+      "comms/d-battery-delay": {
+        "found": true,
+        "kind": "decision",
+        "language": "ru"
+      },
+      "comms/q-fees-display": {
+        "found": true,
+        "kind": "open_question",
+        "language": "en"
+      },
+      "comms/d-release-date": {
+        "found": true,
+        "kind": "decision",
+        "language": "en"
+      },
+      "comms/q-north-basin": {
+        "found": true,
+        "kind": "open_question",
+        "language": "en"
+      },
+      "cases/d-hold-30": {
+        "found": false,
+        "kind": "decision",
+        "language": "en"
+      },
+      "cases/q-firmware-3x": {
+        "found": true,
+        "kind": "open_question",
+        "language": "ru"
+      },
+      "cases/d-tag-rc4": {
+        "found": false,
+        "kind": "decision",
+        "language": "en"
+      },
+      "cases/d-logs-90": {
+        "found": true,
+        "kind": "decision",
+        "language": "ru"
+      },
+      "cases/d-no-cache": {
+        "found": true,
+        "kind": "decision",
+        "language": "en"
+      },
+      "cases/d-hold-2h": {
+        "found": true,
+        "kind": "decision",
+        "language": "en"
+      },
+      "cases/d-on-call-weekly": {
+        "found": true,
+        "kind": "decision",
+        "language": "en"
+      },
+      "cases/q-on-call-allowance": {
+        "found": true,
+        "kind": "open_question",
+        "language": "en"
+      },
+      "cases/d-no-firmware-3x": {
+        "found": true,
+        "kind": "decision",
+        "language": "ru"
+      },
+      "cases/d-logs-30": {
+        "found": true,
+        "kind": "decision",
+        "language": "ru"
+      }
+    },
+    "proposals": [
+      {
+        "set": "comms",
+        "record": "chat/thread/C0BEACON01/1788858900.000100",
+        "kind": "decision",
+        "statement": "Agreed: Beacon v2.3 sends telemetry packets as CBOR.",
+        "anchors": [
+          "1788860640.000100"
+        ],
+        "outcome": "item",
+        "label": "d-cbor",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "chat/thread/C0TIDEWATR/1788942000.000100",
+        "kind": "open_question",
+        "statement": "@Priya, do we still have to accept the old CSV tables in local harbour time for Hollin Mere, or can we take UTC only?",
+        "anchors": [
+          "1788942000.000100"
+        ],
+        "outcome": "item",
+        "label": "q-local-csv",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0910-telemetry-sync",
+        "kind": "decision",
+        "statement": "Beacon v2.3 packets go out as CBOR, as agreed in #beacon on Tuesday.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "restatement",
+        "label": "d-cbor",
+        "by": "anchor",
+        "verdict": "duplicate of d-cbor"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0910-telemetry-sync",
+        "kind": "decision",
+        "statement": "Let's start with the packet format.",
+        "anchors": [
+          "s01"
+        ],
+        "outcome": "none",
+        "label": null,
+        "by": null,
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0910-telemetry-sync",
+        "kind": "decision",
+        "statement": "We agreed on CBOR on Tuesday.",
+        "anchors": [
+          "s02"
+        ],
+        "outcome": "duplicate",
+        "label": "d-cbor",
+        "by": "anchor",
+        "verdict": "replaces d-cbor"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0911-firmware-review",
+        "kind": "decision",
+        "statement": "Тревога по батарее срабатывает, только если напряжение держится ниже 11,5 В десять минут подряд: туманный горн на минуту-две просаживает батарею.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "item",
+        "label": "d-battery-delay",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0911-firmware-review",
+        "kind": "decision",
+        "statement": "Согласен, так и делаем. Задержку добавлю в rc2.",
+        "anchors": [
+          "s04"
+        ],
+        "outcome": "duplicate",
+        "label": "d-battery-delay",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0916-pilot-check-in",
+        "kind": "open_question",
+        "statement": "Should skippers see the berth fees in the app during the pilot? Ines asks the harbourmaster.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "item",
+        "label": "q-fees-display",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0916-pilot-check-in",
+        "kind": "decision",
+        "statement": "We'll come back to you with a start date.",
+        "anchors": [
+          "s03"
+        ],
+        "outcome": "none",
+        "label": null,
+        "by": null,
+        "verdict": "replaces ?c3"
+      },
+      {
+        "set": "comms",
+        "record": "mail/thread/20260914091200.priya@saltreed.example.test",
+        "kind": "decision",
+        "statement": "Please accept UTC tables only; we will stop sending the local-time files.",
+        "anchors": [
+          "20260916144700.ines@hollinmere.example.org"
+        ],
+        "outcome": "duplicate",
+        "label": "d-utc-only",
+        "by": "anchor",
+        "verdict": "answers q-local-csv"
+      },
+      {
+        "set": "comms",
+        "record": "mail/thread/20260914091200.priya@saltreed.example.test",
+        "kind": "decision",
+        "statement": "Then it is decided: from Tidewater 1.8 we accept tide tables in UTC only, and the local-time format is dropped.",
+        "anchors": [
+          "20260917080500.priya@saltreed.example.test"
+        ],
+        "outcome": "item",
+        "label": "d-utc-only",
+        "by": "anchor",
+        "verdict": "replaces d-utc-only"
+      },
+      {
+        "set": "comms",
+        "record": "mail/thread/20260918133000.lev@saltreed.example.test",
+        "kind": "decision",
+        "statement": "We will look at gzip. Lev",
+        "anchors": [
+          "20260922083000.lev@saltreed.example.test"
+        ],
+        "outcome": "none",
+        "label": null,
+        "by": null,
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "chat/thread/C0BEACON01/1790152800.000100",
+        "kind": "decision",
+        "statement": "Agreed. We drop CBOR: Beacon v2.3 sends gzip-compressed JSON packets.",
+        "anchors": [
+          "1790154720.000100"
+        ],
+        "outcome": "item",
+        "label": "d-json-gzip",
+        "by": "anchor",
+        "verdict": "replaces d-cbor"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0924-release-planning",
+        "kind": "decision",
+        "statement": "Tidewater 1.8 ships on Thursday 1 October.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "trap",
+        "label": "t-release-thursday",
+        "by": "anchor",
+        "verdict": "replaces d-utc-only"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0924-release-planning",
+        "kind": "decision",
+        "statement": "Let's ship on Tuesday the sixth of October.",
+        "anchors": [
+          "s04"
+        ],
+        "outcome": "item",
+        "label": "d-release-date",
+        "by": "anchor",
+        "verdict": "replaces ?c13"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0924-release-planning",
+        "kind": "decision",
+        "statement": "Tuesday the sixth, agreed.",
+        "anchors": [
+          "s05"
+        ],
+        "outcome": "duplicate",
+        "label": "d-release-date",
+        "by": "anchor",
+        "verdict": "duplicate of d-release-date"
+      },
+      {
+        "set": "comms",
+        "record": "mail/thread/20260925102000.ines@hollinmere.example.org",
+        "kind": "open_question",
+        "statement": "One question from our harbourmaster before the pilot starts: should the Hollin Mere pilot cover the north basin as well, or only the main quay?",
+        "anchors": [
+          "20260925102000.ines@hollinmere.example.org"
+        ],
+        "outcome": "item",
+        "label": "q-north-basin",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "mail/thread/20260925102000.ines@hollinmere.example.org",
+        "kind": "decision",
+        "statement": "Good question; we have not decided yet.",
+        "anchors": [
+          "20260925120200.mira@saltreed.example.test"
+        ],
+        "outcome": "none",
+        "label": null,
+        "by": null,
+        "verdict": "new"
+      },
+      {
+        "set": "comms",
+        "record": "meetings/meeting/notes-0930-weekly-sync",
+        "kind": "decision",
+        "statement": "В 2.3 пакеты идут в JSON с gzip, от CBOR отказались.",
+        "anchors": [
+          "s02"
+        ],
+        "outcome": "restatement",
+        "label": "d-json-gzip",
+        "by": "anchor",
+        "verdict": "replaces d-json-gzip"
+      },
+      {
+        "set": "cases",
+        "record": "chat/thread/C0BEACON01/1791369000.000100",
+        "kind": "open_question",
+        "statement": "Вопрос к 2.4: нужно ли поддерживать приёмники на прошивке 3.x?",
+        "anchors": [
+          "1791369000.000100"
+        ],
+        "outcome": "item",
+        "label": "q-firmware-3x",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1009-stand-review",
+        "kind": "decision",
+        "statement": "Логи стенда храним 90 дней.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "duplicate",
+        "label": "d-logs-90",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1009-stand-review",
+        "kind": "decision",
+        "statement": "Да, договорились: 90 дней.",
+        "anchors": [
+          "s04"
+        ],
+        "outcome": "item",
+        "label": "d-logs-90",
+        "by": "anchor",
+        "verdict": "duplicate of d-logs-90"
+      },
+      {
+        "set": "cases",
+        "record": "mail/thread/20261012162000.tobias@saltreed.example.test",
+        "kind": "open_question",
+        "statement": "Maybe we should move the nightly build to 03:00, after the tide feed import has finished?",
+        "anchors": [
+          "20261012162000.tobias@saltreed.example.test"
+        ],
+        "outcome": "none",
+        "label": null,
+        "by": null,
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "mail/thread/20261012162000.tobias@saltreed.example.test",
+        "kind": "decision",
+        "statement": "Let's see how long the import takes over the next few weeks first.",
+        "anchors": [
+          "20261012170500.oksana@saltreed.example.test"
+        ],
+        "outcome": "none",
+        "label": null,
+        "by": null,
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "chat/thread/C0TIDEWATR/1791889200.000100",
+        "kind": "decision",
+        "statement": "Let's put a Redis cache in front of it.",
+        "anchors": [
+          "1791889200.000100"
+        ],
+        "outcome": "trap",
+        "label": "t-redis-cache",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "chat/thread/C0TIDEWATR/1791889200.000100",
+        "kind": "open_question",
+        "statement": "Do we need a cache at all?",
+        "anchors": [
+          "1791889740.000100"
+        ],
+        "outcome": "none",
+        "label": null,
+        "by": null,
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "chat/thread/C0TIDEWATR/1791889200.000100",
+        "kind": "decision",
+        "statement": "Agreed, no cache.",
+        "anchors": [
+          "1791890520.000100"
+        ],
+        "outcome": "item",
+        "label": "d-no-cache",
+        "by": "anchor",
+        "verdict": "answers ?c6"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1015-pilot-week-2",
+        "kind": "decision",
+        "statement": "From Monday 19 October a berth request holds the berth for two hours.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "item",
+        "label": "d-hold-2h",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1016-on-call-planning",
+        "kind": "decision",
+        "statement": "From November: a weekly on-call rota for Tidewater and Beacon, with the handover on Mondays.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "item",
+        "label": "d-on-call-weekly",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1016-on-call-planning",
+        "kind": "open_question",
+        "statement": "Is there an on-call allowance? Mira asks finance.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "duplicate",
+        "label": "q-on-call-allowance",
+        "by": "anchor",
+        "verdict": "new"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1016-on-call-planning",
+        "kind": "open_question",
+        "statement": "Do we get an on-call allowance?",
+        "anchors": [
+          "s04"
+        ],
+        "outcome": "item",
+        "label": "q-on-call-allowance",
+        "by": "anchor",
+        "verdict": "duplicate of q-on-call-allowance"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1020-beacon-2-4-planning",
+        "kind": "decision",
+        "statement": "В Beacon 2.4 прошивку приёмников 3.x не поддерживаем: Fogbell прекращает её поддержку в декабре.",
+        "anchors": [
+          "summary"
+        ],
+        "outcome": "item",
+        "label": "d-no-firmware-3x",
+        "by": "anchor",
+        "verdict": "answers q-firmware-3x"
+      },
+      {
+        "set": "cases",
+        "record": "meetings/meeting/notes-1020-beacon-2-4-planning",
+        "kind": "decision",
+        "statement": "Тогда в 2.4 поддержку прошивки 3.x не делаем.",
+        "anchors": [
+          "s04"
+        ],
+        "outcome": "duplicate",
+        "label": "d-no-firmware-3x",
+        "by": "anchor",
+        "verdict": "duplicate of d-no-firmware-3x"
+      },
+      {
+        "set": "cases",
+        "record": "chat/thread/C0BEACON01/1792674000.000100",
+        "kind": "decision",
+        "statement": "Хорошо, ставим 30 дней.",
+        "anchors": [
+          "1792674900.000100"
+        ],
+        "outcome": "item",
+        "label": "d-logs-30",
+        "by": "anchor",
+        "verdict": "new"
+      }
+    ]
+  },
+  "supersession": {
+    "groups": {
+      "all": {
+        "cases": 24,
+        "extracted": 18,
+        "reached": 17,
+        "correct": 13,
+        "accuracy": 0.5417,
+        "classifier_accuracy": 0.7647
+      },
+      "relation:new": {
+        "cases": 13,
+        "extracted": 11,
+        "reached": 11,
+        "correct": 9,
+        "accuracy": 0.6923,
+        "classifier_accuracy": 0.8182
+      },
+      "relation:duplicate": {
+        "cases": 6,
+        "extracted": 2,
+        "reached": 2,
+        "correct": 1,
+        "accuracy": 0.1667,
+        "classifier_accuracy": 0.5
+      },
+      "relation:replaces": {
+        "cases": 3,
+        "extracted": 3,
+        "reached": 2,
+        "correct": 1,
+        "accuracy": 0.3333,
+        "classifier_accuracy": 0.5
+      },
+      "relation:answers": {
+        "cases": 2,
+        "extracted": 2,
+        "reached": 2,
+        "correct": 2,
+        "accuracy": 1.0,
+        "classifier_accuracy": 1.0
+      },
+      "language:en": {
+        "cases": 16,
+        "extracted": 12,
+        "reached": 11,
+        "correct": 9,
+        "accuracy": 0.5625,
+        "classifier_accuracy": 0.8182
+      },
+      "language:ru": {
+        "cases": 8,
+        "extracted": 6,
+        "reached": 6,
+        "correct": 4,
+        "accuracy": 0.5,
+        "classifier_accuracy": 0.6667
+      },
+      "set:comms": {
+        "cases": 12,
+        "extracted": 10,
+        "reached": 10,
+        "correct": 8,
+        "accuracy": 0.6667,
+        "classifier_accuracy": 0.8
+      },
+      "set:cases": {
+        "cases": 12,
+        "extracted": 8,
+        "reached": 7,
+        "correct": 5,
+        "accuracy": 0.4167,
+        "classifier_accuracy": 0.7143
+      }
+    },
+    "cases": {
+      "comms/d-cbor": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "comms/d-json-gzip": {
+        "expected": "replaces d-cbor",
+        "got": "replaces d-cbor",
+        "reached": true,
+        "correct": true
+      },
+      "comms/q-local-csv": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "comms/d-utc-only": {
+        "expected": "answers q-local-csv",
+        "got": "answers q-local-csv",
+        "reached": true,
+        "correct": true
+      },
+      "comms/d-battery-delay": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "comms/q-fees-display": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "comms/d-release-date": {
+        "expected": "new",
+        "got": "replaces ?c13",
+        "reached": true,
+        "correct": false
+      },
+      "comms/q-north-basin": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "comms/d-cbor@meetings/meeting/notes-0910-telemetry-sync": {
+        "expected": "duplicate of d-cbor",
+        "got": "duplicate of d-cbor",
+        "reached": true,
+        "correct": true
+      },
+      "comms/d-json-gzip@meetings/meeting/notes-0930-weekly-sync": {
+        "expected": "duplicate of d-json-gzip",
+        "got": "replaces d-json-gzip",
+        "reached": true,
+        "correct": false
+      },
+      "comms/d-release-date@meetings/meeting/notes-0930-weekly-sync": {
+        "expected": "duplicate of d-release-date",
+        "got": null,
+        "reached": false,
+        "correct": false
+      },
+      "comms/d-release-date@chat/thread/C0GENERAL1/1790956800.000100": {
+        "expected": "duplicate of d-release-date",
+        "got": null,
+        "reached": false,
+        "correct": false
+      },
+      "cases/d-hold-30": {
+        "expected": "new",
+        "got": null,
+        "reached": false,
+        "correct": false
+      },
+      "cases/q-firmware-3x": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "cases/d-tag-rc4": {
+        "expected": "new",
+        "got": null,
+        "reached": false,
+        "correct": false
+      },
+      "cases/d-logs-90": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "cases/d-no-cache": {
+        "expected": "new",
+        "got": "answers ?c6",
+        "reached": true,
+        "correct": false
+      },
+      "cases/d-hold-2h": {
+        "expected": "replaces d-hold-30",
+        "got": "new",
+        "reached": false,
+        "correct": false
+      },
+      "cases/d-on-call-weekly": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "cases/q-on-call-allowance": {
+        "expected": "new",
+        "got": "new",
+        "reached": true,
+        "correct": true
+      },
+      "cases/d-no-firmware-3x": {
+        "expected": "answers q-firmware-3x",
+        "got": "answers q-firmware-3x",
+        "reached": true,
+        "correct": true
+      },
+      "cases/d-logs-30": {
+        "expected": "replaces d-logs-90",
+        "got": "new",
+        "reached": true,
+        "correct": false
+      },
+      "cases/d-hold-2h@chat/thread/C0TIDEWATR/1792166400.000100": {
+        "expected": "duplicate of d-hold-2h",
+        "got": null,
+        "reached": false,
+        "correct": false
+      },
+      "cases/d-on-call-weekly@chat/thread/C0GENERAL1/1792573200.000100": {
+        "expected": "duplicate of d-on-call-weekly",
+        "got": null,
+        "reached": false,
+        "correct": false
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "stream": "inbox",
+  "window": {"from": "2026-10-05T00:00:00Z", "to": "2026-10-26T00:00:00Z", "complete": true},
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "20261012162000.tobias@saltreed.example.test",
+      "occurred_at": "2026-10-12T17:05:00Z",
+      "payload": {
+        "title": "Nightly build time",
+        "messages": [
+          {
+            "id": "20261012162000.tobias@saltreed.example.test",
+            "author": "Tobias Wrenfield <tobias.wrenfield@saltreed.example.test>",
+            "sent_at": "2026-10-12T16:20:00Z",
+            "recipients": ["Engineering <engineering@saltreed.example.test>"],
+            "text": "Hi all,\n\nMaybe we should move the nightly build to 03:00, after the tide feed import has finished? Just thinking out loud; no need to decide anything now.\n\nTobias"
+          },
+          {
+            "id": "20261012170500.oksana@saltreed.example.test",
+            "author": "Oksana Peregud <oksana.peregud@saltreed.example.test>",
+            "sent_at": "2026-10-12T17:05:00Z",
+            "recipients": ["Engineering <engineering@saltreed.example.test>"],
+            "text": "Could be worth a try at some point. Let's see how long the import takes over the next few weeks first.\n\nOksana\n\n> Maybe we should move the nightly build to 03:00, after the tide feed import has finished?"
+          }
+        ]
+      }
+    }
+  ]
+}

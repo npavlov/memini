@@ -1289,6 +1289,34 @@ chunk ids derive from the source ids, which are new in every scratch database. U
 a hybrid regression of that size is noise, so `make eval-qwen3` and the nightly run compare with a
 margin of 0.05 (`QWEN3_MARGIN` in the Makefile).
 
+**Decision eval** (decided 2026-11-18). M4 starts with it (plan.md): the pipeline is built against
+it, and open question 5 is settled by its numbers. Extraction and supersession are two protocols
+(`memini.extraction`): an `Extractor` reads one thread or meeting (its normalized text as ingest
+stores it, and its parts: each message, segment, summary and action items with its anchor, rows,
+author or speaker and time) and returns proposed items (kind, statement, `decided_at`, the anchors
+that say it); a `SupersessionClassifier` takes one proposed item and the active items shown to it
+and returns new, a duplicate of one, or replacing or answering some. `memini eval decisions` runs
+an implementation, by name (`--extractor`), over sets of labelled synthetic threads and meetings:
+`eval/comms` (the M2 fixtures) and `eval/decisions/cases` (hard cases, English and Russian:
+implicit reversals, decisions stated as a question, a proposal dropped in its thread, hedged
+proposals, a cross-language duplicate, chatter). A set is push batches replayed as ingest would,
+and labels (`labels/decisions.json`: items, links, restatements, traps, records with nothing),
+checked against the records before the run; each set is one workspace. A proposed item matches a
+label of its own record of the same kind by a shared anchor, or else by statements alike (Dice of
+stemmed terms at least 0.5, no model); each label counts once. Precision is items found over items
+found and false items (no label, or a trap); recall is items found over labelled items; the
+supersession accuracy replays the journal (every proposal, in record order, classified against
+the active items before it) and counts the labelled cases reproduced: each item's links, or
+`new`, and each restatement as a duplicate of its item. Each is reported for all, per kind (per
+expected relation), per language and per set, with counts, in a JSON report; a baseline is such a
+report, and a run exits with code 4 when a metric of a group falls below it by more than a margin
+(0.02). The stubs read files only: `oracle` returns the labels (every metric 1), `keyword` (cue
+words, statement likeness) is the committed floor, `eval/decisions/baseline-keyword.json`
+(`make eval-decisions`). The LLM pipeline is measured by adding its variant; the gate reads
+`llm_policy` from the database, so that variant brings a scratch database as the retrieval eval
+does. Not scored yet: participants, `decided_at`, and the top-k search in front of the classifier
+(every active item of the set is a candidate).
+
 ## 11. Later
 
 | Version | What |

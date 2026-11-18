@@ -1,0 +1,33 @@
+{
+  "stream": "dm",
+  "window": {"from": "2026-10-05T00:00:00Z", "to": "2026-10-26T00:00:00Z", "complete": true},
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "D0MIRATOB1/1792051800.000100",
+      "occurred_at": "2026-10-15T08:14:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/D0MIRATOB1/p1792051800000100",
+      "payload": {
+        "channel": "direct message",
+        "messages": [
+          {
+            "id": "1792051800.000100",
+            "author": "U02TOBIAS",
+            "sent_at": "2026-10-15T08:10:00Z",
+            "recipients": ["U01MIRA"],
+            "text": "Where are the release notes of the pilot build?",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRATOB1/p1792051800000100"
+          },
+          {
+            "id": "1792052040.000100",
+            "author": "U01MIRA",
+            "sent_at": "2026-10-15T08:14:00Z",
+            "recipients": ["U02TOBIAS"],
+            "text": "In the wiki, under Tidewater 1.8.",
+            "url": "https://chat.saltreed.example.test/archives/D0MIRATOB1/p1792052040000100"
+          }
+        ]
+      }
+    }
+  ]
+}

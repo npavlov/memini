@@ -1,0 +1,224 @@
+{
+  "stream": "notes",
+  "window": {"from": "2026-10-05T00:00:00Z", "to": "2026-10-26T00:00:00Z", "complete": true},
+  "records": [
+    {
+      "kind": "meeting",
+      "external_id": "notes-1009-stand-review",
+      "occurred_at": "2026-10-09T11:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-1009-stand-review",
+      "payload": {
+        "title": "Ревью инфраструктуры стенда",
+        "started_at": "2026-10-09T11:00:00Z",
+        "ended_at": "2026-10-09T11:25:00Z",
+        "participants": ["Глеб Туманов", "Оксана Перегуд", "Лев Заречный"],
+        "summary": "Обсудили логи стенда.\n\n## Решения\n\n- Логи стенда храним 90 дней.\n",
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Глеб Туманов",
+            "start": 0,
+            "end": 70,
+            "text": "Стенд пишет лог каждого пакета, за месяц набегает около 40 гигабайт."
+          },
+          {
+            "id": "s02",
+            "speaker": "Оксана Перегуд",
+            "start": 75,
+            "end": 150,
+            "text": "Для разбора ошибок мне нужны логи хотя бы за пару месяцев."
+          },
+          {
+            "id": "s03",
+            "speaker": "Глеб Туманов",
+            "start": 160,
+            "end": 190,
+            "text": "Тогда храним логи стенда 90 дней?"
+          },
+          {
+            "id": "s04",
+            "speaker": "Лев Заречный",
+            "start": 195,
+            "end": 215,
+            "text": "Да, договорились: 90 дней."
+          },
+          {
+            "id": "s05",
+            "speaker": "Оксана Перегуд",
+            "start": 220,
+            "end": 240,
+            "text": "И в пятницу торт, не забудьте."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "meeting",
+      "external_id": "notes-1015-pilot-week-2",
+      "occurred_at": "2026-10-15T15:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-1015-pilot-week-2",
+      "payload": {
+        "title": "Hollin Mere pilot, week 2",
+        "started_at": "2026-10-15T15:00:00Z",
+        "ended_at": "2026-10-15T15:30:00Z",
+        "participants": ["Priya Lanthorn", "Hallie Marsh", "Ines Calderwood", "Mira Castellane"],
+        "summary": "Second weekly check-in of the Hollin Mere pilot.\n\n## Decisions\n\n- From Monday 19 October a berth request holds the berth for two hours.\n\n## Notes\n\n- Skippers from the outer channel need more than half an hour to reach the quay.\n",
+        "action_items": [
+          {
+            "id": "a1",
+            "owner": "Priya Lanthorn",
+            "text": "Set the berth hold to two hours",
+            "due": "2026-10-19"
+          }
+        ],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Priya Lanthorn",
+            "start": 0,
+            "end": 40,
+            "text": "How did the first week go?"
+          },
+          {
+            "id": "s02",
+            "speaker": "Ines Calderwood",
+            "start": 45,
+            "end": 150,
+            "text": "Skippers coming in from the outer channel need more than half an hour to reach the quay, so their holds ran out before they arrived."
+          },
+          {
+            "id": "s03",
+            "speaker": "Hallie Marsh",
+            "start": 155,
+            "end": 180,
+            "text": "Then the hold should be two hours."
+          },
+          {
+            "id": "s04",
+            "speaker": "Priya Lanthorn",
+            "start": 185,
+            "end": 220,
+            "text": "Two hours from Monday the 19th. I'll change the setting."
+          },
+          {
+            "id": "s05",
+            "speaker": "Mira Castellane",
+            "start": 225,
+            "end": 235,
+            "text": "Fine with me."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "meeting",
+      "external_id": "notes-1016-on-call-planning",
+      "occurred_at": "2026-10-16T13:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-1016-on-call-planning",
+      "payload": {
+        "title": "On-call planning",
+        "started_at": "2026-10-16T13:00:00Z",
+        "ended_at": "2026-10-16T13:20:00Z",
+        "participants": ["Mira Castellane", "Priya Lanthorn", "Tobias Wrenfield", "Hallie Marsh", "Lev Zarechny"],
+        "summary": "## Decisions\n\n- From November: a weekly on-call rota for Tidewater and Beacon, with the handover on Mondays.\n\n## Open questions\n\n- Is there an on-call allowance? Mira asks finance.\n",
+        "action_items": [{"id": "a1", "owner": "Mira Castellane", "text": "Ask finance about an on-call allowance"}],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Mira Castellane",
+            "start": 0,
+            "end": 50,
+            "text": "Both products go live with customers this autumn, so we need on-call."
+          },
+          {
+            "id": "s02",
+            "speaker": "Mira Castellane",
+            "start": 55,
+            "end": 120,
+            "text": "From November we run a weekly on-call rota across Tidewater and Beacon, with the handover on Mondays."
+          },
+          {"id": "s03", "speaker": "Lev Zarechny", "start": 125, "end": 135, "text": "Fine by me."},
+          {
+            "id": "s04",
+            "speaker": "Tobias Wrenfield",
+            "start": 140,
+            "end": 160,
+            "text": "Do we get an on-call allowance?"
+          },
+          {
+            "id": "s05",
+            "speaker": "Mira Castellane",
+            "start": 165,
+            "end": 190,
+            "text": "I don't know yet. I'll ask finance."
+          },
+          {
+            "id": "s06",
+            "speaker": "Hallie Marsh",
+            "start": 195,
+            "end": 215,
+            "text": "By the way, the coffee machine on the second floor works again."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "meeting",
+      "external_id": "notes-1020-beacon-2-4-planning",
+      "occurred_at": "2026-10-20T10:00:00Z",
+      "external_url": "https://notes.saltreed.example.test/meetings/notes-1020-beacon-2-4-planning",
+      "payload": {
+        "title": "Планирование Beacon 2.4",
+        "started_at": "2026-10-20T10:00:00Z",
+        "ended_at": "2026-10-20T10:30:00Z",
+        "participants": ["Мира Кастелан", "Лев Заречный", "Глеб Туманов", "Rafe Okonkwo-Lind"],
+        "summary": "## Решения\n\n- В Beacon 2.4 прошивку приёмников 3.x не поддерживаем: Fogbell прекращает её поддержку в декабре.\n\n## Заметки\n\n- Станции 7 и 9 обновляются до прошивки 4.2 в ноябре.\n- Рафе предлагает тёмную тему для дашборда; макетов ещё нет.\n",
+        "action_items": [
+          {
+            "id": "a1",
+            "owner": "Глеб Туманов",
+            "text": "Обновить станции 7 и 9 до прошивки 4.2",
+            "due": "2026-11-13"
+          }
+        ],
+        "transcript": [
+          {
+            "id": "s01",
+            "speaker": "Мира Кастелан",
+            "start": 0,
+            "end": 20,
+            "text": "Начнём с прошивок приёмников."
+          },
+          {
+            "id": "s02",
+            "speaker": "Лев Заречный",
+            "start": 25,
+            "end": 90,
+            "text": "Fogbell ответили: прошивку 3.x они больше не поддерживают с декабря."
+          },
+          {
+            "id": "s03",
+            "speaker": "Глеб Туманов",
+            "start": 95,
+            "end": 130,
+            "text": "Станции 7 и 9 я обновлю до 4.2 в ноябре."
+          },
+          {
+            "id": "s04",
+            "speaker": "Мира Кастелан",
+            "start": 135,
+            "end": 160,
+            "text": "Тогда в 2.4 поддержку прошивки 3.x не делаем."
+          },
+          {
+            "id": "s05",
+            "speaker": "Rafe Okonkwo-Lind",
+            "start": 165,
+            "end": 230,
+            "text": "For the dashboard: I'd like to try a dark theme in 2.4, if anyone has time to look at mockups."
+          }
+        ]
+      }
+    }
+  ]
+}

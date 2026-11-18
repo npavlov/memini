@@ -1,0 +1,81 @@
+{
+  "stream": "general",
+  "window": {"from": "2026-10-05T00:00:00Z", "to": "2026-10-26T00:00:00Z", "complete": true},
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "C0GENERAL1/1791970200.000100",
+      "occurred_at": "2026-10-14T09:41:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1791970200000100",
+      "payload": {
+        "channel": "general",
+        "messages": [
+          {
+            "id": "1791970200.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-10-14T09:30:00Z",
+            "text": "Может, попробуем стендапы через день вместо ежедневных? Не настаиваю, просто мысль.",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1791970200000100"
+          },
+          {
+            "id": "1791970860.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-10-14T09:41:00Z",
+            "text": "Можно обсудить на ретро.",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1791970860000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0GENERAL1/1792411200.000100",
+      "occurred_at": "2026-10-19T12:04:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1792411200000100",
+      "payload": {
+        "channel": "general",
+        "messages": [
+          {
+            "id": "1792411200.000100",
+            "author": "U06GLEB",
+            "sent_at": "2026-10-19T12:00:00Z",
+            "text": "Кто-нибудь видел зарядку от ноутбука? Оставил в переговорке «Маяк».",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1792411200000100"
+          },
+          {
+            "id": "1792411440.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-10-19T12:04:00Z",
+            "text": "Лежит на кухне.",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1792411440000100"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "C0GENERAL1/1792573200.000100",
+      "occurred_at": "2026-10-21T09:05:00Z",
+      "external_url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1792573200000100",
+      "payload": {
+        "channel": "general",
+        "messages": [
+          {
+            "id": "1792573200.000100",
+            "author": "U03LEV",
+            "sent_at": "2026-10-21T09:00:00Z",
+            "text": "Напоминаю: с ноября дежурим по неделе, смена по понедельникам. График в вики.",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1792573200000100"
+          },
+          {
+            "id": "1792573500.000100",
+            "author": "U04OKSANA",
+            "sent_at": "2026-10-21T09:05:00Z",
+            "text": "Спасибо!",
+            "url": "https://chat.saltreed.example.test/archives/C0GENERAL1/p1792573500000100"
+          }
+        ]
+      }
+    }
+  ]
+}
