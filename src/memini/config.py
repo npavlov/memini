@@ -44,6 +44,14 @@ chosen, or any ``embedding_*`` setting without a provider, is an error. The inde
 (:mod:`memini.index`) covers provider, model, digest, dimension, pooling, token limit and document
 prefix: a change of any of them blocks search until ``memini reindex`` rebuilds the index.
 
+The reranker (the ``search_reranker*`` settings, :mod:`memini.rerank`) is off until
+``search_reranker`` is set; then ``local`` reorders the best ``search_rerank_depth`` hits of a
+ranked search with a cross-encoder run in the process. It needs ``memini[local-embeddings]`` too,
+and its files are pinned by ``search_reranker_digest`` and fetched at ``search_reranker_revision``.
+The defaults name the model the eval measured; another model or model file needs its own digest
+(and revision). A ``search_reranker_*`` setting without ``search_reranker`` is an error. Nothing
+of the reranker is part of the index fingerprint.
+
 The ``llm_*`` settings declare at most two LLM providers (:mod:`memini.llm`), each an
 OpenAI-compatible chat API: ``llm_local_*`` one you trust with the content of every source (Ollama,
 llama.cpp, vLLM on your own machine), ``llm_cloud_*`` one you trust only with sources whose
@@ -118,6 +126,11 @@ __all__ = [
     "DEFAULT_EMBEDDING_MODEL",
     "DEFAULT_EMBEDDING_URL",
     "DEFAULT_MODEL_SETTINGS",
+    "DEFAULT_RERANKER_DIGEST",
+    "DEFAULT_RERANKER_MODEL",
+    "DEFAULT_RERANKER_MODEL_FILE",
+    "DEFAULT_RERANKER_REVISION",
+    "DEFAULT_RERANK_DEPTH",
     "EMBEDDING_MAX_DIMENSION",
     "ENV_PREFIX",
     "HANDLE_REGEX",
@@ -126,6 +139,7 @@ __all__ = [
     "EmbeddingProvider",
     "LlmStructuredOutput",
     "LogLevel",
+    "RerankerProvider",
     "Settings",
     "decode_credential_key",
     "environment_variables",
@@ -150,8 +164,25 @@ LlmStructuredOutput = Literal["json_schema", "json_object", "none"]
 ``json_object``, or not at all (the schema goes into the prompt). The reply is parsed and validated
 against the schema in every case."""
 
+RerankerProvider = Literal["local"]
+"""Where reranking runs: a cross-encoder in the process (ONNX)."""
+
 EMBEDDING_MAX_DIMENSION: Final = 16000
 """The largest dimension a pgvector ``vector`` column holds."""
+
+DEFAULT_RERANK_DEPTH: Final = 5
+"""How many fused hits a reranker reorders (``search_rerank_depth``). Also the default of
+:attr:`memini.search.SearchOptions.rerank_depth`."""
+
+DEFAULT_RERANKER_MODEL: Final = "n24q02m/Qwen3-Reranker-0.6B-ONNX"
+"""Qwen3-Reranker 0.6B as an ONNX export with a two-logit head (docs/requirements.md, section 9,
+Reranker)."""
+DEFAULT_RERANKER_MODEL_FILE: Final = "onnx/model_yesno_quantized.onnx"
+DEFAULT_RERANKER_DIGEST: Final = (
+    "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
+)
+"""The digest of the default reranker's model file and ``tokenizer.json`` at its revision."""
+DEFAULT_RERANKER_REVISION: Final = "342a8a54de23bba03eb8cce5f5bef503edf18315"
 
 DEFAULT_EMBEDDING_URL: Final = "http://127.0.0.1:11434/v1"
 """Where ``openai_compatible`` sends text when ``embedding_url`` is not set: Ollama on this
@@ -533,6 +564,64 @@ class Settings(BaseModel):
         " most 100",
     )
 
+    # --- Reranker (memini.rerank). Rules across these fields: _reranker_problems. ---------------
+    # Off unless search_reranker is set: it needs the optional runtime and a 600 MB download. The
+    # defaults are what the retrieval eval measured and chose (docs/requirements.md, section 9,
+    # Reranker). `local` runs a cross-encoder in the process, with the optional dependencies
+    # memini[local-embeddings]; its files are pinned by search_reranker_digest like those of the
+    # local embedding provider. search_rerank_depth is read by any reranker, also the one
+    # `memini eval --reranker` measures.
+    search_reranker: RerankerProvider | None = Field(
+        default=None, description="local: a cross-encoder run in the process"
+    )
+    search_rerank_depth: int = Field(
+        default=DEFAULT_RERANK_DEPTH,
+        ge=1,
+        le=100,
+        description="how many of the best fused hits the reranker reorders, an integer from 1 to"
+        " 100",
+    )
+    search_reranker_model: str = Field(
+        default=DEFAULT_RERANKER_MODEL,
+        min_length=1,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$",
+        description="a Hugging Face repository such as org/name",
+    )
+    search_reranker_model_file: str = Field(
+        default=DEFAULT_RERANKER_MODEL_FILE,
+        max_length=200,
+        pattern=r"^([A-Za-z0-9_][A-Za-z0-9._-]*/)*[A-Za-z0-9_][A-Za-z0-9._-]*\.onnx$",
+        description="the path of the ONNX file in the model repository",
+    )
+    search_reranker_digest: str = Field(
+        default=DEFAULT_RERANKER_DIGEST,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+        description="sha256: and 64 lowercase hex digits, the digest of the model files",
+    )
+    search_reranker_revision: str = Field(
+        default=DEFAULT_RERANKER_REVISION,
+        pattern=r"^[0-9a-f]{40}$",
+        description="a commit of the model repository, 40 lowercase hex digits",
+    )
+    search_reranker_model_dir: Annotated[Path | None, AfterValidator(_absolute)] = Field(
+        default=None,
+        description="an absolute directory path for the model files, created if missing; unset:"
+        " $XDG_CACHE_HOME/memini/models, or ~/.cache/memini/models",
+    )
+    search_reranker_max_tokens: int = Field(
+        default=1024,
+        ge=64,
+        le=8192,
+        description="the most tokens of one query and hit put to the model, 64 to 8192",
+    )
+    search_reranker_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        le=600,
+        description="seconds the reranking of one search may take, more than 0, at most 600",
+    )
+
     # --- Ingest (memini.ingest) -------------------------------------------------------------------
     # Limits of one batch of records sent to the ingest API: the request body, the records in it,
     # and the payload of one record in its stored form. A body over the limit is refused by its
@@ -541,8 +630,8 @@ class Settings(BaseModel):
         default=16 * 1024**2,
         ge=1024,
         le=1024**3,
-        description="the largest request body of an ingest batch, 1K to 1G: bytes, or a number"
-        " with K, M or G",
+        description="the largest request body of an ingest batch or of an agent run's raw"
+        " response, 1K to 1G: bytes, or a number with K, M or G",
     )
     ingest_max_records: int = Field(
         default=1000,
@@ -578,7 +667,8 @@ class Settings(BaseModel):
 
     # --- HTTP request limits (memini.api.limits, memini.db.limits) -------------------------------
     # Limits of every HTTP and MCP request. The body: refused by its Content-Length before it is
-    # read, or as soon as more of it arrives (the ingest route has its own, ingest_max_body_size).
+    # read, or as soon as more of it arrives (the ingest route and the route of an agent run's raw
+    # responses have their own, ingest_max_body_size).
     # The time of each database statement and of an idle transaction a request runs (search sets
     # its own statement limit, search_timeout); 0 leaves the database's default. Rate limits: per
     # token, a budget of reads and one of writes (an MCP call of a write tool is a write); per
@@ -588,8 +678,8 @@ class Settings(BaseModel):
         default=1024**2,
         ge=1024,
         le=1024**3,
-        description="the largest request body outside the ingest route, 1K to 1G: bytes, or a"
-        " number with K, M or G",
+        description="the largest request body outside the ingest and raw response routes, 1K to"
+        " 1G: bytes, or a number with K, M or G",
     )
     http_statement_timeout: float = Field(
         default=30.0,
@@ -819,6 +909,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
 
     if settings is not None:
         problems.extend(_embedding_problems(settings, origin))
+        problems.extend(_reranker_problems(settings, origin))
         problems.extend(_llm_problems(settings, origin))
 
     # Raised outside the except block, so the ValidationError is not chained as __context__.
@@ -968,6 +1059,49 @@ def _embedding_problems(settings: Settings, origin: Mapping[str, str]) -> list[s
             f"{where('embedding_url')}: holds credentials, but the URL is not a secret;"
             f" set {key} or {key}{_FILE_SUFFIX} instead"
         )
+    return problems
+
+
+# --- Reranker: rules across settings -------------------------------------------------------------
+
+_RERANKER_FREE: Final = frozenset({"search_reranker", "search_rerank_depth"})
+"""Reranker settings that may be set without ``search_reranker``: the depth is also what
+``memini eval --reranker`` reorders."""
+
+
+def _reranker_problems(settings: Settings, origin: Mapping[str, str]) -> list[str]:
+    """Problems of the reranker settings taken together. Each names its key, never a value."""
+    given = [
+        name
+        for name in Settings.model_fields
+        if name.startswith("search_reranker") and name not in _RERANKER_FREE and name in origin
+    ]
+    if settings.search_reranker is None:
+        return [
+            f"{origin[name]}: has no effect without search_reranker;"
+            f" set {_env_var('search_reranker')}, or remove it"
+            for name in given
+        ]
+    problems: list[str] = []
+    changed = [
+        name
+        for name, default in (
+            ("search_reranker_model", DEFAULT_RERANKER_MODEL),
+            ("search_reranker_model_file", DEFAULT_RERANKER_MODEL_FILE),
+        )
+        if getattr(settings, name) != default
+    ]
+    needed = ["search_reranker_digest"]
+    if "search_reranker_model" in changed:
+        needed.append("search_reranker_revision")
+    for name in changed:
+        for missing in needed:
+            if missing not in origin:
+                key = _env_var(missing)
+                problems.append(
+                    f"{origin[name]}: names other model files than the default, so it needs"
+                    f" {missing} of its own; set {key} or {missing} in the config file"
+                )
     return problems
 
 

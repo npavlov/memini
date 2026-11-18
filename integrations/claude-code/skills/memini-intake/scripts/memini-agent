@@ -1,0 +1,32 @@
+#!/bin/bash
+# Launcher of memini_agent.py, the client of Memini's agent executor, for the memini-intake skill
+# and its capture hook. Runs on bash 3.2 (the system bash of macOS).
+#
+#   memini-agent start|next|finish|status ...   the skill's commands
+#   memini-agent hook                           Claude Code's PostToolUse and PostToolUseFailure hook
+#
+# The helper needs Python 3.11 or later. MEMINI_CAPTURE_PYTHON names the interpreter; without it,
+# uv runs the script (uv reads the script's requires-python), and without uv, python3 does.
+#
+# As a hook it reads nothing and sends nothing while no agent run is in progress: without the state
+# file that `start` writes, it drains the event from stdin and exits.
+set -u
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+helper="$here/memini_agent.py"
+
+if [ "${1:-}" = "hook" ]; then
+    state="${MEMINI_CAPTURE_STATE:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/memini/agent-run.json}"
+    if [ ! -f "$state" ]; then
+        cat >/dev/null
+        exit 0
+    fi
+fi
+
+if [ -n "${MEMINI_CAPTURE_PYTHON:-}" ]; then
+    exec "$MEMINI_CAPTURE_PYTHON" -I "$helper" "$@"
+elif command -v uv >/dev/null 2>&1; then
+    exec uv run --quiet --script "$helper" "$@"
+else
+    exec python3 -I "$helper" "$@"
+fi

@@ -106,6 +106,14 @@ sync git sources and search answers `embeddings_not_configured`. Changing the mo
 digest or document prefix changes the index fingerprint: run `memini reindex --workspace NAME`
 afterwards.
 
+Optional reranking: Qwen3-Reranker 0.6B in the process, off by default. Install
+`memini[local-embeddings]` and set `MEMINI_SEARCH_RERANKER=local`; on the code suite it lifts hybrid
+R@1 from 0.61 to 0.78 for about 0.5 s per search. `memini eval --reranker local` measures it.
+
+Agent executor: bring an MCP source that Memini cannot reach on its own into Memini from a Claude Code
+session, with the `memini-intake` skill and capture hook in `integrations/claude-code`
+([docs/recipes.md](docs/recipes.md), Agent executor).
+
 ### Tools
 
 Over MCP, and over HTTP with the same arguments as query parameters. All need a token with the
@@ -117,6 +125,11 @@ Over MCP, and over HTTP with the same arguments as query parameters. All need a 
 | `search_code` | `GET /v1/search/code` | Code search: `semantic`, `exact`, `regex` or `symbol`; filters by repository, path glob, language |
 | `get_symbol` | `GET /v1/symbols` | Definitions of a symbol, by name or qualified name |
 | `read_source` | `GET /v1/workspaces/{ws}/sources/{src}/files/{path}` | A file or line range, or a directory listing |
+| `list_meetings` | `GET /v1/meetings` | Meetings a person took part in (default: me), by time and topic words |
+| `get_meeting` | `GET /v1/meetings/{record_id}` | Title, participants, summary, action items; transcript on request |
+| `list_messages` | `GET /v1/messages` | Messages to, mentioning or from a person, one by one, by source, time and topic |
+| `get_thread` | `GET /v1/threads/{record_id}` | A whole thread, messages in order |
+| `add_document` | `POST /v1/workspaces/{ws}/sources/{src}/documents` | Store a document in a push source (ingest scope) |
 | `status` | | Stream lag, last runs, and whether the base is current |
 
 Every hit carries its source, a timestamp and a locator: `shop@3f2a…:src/app.py#L12-L30` for code,

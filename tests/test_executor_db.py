@@ -40,6 +40,7 @@ from memini.credentials import (
     read_oauth,
 )
 from memini.db import Pool, connect, open_pool
+from memini.executors.agent import finish_run, next_call, start_run, submit_response
 from memini.executors.budget import RetryPolicy
 from memini.executors.egress import EgressPolicy, IPAddress
 from memini.executors.service import MCP_SYNC, ServiceOptions, mcp_sync_handler
@@ -674,3 +675,73 @@ async def test_a_recipe_whose_parser_this_build_lacks_is_refused(env: Env) -> No
         await add_source(env)
     assert refused.value.setting == "recipe"
     assert "no parser named hearth.thread" in refused.value.reason
+
+
+# --- Both executors -------------------------------------------------------------------------------
+
+
+async def test_both_executors_run_a_source_of_the_admin_library_to_identical_records(
+    env: Env,
+) -> None:
+    """A source made by memini.sources is what the agent executor reads too: the same recipe and
+    windows give the same calls, and the same records (milestone M3)."""
+    service_source = await add_source(env, name="by-service")
+    agent_source = await add_source(env, name="by-agent")
+    await sync(env, service_source)
+
+    run = await start_run(env.db, env.access, "acme", "by-agent", CHANNEL)
+    agent_calls: list[tuple[str, dict[str, Any]]] = []
+    while True:
+        step = await next_call(env.db, env.access, "acme", "by-agent", run.id)
+        if step.status == "run_done":
+            break
+        if step.call is None:
+            continue  # a window is done: the next call opens the following one
+        call = step.call
+        arguments = dict(call.arguments)
+        agent_calls.append((call.tool, arguments))
+        if call.tool == "channel_history":
+            result = env.fake.hearth.channel_history(arguments)
+        else:
+            result = env.fake.hearth.thread_replies(arguments)
+        await submit_response(
+            env.db,
+            env.access,
+            "acme",
+            "by-agent",
+            run.id,
+            call.id,
+            tool=call.tool,
+            arguments=arguments,
+            result=result,
+        )
+    await finish_run(env.db, env.access, "acme", "by-agent", run.id, runs=env.pool)
+    await wait_for_run_writes()
+
+    # Each run pins its own as_of, a moment apart: the window bounds may differ by a second.
+    def untimed(calls: list[tuple[str, dict[str, Any]]]) -> list[tuple[str, dict[str, Any]]]:
+        return [
+            (tool, {k: v for k, v in arguments.items() if k not in ("oldest", "latest")})
+            for tool, arguments in calls
+        ]
+
+    service_calls = [(c.tool, dict(c.arguments)) for c in env.fake.calls()]
+    assert untimed(agent_calls) == untimed(service_calls)
+    for (_, agent), (_, service) in zip(agent_calls, service_calls, strict=True):
+        for bound in ("oldest", "latest"):
+            assert abs(agent.get(bound, 0) - service.get(bound, 0)) <= 5
+    found = await rows(
+        env.db,
+        "SELECT source_id, external_id, convert_from(payload, 'UTF8') AS payload, occurred_at,"
+        " external_url FROM record ORDER BY external_id",
+    )
+    by_source = {
+        source: [
+            (row["external_id"], row["payload"], row["occurred_at"], row["external_url"])
+            for row in found
+            if row["source_id"] == source
+        ]
+        for source in (service_source, agent_source)
+    }
+    assert len(by_source[service_source]) == 3
+    assert by_source[agent_source] == by_source[service_source]

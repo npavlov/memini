@@ -1,9 +1,10 @@
 """What both executors of a recipe share (docs/recipes.md, How the executors use a recipe).
 
-The service executor (:mod:`memini.executors.service`) and the agent executor (memini-2wl) differ in
-who makes a call: the built-in MCP client, or an agent whose hook posts the result. Everything
-around the call is the same, and lives here or in the libraries it names, so that one recipe run by
-both executors makes the same calls and yields the same records:
+The service executor (:mod:`memini.executors.service`) and the agent executor
+(:mod:`memini.executors.agent`) differ in who makes a call: the built-in MCP client, or an agent
+whose hook posts the result. Everything around the call is the same, and lives here or in the
+libraries it names, so that one recipe run by both executors makes the same calls and yields the
+same records (the agent executor runs its own session loop over the same libraries):
 
 1. **The recipe and its settings.** :func:`source_recipe` reads the recipe an mcp source holds
    (:class:`~memini.executors.source.McpConfig`) and finds its parser in this build;
@@ -22,8 +23,8 @@ both executors makes the same calls and yields the same records:
 
 :func:`calls_to_make` is where the executors' loops meet the recipe: it never names a call past
 ``max_pages``, and it stops naming a call once it was tried ``attempts`` times in the window, so a
-loop ends even when a server keeps failing. The agent executor can hand out its result as "next
-calls" one at a time; the service executor makes them, up to the recipe's concurrency.
+loop ends even when a server keeps failing. The service executor makes them, up to the recipe's
+concurrency; the agent executor hands calls out one at a time with the same rules.
 """
 
 import fnmatch

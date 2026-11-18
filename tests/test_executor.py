@@ -735,7 +735,7 @@ def test_a_source_holds_its_recipe_text_with_its_name_and_digest(parser: None) -
     ("text", "reason"),
     [
         ("format = 1\n", "not a valid recipe"),
-        ("format = [\n", "not valid TOML"),
+        ("format = [\n", "not TOML"),
         ("x" * (256 * 1024 + 1), "at most"),
     ],
 )
@@ -743,6 +743,27 @@ def test_a_recipe_that_is_not_one_is_refused(parser: None, text: str, reason: st
     with pytest.raises(McpConfigError, match=reason) as refused:
         inline_recipe(text)
     assert refused.value.setting == "recipe"
+
+
+def test_every_stored_form_of_a_recipe_reads_as_the_same_recipe(parser: None) -> None:
+    import tomllib
+
+    from memini.executors.agent import RECIPE_KEY, source_recipe
+    from memini.executors.source import load_recipe_ref, recipe_ref
+
+    text = HEARTH_RECIPE_PATH.read_text(encoding="utf-8")
+    held, recipe = inline_recipe(text)
+    forms: list[object] = [held.to_json(), text, tomllib.loads(text)]
+    for form in forms:
+        ref = recipe_ref(form)
+        assert ref is not None
+        assert ref.name == "hearth"
+        assert not ref.bundled
+        assert load_recipe_ref(ref) == recipe
+        assert source_recipe({RECIPE_KEY: form}) == recipe  # the agent executor reads it too
+    assert recipe_ref({"bundled": "hearth"}) == RecipeRef(name="hearth")
+    assert recipe_ref(None) is None
+    assert recipe_ref(12) is None
 
 
 def test_a_bundled_recipe_that_does_not_ship_is_refused() -> None:

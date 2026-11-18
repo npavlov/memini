@@ -1,10 +1,10 @@
 """What the eval can swap: the lexical retriever and the reranker, each by name.
 
-The service has one lexical retriever (:data:`memini.search.retrieval.lexical_statement`) and no
-reranker yet. Open question 1 (which lexical index in Postgres) was settled, and the optional
-reranker (memini-2ee) will be, by measuring alternatives on the same suite, so the eval takes them
-by name (``memini eval --lexical NAME --reranker NAME``) from the registries here, and records the
-name in its report.
+The service has one lexical retriever (:data:`memini.search.retrieval.lexical_statement`) and an
+optional reranker (:mod:`memini.rerank`, off by default). Open question 1 (which lexical index in
+Postgres) and the reranker's default were settled by measuring alternatives on the same suite, so
+the eval takes them by name (``memini eval --lexical NAME --reranker NAME``) from the registries
+here, and records the name in its report.
 
 Adding a lexical variant: write a function of the shape of
 :data:`~memini.search.retrieval.LexicalStatement` (the scope, the query text and a limit; rows of
@@ -20,18 +20,20 @@ search), kept so that a change of the suite, the chunker or the model can measur
 ``bm25-textsearch-*`` ones need a server that loads the ``pg_textsearch`` extension
 (``shared_preload_libraries``), which the stock pgvector image does not have.
 
-Adding a reranker: an object with the :class:`~memini.search.Reranker` protocol, made from the
-settings by ``create``, in a :class:`RerankerVariant` in :data:`RERANKERS`.
+Adding a reranker: an object with the :class:`ModelReranker` protocol, made from the settings by
+``create``, in a :class:`RerankerVariant` in :data:`RERANKERS`. The eval loads it before the
+first question, so a missing model stops the run instead of falling back to the fused order.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Protocol
 
 from psycopg import AsyncConnection, errors, sql
 from psycopg.rows import TupleRow
 
 from memini.config import Settings
+from memini.rerank import local_reranker
 from memini.search import Reranker
 from memini.search.patterns import lexical_terms
 from memini.search.retrieval import (
@@ -51,6 +53,7 @@ __all__ = [
     "LEXICAL_VARIANTS",
     "RERANKERS",
     "LexicalVariant",
+    "ModelReranker",
     "RerankerVariant",
     "TextsearchRetriever",
 ]
@@ -70,13 +73,25 @@ class LexicalVariant:
     variant reads that the service's schema does not have."""
 
 
+class ModelReranker(Reranker, Protocol):
+    """A :class:`~memini.search.Reranker` with a model to load first and close after."""
+
+    def describe(self) -> str:
+        """The model and what else decides its scores, in one line, for the report."""
+        ...
+
+    async def load(self) -> None: ...
+
+    async def aclose(self) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class RerankerVariant:
     """A reranker the eval can measure; ``create`` is ``None`` for no reranking."""
 
     name: str
     description: str
-    create: Callable[[Settings], Reranker] | None = None
+    create: Callable[[Settings], ModelReranker] | None = None
 
 
 DEFAULT_LEXICAL: Final = "tsvector-russian-split"
@@ -262,6 +277,12 @@ LEXICAL_VARIANTS: Final[dict[str, LexicalVariant]] = _registry(
 
 RERANKERS: Final[dict[str, RerankerVariant]] = {
     DEFAULT_RERANKER: RerankerVariant(name=DEFAULT_RERANKER, description="fused order, no rerank"),
+    "local": RerankerVariant(
+        name="local",
+        description="the local cross-encoder of the search_reranker_* settings, by default"
+        " Qwen3-Reranker 0.6B: the best search_rerank_depth hits in the order of its relevance",
+        create=local_reranker,
+    ),
 }
 """Rerankers by name. The default is the service's: none."""
 

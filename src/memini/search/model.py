@@ -12,8 +12,9 @@ from typing import Final, Literal, Protocol, get_args
 from uuid import UUID
 
 from memini.chunking import LANGUAGES, Language
-from memini.config import Settings
+from memini.config import DEFAULT_RERANK_DEPTH, Settings
 from memini.ids import RecordKind
+from memini.persons.model import ROLES, Role
 from memini.search.errors import InvalidSearchError
 from memini.search.patterns import glob_regex
 
@@ -93,8 +94,6 @@ DEFAULT_LEXICAL_WEIGHT: Final = 1.0
 """The weight of the lexical retriever's ranks in the fusion (``search_lexical_weight``)."""
 DEFAULT_SNIPPET_CHARS: Final = 2000
 """The most characters of a chunk's content a hit carries."""
-DEFAULT_RERANK_DEPTH: Final = 50
-"""How many fused hits a reranker gets to reorder."""
 
 
 def _names(filter_name: str, values: Sequence[str | UUID] | None) -> tuple[str | UUID, ...] | None:
@@ -166,8 +165,13 @@ class SearchFilters:
     until: datetime | None = None
     """Records whose ``occurred_at`` is before this time."""
     persons: tuple[str | UUID, ...] | None = None
-    """Records of a person. Accepted here, refused by :func:`memini.search.search` with
-    :class:`UnsupportedFilterError` until persons are linked to records (milestone M2)."""
+    """Records that name one of these persons (``record_person``): a ``str`` is ``"me"`` or an
+    alias as sources show it (a mail address, a chat user id, a display name), a
+    :class:`~uuid.UUID` a person id (:func:`memini.persons.resolve_persons`). Each stands for its
+    canonical person and everyone merged into it."""
+    roles: tuple[Role, ...] | None = None
+    """With ``persons``: only records where one of them has one of these roles: ``author``,
+    ``recipient``, ``mention``, ``participant``. Default: any role."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "workspaces", _names("workspaces", self.workspaces))
@@ -176,6 +180,9 @@ class SearchFilters:
         object.__setattr__(self, "persons", _names("persons", self.persons))
         object.__setattr__(self, "kinds", _one_of("kinds", self.kinds, _RECORD_KINDS))
         object.__setattr__(self, "languages", _one_of("languages", self.languages, LANGUAGES))
+        object.__setattr__(self, "roles", _one_of("roles", self.roles, ROLES))
+        if self.roles is not None and self.persons is None:
+            raise InvalidSearchError("the roles filter needs the persons filter")
         if isinstance(self.paths, str):
             raise InvalidSearchError("the paths filter takes a list of globs, not one string")
         _check_count("paths", self.paths)
@@ -242,7 +249,8 @@ class SearchOptions:
     """The most characters of a chunk's content a hit carries; longer content is cut and the hit
     is marked ``truncated``."""
     rerank_depth: int = DEFAULT_RERANK_DEPTH
-    """How many fused hits a reranker reorders before the list is cut to the limit."""
+    """How many of the best hits a reranker reorders; hits below them keep their place. The list
+    is then cut to the limit."""
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.timeout) and self.timeout > 0):
@@ -263,6 +271,7 @@ class SearchOptions:
             rrf_k=settings.search_rrf_k,
             dense_weight=settings.search_dense_weight,
             lexical_weight=settings.search_lexical_weight,
+            rerank_depth=settings.search_rerank_depth,
         )
 
 
@@ -383,11 +392,12 @@ class Hit:
 
 
 class Reranker(Protocol):
-    """Reorders the hits of a ranked search: a cross-encoder, say (optional; none ships yet).
+    """Reorders the hits of a ranked search: a cross-encoder, say (:mod:`memini.rerank`).
 
     It gets at most :attr:`SearchOptions.rerank_depth` hits in fused order and returns them in
     its own order, with whatever score it gives (``dataclasses.replace(hit, score=...)``); hits it
-    leaves out are dropped. The list is then cut to the query's limit.
+    leaves out are dropped. Hits below the depth follow in their fused order, and the list is then
+    cut to the query's limit. If it raises, the search keeps the fused order and logs a warning.
     """
 
     async def rerank(self, query: str, hits: Sequence[Hit]) -> list[Hit]: ...

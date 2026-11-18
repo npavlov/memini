@@ -212,8 +212,13 @@ SEARCH_TOOL = Tool(
         "Search everything the token may read: code, message threads, meetings and documents. "
         "Ranks chunks by meaning and by words (mode hybrid, the default; dense: meaning only; "
         "lexical: words only). Filters: workspaces, sources, repositories, kinds (code_file, "
-        "thread, meeting, document), since and until on occurred_at (ISO 8601 with a time zone). "
+        "thread, meeting, document), since and until on occurred_at (ISO 8601 with a time zone), "
+        "persons (records that name them: 'me', a person id, or an alias such as a mail address, "
+        "a chat user id or a display name; merged persons count as one) and roles (with persons: "
+        "author, recipient, mention, participant). "
         f"{_RESULT_NOTE} {_ANCHOR_NOTE} For exact, regex or symbol search in code use search_code."
+        " For the meetings or the messages of a person, one result per meeting or message, use"
+        " list_meetings and list_messages."
     ),
     arguments=SearchArguments,
     result=SearchResult,

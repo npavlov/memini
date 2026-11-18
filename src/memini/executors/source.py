@@ -21,7 +21,9 @@ configuration, a JSON object::
   ``digest`` (:func:`memini.recipes.recipe_digest`); ``memini source add --recipe PATH`` reads the
   file and sends its text, so the service needs no access to the client's files. ``{"bundled":
   NAME}`` is a recipe that ships with Memini (:mod:`memini.recipes.bundled`), read again at every
-  sync, so a fix of it in a new build applies at once.
+  sync, so a fix of it in a new build applies at once. A config written by other means may hold
+  the TOML text itself, or the recipe as a table (the TOML read as JSON); both executors read
+  every form through :func:`recipe_ref` and :func:`load_recipe_ref`.
 - ``window``: the source's overrides of the recipe's ``[window]``
   (:func:`memini.intake.resolve_settings`): ``overlap``, ``initial``, ``backfill``, ``max_span``,
   ``history``, each a duration or null for none (``backfill``, ``max_span``, ``history``).
@@ -68,6 +70,7 @@ __all__ = [
     "check_window",
     "inline_recipe",
     "load_recipe_ref",
+    "recipe_ref",
 ]
 
 MAX_RECIPE_TEXT: Final = 256 * 1024
@@ -195,35 +198,43 @@ def _endpoint(value: object) -> Endpoint | None:
 
 @dataclass(frozen=True, slots=True)
 class RecipeRef:
-    """The recipe of a source: its own text, or a bundled one by name."""
+    """The recipe of a source: its own text (or table), or a bundled one by name."""
 
     name: str
-    """The recipe's ``name``."""
+    """The recipe's ``name``; empty when the stored form does not say it."""
     toml: str | None = None
-    """The text of the recipe the source holds; ``None`` for a bundled one."""
+    """The text of the recipe the source holds; ``None`` for a bundled one or a table."""
     digest: str | None = None
     """:func:`memini.recipes.recipe_digest` of the text the source holds, when it was set; a
     bundled recipe's is recorded by each run that reads it."""
+    table: Mapping[str, Any] | None = None
+    """The recipe the source holds as a table (its TOML read as JSON), for a config written so."""
 
     @property
     def bundled(self) -> bool:
-        return self.toml is None
+        return self.toml is None and self.table is None
 
-    def to_json(self) -> dict[str, Any]:
+    def to_json(self) -> Any:
+        if self.table is not None:
+            return dict(self.table)
         if self.toml is None:
             return {"bundled": self.name}
         return {"toml": self.toml, "name": self.name, "digest": self.digest}
 
 
 def _parse(text: str, setting: str) -> "Recipe":
-    from memini.recipes import RecipeError, parse_recipe
-
     if len(text.encode()) > MAX_RECIPE_TEXT:
         raise McpConfigError(setting, f"a recipe of at most {MAX_RECIPE_TEXT} bytes")
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:
-        raise McpConfigError(setting, f"not valid TOML: {error}") from None
+        raise McpConfigError(setting, f"not TOML: {error}") from None
+    return _check(data, text, setting)
+
+
+def _check(data: Mapping[str, Any], text: str | None, setting: str) -> "Recipe":
+    from memini.recipes import RecipeError, parse_recipe
+
     try:
         return parse_recipe(data, text)
     except RecipeError as error:
@@ -286,12 +297,27 @@ def load_recipe_ref(ref: RecipeRef) -> "Recipe":
     Raises:
         McpConfigError: the recipe is not valid (any more), or no longer ships.
     """
+    if ref.table is not None:
+        return _check(ref.table, None, "recipe")
     if ref.toml is not None:
         return _parse(ref.toml, "recipe")
     return _parse(_bundled_text(ref.name), "recipe")
 
 
-def _recipe(value: object) -> RecipeRef | None:
+def _toml_name(text: str) -> str:
+    try:
+        name = tomllib.loads(text).get("name")
+    except tomllib.TOMLDecodeError:
+        return ""
+    return name if isinstance(name, str) else ""
+
+
+def recipe_ref(value: object) -> RecipeRef | None:
+    """The recipe a source's config holds (``source.config.recipe``), as stored, not checked;
+    ``None`` when it holds none. The forms: ``{"toml", "name", "digest"}`` and ``{"bundled"}``,
+    which the administration writes; the TOML text itself; the recipe as a table."""
+    if isinstance(value, str):
+        return RecipeRef(name=_toml_name(value), toml=value)
     if not isinstance(value, Mapping):
         return None
     data = cast(Mapping[str, Any], value)
@@ -301,7 +327,7 @@ def _recipe(value: object) -> RecipeRef | None:
         data.get("name"),
         data.get("digest"),
     )
-    if isinstance(bundled, str):
+    if isinstance(bundled, str) and len(data) == 1:
         return RecipeRef(name=bundled)
     if isinstance(toml, str):
         return RecipeRef(
@@ -309,7 +335,7 @@ def _recipe(value: object) -> RecipeRef | None:
             toml=toml,
             digest=digest if isinstance(digest, str) else None,
         )
-    return None
+    return RecipeRef(name=name if isinstance(name, str) else "", table=dict(data))
 
 
 # --- Streams and windows -------------------------------------------------------------------------
@@ -405,6 +431,6 @@ class McpConfig:
         """The configuration as stored, not checked again (see the module)."""
         return cls(
             endpoint=_endpoint(config.get("endpoint")),
-            recipe=_recipe(config.get("recipe")),
+            recipe=recipe_ref(config.get("recipe")),
             window=_window(config.get("window")),
         )

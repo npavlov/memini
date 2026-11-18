@@ -1,0 +1,29 @@
+{
+  "description": "Memini capture hook: posts the raw result of an MCP call Memini handed out to the Memini service. Does nothing while no agent run is in progress, and never sends a response of a server outside the allowlist.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/skills/memini-intake/scripts/memini-agent\" hook",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/skills/memini-intake/scripts/memini-agent\" hook",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

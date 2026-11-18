@@ -425,6 +425,49 @@ guard refuses one that leaves the allowed path. A stdio server is an executable 
 path is in `mcp_allowed_commands`, exactly; its stderr is discarded, as it is not redacted.
 Refusals name the rule and the setting, never the URL or an address.
 
+**Agent executor** (decided 2026-11-18). One library, `memini.executors.agent`, behind the routes
+`/v1/workspaces/{workspace}/sources/{source}/agent-runs` (scope `ingest`, inside the token's
+workspace limit; tables `agent_run`, `agent_run_window`, `agent_call`): a run is one intake of one
+stream of an mcp source made inside an agent session. Start pins the database time for the run and
+keeps it with the run, plans the windows (Intake planner, below) and opens the first; a stream has
+one unfinished run at a time (409 `agent_run_open`, naming it). `next` hands out one call at a
+time, with an id: the first of the current window's missing calls. A call handed out and not
+answered is handed out again under the same id; one call of a window goes out at most three times
+in all, a failed result counting, and is then given up; a call past `max_pages` never goes out. A
+window with nothing left to hand out is done, and one that is not complete stops its chain; the
+next `next` opens the following window, and with none left, or `rate.max_calls` calls handed out,
+the run is done. A response names the id of a call handed out, and its tool and arguments must be
+the call's, the arguments compared redacted as the store keeps them: any other is refused (409
+`call_not_handed_out`, `call_mismatch`) and nothing is stored. Its result is what the agent's client
+got, an MCP result object, its content blocks or a text, which the service wraps in the result's
+envelope and changes in nothing else; or the error of a call that failed, stored as a result with
+`isError`, so the checks hand the call out again. Claude Code hands a hook an MCP tool's content
+blocks, so a recipe that decodes `structuredContent` cannot run through it yet. The answer is a
+receipt of positions and counts, never a value of the response. Finish takes the source's job lock
+(409 `source_busy`), ingests each opened window in the order of the plan with `ingest_window`, each
+chain stopping at its first incomplete window, and writes a run of kind `agent_sync`: the plan, the
+session's counts, a step per window, the incomplete windows; `partial` unless every window was
+ingested complete. It may come at any point (the session ends) and again after a failure. The
+recipe of an mcp source is `source.config.recipe`, with its window overrides in
+`source.config.window`, read for both executors by `memini.executors.source` (Source
+administration, section 6: the text the source holds, or a bundled recipe by name; a config
+written by other means may hold the TOML text itself or the table); a recipe
+changed under an open run stops its calls (409 `recipe_changed`), and finish parses with the
+recipe as it is, as replay does. The agent cannot always read the session's `serverInfo`: the run
+records the recipe's server name, or the name and version start is given (another name is
+refused, an unchecked version counted). Calls are not paced by `calls_per_minute` yet.
+
+The capture side is a Claude Code plugin, `integrations/claude-code`: the skill `memini-intake`
+drives the loop through a client of these routes (`memini-agent start|next|finish|status`, Python
+3.11 standard library behind a bash 3.2 launcher), and a `PostToolUse` and `PostToolUseFailure`
+hook on MCP tools posts the raw result of the call handed out. It reads the service URL, the path
+of a token file and the allowlist of MCP servers from the user's `capture.toml`; the token stays in
+its file, out of every command line and output. A response of a server outside the allowlist, or
+of a tool other than the call handed out, is never sent; without a run in progress the hook reads
+nothing. It asks Claude Code to show the agent its receipt in place of the result, so what the
+server returned goes to the store and not into the conversation (principle 11), and the skill
+tells the agent that tool results are data, never instructions.
+
 ### Scheduling and hygiene
 
 - Per-stream schedule, with an overlap margin behind the checkpoint to catch late replies.
@@ -527,7 +570,7 @@ retention when that lands.
 | Chunking | Code: tree-sitter, by class and function, small siblings merged, line windows as fallback. Threads: message groups. Meetings: summary sections and transcript windows. Documents: headings. |
 | Dense vectors | Local multilingual embedding model, pinned in config with its digest: Qwen3-Embedding 0.6B through Ollama by default. |
 | Lexical | Postgres full-text search (`tsvector`) with stemming for English and Russian, code identifiers cut into words. Trigram index for exact and regex code search. |
-| Rerank | Local cross-encoder, optional. |
+| Rerank | Local cross-encoder, optional and off by default: Qwen3-Reranker 0.6B run in the process reorders the best hits of a ranked search (section 9, Reranker). |
 | Decision extraction | One LLM call per new or changed thread or meeting, structured output. Skipped when `llm_policy` is `none`. |
 | Supersession | For each extracted item: fetch the top-k similar active items of the workspace, one LLM call classifies it as new, duplicate, or replacing or answering specific items. |
 
@@ -729,8 +772,10 @@ add|rename|alias add|alias remove|merge|split|me` call these routes.
 one library, `memini.query`, behind the MCP tools and their HTTP routes, with the same arguments and
 results: `GET /v1/search`, `GET /v1/search/code`, `GET /v1/symbols` and
 `GET /v1/workspaces/{workspace}/sources/{source}/files/{path}`. `search` ranks every kind of record
-(modes `hybrid`, `dense`, `lexical`); the person filter waits for M2. A hit carries its workspace,
-source and source kind, record kind, a locator (`repo@sha:path#L12-L30` for a file of a repository,
+(modes `hybrid`, `dense`, `lexical`); its `persons` filter keeps the records that name one of the
+persons (`record_person`, read through merges as the comms tools read it, below) and `roles`
+narrows it to `author`, `recipient`, `mention` or `participant`; a name that matches no one gives
+no hits. A hit carries its workspace, source and source kind, record kind, a locator (`repo@sha:path#L12-L30` for a file of a repository,
 code or Markdown; `source:external_id#anchor` for anything else), `occurred_at` (the record's
 time, which `since` and `until` compare), for such a file the repository, ref and commit, and the
 chunk's text. A chunk of a thread, a meeting or a pushed document adds its place in the record
@@ -754,6 +799,53 @@ read, 409 for a repository not synced yet, 503 for a stale index (the message na
 `memini reindex`) or no embedding provider. Every search mode needs the embedder, whose spec the
 fingerprint check compares (principle 9); reading code needs none. `serve` makes one embedder for
 search and sync, so a local model is loaded once.
+
+**Comms tools** (decided 2026-11-18). `list_meetings`, `get_meeting`, `list_messages`,
+`get_thread` and `add_document` are one library, `memini.comms`, behind the MCP tools and their
+routes, with the same arguments and results: `GET /v1/meetings`, `GET /v1/meetings/{record_id}`,
+`GET /v1/messages`, `GET /v1/threads/{record_id}`, `GET …/meetings/{external_id}` and
+`GET …/threads/{external_id}` (`…` is `/v1/workspaces/{workspace}/sources/{source}`), and
+`POST …/documents`; `memini meetings` and `memini messages` are clients of the two lists. The
+reads need the `read` scope, `add_document` the `ingest` scope. A listing is for a `person`: `me`
+(the default; the person marked with the caller's principal, in each workspace read), a person id,
+or an alias as sources show it (a mail address, also `Name <address>`, is an email; anything else
+is tried as a chat user id, a display name, then a git author name, the order ingest resolves a bare
+name in), resolved by `memini.persons.resolve_persons` to its canonical person, which stands for
+everyone merged into it (`person_members`): their `record_person` links are read. "Me" with no
+person marked answers 404 `no_me`, a name that matches no one 404 `not_found`. `list_meetings` lists the
+meeting records where the person is a `participant` (listed, or a speaker), by `since` and `until`
+on the meeting's time, `workspaces`, `sources` and `limit`; `list_messages` lists messages, one
+result per message, where the person has one of `roles` (default `recipient` and `mention`:
+messages sent to them, to or cc, or that mention them; `author`: their own), by the time the
+message was sent and the same filters. A link names the message by its id, so a message result is
+the thread record with the message's anchor `msg-<id>`, its author, recipients, cc, mentions and
+text (cut to the snippet length), and the roles the person has in it. Without a `query` both are
+metadata and time only, newest first, and need no embedder. A `query` is matched by words, not by
+meaning: the lexical retriever of `search` (mode `lexical`, the stemmed `tsvector`) runs over the
+chunks of the person's meetings or threads (the `persons` and `roles` filters), at most 100 chunks;
+a meeting comes back when a chunk of its notes holds a word of the query, ranked by its best chunk,
+with that chunk's anchor and snippet; a message when a chunk that holds it does (its lines overlap
+the message's rows of the normalized text). Hybrid ranking was not chosen: a dense retriever ranks
+every candidate and has no threshold that means "not about this" across models, so it cannot leave
+out the meeting that is the person's but about something else, which "meetings I attended about X"
+asks; no language model takes part either. A search by meaning over a person's records is `search`
+with `persons`. Results carry the workspace, source and source kind, `record_id`, `external_id`,
+the record's URL and time, a locator `source:external_id#anchor` and a link; `record_id` with the
+anchor is an evidence reference. `get_meeting` and `get_thread` take a `record_id`, or a `source`
+and `external_id` (and the `workspace` when two have such a record: 422 `ambiguous_record`), and
+answer 404 for a tombstone and 422 `wrong_kind` for a record of the other kind. `get_meeting` gives
+the title, times, participants as the notes name them and the canonical persons with their roles
+(participants, and action-item owners as `mention`), summary and action items, and the transcript
+(segments with anchor `seg-<id>`) only with `include_transcript`; `get_thread` the canonical persons
+and every message in order. `add_document` stores one `document` record (a `title` and a Markdown
+`text`, an optional `url` and `occurred_at`, default now) in a push source (409 `not_ingestible`
+for any other) through `memini.ingest`, so redaction, the source's filters, the ingest run and
+indexing with the service's embedder apply as to any batch, with the push API's errors. Its
+`external_id` defaults to `doc-` and 16 hex digits of a hash of the title and text, so the same
+document sent again changes nothing and an edited text is another document; a given id sent again
+replaces it. The answer says whether it was `inserted`, `updated`, `unchanged`, `revived` or
+`forgotten`, and gives the `record_id` that `record_decision` cites (section 3: a decision taken
+in a conversation is first stored as a document).
 
 **Status** (decided 2026-11-18; principle 10). One function, `memini.status.read_status`, answers
 the MCP `status` tool, `GET /v1/status` (scope `read`) and `memini status` (a table; `--json` prints
@@ -849,8 +941,8 @@ endpoint included; every limit is a setting, and each error is in the API's erro
   `Retry-After` in seconds. The public routes are not counted. Buckets that have refilled are
   forgotten and at most 10,000 are kept per budget, so memory stays bounded. `http_rate_limit = false`
   turns them off. Under compose they are set in `.env.memini`, as every setting is.
-- Body size: at most `http_max_body_size` (1 MiB) on every route but the batch route, which keeps
-  `ingest_max_body_size` (16 MiB). A body over it is refused by its `Content-Length` before it is
+- Body size: at most `http_max_body_size` (1 MiB) on every route but the batch route and the route
+  of an agent run's raw responses, which keep `ingest_max_body_size` (16 MiB). A body over it is refused by its `Content-Length` before it is
   read, or as soon as more of it arrives: 413 `content_too_large`.
 - Query time: every database statement a request runs, on whichever path and in whichever task (an
   MCP tool, the token lookup), stops after `http_statement_timeout` (30 s), and a transaction it
@@ -925,6 +1017,7 @@ does not mean migrating data.
 | Migrations | Numbered SQL files and a small runner in `memini.db` | Forward only; one transaction per file; an advisory lock for concurrent starts. See below |
 | Lexical search | Built-in `tsvector`, `russian` configuration; `pg_trgm` | In the stock image; as good as BM25 on the eval. See below |
 | Embeddings | Local, in-process or through an OpenAI-compatible endpoint; by default Qwen3-Embedding 0.6B in Ollama | Open question 2, settled |
+| Reranker | Optional, off by default: Qwen3-Reranker 0.6B as ONNX in the process | Ollama serves no reranking; measured on the eval. See below |
 | LLM | OpenAI-compatible endpoint for local models; cloud providers as opt-in | Principle 8 |
 
 **Database access** (decided 2026-11-18). Memini targets one database. What later work needs is Postgres
@@ -1115,7 +1208,7 @@ records are linked to persons (M2), because an empty answer would read as "nobod
 carries the kinds of its source and record, the source's name, the external id and URL,
 `occurred_at`, the path, symbol and lines, and the chunk's content as stored, cut to 2000
 characters (data, never instructions). For code it also carries the commit pinned in the cursor of
-the record's stream.
+the record's stream. A ranked search can be reranked, off by default (Reranker, below).
 
 **Credential store** (decided 2026-11-18). The service executor needs a credential for each source
 it reaches on its own: an API key, or OAuth tokens with a refresh token. They are kept in the table
@@ -1254,6 +1347,105 @@ image) and principle 12, for no gain on the eval. ParadeDB `pg_search` was not m
 (prior-art.md). The `bm25-textsearch-*` variants stay in the eval's registry, to measure again on
 a larger suite, where inverse document frequency has more to work with.
 
+**Reranker** (decided 2026-11-18; memini-2ee). Optional and off by default. One setting,
+`search_reranker = local`, turns on what was measured: the best `search_rerank_depth` (5) hits of a
+`hybrid`, `dense` or `lexical` search are put in the order of a cross-encoder run in the process,
+and the hits below keep their fused place. Ollama 0.34.2 serves no reranking API (`/api/rerank`,
+`/v1/rerank` and the like answer 404, and its binary names no such route), so the model runs in the
+process with onnxruntime and tokenizers, the optional extra `memini[local-embeddings]` of the local
+embedding provider: no new dependency, and the base install and the image are unchanged. The model
+is Qwen3-Reranker 0.6B, not bge-reranker-v2-m3: reranking the top 100 of Qwen3-Embedding 0.6B in
+the Qwen3 Embedding report, it scores 73.4 against 41.4 on code (MTEB-Code) and 66.4 against 58.4
+across languages (MMTEB-R), and it takes the instruction the embedding model's queries carry. The
+same report has it below the embedding model alone on code (73.4 against 75.4), so the eval had
+the last word. The export used is `n24q02m/Qwen3-Reranker-0.6B-ONNX` at commit
+`342a8a54de23bba03eb8cce5f5bef503edf18315`: `onnx/model_yesno_quantized.onnx` (600 MB, int8 with
+dynamic quantization) and `tokenizer.json`, pinned by the digest
+`sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea` (the scheme of the local
+embedding provider) and kept in a directory of their own per digest, by default
+`~/.cache/memini/models/n24q02m--Qwen3-Reranker-0.6B-ONNX/sha256-eaa6edfadd2440e4/`. Its graph
+takes `input_ids` and `attention_mask` and gives only the two logits that matter, "no" and "yes" at
+the last token. The other exports looked at, read from the first and last 4 MB of each file
+rather than downloaded, give logits over the whole vocabulary at every position and take a
+key-value cache (onnx-community, 1.2 GB), or compute in float16 rather than int8 (a
+sequence-classification export, 1.2 GB).
+
+A hit is scored with the model's own template (the system line, `<Instruct>`, `<Query>`,
+`<Document>`, an empty think block), the document being the hit's header and snippet; its score is
+P(yes) = 1 / (1 + e^(no − yes)), which becomes the hit's `score`, 0 to 1. Query and hit are
+tokenized with special tokens off, so a `<|im_end|>` in a document is text (principle 11), and the
+prompt is cut to `search_reranker_max_tokens` (1024) at the end of the hit; on the suite a prompt
+is 204 tokens at the median and 457 at most. The model runs once per pair, never on a padded batch:
+the export numbers positions from 0 whatever the padding and quantizes per batch, so a pair's score
+would depend on its neighbours (a "yes" logit of 20.42 alone, 21.24 beside one other pair). Two
+pairs at a time would gain about 30% on this machine; not done. A reranking that fails, or runs
+past `search_reranker_timeout` (5 s), leaves the fused order and logs a warning: search never
+fails for it. The service loads the model in the background at start and reranks once it is
+loaded.
+
+Measured on the code suite (eval/code: 96 questions in hybrid and lexical, 75 in dense; 39 and 34
+in Russian, 24 asked in the other language than their answer) with Qwen3-Embedding 0.6B through
+Ollama and the service's fusion. Every row was searched on one scratch index, so hybrid's run-to-run
+noise is not in the differences. R@1 / R@5 / R@10 / MRR:
+
+| Mode, rerank | All | Russian | Cross-language |
+|---|---|---|---|
+| hybrid, none | 0.61 / 0.98 / 0.99 / 0.77 | 0.47 / 0.99 / 1.00 / 0.68 | 0.46 / 0.96 / 0.98 / 0.67 |
+| hybrid, depth 3 | 0.77 / 0.98 / 0.99 / 0.86 | 0.76 / 0.99 / 1.00 / 0.85 | 0.62 / 0.96 / 0.98 / 0.76 |
+| **hybrid, depth 5** | **0.78 / 0.98 / 0.99 / 0.88** | **0.78 / 0.97 / 1.00 / 0.88** | **0.67 / 0.94 / 0.98 / 0.81** |
+| hybrid, depth 10 | 0.79 / 0.99 / 0.99 / 0.89 | 0.81 / 1.00 / 1.00 / 0.90 | 0.71 / 0.98 / 0.98 / 0.84 |
+| hybrid, depth 20 | 0.79 / 0.99 / 1.00 / 0.88 | 0.81 / 1.00 / 1.00 / 0.90 | 0.71 / 1.00 / 1.00 / 0.83 |
+| hybrid, depth 50 | 0.79 / 0.99 / 1.00 / 0.88 | 0.81 / 1.00 / 1.00 / 0.90 | 0.71 / 1.00 / 1.00 / 0.83 |
+| dense, none | 0.56 / 0.97 / 0.99 / 0.73 | 0.46 / 1.00 / 1.00 / 0.66 | 0.48 / 0.98 / 0.98 / 0.69 |
+| **dense, depth 5** | **0.77 / 0.97 / 0.99 / 0.87** | **0.81 / 1.00 / 1.00 / 0.90** | **0.71 / 0.98 / 0.98 / 0.84** |
+| dense, depth 20 | 0.78 / 0.99 / 0.99 / 0.88 | 0.81 / 1.00 / 1.00 / 0.89 | 0.71 / 1.00 / 1.00 / 0.83 |
+| lexical, none | 0.52 / 0.79 / 0.82 / 0.66 | 0.43 / 0.68 / 0.71 / 0.56 | 0.12 / 0.28 / 0.31 / 0.20 |
+| **lexical, depth 5** | **0.66 / 0.78 / 0.82 / 0.73** | **0.60 / 0.68 / 0.71 / 0.66** | **0.17 / 0.25 / 0.31 / 0.22** |
+| lexical, depth 20 | 0.68 / 0.82 / 0.82 / 0.76 | 0.63 / 0.71 / 0.71 / 0.68 | 0.21 / 0.31 / 0.31 / 0.27 |
+
+`memini eval --modes hybrid,dense,lexical`, each run on a fresh index, agrees within hybrid's and
+lexical's run-to-run noise: `--reranker none` 0.61 / 0.98 / 0.99 / 0.77 (hybrid),
+0.56 / 0.97 / 0.99 / 0.73 (dense), 0.52 / 0.79 / 0.82 / 0.66 (lexical); `--reranker local` at
+depth 5 0.79 / 0.99 / 0.99 / 0.89, 0.77 / 0.97 / 0.99 / 0.87, 0.68 / 0.80 / 0.82 / 0.75. The
+English questions of hybrid go from 0.71 / 0.83 (R@1 / MRR) to 0.77 / 0.88 at depth 5; the Russian
+and cross-language ones gain most. Replacing the fused order wins over blending it with
+the reranker's by weighted rank fusion (depth 20, on an index of another run whose fused order
+scored the same; hybrid R@1 / MRR: k = 1 and equal weights 0.74 / 0.86; the fused order weighted 2,
+0.67 / 0.82; the reranker weighted 2, which orders as replacing does, 0.79 / 0.88; k = 60,
+0.73 / 0.86). Depth beyond 10 can only lift R@10, which is 0.99 already. Latency on an Apple M4 Max
+(16 cores; one pair per run on all of them), added to a hybrid search that takes 27 ms at the
+median (35 ms at p95): the sum of the model's time over the pairs of each search, all 267
+searches, depth 3 0.30 s at the median and 0.40 s at p95, depth 5 0.49 / 0.61 s, depth 10
+0.94 / 1.14 s, depth 20 1.81 / 2.13 s, depth 50 4.48 / 5.23 s; the rerank step timed in `search`,
+hybrid questions, depth 3 0.40 / 0.54 s, depth 5 0.50 / 0.66 s, depth 10 1.07 / 1.36 s, depth 20
+2.06 / 2.44 s, depth 50 4.97 / 5.79 s. Other work shared the machine, and runs at a busy moment
+had tails of several seconds. The model loads in 1 s; with it the process holds about 1.1 GB, and
+1.7 GB at its peak while it scores a prompt of 1024 tokens.
+
+The rule, set before the latency was known: reranking is worth turning on if hybrid, over all
+questions, gains at least 0.05 in R@1 and 0.03 in MRR (beyond hybrid's run-to-run noise of about
+0.03) with neither falling in any language group, and if it adds at most 1 s at p95 on this
+machine, as an interactive MCP tool should answer within about a second. Depth 5 passes both:
++0.17 R@1 and +0.11 MRR, both up in every group, 0.66 s at p95; depth 10 gains 0.01 more and misses
+the latency bar. R@5 moves by up to 0.03 either way at depth 5: reordering the top 5 cannot move a
+hit across the fifth place, but it ends the ties the fused order has there, which the metric
+counts at their expected value.
+Hence `search_rerank_depth` 5 and replacing, not blending. It still ships off: turning it on by
+default would make every install that has the optional runtime fetch 600 MB from Hugging Face on
+its first start, and the image, the way the service is meant to run, does not carry the runtime;
+a CPU slower than this one pays several times the latency, up to the timeout. Embeddings follow
+the same rule: off until set, with the measured model one setting away. Putting the runtime and
+the model into the image, and the reranker on, is the next step if the owner wants it there.
+
+To turn it on: install the extra (`pip install 'memini[local-embeddings]'`, or
+`uv sync --extra local-embeddings` in a checkout), set `MEMINI_SEARCH_RERANKER=local` and start the
+service. On its first start it fetches the two files at the pinned revision into
+`search_reranker_model_dir` (unset: `$XDG_CACHE_HOME/memini/models`, or `~/.cache/memini/models`),
+verifies them against the digest and logs `reranking with ...` once the model is loaded; if it
+cannot load, a warning says why and search goes on without it. `memini eval --modes
+hybrid,dense,lexical --reranker local` measures it (`--reranker none`, the fused order), at the
+depth of `MEMINI_SEARCH_RERANK_DEPTH`.
+
 **Redaction** (decided 2026-11-18; principle 11). One library, `memini.redaction`, finds secrets
 and card numbers by pattern and check, without a model, and replaces each with a marker that names
 its kind, `[REDACTED:card]`. No digit of a card is kept, the last four included: nothing needs
@@ -1323,7 +1515,9 @@ retriever and the reranker; a baseline is such a report, and a run exits with co
 recall or MRR of a group falls below the baseline by more than a margin (0.02). The lexical
 retriever and the reranker are chosen by name from registries of the eval (`--lexical`,
 `--reranker`), and `memini.search.search` takes the lexical statement as a parameter: open question
-1 measured its candidates there (section 9, Lexical search), and they stay in the registry. The
+1 measured its candidates there (section 9, Lexical search), and they stay in the registry;
+`--reranker local` is the local cross-encoder of the `search_reranker_*` settings (section 9,
+Reranker), loaded before the first question, so a missing model stops the run. The
 committed baseline,
 `eval/code/baseline-fake.json`, covers the modes the FakeEmbedder does not take part in (lexical,
 exact, regex, symbol) and is what CI compares with on every pull request (`make eval` in the `eval`

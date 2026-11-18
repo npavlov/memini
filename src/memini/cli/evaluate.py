@@ -37,6 +37,7 @@ from memini.evaluation import (
     write_report,
 )
 from memini.evaluation.suite import keep
+from memini.rerank import RerankError
 from memini.search import MAX_LIMIT, MODES, Mode, SearchOptions
 
 __all__ = [
@@ -121,14 +122,21 @@ async def eval_command(args: argparse.Namespace, settings: Settings) -> int:
         raise CommandError("no question of the suite targets the modes asked for", EXIT_USAGE)
 
     reranker_variant = RERANKERS[args.reranker]
+    reranker = None if reranker_variant.create is None else reranker_variant.create(settings)
+    if reranker is not None:
+        try:
+            await reranker.load()  # a missing model stops the run: search would fall back
+        except RerankError as error:
+            raise CommandError(f"the reranker cannot run: {error}") from None
     embedder: Embedder = FakeEmbedder() if fake else create_embedder(settings)
     config = EvalConfig(
         modes=modes,
         ks=args.ks,
         options=SearchOptions.from_settings(settings),
         lexical=LEXICAL_VARIANTS[args.lexical],
-        reranker_name=reranker_variant.name,
-        reranker=None if reranker_variant.create is None else reranker_variant.create(settings),
+        reranker_name=reranker_variant.name
+        + ("" if reranker is None else f" ({reranker.describe()})"),
+        reranker=reranker,
         query_prefix="" if fake else settings.embedding_query_prefix,
     )
     database = DatabaseUrl(settings)
@@ -157,6 +165,8 @@ async def eval_command(args: argparse.Namespace, settings: Settings) -> int:
         ) from None
     finally:
         await embedder.aclose()
+        if reranker is not None:
+            await reranker.aclose()
 
     to_stdout = json_path is not None and str(json_path) == "-"
     if not to_stdout:

@@ -90,7 +90,9 @@ def test_search_arguments_have_defaults_and_limits() -> None:
         {"query": "lamp", "kinds": ["email"]},
         {"query": "lamp", "since": "2026-01-01T00:00:00"},  # no zone
         {"query": "lamp", "workspaces": [""]},
-        {"query": "lamp", "persons": ["me"]},  # refused until persons are linked (M2)
+        {"query": "lamp", "persons": [""]},
+        {"query": "lamp", "persons": "me"},  # a list
+        {"query": "lamp", "persons": ["me"], "roles": ["owner"]},
         {"query": "lamp", "colour": "red"},
     ):
         with pytest.raises(ValidationError):

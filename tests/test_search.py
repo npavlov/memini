@@ -273,6 +273,23 @@ def test_filters_drop_empty_lists_and_repeated_values() -> None:
     assert filters.persons is None
 
 
+def test_the_persons_filter_takes_names_ids_and_roles() -> None:
+    person = uuid.uuid4()
+    filters = SearchFilters(
+        persons=("me", person, "me"), roles=("recipient", "mention", "recipient")
+    )
+
+    assert filters.persons == ("me", person)
+    assert filters.roles == ("recipient", "mention")
+    assert SearchFilters(persons=("me",), roles=()).roles is None
+    with pytest.raises(InvalidSearchError, match="roles filter needs the persons filter"):
+        SearchFilters(roles=("author",))
+    with pytest.raises(InvalidSearchError, match="unknown value in the roles filter"):
+        SearchFilters(persons=("me",), roles=("owner",))  # type: ignore[arg-type]
+    with pytest.raises(InvalidSearchError, match="persons filter takes a list"):
+        SearchFilters(persons="me")  # type: ignore[arg-type]
+
+
 # --- Options and settings ------------------------------------------------------------------------
 
 

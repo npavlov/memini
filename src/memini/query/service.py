@@ -50,6 +50,8 @@ from memini.auth import ReadFilter
 from memini.config import Settings
 from memini.embeddings import Embedder, EmbeddingError, EmbeddingsNotConfiguredError
 from memini.git import GitOptions, MirrorManager
+from memini.ingest import DEFAULT_LIMITS, IngestLimits
+from memini.persons import parse_person_ref
 from memini.query.model import (
     CodeSearchArguments,
     Definition,
@@ -74,6 +76,7 @@ from memini.search import (
     IndexMismatchError,
     InvalidSearchError,
     Mode,
+    Reranker,
     SearchFilters,
     SearchOptions,
     SearchQuery,
@@ -101,10 +104,10 @@ log = logging.getLogger(__name__)
 @dataclass(slots=True)
 class QueryServices:
     """What the query tools need besides a connection and the caller: the search options, the
-    repository mirrors to read code from, and the embedder.
+    repository mirrors to read code from, the embedder and the reranker.
 
-    The application builds one at start (:meth:`from_settings`) and sets :attr:`embedder` while it
-    runs; tests build one directly.
+    The application builds one at start (:meth:`from_settings`) and sets :attr:`embedder` and
+    :attr:`reranker` while it runs; tests build one directly.
     """
 
     search_options: SearchOptions = field(default_factory=SearchOptions)
@@ -114,13 +117,20 @@ class QueryServices:
     """The service's embedder; ``None`` when no embedding provider is configured, or the
     application is not running."""
     read_limits: ReadLimits = DEFAULT_READ_LIMITS
+    ingest_limits: IngestLimits = DEFAULT_LIMITS
+    """The limits of a batch, for the ``add_document`` write (:mod:`memini.comms`)."""
+    reranker: Reranker | None = None
+    """Reorders the best hits of a ranked search; ``None``: the fused order (the default), or the
+    reranker is not loaded yet."""
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "QueryServices":
-        """Options and mirrors from ``settings``; the embedder is set later. Reads nothing yet."""
+        """Options, mirrors and limits from ``settings``; the embedder is set later. Reads
+        nothing yet."""
         return cls(
             search_options=SearchOptions.from_settings(settings),
             mirrors=MirrorManager(GitOptions.from_settings(settings)),
+            ingest_limits=IngestLimits.from_settings(settings),
         )
 
 
@@ -186,7 +196,14 @@ async def _search(
     embedder = services.embedder
     if embedder is None:
         raise EmbeddingsNotConfiguredError
-    return await search(conn, embedder, access, query, options=services.search_options)
+    return await search(
+        conn,
+        embedder,
+        access,
+        query,
+        options=services.search_options,
+        reranker=services.reranker,
+    )
 
 
 async def run_search(
@@ -205,6 +222,10 @@ async def run_search(
                 kinds=None if arguments.kinds is None else tuple(arguments.kinds),
                 since=arguments.since,
                 until=arguments.until,
+                persons=None
+                if arguments.persons is None
+                else tuple(parse_person_ref(person) for person in arguments.persons),
+                roles=None if arguments.roles is None else tuple(arguments.roles),
             ),
         )
         hits = await _search(conn, services, access, query)

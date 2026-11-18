@@ -60,6 +60,7 @@ from memini.workspaces import NotFoundError
 __all__ = [
     "NOT_INDEXED_NOTE",
     "BatchBody",
+    "BatchRoute",
     "CheckpointInfo",
     "IndexInfo",
     "IngestAccepted",
@@ -67,6 +68,7 @@ __all__ = [
     "RecordBody",
     "WindowBody",
     "build_ingest_router",
+    "ingest_errors",
 ]
 
 log = logging.getLogger(__name__)
@@ -371,7 +373,11 @@ class _BatchRequest(Request):
         return self._json
 
 
-class _BatchRoute(APIRoute):
+class BatchRoute(APIRoute):
+    """A route whose body is read up to ``ingest_max_body_size`` and parsed strictly (a key twice
+    is refused): the batch route, and the route that takes an agent run's raw responses
+    (:mod:`memini.api.agent_runs`). :mod:`memini.api.limits` leaves their bodies to it."""
+
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
         handler = super().get_route_handler()
 
@@ -382,7 +388,8 @@ class _BatchRoute(APIRoute):
 
 
 @contextmanager
-def _ingest_errors() -> Generator[None]:
+def ingest_errors() -> Generator[None]:
+    """The errors of :func:`memini.ingest.ingest` as the API's errors."""
     try:
         yield
     except NotFoundError as error:
@@ -420,7 +427,7 @@ def _ingest_errors() -> Generator[None]:
 def build_ingest_router() -> APIRouter:
     """The ingest route; see the module."""
     router = APIRouter(
-        prefix="/workspaces/{workspace}/sources", tags=["ingest"], route_class=_BatchRoute
+        prefix="/workspaces/{workspace}/sources", tags=["ingest"], route_class=BatchRoute
     )
 
     @router.post("/{source}/records", summary="Ingest a batch of records")
@@ -440,7 +447,7 @@ def build_ingest_router() -> APIRouter:
         pool = cast(Pool | None, request.app.state.pool)
         embedder = cast(QueryServices, request.app.state.services).embedder
         indexer = None if embedder is None else ingest.PayloadIndexer(embedder)
-        with _ingest_errors():
+        with ingest_errors():
             result = await ingest.ingest(
                 conn,
                 access,

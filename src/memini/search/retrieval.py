@@ -124,6 +124,9 @@ class ChunkScope:
     source_ids: tuple[UUID, ...] | None
     """The sources and repositories the filters name, resolved; ``None`` for no such filter."""
     filters: SearchFilters
+    person_ids: tuple[UUID, ...] | None = None
+    """The persons the ``persons`` filter names, resolved: each canonical person and everyone
+    merged into it, whose links (``record_person``) count; ``None`` for no such filter."""
 
 
 def _c(column: str) -> sql.Identifier:
@@ -154,6 +157,18 @@ def chunk_conditions(scope: ChunkScope, param: Params) -> sql.Composable:
         parts.append(sql.SQL("r.occurred_at >= {}").format(param(filters.since)))
     if filters.until is not None:
         parts.append(sql.SQL("r.occurred_at < {}").format(param(filters.until)))
+    if scope.person_ids is not None:
+        # A link of the record to one of the persons, through the unique key that starts with
+        # record_id; a merged person's links keep naming it, so its members are listed.
+        roles = sql.SQL("")
+        if filters.roles is not None:
+            roles = sql.SQL(" AND rp.role = ANY({})").format(param(list(filters.roles)))
+        parts.append(
+            sql.SQL(
+                "EXISTS (SELECT 1 FROM record_person rp WHERE rp.record_id = c.record_id"
+                " AND rp.person_id = ANY({}){})"
+            ).format(param(list(scope.person_ids)), roles)
+        )
     return sql.SQL(" AND ").join(parts)
 
 
