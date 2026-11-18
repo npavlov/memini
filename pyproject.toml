@@ -20,6 +20,12 @@ dependencies = [
     "pgvector>=0.5.1",
     "psycopg[binary,pool]>=3.3.9",
     "pydantic>=2.14.3",
+    "tree-sitter>=0.26.1",
+    "tree-sitter-go>=0.25.0",
+    "tree-sitter-javascript>=0.25.0",
+    "tree-sitter-python>=0.25.0",
+    "tree-sitter-ruby>=0.23.1",
+    "tree-sitter-typescript>=0.23.2",
     "uvicorn>=0.54.0",
 ]
 
@@ -53,6 +59,7 @@ dev = [
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+extend-exclude = ["tests/fixtures"] # inputs for parsers, not code of this project
 
 [tool.ruff.lint]
 select = [
@@ -73,6 +80,7 @@ select = [
 
 [tool.pyright]
 include = ["src", "tests", "scripts"]
+exclude = ["tests/fixtures"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."

@@ -1,0 +1,297 @@
+{
+  "chunker_version": 1,
+  "language": "ruby",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "f60b8b13161ed4a762c441fe145b980fd9883a895f7c5a949c9c8e9ce3ccbbb0",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 6],
+      "bytes": [0, 126],
+      "content_hash": "4a4e75fc212f1cdbc76de6292bb02b02319a5304cca0895d368b7a645102b9d0",
+      "text": [
+        "tea_shop.rb: OPENING_HOUR",
+        "# frozen_string_literal: true",
+        "",
+        "# Tea shop counter: a synthetic fixture for the chunker tests.",
+        "require \"json\"",
+        "",
+        "OPENING_HOUR = 8"
+      ]
+    },
+    {
+      "key": "Counter.Pot#0/+0",
+      "id": "645ac9f23f2dfdfd442e6cecb4fd640f801d43eb7df6decaa6a72230e06b4a33",
+      "kind": "group",
+      "symbol": "Counter.Pot",
+      "lines": [8, 24],
+      "bytes": [128, 429],
+      "content_hash": "d6c28c3d92eb0c64ace349451bed6dcd47c2a01466521a435386ec7cc8f69e7c",
+      "text": [
+        "tea_shop.rb: Counter, Counter.Pot, Counter.Pot.STEEP_MINUTES, Counter.Pot.initialize, Counter.Pot.small",
+        "module Counter",
+        "  # One pot of tea on the counter.",
+        "  class Pot",
+        "    include Comparable",
+        "    attr_reader :leaves, :cups",
+        "",
+        "    STEEP_MINUTES = 4",
+        "",
+        "    def initialize(leaves, cups = 2)",
+        "      @leaves = leaves",
+        "      @cups = cups",
+        "      @poured = 0",
+        "    end",
+        "",
+        "    def self.small(leaves)",
+        "      new(leaves, 1)",
+        "    end"
+      ]
+    },
+    {
+      "key": "Counter.Pot.small#0+0",
+      "id": "d097721b6e934b27bb798d2112b728f28334e779f075f2575f1c126da9e3d4cc",
+      "kind": "code",
+      "symbol": "Counter.Pot",
+      "lines": [26, 34],
+      "bytes": [431, 558],
+      "content_hash": "01f9d57db43a74afb8f84276cf8cd57e0f19900a0fa2fb48c5908da08311172a",
+      "text": [
+        "tea_shop.rb: Counter.Pot.large, Counter.Pot.sizes",
+        "    class << self",
+        "      def large(leaves)",
+        "        new(leaves, 6)",
+        "      end",
+        "",
+        "      def sizes",
+        "        [1, 2, 6]",
+        "      end",
+        "    end"
+      ]
+    },
+    {
+      "key": "Counter.Pot.empty?#0",
+      "id": "846bcd0526ae199edd26f531d8ea1635a61230e2f02f23b91603ae39f2e683e5",
+      "kind": "group",
+      "symbol": "Counter.Pot",
+      "lines": [36, 59],
+      "bytes": [560, 925],
+      "content_hash": "d407ff52424914fc0f6564451580285309a09d2e76bc2608dc9d41137ddc582b",
+      "text": [
+        "tea_shop.rb: Counter.Pot.empty?, Counter.Pot.pour!, Counter.Pot.<=>, Counter.Pot.to_json, Counter.Pot.steeped?",
+        "    def empty? = @poured >= @cups",
+        "",
+        "    def pour!",
+        "      raise \"the pot is empty\" if empty?",
+        "",
+        "      @poured += 1",
+        "      cups - @poured",
+        "    end",
+        "",
+        "    def <=>(other)",
+        "      cups <=> other.cups",
+        "    end",
+        "",
+        "    def to_json(*args)",
+        "      { leaves: leaves, cups: cups }.to_json(*args)",
+        "    end",
+        "",
+        "    private",
+        "",
+        "    def steeped?(minutes)",
+        "      minutes >= STEEP_MINUTES",
+        "    end",
+        "  end",
+        "end"
+      ]
+    },
+    {
+      "key": "Counter.Pot#1",
+      "id": "62e8d020f60613e8d2e9beaac8b83d0dc2fd9ec43038f4459bc80d92b09cd82a",
+      "kind": "group",
+      "symbol": null,
+      "lines": [61, 71],
+      "bytes": [927, 1096],
+      "content_hash": "e90753431e15054d0ad5fc1b2a5a4424519ec3903a17d4bcee424a1a7cf20d74",
+      "text": [
+        "tea_shop.rb: Counter.Pot, open?",
+        "class Counter::Pot",
+        "  def refill",
+        "    @poured = 0",
+        "  end",
+        "end",
+        "",
+        "def open?(hour)",
+        "  hour >= OPENING_HOUR",
+        "end",
+        "",
+        "puts Counter::Pot.small(\"mint\").pour! if $PROGRAM_NAME == __FILE__"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "OPENING_HOUR",
+      "name": "OPENING_HOUR",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [6, 6],
+      "bytes": [110, 126],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Counter",
+      "name": "Counter",
+      "kind": "module",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [8, 59],
+      "bytes": [128, 925],
+      "chunk": "Counter.Pot#0/+0"
+    },
+    {
+      "qualified_name": "Counter.Pot",
+      "name": "Pot",
+      "kind": "class",
+      "parent": "Counter",
+      "ordinal": 0,
+      "lines": [10, 58],
+      "bytes": [180, 921],
+      "chunk": "Counter.Pot#0/+0"
+    },
+    {
+      "qualified_name": "Counter.Pot.STEEP_MINUTES",
+      "name": "STEEP_MINUTES",
+      "kind": "constant",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [14, 14],
+      "bytes": [249, 266],
+      "chunk": "Counter.Pot#0/+0"
+    },
+    {
+      "qualified_name": "Counter.Pot.initialize",
+      "name": "initialize",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [16, 20],
+      "bytes": [272, 372],
+      "chunk": "Counter.Pot#0/+0"
+    },
+    {
+      "qualified_name": "Counter.Pot.small",
+      "name": "small",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [22, 24],
+      "bytes": [378, 429],
+      "chunk": "Counter.Pot#0/+0"
+    },
+    {
+      "qualified_name": "Counter.Pot.large",
+      "name": "large",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [27, 29],
+      "bytes": [455, 505],
+      "chunk": "Counter.Pot.small#0+0"
+    },
+    {
+      "qualified_name": "Counter.Pot.sizes",
+      "name": "sizes",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [31, 33],
+      "bytes": [513, 550],
+      "chunk": "Counter.Pot.small#0+0"
+    },
+    {
+      "qualified_name": "Counter.Pot.empty?",
+      "name": "empty?",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [36, 36],
+      "bytes": [564, 593],
+      "chunk": "Counter.Pot.empty?#0"
+    },
+    {
+      "qualified_name": "Counter.Pot.pour!",
+      "name": "pour!",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [38, 43],
+      "bytes": [599, 698],
+      "chunk": "Counter.Pot.empty?#0"
+    },
+    {
+      "qualified_name": "Counter.Pot.<=>",
+      "name": "<=>",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [45, 47],
+      "bytes": [704, 752],
+      "chunk": "Counter.Pot.empty?#0"
+    },
+    {
+      "qualified_name": "Counter.Pot.to_json",
+      "name": "to_json",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [49, 51],
+      "bytes": [758, 836],
+      "chunk": "Counter.Pot.empty?#0"
+    },
+    {
+      "qualified_name": "Counter.Pot.steeped?",
+      "name": "steeped?",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [55, 57],
+      "bytes": [855, 915],
+      "chunk": "Counter.Pot.empty?#0"
+    },
+    {
+      "qualified_name": "Counter.Pot",
+      "name": "Pot",
+      "kind": "class",
+      "parent": "Counter",
+      "ordinal": 1,
+      "lines": [61, 65],
+      "bytes": [927, 984],
+      "chunk": "Counter.Pot#1"
+    },
+    {
+      "qualified_name": "Counter.Pot.refill",
+      "name": "refill",
+      "kind": "method",
+      "parent": "Counter.Pot",
+      "ordinal": 0,
+      "lines": [62, 64],
+      "bytes": [948, 980],
+      "chunk": "Counter.Pot#1"
+    },
+    {
+      "qualified_name": "open?",
+      "name": "open?",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [67, 69],
+      "bytes": [986, 1028],
+      "chunk": "Counter.Pot#1"
+    }
+  ]
+}

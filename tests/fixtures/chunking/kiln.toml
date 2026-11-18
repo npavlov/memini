@@ -1,0 +1,16 @@
+# Pottery kiln settings: a synthetic fixture for the chunker tests.
+# TOML has no grammar in the chunker, so the file is cut into line windows.
+
+[kiln]
+name = "small kiln"
+max_celsius = 1280
+
+[[program]]
+name = "bisque"
+ramp = [100, 600, 950]
+hold_minutes = 10
+
+[[program]]
+name = "glaze"
+ramp = [150, 1000, 1240]
+hold_minutes = 15

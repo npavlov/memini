@@ -169,6 +169,18 @@ Extraction is idempotent per record content hash and extractor version. A new ex
 over stored records. The user can add, supersede or retract items by hand; manual items are never
 overwritten by extraction.
 
+**Code chunks** (decided 2026-11-18). One chunk per definition: function, method, class, type,
+constant. A comment block right above a definition, and its decorators, belong to it; statements
+outside definitions are chunks of their own. A class or module of more than 40 lines is split into
+its members; neighbours of at most 6 lines merge while the merged chunk spans at most 40 lines;
+anything over 80 lines or 3000 characters is cut into windows of 60 lines that overlap by 10. A file
+without a grammar, or larger than 1 MiB, is cut into windows only; a binary file gives no chunks.
+The text embedded is a header line (path and qualified names) and the source lines. A chunk id is a
+hash of the record id and a structural key: the qualified name of the definition with an ordinal
+for repeated names, or for statements a count from the definition before them. Line numbers and
+content are not in the key, so editing one function changes the content hash of its chunk and
+nothing else. The chunker version and the grammar versions are part of the index fingerprint.
+
 ## 6. Query surface
 
 ### MCP tools

@@ -1,0 +1,37 @@
+{
+  "chunker_version": 1,
+  "language": null,
+  "fallback": "unknown_language",
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "d4095465742f0ffc65190412296365036adcbcc0d29c7e3a0ae20323a599790e",
+      "kind": "window",
+      "symbol": null,
+      "lines": [1, 16],
+      "bytes": [0, 331],
+      "content_hash": "1adde5dea0bf5714e892d044745aad6395c4a9a6811ff99e8a1cfd1a5cc346b1",
+      "text": [
+        "kiln.toml",
+        "# Pottery kiln settings: a synthetic fixture for the chunker tests.",
+        "# TOML has no grammar in the chunker, so the file is cut into line windows.",
+        "",
+        "[kiln]",
+        "name = \"small kiln\"",
+        "max_celsius = 1280",
+        "",
+        "[[program]]",
+        "name = \"bisque\"",
+        "ramp = [100, 600, 950]",
+        "hold_minutes = 10",
+        "",
+        "[[program]]",
+        "name = \"glaze\"",
+        "ramp = [150, 1000, 1240]",
+        "hold_minutes = 15"
+      ]
+    }
+  ],
+  "symbols": []
+}
