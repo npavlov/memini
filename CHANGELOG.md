@@ -29,6 +29,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   per-stream schedules and graceful shutdown.
 - JSON logs with request and run ids that mask tokens and secrets; a run report (steps, durations,
   counts, LLM tokens) for every job attempt.
+- MCP endpoint at `/mcp` (streamable HTTP, stateless, JSON), behind the same bearer tokens, with the
+  `status` tool: version, schema, readable workspaces, stream lag and last run, and whether the base
+  is current.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13.
 
 [Unreleased]: https://github.com/npavlov/memini/commits/main

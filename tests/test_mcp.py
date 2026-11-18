@@ -28,6 +28,7 @@ from memini.api import create_app
 from memini.api.mcp import mcp_route
 from memini.auth import AuthenticationError, Principal, Scope, generate_token
 from memini.config import Settings
+from memini.db import load_migrations
 from memini.mcp import (
     MCP_PATH,
     SERVER_INSTRUCTIONS,
@@ -175,7 +176,7 @@ async def test_status_without_a_database_says_so_and_is_not_current(
     assert structured["database"] == {
         "reachable": False,
         "schema_version": None,
-        "expected_schema_version": 2,
+        "expected_schema_version": len(load_migrations()),
     }
     assert structured["workspaces"] == []
     assert structured["index"]["state"] == "none"
