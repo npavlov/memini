@@ -275,8 +275,12 @@ search and sync, so a local model is loaded once.
 
 - One process: HTTP API, MCP over streamable HTTP, scheduler and workers. One Postgres database.
 - `docker compose up` is the supported install. Binds to localhost by default.
-- A CLI wraps the API for setup and operations. Setup (migrations, workspaces, tokens) works on the
-  database directly: the first token cannot come from an API that asks for one.
+- A CLI wraps the API for setup and operations (decided 2026-11-18). Its commands are HTTP clients of
+  the running service, with a service URL and a token: the service is the one place that checks scopes,
+  applies the authorization filter, touches the mirrors and writes run reports, and no database
+  credentials leave the service. A few operator commands work on the database directly, inside the
+  service's container, because they run before a token exists or below the API: migrations, the first
+  admin token (bootstrap), key rotation and a full reindex.
 - Secrets come from the environment or a secrets file, never from the database in clear text.
 - Health and status endpoints, structured logs, run reports.
 - Backup is a database dump. Repository mirrors are re-cloned.
@@ -481,7 +485,9 @@ the record's stream.
 
 1. BM25: `pg_textsearch` (Postgres 17+) or built-in `tsvector`. Needs a check of Russian stemming and
    ranking quality on the eval set.
-2. Default embedding model and how it ships: in-process ONNX (no extra service) or Ollama.
+2. Settled on 2026-11-18 by the owner: Qwen3-Embedding 0.6B (`qwen3-embedding:0.6b`, 1024 dimensions,
+   multilingual, strong on code), served by Ollama through the OpenAI-compatible provider. The eval
+   records its numbers as the baseline.
 3. Postgres in the same image (one container) or as a second compose service.
 4. Settled on 2026-11-18: source configuration lives in the database, managed through the HTTP API and
    the CLI; an apply-from-file command is optional and not built (section 6).
