@@ -50,9 +50,8 @@ chunks disappear.
 - Agent executor: plan and next-call API, a Claude Code skill and a capture hook that post raw responses.
 - Service executor: MCP client, scheduler, encrypted token storage, per-source locks.
 - Stream health in `status`; run reports.
-- Any source (requirements section 4): a declarative mapping parser, `memini recipe check` against a
-  live server and a recipe-drafting skill, a catalog of bundled recipes for common chat, mail and
-  note-taker servers, an IMAP connector, and `memini import` of export files.
+- Intake modes (requirements section 4): `memini push` from a file or stdin, and a skill for an agent
+  that pushes what it reads from its own tools.
 
 Done when: one recipe run by both executors yields identical records; an incomplete window leaves the
 checkpoint in place and lists the missing calls; a parser fix replays from stored raw responses.

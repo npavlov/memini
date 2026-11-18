@@ -20,9 +20,8 @@ agent writes the answer.
 - LLM-compiled wiki articles with per-claim evidence markers (v2, section 11).
 - Multi-user login, roles and permissions (the schema is ready for them, section 8).
 - A chat UI and server-side answer generation.
-- Native connectors for vendor APIs (Slack, Teams, Telegram and the like): v1 reaches them through MCP
-  recipes, export files and the push API (section 4, "Any source"). Mail is the exception: IMAP is one
-  standard protocol that reaches every mailbox, so it gets a native connector.
+- A connector per chat, mail or note-taker service, and importers per export format: other tools and
+  agents push into Memini (section 4, "Intake modes").
 
 ## 2. Principles
 
@@ -267,29 +266,19 @@ shown in UTC to the minute.
 | Push API | Any client sends records or documents. | Yes. This is the base contract; the other paths end in it. |
 | MCP recipe | A declarative description of how to sync one MCP server. | Yes, with two executors (below). |
 
-**Any source** (decided 2026-11-19). Memini is run by people whose tools it cannot know in advance:
-any chat (Slack, Microsoft Teams, Telegram, ...), any mailbox, any meeting note-taker, any MCP
-server. No source may need a change to Memini's code or a new release. That is reached in five
-ways, all ending in the one ingest contract:
+**Intake modes** (decided 2026-11-19). Memini does not grow a connector per tool or an importer per
+export format. Besides `git` and the MCP recipes, data comes in through the one push contract, in
+one of two ways:
 
-1. **A recipe needs no code.** A declarative mapping parser (`[parser] name = "mapping"`) turns a
-   window's responses into records with selectors only, as the rest of the recipe reads values
-   (principle 5 holds: no model in the sync loop). A registered Python parser stays for what a
-   mapping cannot express. A user adds a server by giving the source a recipe file.
-2. **Recipes are checked against the live server.** `memini recipe check` runs a recipe against a
-   source's server and stores nothing: the tools exist, the arguments fit their input schemas, a
-   window parses and its checks pass, and it prints the records it would make. The Claude Code
-   plugin has a skill that drafts a recipe for any server connected to the agent, from its tool
-   list and a sample call, and runs the check.
-3. **A catalog of bundled recipes** for common servers: chat, mail and meeting note-takers. Each is
-   marked `verified` (run against the live server, with the date and server version) or
-   `unverified` (written from the vendor's published tool descriptions); tests use synthetic
-   responses only.
-4. **Mail by IMAP.** A native connector, as `git` is, reaches every mailbox: a UID cursor per folder,
-   reset by `UIDVALIDITY`; messages grouped into threads by their references.
-5. **Export files and the push API.** `memini import` reads common export files (a Slack workspace
-   export, a Telegram Desktop export, mbox) into a push source, for history and for tools with no
-   server; anything else pushes records over HTTP.
+1. **The command line.** `memini push` sends records from a file or stdin (JSON or JSON lines, the
+   push contract's record shape); a record pushed again with the same external id is updated.
+2. **Another agent.** An agent connected to the person's tools (any chat, mailbox or note-taker it
+   can read) pushes what it reads with the same command or the HTTP API; a Claude Code skill tells
+   it how. The agent is a transport: it copies field values as it read them and never summarises or
+   rewrites them, so what Memini stores is what the source said (principle 5).
+
+The record shapes for a chat thread, a mail thread, a meeting and a document, with an example each,
+are in [intake.md](intake.md).
 
 ### MCP recipes
 
