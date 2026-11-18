@@ -9,6 +9,7 @@ Usage::
     memini migrate
     memini workspace create <name>
     memini workspace list
+    memini workspace llm <name> [none|local|cloud]
     memini token create --scope {read,ingest,admin} [--scope ...] [--workspace <name>]
                         [--name <label>] [--expires-in <duration>]
     memini token list
@@ -37,6 +38,11 @@ is stored.
 
 An error is one line on stderr, ``memini: ...``, without a traceback. No output holds the database
 URL or its password; the server is named as ``host:port``.
+
+``workspace llm`` shows a workspace's ``llm_policy`` and the LLM providers the settings configure,
+or sets it: ``none`` (no LLM reads anything in it), ``local`` (the default) or ``cloud``, the
+workspace's opt-in to the cloud provider for sources whose own ``llm_policy`` is ``cloud``
+(:mod:`memini.llm`). Only this command sets it; the HTTP API cannot.
 
 ``reindex`` rebuilds a workspace's index from raw records under the configured embedding model and
 the chunker of this build (:func:`memini.index.reindex`); it is what a refused search names. It
@@ -102,6 +108,7 @@ from memini.evaluation import (
     RERANKERS,
 )
 from memini.index import IndexMismatchError
+from memini.llm import LLM_POLICIES
 
 __all__ = ["build_parser", "main"]
 
@@ -212,6 +219,26 @@ def build_parser() -> argparse.ArgumentParser:
     create_workspace.set_defaults(command=admin.create_workspace_command)
     list_workspaces = workspace_commands.add_parser("list", help="list workspaces")
     list_workspaces.set_defaults(command=admin.list_workspaces_command)
+    workspace_llm = workspace_commands.add_parser(
+        "llm",
+        help="show or set which LLM may read a workspace's content",
+        description="Without a policy, show the workspace's llm_policy and the configured"
+        " providers. With one, set it: none (no LLM), local (the local provider only; the"
+        " default) or cloud (opt in to the cloud provider for sources whose llm_policy is"
+        " cloud). A source's own llm_policy can narrow it, never widen it.",
+    )
+    workspace_llm.add_argument(
+        "name",
+        type=admin.parse_workspace_name,
+        help="the workspace",
+    )
+    workspace_llm.add_argument(
+        "policy",
+        nargs="?",
+        choices=LLM_POLICIES,
+        help="none, local or cloud; leave out to show the current one",
+    )
+    workspace_llm.set_defaults(command=admin.workspace_llm_command)
 
     token = commands.add_parser("token", help="create, list and revoke bearer tokens")
     token_commands = token.add_subparsers(metavar="<command>", required=True)

@@ -42,6 +42,14 @@ chosen, or any ``embedding_*`` setting without a provider, is an error. The inde
 (:mod:`memini.index`) covers provider, model, digest, dimension, pooling, token limit and document
 prefix: a change of any of them blocks search until ``memini reindex`` rebuilds the index.
 
+The ``llm_*`` settings declare at most two LLM providers (:mod:`memini.llm`), each an
+OpenAI-compatible chat API: ``llm_local_*`` one you trust with the content of every source (Ollama,
+llama.cpp, vLLM on your own machine), ``llm_cloud_*`` one you trust only with sources whose
+``llm_policy`` is ``cloud``, in workspaces that opted in (principle 8). The slot an endpoint is set
+in is the declaration; it is never inferred from the URL. ``llm_cloud_url`` must use https. Each
+slot needs its URL and model together; a setting of a slot without its URL is an error. No
+provider is configured by default, and then nothing is extracted.
+
 The ``git_*`` settings configure the git connector (:mod:`memini.git`): where the mirrors live, the
 limits, which transports a source may use and the credentials for remotes. A list setting is a
 TOML array in the config file, or comma-separated in the environment
@@ -86,6 +94,7 @@ __all__ = [
     "ConfigError",
     "EmbeddingPooling",
     "EmbeddingProvider",
+    "LlmStructuredOutput",
     "LogLevel",
     "Settings",
     "decode_credential_key",
@@ -105,6 +114,11 @@ EmbeddingProvider = Literal["openai_compatible", "local"]
 EmbeddingPooling = Literal["mean", "cls"]
 """How the local provider makes one vector of a text's token vectors: their mean, or the vector of
 the first token."""
+
+LlmStructuredOutput = Literal["json_schema", "json_object", "none"]
+"""How an LLM endpoint is asked for JSON: ``response_format`` with the JSON schema, with
+``json_object``, or not at all (the schema goes into the prompt). The reply is parsed and validated
+against the schema in every case."""
 
 EMBEDDING_MAX_DIMENSION: Final = 16000
 """The largest dimension a pgvector ``vector`` column holds."""
@@ -416,6 +430,52 @@ class Settings(BaseModel):
         " with K, M or G",
     )
 
+    # --- LLM providers (memini.llm). Rules across these fields: _llm_problems. -------------------
+    # Two OpenAI-compatible chat APIs, declared by the slot they are set in: the local one may
+    # read content of sources whose llm_policy is local or cloud, the cloud one only content of
+    # sources whose llm_policy is cloud, in workspaces that opted in. The gate (memini.llm.gate)
+    # enforces it; the declaration is the user's, never inferred from a host name.
+    llm_local_url: str | None = Field(
+        default=None,
+        max_length=500,
+        pattern=r"^https?://[^\s/?#]+(/[^\s?#]*)?$",
+        description="the base URL of an OpenAI-compatible API you trust with every source's"
+        " content, e.g. http://127.0.0.1:11434/v1",
+    )
+    llm_local_model: str | None = Field(
+        default=None, min_length=1, max_length=200, description="the model the local API serves"
+    )
+    llm_local_api_key: Annotated[SecretStr | None, AfterValidator(_single_line)] = Field(
+        default=None, min_length=1, description="a key for the local API, without whitespace"
+    )
+    llm_local_structured_output: LlmStructuredOutput = Field(
+        default="json_schema",
+        description="json_schema, json_object or none: how the local API is asked for JSON",
+    )
+    llm_cloud_url: str | None = Field(
+        default=None,
+        max_length=500,
+        pattern=r"^https://[^\s/?#]+(/[^\s?#]*)?$",
+        description="the https:// base URL of an OpenAI-compatible API that may read sources"
+        " whose llm_policy is cloud, in workspaces that opted in",
+    )
+    llm_cloud_model: str | None = Field(
+        default=None, min_length=1, max_length=200, description="the model the cloud API serves"
+    )
+    llm_cloud_api_key: Annotated[SecretStr | None, AfterValidator(_single_line)] = Field(
+        default=None, min_length=1, description="a key for the cloud API, without whitespace"
+    )
+    llm_cloud_structured_output: LlmStructuredOutput = Field(
+        default="json_schema",
+        description="json_schema, json_object or none: how the cloud API is asked for JSON",
+    )
+    llm_timeout: float = Field(
+        default=300.0,
+        gt=0,
+        le=3600,
+        description="seconds per LLM request, more than 0, at most 3600",
+    )
+
     @field_validator("git_https_token_hosts")
     @classmethod
     def _token_has_hosts(cls, hosts: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:
@@ -515,6 +575,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
 
     if settings is not None:
         problems.extend(_embedding_problems(settings, origin))
+        problems.extend(_llm_problems(settings, origin))
 
     # Raised outside the except block, so the ValidationError is not chained as __context__.
     if settings is None or problems:
@@ -661,5 +722,67 @@ def _embedding_problems(settings: Settings, origin: Mapping[str, str]) -> list[s
         problems.append(
             f"{where('embedding_url')}: holds credentials, but the URL is not a secret;"
             f" set {key} or {key}{_FILE_SUFFIX} instead"
+        )
+    return problems
+
+
+# --- LLM providers: rules across settings --------------------------------------------------------
+
+_LLM_SLOT_SETTINGS: Final = ("model", "api_key", "structured_output")
+"""Settings of a provider slot that need its URL."""
+
+
+def _llm_problems(settings: Settings, origin: Mapping[str, str]) -> list[str]:
+    """Problems of the LLM settings taken together. Each names its key, never a value."""
+
+    def where(name: str) -> str:
+        return origin.get(name, _env_var(name))
+
+    slots = (
+        ("local", settings.llm_local_url, settings.llm_local_model),
+        ("cloud", settings.llm_cloud_url, settings.llm_cloud_model),
+    )
+    problems: list[str] = []
+    for slot, url, model in slots:
+        url_name = f"llm_{slot}_url"
+        if url is None:
+            problems.extend(
+                f"{origin[name]}: has no effect without {url_name}; set {_env_var(url_name)},"
+                " or remove it"
+                for name in (f"llm_{slot}_{suffix}" for suffix in _LLM_SLOT_SETTINGS)
+                if name in origin
+            )
+            continue
+        if model is None:
+            key = _env_var(f"llm_{slot}_model")
+            problems.append(
+                f"{key}: required when {url_name} is set; set {key} or llm_{slot}_model in the"
+                " config file"
+            )
+        if "@" in url.split("/")[2]:
+            key = _env_var(f"llm_{slot}_api_key")
+            problems.append(
+                f"{where(url_name)}: holds credentials, but the URL is not a secret;"
+                f" set {key} or {key}{_FILE_SUFFIX} instead"
+            )
+    if (
+        settings.llm_local_url is None
+        and settings.llm_cloud_url is None
+        and "llm_timeout" in origin
+    ):
+        problems.append(
+            f"{origin['llm_timeout']}: has no effect without llm_local_url or llm_cloud_url;"
+            " set one, or remove it"
+        )
+    local_url, cloud_url = settings.llm_local_url, settings.llm_cloud_url
+    if (
+        local_url is not None
+        and cloud_url is not None
+        and local_url.rstrip("/") == cloud_url.rstrip("/")
+        and settings.llm_local_model == settings.llm_cloud_model
+    ):
+        problems.append(
+            f"{where('llm_cloud_url')}: names the same endpoint and model as llm_local_url; an"
+            " endpoint is declared either local or cloud"
         )
     return problems

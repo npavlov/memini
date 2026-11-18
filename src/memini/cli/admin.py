@@ -1,4 +1,4 @@
-"""Setup commands: ``migrate``, ``workspace create|list`` and ``token create|list|revoke``.
+"""Setup commands: ``migrate``, ``workspace create|list|llm`` and ``token create|list|revoke``.
 
 Each runs in one transaction as the principal the CLI acts as (``settings.principal``) and prints
 its result only after the transaction has committed.
@@ -16,6 +16,7 @@ from psycopg import errors
 from memini.auth import (
     Scope,
     TokenInfo,
+    WriteAccess,
     create_token,
     is_well_formed_token,
     list_tokens,
@@ -32,7 +33,18 @@ from memini.cli.common import (
 )
 from memini.config import Settings
 from memini.db import migrate
-from memini.workspaces import check_handle, create_workspace, list_owned_workspaces
+from memini.llm import (
+    LlmPolicy,
+    configured_providers,
+    get_workspace_llm_policy,
+    set_workspace_llm_policy,
+)
+from memini.workspaces import (
+    NotFoundError,
+    check_handle,
+    create_workspace,
+    list_owned_workspaces,
+)
 
 __all__ = [
     "DEFAULT_TOKEN_NAME",
@@ -46,6 +58,7 @@ __all__ = [
     "parse_token_name",
     "parse_workspace_name",
     "revoke_token_command",
+    "workspace_llm_command",
 ]
 
 DEFAULT_TOKEN_NAME: Final = "cli"  # noqa: S105 - a label, not a secret
@@ -141,6 +154,55 @@ async def list_workspaces_command(args: argparse.Namespace, settings: Settings) 
         ("NAME", "CREATED", "ID"),
         ((w.name, format_time(w.created_at), str(w.id)) for w in found),
     )
+    return EXIT_OK
+
+
+async def workspace_llm_command(args: argparse.Namespace, settings: Settings) -> int:
+    """Show the ``llm_policy`` of a workspace and the providers it reaches, or set it.
+
+    ``cloud`` opts the workspace in to the cloud provider (principle 8). It is set here only: the
+    HTTP API has no route that changes it.
+    """
+    name: str = args.name
+    policy: LlmPolicy | None = args.policy
+    providers = configured_providers(settings)
+    async with principal_session(settings) as (conn, owner_id):
+        try:
+            if policy is None:
+                current = await get_workspace_llm_policy(conn, owner_id=owner_id, name=name)
+            else:
+                access = WriteAccess.for_owner(owner_id)
+                current = await set_workspace_llm_policy(conn, access, name, policy)
+        except NotFoundError:
+            raise CommandError(f"no workspace named {name}; see `memini workspace list`") from None
+    if policy is None:
+        print(f"workspace {name}: llm_policy {current}")
+        for provider_class in ("local", "cloud"):
+            info = providers.get(provider_class)
+            shown = "not configured" if info is None else info.describe()
+            print(f"  {provider_class} provider: {shown}")
+        return EXIT_OK
+
+    print(f"workspace {name}: llm_policy {current} -> {policy}")
+    cloud, local = providers.get("cloud"), providers.get("local")
+    no_local = "no local provider is configured (MEMINI_LLM_LOCAL_URL)"
+    if policy == "none":
+        message(f"no LLM reads content of {name} from now on")
+    elif policy == "local" and local is None:
+        message(f"{no_local}; until one is, no LLM reads content of {name}")
+    elif policy == "cloud":
+        if cloud is None:
+            message(
+                "no cloud provider is configured (MEMINI_LLM_CLOUD_URL); until one is, content"
+                f" of {name} goes to the local provider only"
+            )
+        else:
+            message(
+                f"content of {name} whose sources all have llm_policy cloud may now go to the"
+                f" cloud provider, {cloud.describe()}"
+            )
+        if local is None:
+            message(f"{no_local}; no LLM reads content of {name} that may not go to the cloud")
     return EXIT_OK
 
 

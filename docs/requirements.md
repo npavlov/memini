@@ -57,7 +57,7 @@ Three layers: raw, index, knowledge.
 
 | Entity | Meaning |
 |---|---|
-| Workspace | Isolation unit: a company or a project. Every row carries `workspace_id`. |
+| Workspace | Isolation unit: a company or a project. Every row carries `workspace_id`. Holds `llm_policy` (`none`, `local`, `cloud`); `cloud` is its opt-in to a cloud LLM (section 9). |
 | Principal | The user. One in v1. Every row carries `owner_id`. |
 | Token | Bearer token (stored hashed) bound to a principal, with scopes `read`, `ingest`, `admin`; optionally limited to one workspace. |
 
@@ -571,6 +571,39 @@ memory and the source must be authorized again; a failure that leaves the proces
 them back to be stored on another connection. Secret values are `SecretStr` in memory, registered
 for log redaction as soon as they are decrypted, and no log line, error text or HTTP response holds
 one; no route returns a secret. `memini credentials set` stores a credential read from stdin.
+
+**LLM providers and the policy gate** (decided 2026-11-18). One async interface, `memini.llm`, for
+chat completions with structured output: a request names a pydantic model, and the reply is parsed
+and validated against it whatever the endpoint promised. How an endpoint is asked for JSON is set
+per provider: `response_format` with the JSON schema, with `json_object`, or not at all, the schema
+then in the system message; a reply in a code fence or after a `<think>` block is still read, and
+one that does not validate is an error that names fields, never values. Temperature (0 by default)
+and a token limit per request; retries, backoff, `Retry-After` and a timeout per attempt as for
+embeddings. The tokens of every call go to the run report under `local/model` or `cloud/model`.
+The settings declare at most two providers, each an OpenAI-compatible chat API: `llm_local_*`,
+trusted with the content of every source, and `llm_cloud_*` (https only), trusted with sources
+whose policy is `cloud` in workspaces that opted in. The slot an endpoint is set in is the
+declaration; its class is never inferred from its host. Keys come from the environment only, are
+registered for redaction and are removed from error text a server sends back. The workspace's
+choice is a column, `workspace.llm_policy` (`none`, `local`, `cloud`; default `local`, as for
+sources), and `cloud` is the opt-in. Only the CLI sets it (`memini workspace llm`), working on the
+database as the operator; the HTTP API has no route for it, so no token, an admin one included,
+can send content to a cloud provider the operator did not allow. Providers by name, so that two
+workspaces could use two cloud accounts, are not built: the flat settings have no form for a list
+of providers with keys, and one cloud provider covers v1; a later migration can add a provider name
+per workspace. Every LLM call goes through one gate, `LlmGate.complete`, which takes the ids of
+every source whose content is in the request, reads the policies of the workspace and of those
+sources at each call and takes the strictest (`none` < `local` < `cloud`): `none` refuses; `local`
+goes to the local provider and never to the cloud one, whatever the workspace allows; `cloud` goes
+to the cloud provider, or to the local one when no cloud provider is configured. Content mixed from
+several sources, as in a supersession check, is held to the strictest of them. The gate fails
+closed: no source named, a source of another workspace or of none, an unknown policy value, no
+provider the policy allows: each is a refusal before anything is sent, and a caller turns the
+expected ones (`policy_none`, `no_provider`) into a skip. The class that sends is private to the
+package, created only with a key the gate holds, and checks the gate's grant again before it sends:
+a cloud endpoint takes only a grant whose policy is `cloud`. A test parses every module of the
+service and fails on any other import of it. `llm_policy` does not govern embeddings: chunk text of
+every source goes to the embedding endpoint the user set (above).
 
 ## 10. Quality
 
