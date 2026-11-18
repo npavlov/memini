@@ -17,6 +17,7 @@ import memini.logs
 from memini.api.request_id import request_id_var
 from memini.logs import (
     REDACTED,
+    ROUTED_LOGGERS,
     configure_logging,
     current_run_id,
     redact,
@@ -228,6 +229,63 @@ def test_library_loggers_write_through_the_one_handler(log_output: io.StringIO) 
     for name in ("uvicorn.error", "uvicorn.access", "psycopg.pool"):
         assert logging.getLogger(name).handlers == []
         assert logging.getLogger(name).propagate
+
+
+def pool_lends_a_connection() -> None:
+    """What psycopg.pool logs for one connection it lends, as psycopg_pool does."""
+    pool = logging.getLogger("psycopg.pool")
+    pool.info("connection requested from %r", "pool-1")
+    pool.info("connection given by %r", "pool-1")
+    pool.info("returning connection to %r", "pool-1")
+    pool.warning("discarding closed connection: %s", "<fake connection>")
+
+
+@pytest.mark.parametrize("level", ["INFO", "WARNING"])
+def test_the_pool_logs_warnings_only_above_debug(log_output: io.StringIO, level: str) -> None:
+    configure_logging(level, stream=log_output)
+
+    pool_lends_a_connection()
+    log().info("own info")
+
+    entries = [(entry["logger"], entry["level"]) for entry in records(log_output)]
+    expected = [("psycopg.pool", "WARNING")]
+    if level == "INFO":
+        expected.append((LOGGER, "INFO"))
+    assert entries == expected
+    pool = logging.getLogger("psycopg.pool")
+    assert pool.handlers == []
+    assert pool.propagate
+
+
+def test_the_pool_logs_nothing_below_a_higher_level(log_output: io.StringIO) -> None:
+    configure_logging("ERROR", stream=log_output)
+
+    pool_lends_a_connection()
+    logging.getLogger("psycopg.pool").error("pool is broken")
+
+    assert [(entry["logger"], entry["level"]) for entry in records(log_output)] == [
+        ("psycopg.pool", "ERROR")
+    ]
+
+
+def test_the_pool_logs_everything_at_debug(log_output: io.StringIO) -> None:
+    configure_logging("WARNING", stream=log_output)
+    configure_logging("DEBUG", stream=log_output)
+
+    pool_lends_a_connection()
+    logging.getLogger("psycopg.pool").debug("pool closed")
+
+    assert [entry["level"] for entry in records(log_output)] == [
+        "INFO",
+        "INFO",
+        "INFO",
+        "WARNING",
+        "DEBUG",
+    ]
+
+
+def test_quiet_loggers_are_routed() -> None:
+    assert set(memini.logs.QUIET_LOGGERS) <= set(ROUTED_LOGGERS)
 
 
 def test_an_unknown_level_is_refused(log_output: io.StringIO) -> None:

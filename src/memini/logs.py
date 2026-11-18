@@ -4,7 +4,9 @@ Call :func:`configure_logging` once at start, before the HTTP server or the work
 one handler on the root logger, so every logger of the process writes through it: Memini's own
 loggers, and the loggers of uvicorn, FastAPI and psycopg, whose own handlers it removes. Calling it
 again replaces that handler; it never adds a second one. Run uvicorn with ``log_config=None``,
-otherwise uvicorn installs its own handlers when it starts.
+otherwise uvicorn installs its own handlers when it starts. The connection pool of psycopg, which
+logs every connection it lends at INFO, writes only warnings and errors unless the level is DEBUG
+(:data:`QUIET_LOGGERS`).
 
 A line in JSON mode (the default)::
 
@@ -54,6 +56,7 @@ from urllib.parse import unquote, urlsplit
 
 __all__ = [
     "MIN_SECRET_LENGTH",
+    "QUIET_LOGGERS",
     "REDACTED",
     "ROUTED_LOGGERS",
     "JsonFormatter",
@@ -85,6 +88,10 @@ ROUTED_LOGGERS: Final = (
 )
 """Loggers of libraries whose own handlers :func:`configure_logging` removes, so that they write
 through the root handler like every other logger."""
+
+QUIET_LOGGERS: Final = ("psycopg.pool",)
+"""Routed loggers that write at WARNING or above unless the configured level is DEBUG. The pool
+logs three INFO lines for every connection it lends, health checks included."""
 
 run_id_var: ContextVar[uuid.UUID | None] = ContextVar("memini_run_id", default=None)
 """The id of the run being recorded (:func:`memini.runs.record_run`), or ``None`` outside a run."""
@@ -388,12 +395,14 @@ def configure_logging(
 
     Idempotent: a second call replaces the handler of the first, with the new arguments. Handlers
     that others put on the root logger stay; the handlers of :data:`ROUTED_LOGGERS` are removed and
-    those loggers propagate to the root.
+    those loggers propagate to the root. The loggers of :data:`QUIET_LOGGERS` write at WARNING or
+    above, or at ``level`` if that is higher; at DEBUG they write everything, like the others.
 
     Raises:
         ValueError: ``level`` is not a level name.
     """
     number = _level(level)
+    quiet = logging.NOTSET if number <= logging.DEBUG else max(number, logging.WARNING)
     root = logging.getLogger()
     for handler in list(root.handlers):
         if isinstance(handler, _Handler):
@@ -408,4 +417,4 @@ def configure_logging(
         for routed in list(logger.handlers):
             logger.removeHandler(routed)
         logger.propagate = True
-        logger.setLevel(logging.NOTSET)
+        logger.setLevel(quiet if name in QUIET_LOGGERS else logging.NOTSET)
