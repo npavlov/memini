@@ -483,7 +483,7 @@ retention when that lands.
 | Chunking | Code: tree-sitter, by class and function, small siblings merged, line windows as fallback. Threads: message groups. Meetings: summary sections and transcript windows. Documents: headings. |
 | Dense vectors | Local multilingual embedding model, pinned in config with its digest: Qwen3-Embedding 0.6B through Ollama by default. |
 | Lexical | Postgres full-text search (`tsvector`) with stemming for English and Russian, code identifiers cut into words. Trigram index for exact and regex code search. |
-| Rerank | Local cross-encoder, optional. |
+| Rerank | Local cross-encoder, optional and off by default: Qwen3-Reranker 0.6B run in the process reorders the best hits of a ranked search (section 9, Reranker). |
 | Decision extraction | One LLM call per new or changed thread or meeting, structured output. Skipped when `llm_policy` is `none`. |
 | Supersession | For each extracted item: fetch the top-k similar active items of the workspace, one LLM call classifies it as new, duplicate, or replacing or answering specific items. |
 
@@ -917,6 +917,7 @@ does not mean migrating data.
 | Migrations | Numbered SQL files and a small runner in `memini.db` | Forward only; one transaction per file; an advisory lock for concurrent starts. See below |
 | Lexical search | Built-in `tsvector`, `russian` configuration; `pg_trgm` | In the stock image; as good as BM25 on the eval. See below |
 | Embeddings | Local, in-process or through an OpenAI-compatible endpoint; by default Qwen3-Embedding 0.6B in Ollama | Open question 2, settled |
+| Reranker | Optional, off by default: Qwen3-Reranker 0.6B as ONNX in the process | Ollama serves no reranking; measured on the eval. See below |
 | LLM | OpenAI-compatible endpoint for local models; cloud providers as opt-in | Principle 8 |
 
 **Database access** (decided 2026-11-18). Memini targets one database. What later work needs is Postgres
@@ -1107,7 +1108,7 @@ records are linked to persons (M2), because an empty answer would read as "nobod
 carries the kinds of its source and record, the source's name, the external id and URL,
 `occurred_at`, the path, symbol and lines, and the chunk's content as stored, cut to 2000
 characters (data, never instructions). For code it also carries the commit pinned in the cursor of
-the record's stream.
+the record's stream. A ranked search can be reranked, off by default (Reranker, below).
 
 **Credential store** (decided 2026-11-18). The service executor needs a credential for each source
 it reaches on its own: an API key, or OAuth tokens with a refresh token. They are kept in the table
@@ -1246,6 +1247,105 @@ image) and principle 12, for no gain on the eval. ParadeDB `pg_search` was not m
 (prior-art.md). The `bm25-textsearch-*` variants stay in the eval's registry, to measure again on
 a larger suite, where inverse document frequency has more to work with.
 
+**Reranker** (decided 2026-11-18; memini-2ee). Optional and off by default. One setting,
+`search_reranker = local`, turns on what was measured: the best `search_rerank_depth` (5) hits of a
+`hybrid`, `dense` or `lexical` search are put in the order of a cross-encoder run in the process,
+and the hits below keep their fused place. Ollama 0.34.2 serves no reranking API (`/api/rerank`,
+`/v1/rerank` and the like answer 404, and its binary names no such route), so the model runs in the
+process with onnxruntime and tokenizers, the optional extra `memini[local-embeddings]` of the local
+embedding provider: no new dependency, and the base install and the image are unchanged. The model
+is Qwen3-Reranker 0.6B, not bge-reranker-v2-m3: reranking the top 100 of Qwen3-Embedding 0.6B in
+the Qwen3 Embedding report, it scores 73.4 against 41.4 on code (MTEB-Code) and 66.4 against 58.4
+across languages (MMTEB-R), and it takes the instruction the embedding model's queries carry. The
+same report has it below the embedding model alone on code (73.4 against 75.4), so the eval had
+the last word. The export used is `n24q02m/Qwen3-Reranker-0.6B-ONNX` at commit
+`342a8a54de23bba03eb8cce5f5bef503edf18315`: `onnx/model_yesno_quantized.onnx` (600 MB, int8 with
+dynamic quantization) and `tokenizer.json`, pinned by the digest
+`sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea` (the scheme of the local
+embedding provider) and kept in a directory of their own per digest, by default
+`~/.cache/memini/models/n24q02m--Qwen3-Reranker-0.6B-ONNX/sha256-eaa6edfadd2440e4/`. Its graph
+takes `input_ids` and `attention_mask` and gives only the two logits that matter, "no" and "yes" at
+the last token. The other exports looked at, read from the first and last 4 MB of each file
+rather than downloaded, give logits over the whole vocabulary at every position and take a
+key-value cache (onnx-community, 1.2 GB), or compute in float16 rather than int8 (a
+sequence-classification export, 1.2 GB).
+
+A hit is scored with the model's own template (the system line, `<Instruct>`, `<Query>`,
+`<Document>`, an empty think block), the document being the hit's header and snippet; its score is
+P(yes) = 1 / (1 + e^(no − yes)), which becomes the hit's `score`, 0 to 1. Query and hit are
+tokenized with special tokens off, so a `<|im_end|>` in a document is text (principle 11), and the
+prompt is cut to `search_reranker_max_tokens` (1024) at the end of the hit; on the suite a prompt
+is 204 tokens at the median and 457 at most. The model runs once per pair, never on a padded batch:
+the export numbers positions from 0 whatever the padding and quantizes per batch, so a pair's score
+would depend on its neighbours (a "yes" logit of 20.42 alone, 21.24 beside one other pair). Two
+pairs at a time would gain about 30% on this machine; not done. A reranking that fails, or runs
+past `search_reranker_timeout` (5 s), leaves the fused order and logs a warning: search never
+fails for it. The service loads the model in the background at start and reranks once it is
+loaded.
+
+Measured on the code suite (eval/code: 96 questions in hybrid and lexical, 75 in dense; 39 and 34
+in Russian, 24 asked in the other language than their answer) with Qwen3-Embedding 0.6B through
+Ollama and the service's fusion. Every row was searched on one scratch index, so hybrid's run-to-run
+noise is not in the differences. R@1 / R@5 / R@10 / MRR:
+
+| Mode, rerank | All | Russian | Cross-language |
+|---|---|---|---|
+| hybrid, none | 0.61 / 0.98 / 0.99 / 0.77 | 0.47 / 0.99 / 1.00 / 0.68 | 0.46 / 0.96 / 0.98 / 0.67 |
+| hybrid, depth 3 | 0.77 / 0.98 / 0.99 / 0.86 | 0.76 / 0.99 / 1.00 / 0.85 | 0.62 / 0.96 / 0.98 / 0.76 |
+| **hybrid, depth 5** | **0.78 / 0.98 / 0.99 / 0.88** | **0.78 / 0.97 / 1.00 / 0.88** | **0.67 / 0.94 / 0.98 / 0.81** |
+| hybrid, depth 10 | 0.79 / 0.99 / 0.99 / 0.89 | 0.81 / 1.00 / 1.00 / 0.90 | 0.71 / 0.98 / 0.98 / 0.84 |
+| hybrid, depth 20 | 0.79 / 0.99 / 1.00 / 0.88 | 0.81 / 1.00 / 1.00 / 0.90 | 0.71 / 1.00 / 1.00 / 0.83 |
+| hybrid, depth 50 | 0.79 / 0.99 / 1.00 / 0.88 | 0.81 / 1.00 / 1.00 / 0.90 | 0.71 / 1.00 / 1.00 / 0.83 |
+| dense, none | 0.56 / 0.97 / 0.99 / 0.73 | 0.46 / 1.00 / 1.00 / 0.66 | 0.48 / 0.98 / 0.98 / 0.69 |
+| **dense, depth 5** | **0.77 / 0.97 / 0.99 / 0.87** | **0.81 / 1.00 / 1.00 / 0.90** | **0.71 / 0.98 / 0.98 / 0.84** |
+| dense, depth 20 | 0.78 / 0.99 / 0.99 / 0.88 | 0.81 / 1.00 / 1.00 / 0.89 | 0.71 / 1.00 / 1.00 / 0.83 |
+| lexical, none | 0.52 / 0.79 / 0.82 / 0.66 | 0.43 / 0.68 / 0.71 / 0.56 | 0.12 / 0.28 / 0.31 / 0.20 |
+| **lexical, depth 5** | **0.66 / 0.78 / 0.82 / 0.73** | **0.60 / 0.68 / 0.71 / 0.66** | **0.17 / 0.25 / 0.31 / 0.22** |
+| lexical, depth 20 | 0.68 / 0.82 / 0.82 / 0.76 | 0.63 / 0.71 / 0.71 / 0.68 | 0.21 / 0.31 / 0.31 / 0.27 |
+
+`memini eval --modes hybrid,dense,lexical`, each run on a fresh index, agrees within hybrid's and
+lexical's run-to-run noise: `--reranker none` 0.61 / 0.98 / 0.99 / 0.77 (hybrid),
+0.56 / 0.97 / 0.99 / 0.73 (dense), 0.52 / 0.79 / 0.82 / 0.66 (lexical); `--reranker local` at
+depth 5 0.79 / 0.99 / 0.99 / 0.89, 0.77 / 0.97 / 0.99 / 0.87, 0.68 / 0.80 / 0.82 / 0.75. The
+English questions of hybrid go from 0.71 / 0.83 (R@1 / MRR) to 0.77 / 0.88 at depth 5; the Russian
+and cross-language ones gain most. Replacing the fused order wins over blending it with
+the reranker's by weighted rank fusion (depth 20, on an index of another run whose fused order
+scored the same; hybrid R@1 / MRR: k = 1 and equal weights 0.74 / 0.86; the fused order weighted 2,
+0.67 / 0.82; the reranker weighted 2, which orders as replacing does, 0.79 / 0.88; k = 60,
+0.73 / 0.86). Depth beyond 10 can only lift R@10, which is 0.99 already. Latency on an Apple M4 Max
+(16 cores; one pair per run on all of them), added to a hybrid search that takes 27 ms at the
+median (35 ms at p95): the sum of the model's time over the pairs of each search, all 267
+searches, depth 3 0.30 s at the median and 0.40 s at p95, depth 5 0.49 / 0.61 s, depth 10
+0.94 / 1.14 s, depth 20 1.81 / 2.13 s, depth 50 4.48 / 5.23 s; the rerank step timed in `search`,
+hybrid questions, depth 3 0.40 / 0.54 s, depth 5 0.50 / 0.66 s, depth 10 1.07 / 1.36 s, depth 20
+2.06 / 2.44 s, depth 50 4.97 / 5.79 s. Other work shared the machine, and runs at a busy moment
+had tails of several seconds. The model loads in 1 s; with it the process holds about 1.1 GB, and
+1.7 GB at its peak while it scores a prompt of 1024 tokens.
+
+The rule, set before the latency was known: reranking is worth turning on if hybrid, over all
+questions, gains at least 0.05 in R@1 and 0.03 in MRR (beyond hybrid's run-to-run noise of about
+0.03) with neither falling in any language group, and if it adds at most 1 s at p95 on this
+machine, as an interactive MCP tool should answer within about a second. Depth 5 passes both:
++0.17 R@1 and +0.11 MRR, both up in every group, 0.66 s at p95; depth 10 gains 0.01 more and misses
+the latency bar. R@5 moves by up to 0.03 either way at depth 5: reordering the top 5 cannot move a
+hit across the fifth place, but it ends the ties the fused order has there, which the metric
+counts at their expected value.
+Hence `search_rerank_depth` 5 and replacing, not blending. It still ships off: turning it on by
+default would make every install that has the optional runtime fetch 600 MB from Hugging Face on
+its first start, and the image, the way the service is meant to run, does not carry the runtime;
+a CPU slower than this one pays several times the latency, up to the timeout. Embeddings follow
+the same rule: off until set, with the measured model one setting away. Putting the runtime and
+the model into the image, and the reranker on, is the next step if the owner wants it there.
+
+To turn it on: install the extra (`pip install 'memini[local-embeddings]'`, or
+`uv sync --extra local-embeddings` in a checkout), set `MEMINI_SEARCH_RERANKER=local` and start the
+service. On its first start it fetches the two files at the pinned revision into
+`search_reranker_model_dir` (unset: `$XDG_CACHE_HOME/memini/models`, or `~/.cache/memini/models`),
+verifies them against the digest and logs `reranking with ...` once the model is loaded; if it
+cannot load, a warning says why and search goes on without it. `memini eval --modes
+hybrid,dense,lexical --reranker local` measures it (`--reranker none`, the fused order), at the
+depth of `MEMINI_SEARCH_RERANK_DEPTH`.
+
 **Redaction** (decided 2026-11-18; principle 11). One library, `memini.redaction`, finds secrets
 and card numbers by pattern and check, without a model, and replaces each with a marker that names
 its kind, `[REDACTED:card]`. No digit of a card is kept, the last four included: nothing needs
@@ -1315,7 +1415,9 @@ retriever and the reranker; a baseline is such a report, and a run exits with co
 recall or MRR of a group falls below the baseline by more than a margin (0.02). The lexical
 retriever and the reranker are chosen by name from registries of the eval (`--lexical`,
 `--reranker`), and `memini.search.search` takes the lexical statement as a parameter: open question
-1 measured its candidates there (section 9, Lexical search), and they stay in the registry. The
+1 measured its candidates there (section 9, Lexical search), and they stay in the registry;
+`--reranker local` is the local cross-encoder of the `search_reranker_*` settings (section 9,
+Reranker), loaded before the first question, so a missing model stops the run. The
 committed baseline,
 `eval/code/baseline-fake.json`, covers the modes the FakeEmbedder does not take part in (lexical,
 exact, regex, symbol) and is what CI compares with on every pull request (`make eval` in the `eval`

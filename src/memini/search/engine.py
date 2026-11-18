@@ -21,7 +21,10 @@
    fusion of the dense and lexical candidates (:mod:`memini.search.fusion`).
 5. One read of the hits' chunks, records and sources, under the same conditions.
 6. For a ranked mode with a :class:`~memini.search.model.Reranker`, the reranker reorders the top
-   :attr:`~memini.search.model.SearchOptions.rerank_depth` hits, after the transaction.
+   :attr:`~memini.search.model.SearchOptions.rerank_depth` hits, after the transaction; the hits
+   below them keep their fused order. Reranking is an optional refinement: when the reranker
+   raises (its model is missing, it timed out), the search logs a warning and returns the fused
+   order rather than failing.
 
 Every mode refuses a stale index, not only those that embed the query. Principle 9 blocks search
 on an index built with another fingerprint, and the fingerprint covers the chunker as well as the
@@ -33,6 +36,7 @@ of the embedding key the check approved: during a rebuild by another process the
 key are not part of the index that was checked.
 """
 
+import logging
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Final
@@ -71,6 +75,10 @@ from memini.search.retrieval import (
 __all__ = ["HNSW_MAX_EF_SEARCH", "HNSW_MIN_EF_SEARCH", "search"]
 
 type Conn = AsyncConnection[TupleRow]
+
+log = logging.getLogger(__name__)
+
+_ERROR_LIMIT: Final = 300
 
 HNSW_MIN_EF_SEARCH: Final = 40
 """pgvector's default ``hnsw.ef_search``; the dense retriever never asks for less."""
@@ -131,8 +139,25 @@ async def search(
         reason = error.diag.message_primary or "invalid regular expression"
         raise InvalidSearchError(f"the regular expression is not usable: {reason}") from error
     if reranker is not None and ranked and hits:
-        hits = await reranker.rerank(query.text, hits)
+        hits = await _rerank(reranker, query.text, hits, options.rerank_depth)
     return hits[: query.limit]
+
+
+async def _rerank(reranker: Reranker, text: str, hits: list[Hit], depth: int) -> list[Hit]:
+    """The first ``depth`` hits in the reranker's order, then the rest in fused order; all of them
+    in fused order, with a warning, when the reranker fails."""
+    head, tail = hits[:depth], hits[depth:]
+    try:
+        reranked = await reranker.rerank(text, head)
+    except Exception as error:  # an optional refinement: the fused order still answers
+        message = " ".join(str(error).split())[:_ERROR_LIMIT]
+        log.warning(
+            "reranking failed, the fused order is kept: %s%s",
+            type(error).__name__,
+            f": {message}" if message else "",
+        )
+        return hits
+    return [*reranked, *tail]
 
 
 @asynccontextmanager

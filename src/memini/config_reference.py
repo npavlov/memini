@@ -150,7 +150,14 @@ GROUPS: Final[tuple[Group, ...]] = (
         ("search_",),
         "The limits of one search, and how a hybrid search fuses its retrievers: each contributes"
         " `search_candidates` results, merged by reciprocal rank fusion with k `search_rrf_k`,"
-        " each retriever's ranks weighted.",
+        " each retriever's ranks weighted. The reranker is off unless `search_reranker` is set"
+        " (what it gains and costs: docs/requirements.md, section 9, Reranker). `local` runs a"
+        " cross-encoder in the process; it needs the optional dependencies"
+        " `memini[local-embeddings]`, which the image does not have, and its files, about"
+        " 600 MB, are fetched at the pinned revision when the service first starts with it and"
+        " verified against `search_reranker_digest` before they are loaded. A `search_reranker_*`"
+        " setting without `search_reranker` is an error; another model or model file needs its"
+        " own digest, and another model its own revision.",
     ),
     Group(
         "Git connector",
@@ -244,6 +251,18 @@ NOTES: Final[Mapping[str, str]] = {
     "embedding_pooling": "How the token vectors of a text become one: their mean, or the vector"
     " of the first token.",
     "embedding_max_tokens": "A longer text is cut to this many tokens.",
+    "search_reranker": "Unset: no reranking, hits stay in the fused order. The model loads in"
+    " the background at start; until it is loaded, and if it cannot load, search does not"
+    " rerank, and the log says why.",
+    "search_rerank_depth": "Hits below it keep their fused place. `memini eval --reranker` reads it"
+    " too, so it may be set without `search_reranker`.",
+    "search_reranker_model_file": "The digest covers this file and `tokenizer.json`, with their"
+    " paths.",
+    "search_reranker_digest": "Files that do not match are never loaded.",
+    "search_reranker_revision": "Missing model files are fetched at this commit.",
+    "search_reranker_max_tokens": "A longer prompt is cut at the end of the hit. Each token costs"
+    " time: about 0.5 ms on an Apple M4 Max.",
+    "search_reranker_timeout": "Past it, the search answers in the fused order and logs a warning.",
     "git_local_roots": "With compose, mount the directory into the container as well; compose.yaml"
     " has an example.",
     "credential_key": "Unset: the service starts, and storing or reading a credential fails with"

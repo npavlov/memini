@@ -76,6 +76,7 @@ from memini.search import (
     IndexMismatchError,
     InvalidSearchError,
     Mode,
+    Reranker,
     SearchFilters,
     SearchOptions,
     SearchQuery,
@@ -103,10 +104,10 @@ log = logging.getLogger(__name__)
 @dataclass(slots=True)
 class QueryServices:
     """What the query tools need besides a connection and the caller: the search options, the
-    repository mirrors to read code from, and the embedder.
+    repository mirrors to read code from, the embedder and the reranker.
 
-    The application builds one at start (:meth:`from_settings`) and sets :attr:`embedder` while it
-    runs; tests build one directly.
+    The application builds one at start (:meth:`from_settings`) and sets :attr:`embedder` and
+    :attr:`reranker` while it runs; tests build one directly.
     """
 
     search_options: SearchOptions = field(default_factory=SearchOptions)
@@ -118,6 +119,9 @@ class QueryServices:
     read_limits: ReadLimits = DEFAULT_READ_LIMITS
     ingest_limits: IngestLimits = DEFAULT_LIMITS
     """The limits of a batch, for the ``add_document`` write (:mod:`memini.comms`)."""
+    reranker: Reranker | None = None
+    """Reorders the best hits of a ranked search; ``None``: the fused order (the default), or the
+    reranker is not loaded yet."""
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "QueryServices":
@@ -192,7 +196,14 @@ async def _search(
     embedder = services.embedder
     if embedder is None:
         raise EmbeddingsNotConfiguredError
-    return await search(conn, embedder, access, query, options=services.search_options)
+    return await search(
+        conn,
+        embedder,
+        access,
+        query,
+        options=services.search_options,
+        reranker=services.reranker,
+    )
 
 
 async def run_search(

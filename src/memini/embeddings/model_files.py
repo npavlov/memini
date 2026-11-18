@@ -103,10 +103,12 @@ async def ensure_model_files(
     hub_url: str = HUB_URL,
     timeout: float = 60.0,
     transport: httpx2.AsyncBaseTransport | None = None,
+    settings: tuple[str, str] = ("embedding_digest", "embedding_revision"),
 ) -> None:
     """Make sure ``directory`` holds the files ``names`` of ``model``, matching ``digest``.
 
     Files that are all there are verified. Otherwise they are fetched at ``revision``.
+    ``settings`` names the settings of the digest and the revision, for messages.
 
     Raises:
         EmbeddingError: the files differ from ``digest``; files are missing and there is no
@@ -123,14 +125,14 @@ async def ensure_model_files(
         if actual != digest:
             raise EmbeddingError(
                 f"the files of model {model} in {directory} have digest {actual}, but"
-                f" embedding_digest is {digest}; refusing to load them. Delete {directory} to fetch"
+                f" {settings[0]} is {digest}; refusing to load them. Delete {directory} to fetch"
                 " them again, or pin the digest of files you trust"
             )
         return
     if revision is None:
         raise EmbeddingError(
             f"the files of model {model} are not in {directory} (missing: {', '.join(missing)});"
-            f" set MEMINI_EMBEDDING_REVISION to fetch them, or put {', '.join(names)} there"
+            f" set MEMINI_{settings[1].upper()} to fetch them, or put {', '.join(names)} there"
         )
     await fetch_model_files(
         directory=directory,
@@ -141,6 +143,7 @@ async def ensure_model_files(
         hub_url=hub_url,
         timeout=timeout,
         transport=transport,
+        digest_setting=settings[0],
     )
 
 
@@ -154,8 +157,10 @@ async def fetch_model_files(
     hub_url: str = HUB_URL,
     timeout: float = 60.0,
     transport: httpx2.AsyncBaseTransport | None = None,
+    digest_setting: str = "embedding_digest",
 ) -> None:
-    """Download ``names`` of ``model`` at ``revision`` into ``directory`` if they match ``digest``.
+    """Download ``names`` of ``model`` at ``revision`` into ``directory`` if they match ``digest``
+    (the value of the setting ``digest_setting``, named in messages).
 
     Raises:
         EmbeddingError: a download failed, or the files do not match ``digest``. ``directory`` is
@@ -183,7 +188,7 @@ async def fetch_model_files(
         if actual != digest:
             raise EmbeddingError(
                 f"the files of model {model} at revision {revision} have digest {actual}, but"
-                f" embedding_digest is {digest}; refusing to use them"
+                f" {digest_setting} is {digest}; refusing to use them"
             )
         for name in names:
             target = directory / name

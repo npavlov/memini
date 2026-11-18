@@ -12,7 +12,7 @@ from typing import Final, Literal, Protocol, get_args
 from uuid import UUID
 
 from memini.chunking import LANGUAGES, Language
-from memini.config import Settings
+from memini.config import DEFAULT_RERANK_DEPTH, Settings
 from memini.ids import RecordKind
 from memini.persons.model import ROLES, Role
 from memini.search.errors import InvalidSearchError
@@ -94,8 +94,6 @@ DEFAULT_LEXICAL_WEIGHT: Final = 1.0
 """The weight of the lexical retriever's ranks in the fusion (``search_lexical_weight``)."""
 DEFAULT_SNIPPET_CHARS: Final = 2000
 """The most characters of a chunk's content a hit carries."""
-DEFAULT_RERANK_DEPTH: Final = 50
-"""How many fused hits a reranker gets to reorder."""
 
 
 def _names(filter_name: str, values: Sequence[str | UUID] | None) -> tuple[str | UUID, ...] | None:
@@ -251,7 +249,8 @@ class SearchOptions:
     """The most characters of a chunk's content a hit carries; longer content is cut and the hit
     is marked ``truncated``."""
     rerank_depth: int = DEFAULT_RERANK_DEPTH
-    """How many fused hits a reranker reorders before the list is cut to the limit."""
+    """How many of the best hits a reranker reorders; hits below them keep their place. The list
+    is then cut to the limit."""
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.timeout) and self.timeout > 0):
@@ -272,6 +271,7 @@ class SearchOptions:
             rrf_k=settings.search_rrf_k,
             dense_weight=settings.search_dense_weight,
             lexical_weight=settings.search_lexical_weight,
+            rerank_depth=settings.search_rerank_depth,
         )
 
 
@@ -392,11 +392,12 @@ class Hit:
 
 
 class Reranker(Protocol):
-    """Reorders the hits of a ranked search: a cross-encoder, say (optional; none ships yet).
+    """Reorders the hits of a ranked search: a cross-encoder, say (:mod:`memini.rerank`).
 
     It gets at most :attr:`SearchOptions.rerank_depth` hits in fused order and returns them in
     its own order, with whatever score it gives (``dataclasses.replace(hit, score=...)``); hits it
-    leaves out are dropped. The list is then cut to the query's limit.
+    leaves out are dropped. Hits below the depth follow in their fused order, and the list is then
+    cut to the query's limit. If it raises, the search keeps the fused order and logs a warning.
     """
 
     async def rerank(self, query: str, hits: Sequence[Hit]) -> list[Hit]: ...

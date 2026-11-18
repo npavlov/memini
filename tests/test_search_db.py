@@ -3,6 +3,7 @@ and Russian. Acceptance of memini-g05: tests on fixtures for each filter and mod
 regex is cut off by the timeout. Every value is synthetic; vectors come from the FakeEmbedder,
 whose vectors carry no meaning, so a dense query here is the exact text of a chunk."""
 
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator, Sequence
@@ -1132,6 +1133,42 @@ async def test_a_reranker_reorders_the_top_of_a_ranked_search(
     )
     assert reverse.seen == [5]  # exact, regex and symbol order by place: no reranking
     assert len(exact) == 3
+
+
+async def test_hits_below_the_rerank_depth_keep_their_fused_place(
+    db: Conn, fake: FakeEmbedder, corpus: Corpus
+) -> None:
+    access = reader(corpus.scope)
+    query = SearchQuery(text="plant water soil", limit=5)
+    reverse = Reverse()
+
+    plain = await search(db, fake, access, query)
+    reranked = await search(
+        db, fake, access, query, options=SearchOptions(rerank_depth=2), reranker=reverse
+    )
+
+    assert reverse.seen == [2]
+    assert [h.chunk_id for h in reranked] == [h.chunk_id for h in [plain[1], plain[0], *plain[2:]]]
+    assert reranked[2:] == plain[2:]
+
+
+class Broken:
+    async def rerank(self, query: str, hits: Sequence[Hit]) -> list[Hit]:
+        raise RuntimeError("the model is gone")
+
+
+async def test_a_failing_reranker_leaves_the_fused_order(
+    db: Conn, fake: FakeEmbedder, corpus: Corpus, caplog: pytest.LogCaptureFixture
+) -> None:
+    access = reader(corpus.scope)
+    query = SearchQuery(text="plant water soil", limit=4)
+
+    plain = await search(db, fake, access, query)
+    with caplog.at_level(logging.WARNING, logger="memini.search.engine"):
+        kept = await search(db, fake, access, query, reranker=Broken())
+
+    assert kept == plain
+    assert "reranking failed, the fused order is kept: RuntimeError" in caplog.text
 
 
 async def test_search_needs_a_connection_without_a_transaction(

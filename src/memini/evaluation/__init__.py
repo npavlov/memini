@@ -42,6 +42,7 @@ from memini.evaluation.variants import (
     LEXICAL_VARIANTS,
     RERANKERS,
     LexicalVariant,
+    ModelReranker,
     RerankerVariant,
 )
 
@@ -57,6 +58,7 @@ __all__ = [
     "ExpectationError",
     "Expected",
     "LexicalVariant",
+    "ModelReranker",
     "Question",
     "Ranked",
     "Report",

@@ -117,7 +117,7 @@ A value that is set wins. Another model gets no dimension, digest or query prefi
 
 ### Search
 
-The limits of one search, and how a hybrid search fuses its retrievers: each contributes `search_candidates` results, merged by reciprocal rank fusion with k `search_rrf_k`, each retriever's ranks weighted.
+The limits of one search, and how a hybrid search fuses its retrievers: each contributes `search_candidates` results, merged by reciprocal rank fusion with k `search_rrf_k`, each retriever's ranks weighted. The reranker is off unless `search_reranker` is set (what it gains and costs: docs/requirements.md, section 9, Reranker). `local` runs a cross-encoder in the process; it needs the optional dependencies `memini[local-embeddings]`, which the image does not have, and its files, about 600 MB, are fetched at the pinned revision when the service first starts with it and verified against `search_reranker_digest` before they are loaded. A `search_reranker_*` setting without `search_reranker` is an error; another model or model file needs its own digest, and another model its own revision.
 
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
@@ -126,6 +126,15 @@ The limits of one search, and how a hybrid search fuses its retrievers: each con
 | `search_rrf_k`<br>`MEMINI_SEARCH_RRF_K` | integer, 1 to 1000 | `1` | restart | The k of reciprocal rank fusion, an integer from 1 to 1000. |
 | `search_dense_weight`<br>`MEMINI_SEARCH_DENSE_WEIGHT` | number, more than 0, at most 100 | `3` | restart | The weight of the dense retriever's ranks in the fusion, more than 0, at most 100. |
 | `search_lexical_weight`<br>`MEMINI_SEARCH_LEXICAL_WEIGHT` | number, more than 0, at most 100 | `1` | restart | The weight of the lexical retriever's ranks in the fusion, more than 0, at most 100. |
+| `search_reranker`<br>`MEMINI_SEARCH_RERANKER` | one of `local` | unset | restart | local: a cross-encoder run in the process. Unset: no reranking, hits stay in the fused order. The model loads in the background at start; until it is loaded, and if it cannot load, search does not rerank, and the log says why. |
+| `search_rerank_depth`<br>`MEMINI_SEARCH_RERANK_DEPTH` | integer, 1 to 100 | `5` | restart | How many of the best fused hits the reranker reorders, an integer from 1 to 100. Hits below it keep their fused place. `memini eval --reranker` reads it too, so it may be set without `search_reranker`. |
+| `search_reranker_model`<br>`MEMINI_SEARCH_RERANKER_MODEL` | string, 1 to 200 characters | `n24q02m/Qwen3-Reranker-0.6B-ONNX` | restart | A Hugging Face repository such as org/name. |
+| `search_reranker_model_file`<br>`MEMINI_SEARCH_RERANKER_MODEL_FILE` | string, at most 200 characters | `onnx/model_yesno_quantized.onnx` | restart | The path of the ONNX file in the model repository. The digest covers this file and `tokenizer.json`, with their paths. |
+| `search_reranker_digest`<br>`MEMINI_SEARCH_RERANKER_DIGEST` | string | `sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea` | restart | sha256: and 64 lowercase hex digits, the digest of the model files. Files that do not match are never loaded. |
+| `search_reranker_revision`<br>`MEMINI_SEARCH_RERANKER_REVISION` | string | `342a8a54de23bba03eb8cce5f5bef503edf18315` | restart | A commit of the model repository, 40 lowercase hex digits. Missing model files are fetched at this commit. |
+| `search_reranker_model_dir`<br>`MEMINI_SEARCH_RERANKER_MODEL_DIR` | path | unset | restart | An absolute directory path for the model files, created if missing; unset: $XDG_CACHE_HOME/memini/models, or ~/.cache/memini/models. |
+| `search_reranker_max_tokens`<br>`MEMINI_SEARCH_RERANKER_MAX_TOKENS` | integer, 64 to 8192 | `1024` | restart | The most tokens of one query and hit put to the model, 64 to 8192. A longer prompt is cut at the end of the hit. Each token costs time: about 0.5 ms on an Apple M4 Max. |
+| `search_reranker_timeout`<br>`MEMINI_SEARCH_RERANKER_TIMEOUT` | number, more than 0, at most 600 | `5` | restart | Seconds the reranking of one search may take, more than 0, at most 600. Past it, the search answers in the fused order and logs a warning. |
 
 ### Git connector
 

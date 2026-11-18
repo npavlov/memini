@@ -30,6 +30,12 @@ created from the settings when the application starts and closed when it stops, 
 given to :func:`create_app`, which its caller then owns and closes. Without an embedding provider
 there is none: search answers 503 ``embeddings_not_configured``, and reading files still works.
 
+The reranker (:mod:`memini.rerank`, off unless ``search_reranker`` is set) is created when the
+application starts and loaded in the background, so a model being fetched or loaded does not hold
+up the start: searches rerank once it is loaded. If it cannot load (no optional dependencies, files
+that do not match their digest), a warning says why and search goes on without it. It is closed
+when the application stops, unless it was given to :func:`create_app`.
+
 The interactive documentation pages (Swagger UI and ReDoc) are off: they load scripts from a CDN,
 so a browser that opens them on a local service would run third-party code in the service's
 origin. Any OpenAPI viewer can read ``/openapi.json`` instead.
@@ -40,6 +46,7 @@ from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Final
 
+import anyio
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.telemetry import TelemetryConfig
 from starlette.types import ASGIApp
@@ -69,6 +76,8 @@ from memini.db import Pool
 from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_embedder
 from memini.mcp import McpEndpoint, build_server
 from memini.query import QueryServices
+from memini.rerank import LocalReranker, RerankError, create_reranker
+from memini.search import Reranker
 
 __all__ = ["OPENAPI_URL", "V1_PREFIX", "create_app"]
 
@@ -104,8 +113,24 @@ class _MeminiApp(FastAPI):
         )
 
 
+async def _load_reranker(reranker: LocalReranker, services: QueryServices) -> None:
+    """Load the reranker, then let search use it; on failure, say why and leave it off."""
+    try:
+        await reranker.load()
+    except RerankError as error:
+        log.warning("reranking is off: %s", error)
+        return
+    services.reranker = reranker
+    log.info("reranking with %s", reranker.describe())
+
+
 def _lifespan(
-    mcp: McpEndpoint, services: QueryServices, settings: Settings, *, own_embedder: bool
+    mcp: McpEndpoint,
+    services: QueryServices,
+    settings: Settings,
+    *,
+    own_embedder: bool,
+    own_reranker: bool,
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
@@ -116,10 +141,20 @@ def _lifespan(
             except EmbeddingsNotConfiguredError as error:
                 log.info("search is off: %s", error)
             services.embedder = created
+        reranker = create_reranker(settings) if own_reranker else None
         try:
-            async with mcp.run():
-                yield
+            async with anyio.create_task_group() as tasks:
+                if reranker is not None:
+                    tasks.start_soon(_load_reranker, reranker, services)
+                try:
+                    async with mcp.run():
+                        yield
+                finally:
+                    tasks.cancel_scope.cancel()
         finally:
+            if reranker is not None:
+                services.reranker = None
+                await reranker.aclose()
             if created is not None:
                 services.embedder = None
                 await created.aclose()
@@ -135,6 +170,7 @@ def create_app(
     readiness_checks: Mapping[str, ReadinessCheck] | None = None,
     readiness_timeout: float = DEFAULT_READINESS_TIMEOUT,
     embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
 ) -> FastAPI:
     """Build the HTTP application.
 
@@ -157,6 +193,9 @@ def create_app(
             (``memini serve`` shares one with the sync jobs; tests pass a fake). Without it, one
             is created from the settings while the application runs, if a provider is
             configured.
+        reranker: the reranker of ranked searches, owned by the caller (tests pass a fake).
+            Without it, one is created from the settings while the application runs, if
+            ``search_reranker`` is set.
 
     Raises:
         ValueError: ``readiness_timeout`` is not a finite number above zero.
@@ -164,6 +203,7 @@ def create_app(
     """
     services = QueryServices.from_settings(settings)
     services.embedder = embedder
+    services.reranker = reranker
     mcp = McpEndpoint(build_server(pool=pool, services=services))
     app = _MeminiApp(
         title="Memini",
@@ -176,7 +216,13 @@ def create_app(
         redoc_url=None,
         responses=ERROR_RESPONSES,
         telemetry=_TELEMETRY_OFF,
-        lifespan=_lifespan(mcp, services, settings, own_embedder=embedder is None),
+        lifespan=_lifespan(
+            mcp,
+            services,
+            settings,
+            own_embedder=embedder is None,
+            own_reranker=reranker is None,
+        ),
     )
     app.state.settings = settings
     app.state.pool = pool

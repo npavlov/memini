@@ -7,10 +7,11 @@ them; every file is synthetic. Vectors come from the FakeEmbedder, whose vectors
 so a "semantic" query here finds chunks through its words.
 """
 
+import logging
 import os
 import shutil
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -38,6 +39,8 @@ from memini.gitsync import GIT_SYNC, run_git_sync
 from memini.jobs import Job
 from memini.mcp import MCP_PATH
 from memini.query import QueryServices, ReadLimits
+from memini.rerank import RerankError
+from memini.search import Hit
 from memini.sources import NewGitSource, Source, create_git_source
 from memini.workspaces import create_workspace, ensure_principal
 
@@ -810,6 +813,39 @@ async def test_http_search_routes_mirror_the_tools(world: World) -> None:
     (on,) = body(symbols)["definitions"]
     assert on["locator"] == f"shop@{world.pin}:src/lamp.py#L11-L14"
     assert body(since)["hits"]  # the + of the offset reaches the server encoded
+
+
+class Reversing:
+    async def rerank(self, query: str, hits: Sequence[Hit]) -> list[Hit]:
+        return list(reversed(hits))
+
+
+class Broken:
+    async def rerank(self, query: str, hits: Sequence[Hit]) -> list[Hit]:
+        raise RerankError("the reranker's model files are gone")
+
+
+async def test_a_reranker_reorders_search_and_its_failure_is_no_error(
+    world: World, caplog: pytest.LogCaptureFixture
+) -> None:
+    token = await world.token()
+    params = {"query": "lamp level", "workspaces": ["acme"], "limit": 3}
+    async with http_client(world.app(), token) as http:
+        plain = body(await http.get("/v1/search", params=params))["hits"]
+    app = create_app(world.settings, pool=world.pool, embedder=world.embedder, reranker=Reversing())
+    async with http_client(app, token) as http:
+        reversed_hits = body(await http.get("/v1/search", params=params))["hits"]
+    app = create_app(world.settings, pool=world.pool, embedder=world.embedder, reranker=Broken())
+    with caplog.at_level(logging.WARNING, logger="memini.search.engine"):
+        async with http_client(app, token) as http:
+            kept = body(await http.get("/v1/search", params=params))["hits"]
+            code = body(await http.get("/v1/search/code", params={"query": "lamp"}))["hits"]
+
+    assert len(plain) == 3
+    assert [h["locator"] for h in reversed_hits][:1] != [h["locator"] for h in plain][:1]
+    assert kept == plain  # the fused order, answered with 200
+    assert code
+    assert "reranking failed, the fused order is kept: RerankError" in caplog.text
 
 
 async def test_http_search_errors_have_the_error_shape(world: World) -> None:
