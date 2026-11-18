@@ -41,6 +41,14 @@ Transactions
 Untracked refs
     The last transaction also turns into tombstones the live records of the source whose ref is no
     longer tracked: removing a ref deletes its stream and leaves its records without one.
+
+A ref that is gone
+    A tracked ref that the fetched mirror does not hold (deleted at the remote, or never there) is
+    not an error to retry: in one transaction the sync turns every live record of the ref into a
+    tombstone, deletes their chunks, and replaces the pin with the marker
+    :func:`~memini.gitsync.model.missing_cursor` writes, moving ``checked_until``. The run report
+    counts ``refs_missing``. When the ref comes back, the stream has no pin, so the next sync lists
+    it in full and brings the records back.
 """
 
 import logging
@@ -61,7 +69,13 @@ from psycopg.types.json import Jsonb
 from memini.chunking import FileChunks, chunk_file, chunk_markdown
 from memini.embeddings import Embedder
 from memini.git import Mirror, MirrorManager, RevisionNotFound
-from memini.gitsync.model import Pin, code_external_id, file_record_id, read_pin
+from memini.gitsync.model import (
+    Pin,
+    code_external_id,
+    file_record_id,
+    missing_cursor,
+    read_pin,
+)
 from memini.gitsync.rules import FileKind, FileRules, SkipReason, file_kind, storable_path
 from memini.index import IndexCounts, delete_record_chunks, index_record
 from memini.runs import current_run
@@ -126,8 +140,8 @@ class StreamSyncResult:
     ref: str
     previous: str | None
     """The commit the stream was pinned at before; ``None`` on the first sync."""
-    commit: str
-    """The commit it is pinned at now."""
+    commit: str | None
+    """The commit it is pinned at now; ``None`` when the ref is gone (``missing``)."""
     listed: bool
     """The ref was listed in full instead of diffed."""
     added: int
@@ -143,6 +157,8 @@ class StreamSyncResult:
     """Files not indexed, by reason, among those the sync looked at."""
     index: IndexCounts
     """What the index writer did."""
+    missing: bool = False
+    """The ref is not in the fetched mirror: its records are tombstones, the stream has no pin."""
 
 
 class StreamChangedError(Exception):
@@ -332,6 +348,13 @@ _UPSERT_RECORD: Final = (
 _TOMBSTONE: Final = (
     "UPDATE record SET deleted_at = now(), updated_at = now()"
     " WHERE id = ANY(%s) AND deleted_at IS NULL RETURNING id"
+)
+
+# Every live file record of one ref of the source: its external ids start with "<ref>:".
+_TOMBSTONE_REF: Final = (
+    "UPDATE record SET deleted_at = now(), updated_at = now()"
+    " WHERE source_id = %s AND kind IN ('code_file', 'document')"
+    " AND starts_with(external_id, %s) AND deleted_at IS NULL RETURNING id"
 )
 
 # Live file records of the source on a ref that no stream tracks. Removing a ref deletes its stream,
@@ -529,6 +552,50 @@ async def _step(name: str) -> AsyncGenerator[None]:
         yield
 
 
+async def _sync_missing(
+    conn: Conn, *, source: GitSource, stream: GitStream, checked_until: datetime
+) -> StreamSyncResult:
+    """The ref of ``stream`` is not in the fetched mirror: tombstone its records, mark the stream
+    (see the module)."""
+    expected = None if stream.cursor is None else Jsonb(stream.cursor)
+    marker = missing_cursor(stream.cursor)
+    step = _Tally()
+    async with _step("tombstone"), conn.transaction():
+        of_ref = await _tombstone(conn, _TOMBSTONE_REF, (source.id, f"{stream.key}:"))
+        step.tombstoned(of_ref)
+        step.tombstoned(await _tombstone(conn, _UNTRACKED, (source.id,)))
+        cur = await conn.execute(_MOVE_PIN, (Jsonb(marker), checked_until, stream.id, expected))
+        if cur.rowcount != 1:
+            raise StreamChangedError(f"stream {stream.id} changed while it synced")
+    step.index.report()
+    run = current_run()
+    if run is not None:
+        run.count("refs_missing")
+        run.count("files_deleted", step.deleted)
+    previous = read_pin(stream.cursor)
+    log.warning(
+        "%s of source %s is not at the remote; its %d live records are tombstones until it is back",
+        stream.key,
+        source.id,
+        of_ref[0],
+        extra={"source_id": str(source.id), "stream_id": str(stream.id)},
+    )
+    return StreamSyncResult(
+        stream_id=stream.id,
+        ref=stream.key,
+        previous=None if previous is None else previous.commit,
+        commit=None,
+        listed=False,
+        added=0,
+        changed=0,
+        deleted=step.deleted,
+        unchanged=0,
+        skipped={},
+        index=step.index,
+        missing=True,
+    )
+
+
 async def sync_stream(
     conn: Conn,
     mirrors: MirrorManager,
@@ -549,11 +616,12 @@ async def sync_stream(
     recorded, gets the steps (``diff`` or ``list``, ``index``) and the counts ``files_added``,
     ``files_changed``, ``files_deleted``, ``files_unchanged``, ``files_skipped`` and
     ``files_skipped_<reason>``, and those of the index writer (``chunks_inserted``, ...), each
-    batch's once it has committed: a batch that rolls back adds none.
+    batch's once it has committed: a batch that rolls back adds none. A ref that the mirror does
+    not hold is handled as the module says (the step ``tombstone``, the count ``refs_missing``).
 
     Raises:
         ValueError: ``conn`` has a transaction open.
-        RevisionNotFound: the ref is not in the mirror (it does not exist at the remote).
+        RevisionNotFound: the ref is in the mirror but names no commit (a tag of a tree or blob).
         IndexMismatchError: the workspace's index is out of date; see :func:`index_record`.
         StreamChangedError: the stream's cursor changed meanwhile.
         GitError, EmbeddingError: reading or embedding failed. The pin stays where it was.
@@ -561,7 +629,12 @@ async def sync_stream(
     if conn.info.transaction_status != pq.TransactionStatus.IDLE:
         raise ValueError("sync_stream commits its own transactions: pass an idle connection")
     run = current_run()
-    commit = await mirrors.resolve(mirror, stream.key)
+    try:
+        commit = await mirrors.resolve(mirror, stream.key)
+    except RevisionNotFound:
+        if stream.key in await mirrors.refs(mirror):
+            raise
+        return await _sync_missing(conn, source=source, stream=stream, checked_until=checked_until)
     rules = FileRules(source.config, mirrors.options.max_blob_size)
     previous = read_pin(stream.cursor)
 

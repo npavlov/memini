@@ -15,6 +15,11 @@ Definitions:
   ``current`` is ``None``.
 - The **base** is current when the database is reachable and no stream is judged not current. With
   no streams it is trivially current.
+- A stream is **missing** when what it follows no longer exists at the source: a git ref deleted
+  at the remote, or never there. Its cursor says ``"missing": true``
+  (:func:`memini.gitsync.missing_cursor`) and its records are tombstones until it comes back. It
+  is reported, not counted as behind: its lag is that of the sync that found it gone, and the base
+  holds what the source holds.
 
 Every read of a workspace, source, stream or run goes through the caller's
 :class:`~memini.auth.ReadFilter`. The schema version is service metadata, not data in a workspace,
@@ -92,6 +97,11 @@ class StreamStatus(BaseModel):
         "false if it never completed a window; null for a stream without a schedule."
     )
     last_run: RunSummary | None = Field(description="The newest run; null if it never ran.")
+    missing: bool = Field(
+        default=False,
+        description="What the stream follows no longer exists at the source (a git ref deleted at "
+        "the remote): its records are tombstones until it comes back.",
+    )
 
 
 class WorkspaceStatus(BaseModel):
@@ -223,7 +233,8 @@ SELECT st.workspace_id, s.name, s.kind, st.key,
        extract(epoch FROM st.schedule)::float8,
        st.checked_until,
        extract(epoch FROM now() - st.checked_until)::float8,
-       r.status, r.started_at, r.finished_at
+       r.status, r.started_at, r.finished_at,
+       coalesce(st.cursor @> '{{"missing": true}}'::jsonb, false)
 FROM stream st
 JOIN source s ON s.id = st.source_id AND s.workspace_id = st.workspace_id
 LEFT JOIN LATERAL (
@@ -254,7 +265,19 @@ async def _streams(
 
 
 def _stream(row: Sequence[Any]) -> StreamStatus:
-    (_, source, kind, key, schedule, checked_until, lag, run_status, started_at, finished_at) = row
+    (
+        _,
+        source,
+        kind,
+        key,
+        schedule,
+        checked_until,
+        lag,
+        run_status,
+        started_at,
+        finished_at,
+        missing,
+    ) = row
     last_run = (
         None
         if run_status is None
@@ -269,4 +292,5 @@ def _stream(row: Sequence[Any]) -> StreamStatus:
         lag_seconds=lag,
         current=stream_is_current(schedule, lag),
         last_run=last_run,
+        missing=missing,
     )

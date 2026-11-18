@@ -491,3 +491,38 @@ def test_the_summary_names_the_streams_that_are_behind() -> None:
         "- alpha/code (git) refs/heads/new: never checked, schedule 15m, no run yet",
         "Index: No index.",
     ]
+
+
+def test_the_summary_names_the_streams_missing_at_the_source() -> None:
+    as_of = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    succeeded = RunSummary(status="succeeded", started_at=as_of, finished_at=as_of)
+    gone = StreamStatus(
+        source="code",
+        source_kind="git",
+        key="refs/heads/gone",
+        schedule_seconds=None,
+        checked_until=as_of,
+        lag_seconds=30.0,
+        current=None,
+        last_run=succeeded,
+        missing=True,
+    )
+    result = ServiceStatus(
+        version="9.9.9",
+        as_of=as_of,
+        current=True,
+        database=DatabaseStatus(reachable=True, schema_version=2, expected_schema_version=2),
+        workspaces=[
+            WorkspaceStatus(
+                id=uuid.UUID("00000000-0000-7000-8000-0000000000a1"), name="alpha", streams=[gone]
+            )
+        ],
+        index=IndexStatus(state="none", note="No index."),
+    )
+
+    assert summarize_status(result).splitlines()[3:] == [
+        "Workspaces: 1; streams: 1; behind or never checked: 0; missing at the source: 1.",
+        "- alpha/code (git) refs/heads/gone: missing at the source, lag 30s, "
+        "last run succeeded at 2026-01-02T03:04:05+00:00",
+        "Index: No index.",
+    ]

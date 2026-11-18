@@ -282,6 +282,10 @@ class StreamInfo(BaseModel):
     pending_sync: PendingSync | None = Field(
         description="The queued or running sync; null if there is none."
     )
+    missing: bool = Field(
+        description="What the stream follows no longer exists at the source (a git ref deleted at"
+        " the remote): its records are tombstones until it comes back."
+    )
 
     @classmethod
     def of(cls, stream: sources.Stream) -> "StreamInfo":
@@ -314,6 +318,7 @@ class StreamInfo(BaseModel):
                 run_after=job.run_after,
                 last_error=job.last_error,
             ),
+            missing=stream.missing,
         )
 
 

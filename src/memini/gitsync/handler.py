@@ -14,7 +14,8 @@ The steps, recorded in the job's run report:
    the pin stays, so a stale index never mixes with new rows (principle 9). The fetch has run by
    then, so the mirror a rebuild reads from exists and is current. Once the rebuild is done, the
    next sync catches up from the pin.
-3. :func:`~memini.gitsync.sync.sync_stream` for each stream: ``diff`` or ``list``, then ``index``.
+3. :func:`~memini.gitsync.sync.sync_stream` for each stream: ``diff`` or ``list``, then ``index``;
+   or ``tombstone`` for a ref the remote no longer has, which is marked missing, not retried.
 """
 
 import os
@@ -89,7 +90,9 @@ async def run_git_sync(
         ValueError: the source is not a git source, or has no location.
         RemoteNotAllowed, GitError: the fetch failed; nothing else ran.
         IndexMismatchError: the workspace's index is out of date; no record changed.
-        RevisionNotFound: a tracked ref does not exist at the remote.
+        RevisionNotFound: a tracked ref names no commit (a tag of a tree or blob). A ref that
+            does not exist at the remote is no error: its stream is marked missing
+            (:mod:`memini.gitsync.sync`).
         EmbeddingError: the model failed; see :func:`~memini.gitsync.sync.sync_stream`.
     """
     if job.source_id is None:

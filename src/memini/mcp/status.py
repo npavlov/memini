@@ -40,6 +40,8 @@ def _stream_line(workspace: str, stream: status.StreamStatus) -> str:
         state = "never checked"
     else:
         state = f"lag {_duration(stream.lag_seconds)}"
+    if stream.missing:
+        state = f"missing at the source, {state}"
     if stream.schedule_seconds is not None:
         state += f", schedule {_duration(stream.schedule_seconds)}"
     run = stream.last_run
@@ -53,7 +55,8 @@ def _stream_line(workspace: str, stream: status.StreamStatus) -> str:
 
 
 def summarize_status(result: status.ServiceStatus) -> str:
-    """The text content of a status result: the verdict, the database, streams that are behind."""
+    """The text content of a status result: the verdict, the database, streams that are behind
+    or whose ref is missing at the source."""
     database = result.database
     if database.reachable:
         schema = (
@@ -64,14 +67,21 @@ def summarize_status(result: status.ServiceStatus) -> str:
     else:
         database_line = "Database: not reachable."
     streams = [(w.name, s) for w in result.workspaces for s in w.streams]
-    not_current = [(w, s) for w, s in streams if s.current is False]
+    not_current = sum(1 for _, s in streams if s.current is False)
+    missing = sum(1 for _, s in streams if s.missing)
+    counts = f"behind or never checked: {not_current}"
+    if missing:
+        counts += f"; missing at the source: {missing}"
     lines = [
         f"Memini {result.version}, as of {_time(result.as_of)}.",
         f"Current: {'yes' if result.current else 'no'}.",
         database_line,
-        f"Workspaces: {len(result.workspaces)}; streams: {len(streams)}; "
-        f"behind or never checked: {len(not_current)}.",
-        *(_stream_line(workspace, stream) for workspace, stream in not_current),
+        f"Workspaces: {len(result.workspaces)}; streams: {len(streams)}; {counts}.",
+        *(
+            _stream_line(workspace, stream)
+            for workspace, stream in streams
+            if stream.current is False or stream.missing
+        ),
         f"Index: {result.index.note}",
     ]
     return "\n".join(lines)
@@ -83,7 +93,8 @@ STATUS_TOOL = Tool(
     description=(
         "Whether Memini's knowledge base is current. Per stream of every workspace the token may "
         "read: its source, schedule, lag (seconds since everything up to checked_until was "
-        "stored) and last run. Also the database and schema version, and the index state. "
+        "stored), last run, and whether what it follows is missing at the source (a deleted "
+        "branch). Also the database and schema version, and the index state. "
         "Read-only; takes no arguments."
     ),
     arguments=NoArguments,

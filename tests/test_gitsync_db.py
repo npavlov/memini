@@ -20,7 +20,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow, dict_row
 
 from git_helpers import SourceRepo
-from memini.auth import Principal, WriteAccess, authorize_read
+from memini.auth import Principal, ReadFilter, WriteAccess, authorize_read
 from memini.chunking import FileChunks, chunk_file, chunk_markdown
 from memini.cli.serve import background_jobs
 from memini.db import Pool, connect, open_pool
@@ -49,6 +49,8 @@ from memini.index import (
     reindex,
 )
 from memini.jobs import Job, execute_job
+from memini.mcp.status import summarize_status
+from memini.query import read_source
 from memini.runs import wait_for_run_writes
 from memini.search import SearchFilters, SearchQuery, search
 from memini.sources import (
@@ -56,9 +58,11 @@ from memini.sources import (
     NewGitSource,
     SourceUpdate,
     create_git_source,
+    list_streams,
     trigger_sync,
     update_source,
 )
+from memini.status import StreamStatus, read_status
 from memini.workspaces import create_workspace, ensure_principal
 
 pytestmark = [
@@ -828,14 +832,120 @@ def prune(git_dir: Path) -> None:
         )
 
 
-async def test_a_ref_missing_from_the_mirror_fails_and_pins_nothing(env: Env) -> None:
+def reader(env: Env) -> ReadFilter:
+    return authorize_read(
+        Principal(principal_id=env.owner, token_id=uuid.uuid4(), scopes=frozenset({"read"}))
+    )
+
+
+async def stream_status(env: Env, ref: str) -> StreamStatus:
+    found = await read_status(env.pool, reader(env))
+    (workspace,) = found.workspaces
+    (stream,) = [stream for stream in workspace.streams if stream.key == ref]
+    return stream
+
+
+async def test_a_ref_never_at_the_remote_is_marked_missing_not_retried(env: Env) -> None:
     env.repo.commit({"src/a.py": module(function("alpha", 1))})
     src = await add_source(env, refs=["main", "missing"])
 
-    with pytest.raises(RevisionNotFound):
-        await sync(env, src, "refs/heads/missing")
+    run = await sync(env, src, "refs/heads/missing")
 
-    assert await stream_row(env, src, "refs/heads/missing") == (None, None)
+    assert run["status"] == "succeeded", run["error"]
+    assert steps(run) == [("fetch", "succeeded"), ("tombstone", "succeeded")]
+    assert run["report"]["counts"]["refs_missing"] == 1
+    assert file_counts(run) == {"files_deleted": 0}
+    cursor, checked_until = await stream_row(env, src, "refs/heads/missing")
+    assert cursor == {"missing": True}
+    assert run["started_at"] < checked_until < run["finished_at"]
+    assert await stream_pin(env.db, src.id, "refs/heads/missing") is None
+    assert (await stream_status(env, "refs/heads/missing")).missing is True
+
+
+async def test_a_tag_that_names_no_commit_fails_and_pins_nothing(env: Env) -> None:
+    env.repo.commit({"src/a.py": module(function("alpha", 1))})
+    env.repo.git("tag", "tree-only", "HEAD^{tree}")
+    src = await add_source(env, refs=["refs/tags/tree-only"])
+
+    with pytest.raises(RevisionNotFound):
+        await sync(env, src, "refs/tags/tree-only")
+
+    assert await stream_row(env, src, "refs/tags/tree-only") == (None, None)
+
+
+async def test_a_branch_deleted_at_the_remote_is_tombstoned_and_comes_back_with_it(
+    env: Env,
+) -> None:
+    repo = env.repo
+    repo.commit({"src/app.py": module(function("run", 1))})
+    repo.git("checkout", "--quiet", "-b", "dev")
+    dev_head = repo.commit({"src/extra.py": module(function("extra", 2))})
+    repo.git("checkout", "--quiet", "main")
+    src = await add_source(env, refs=["main", "dev"])
+    await sync(env, src, MAIN)
+    await sync(env, src, DEV)
+    main_records = {key: value for key, value in (await records(env, src)).items() if MAIN in key}
+    dev_ids = {key for key in await live(env, src) if key.startswith(f"{DEV}:")}
+    assert dev_ids == {f"{DEV}:src/app.py", f"{DEV}:src/extra.py"}
+    _, checked_before = await stream_row(env, src, DEV)
+
+    repo.git("branch", "--quiet", "-D", "dev")
+    run = await sync(env, src, DEV)
+
+    # Not an error to retry: the stream is marked, its records are tombstones without chunks.
+    assert run["status"] == "succeeded", run["error"]
+    assert steps(run) == [("fetch", "succeeded"), ("tombstone", "succeeded")]
+    counts = run["report"]["counts"]
+    assert (counts["refs_missing"], counts["files_deleted"]) == (1, 2)
+    assert counts["chunks_deleted"] == 2
+    assert counts["symbols_deleted"] == 2
+    stored = await records(env, src)
+    assert all(stored[key][1] for key in dev_ids)
+    assert [await chunks_of(env, src, key) for key in sorted(dev_ids)] == [0, 0]
+    assert {key: value for key, value in stored.items() if MAIN in key} == main_records
+    cursor, checked_until = await stream_row(env, src, DEV)
+    assert cursor == {"missing": True, "last_commit": dev_head}
+    assert checked_until > checked_before
+    assert await stream_pin(env.db, src.id, DEV) is None
+    await assert_consistent(env, src)
+
+    # status and the stream listing show it; the summary names it.
+    status = await stream_status(env, DEV)
+    assert (status.missing, status.last_run and status.last_run.status) == (True, "succeeded")
+    assert not (await stream_status(env, MAIN)).missing
+    summary = summarize_status(await read_status(env.pool, reader(env)))
+    assert "missing at the source: 1" in summary
+    assert f"acme/shop (git) {DEV}: missing at the source, lag" in summary
+    listed = {
+        stream.key: stream.missing
+        for stream in await list_streams(env.db, reader(env), "acme", "shop")
+    }
+    assert listed == {DEV: True, MAIN: False}
+    # Reading the source without a ref falls back to a ref that is there.
+    read = await read_source(env.db, reader(env), env.mirrors, repository="shop", path="src/app.py")
+    assert (read.ref, read.pinned) == (MAIN, True)
+
+    # Synced again while gone: nothing more to do, the marker stays.
+    run = await sync(env, src, DEV)
+
+    assert run["status"] == "succeeded", run["error"]
+    assert file_counts(run) == {"files_deleted": 0}
+    assert (await stream_row(env, src, DEV))[0] == cursor
+
+    # The branch comes back: listed in full, the same records brought back.
+    repo.git("branch", "dev", dev_head)
+    env.embedder.reset()
+    run = await sync(env, src, DEV)
+
+    assert run["status"] == "succeeded", run["error"]
+    assert steps(run) == [("fetch", "succeeded"), ("list", "succeeded"), ("index", "succeeded")]
+    assert file_counts(run)["files_added"] == 2
+    assert set(await live(env, src)) == dev_ids | {f"{MAIN}:src/app.py"}
+    pin = await stream_pin(env.db, src.id, DEV)
+    assert pin is not None
+    assert (pin.commit, pin.partial) == (dev_head, False)
+    assert not (await stream_status(env, DEV)).missing
+    await assert_consistent(env, src)
 
 
 # --- Refs ----------------------------------------------------------------------------------------

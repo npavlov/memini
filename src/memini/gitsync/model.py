@@ -20,6 +20,18 @@ Pins
     committed some records past the pin and then failed adds ``"partial": true``; the pin itself
     stays. ``checked_until`` is the database time just before the fetch that found the commit.
     Before the first complete sync both are NULL.
+
+A ref that is gone
+    When a fetch succeeds and the tracked ref is not in the mirror (deleted at the remote, or
+    never there), the sync turns the ref's records into tombstones and replaces the pin with a
+    marker (:func:`missing_cursor`)::
+
+        {"missing": true, "last_commit": "<the commit it was pinned at, if any>"}
+
+    It holds no pin (:func:`read_pin` gives ``None``): the records are complete at no commit of the
+    ref. ``checked_until`` moves as for a pin, since the sync stored what the remote holds.
+    :func:`ref_missing` tells the marker; :mod:`memini.status` reports it as ``missing``. If the
+    ref comes back, the next sync finds no pin, lists it in full and brings its records back.
 """
 
 import re
@@ -39,7 +51,9 @@ __all__ = [
     "code_external_id",
     "code_record_id",
     "file_record_id",
+    "missing_cursor",
     "read_pin",
+    "ref_missing",
     "split_code_external_id",
     "stream_pin",
 ]
@@ -105,6 +119,28 @@ def read_pin(cursor: object) -> Pin | None:
     if not isinstance(commit, str) or _OID.fullmatch(commit) is None or not isinstance(rules, str):
         return None
     return Pin(commit=commit, rules=rules, partial=value.get("partial") is True)
+
+
+def ref_missing(cursor: object) -> bool:
+    """Whether a stream's ``cursor`` says its ref no longer exists at the remote."""
+    if not isinstance(cursor, Mapping):
+        return False
+    value: Mapping[str, object] = cursor  # pyright: ignore[reportUnknownVariableType] - JSON
+    return value.get("missing") is True
+
+
+def missing_cursor(cursor: object) -> dict[str, Any]:
+    """The cursor of a stream whose ref is gone, from the cursor it had: the commit it was pinned
+    at, or that a marker already names, is kept as ``last_commit``."""
+    pin = read_pin(cursor)
+    last: object = None if pin is None else pin.commit
+    if pin is None and isinstance(cursor, Mapping):
+        value: Mapping[str, object] = cursor  # pyright: ignore[reportUnknownVariableType] - JSON
+        last = value.get("last_commit")
+    marker: dict[str, Any] = {"missing": True}
+    if isinstance(last, str) and _OID.fullmatch(last):
+        marker["last_commit"] = last
+    return marker
 
 
 async def stream_pin(conn: Conn, source_id: UUID, ref: str) -> Pin | None:

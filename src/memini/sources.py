@@ -494,6 +494,9 @@ class Stream:
     current: bool | None
     last_run: RunBrief | None
     pending_job: JobBrief | None
+    missing: bool = False
+    """What it follows no longer exists at the source, e.g. a deleted branch
+    (:mod:`memini.status`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -613,7 +616,8 @@ _STREAMS: Final = sql.SQL("""
 SELECT st.id, st.key, st.schedule, st.next_run_at, st.checked_until,
        extract(epoch FROM now() - st.checked_until)::float8,
        r.id, r.kind, r.status, r.started_at, r.finished_at, r.error,
-       j.id, j.kind, j.status, j.attempts, j.run_after, j.last_error
+       j.id, j.kind, j.status, j.attempts, j.run_after, j.last_error,
+       coalesce(st.cursor @> '{{"missing": true}}'::jsonb, false)
 FROM stream st
 LEFT JOIN LATERAL (
     SELECT r.id, r.kind, r.status, r.started_at, r.finished_at, r.error
@@ -650,6 +654,7 @@ def _stream(row: Sequence[Any]) -> Stream:
         current=stream_is_current(schedule_seconds, lag),
         last_run=None if run[0] is None else RunBrief(*run),
         pending_job=None if job[0] is None else JobBrief(*job),
+        missing=row[18],
     )
 
 

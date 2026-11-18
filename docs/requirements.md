@@ -436,7 +436,12 @@ catches up from the pin. Writing records without their chunks meanwhile was not 
 writes only what changed, so records stored during a rebuild, or before embeddings were set, would
 stay out of the index. For the same reason `serve` syncs git sources only when an embedding provider
 is configured. A ref no longer tracked loses its stream; the next sync of the source turns its
-records into tombstones.
+records into tombstones. A tracked ref the remote no longer has (deleted, or never there) is not
+an error to retry: after a fetch that succeeded, one transaction turns the ref's records into
+tombstones, deletes their chunks and replaces the pin with a `missing` marker, moving
+`checked_until`; the run counts `refs_missing`, and status shows the stream as missing (not as
+behind: the base holds what the source holds). When the ref comes back, the stream has no pin, so
+the next sync lists it in full and brings its records back.
 
 **Search** (decided 2026-11-18). One library, `memini.search`, serves the MCP tools and the HTTP
 API. Its modes are `hybrid` (the default), `dense`, `lexical`, `exact`, `regex` and `symbol`; the

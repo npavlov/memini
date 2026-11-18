@@ -6,8 +6,9 @@ never clones, fetches or touches a working copy, so a repository that has not sy
 nothing to read (:class:`NotSyncedError`).
 
 Which commit
-    - No ``ref``: the tracked ref the mirror's ``HEAD`` names (the remote's default branch), or the
-      first tracked ref by name when ``HEAD`` names none of them.
+    - No ``ref``: the tracked ref the mirror's ``HEAD`` names (the remote's default branch), or,
+      when ``HEAD`` names none of them, the first tracked ref by name that has a pin (a ref
+      deleted at the remote has none), else the first.
     - A tracked ref (``main``, ``refs/heads/main``, ``v1`` for a tracked ``refs/tags/v1``): its
       pinned commit, the one its records and chunks are at, so a read agrees with the ``commit``
       a search hit carries (``pinned`` is true). Before its first complete sync, or after a sync
@@ -474,7 +475,10 @@ async def _target(
         if not tracked:
             raise NotFoundError("ref")
         head = await mirrors.head(mirror)
-        chosen = head if head is not None and head in pins else tracked[0]
+        if head is not None and head in pins:
+            chosen = head
+        else:  # a ref deleted at the remote has no pin: prefer one that has
+            chosen = next((key for key in tracked if pins[key] is not None), tracked[0])
     else:
         names = [ref] if ref.startswith("refs/") else [f"refs/heads/{ref}", f"refs/tags/{ref}"]
         chosen = next((name for name in names if name in pins), None)
