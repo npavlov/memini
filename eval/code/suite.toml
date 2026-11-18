@@ -1,0 +1,940 @@
+# The code suite of the retrieval eval (docs/requirements.md, section 10).
+#
+# Three synthetic repositories in two workspaces, and questions about them in English and Russian,
+# each with the places in the fixture files that answer it. Everything here is written by hand:
+# the harbour, the lighthouse agent and the bakery do not exist.
+#
+#   repos/tidewater  workspace harbor  Python, English code and docs, one Russian doc
+#   repos/beacon     workspace harbor  Go and TypeScript, English names, Russian comments and README
+#   repos/zhernov    workspace mill    Python and TypeScript, Russian names, docstrings and docs
+#
+# Run it (the role of MEMINI_DATABASE_URL needs CREATEDB; nothing in its database is touched):
+#
+#   memini eval --fake-embeddings --baseline eval/code/baseline-fake.json      # what CI runs
+#   memini eval --modes all --json report.json                                 # the configured model
+#
+# The format is described in src/memini/evaluation/suite.py. In short: an expected result is a
+# repository and a path, with a symbol (its lines, from the symbol table), a heading (the end of
+# a heading trail) or lines; never a chunk id. The kind is what the expected results are (code,
+# document or symbol); tags are free and the report groups by them too:
+#
+#   cross-language  the question is in one language, the text that answers it in the other
+#   multi           more than one result is expected
+#   filtered        the question carries a search filter
+#
+# Raise `version` when a question changes in meaning; the baselines record the suite's digest, so
+# any change of a question or of a fixture file shows in a comparison.
+
+format = 1
+name = "code"
+version = 1
+description = "Code and Markdown of three synthetic repositories, questions in English and Russian"
+
+[[repository]]
+name = "tidewater"
+workspace = "harbor"
+path = "repos/tidewater"
+
+[[repository]]
+name = "beacon"
+workspace = "harbor"
+path = "repos/beacon"
+
+[[repository]]
+name = "zhernov"
+workspace = "mill"
+path = "repos/zhernov"
+
+# --- Code, in natural language: tidewater (English code) ------------------------------------------
+
+[[question]]
+id = "tw-berth-choice"
+text = "Which free berth does the allocator choose when several of them fit a vessel?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "BerthAllocator.allocate" }]
+
+[[question]]
+id = "tw-started-hour"
+text = "How is berth hire charged when a stay lasts only part of an hour?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/fees.py", symbol = "FeeSchedule.berth" }]
+
+[[question]]
+id = "tw-night-extra"
+text = "What extra is charged for the hours a vessel stays at night?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/fees.py", symbol = "night_surcharge" }]
+
+[[question]]
+id = "tw-water-height"
+text = "How is the water height between two points of the tide table estimated?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/tides.py", symbol = "TideTable.height_at" }]
+
+[[question]]
+id = "tw-entry-windows"
+text = "During which periods of a day can a vessel with a deep draught enter the harbour?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/tides.py", symbol = "safe_windows" }]
+
+[[question]]
+id = "tw-retry-pause"
+text = "How long does the client wait before it calls the tide service again, and why is the pause random?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/retry.py", symbol = "backoff_delay" }]
+
+[[question]]
+id = "tw-wind-closure"
+text = "Decide from the wind forecast whether the harbour closes to arrivals"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/weather.py", symbol = "should_close_harbour" }]
+
+[[question]]
+id = "tw-knots-beaufort"
+text = "Convert a wind speed in knots to a force on the Beaufort scale"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/weather.py", symbol = "beaufort_force" }]
+
+[[question]]
+id = "tw-keel-water"
+text = "Check that a vessel is short and shallow enough for a berth, with water to spare under the keel"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "Berth.fits" }]
+
+[[question]]
+id = "tw-occupancy"
+text = "What share of the berths are taken?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["filtered"]
+filters = { workspaces = ["harbor"] }
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "BerthAllocator.occupancy" }]
+
+[[question]]
+id = "tw-fee-tests"
+text = "Where are the fee calculations tested?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "tests/test_fees.py" }]
+
+# --- Code, in Russian: tidewater (English code) -----------------------------------------------------
+
+[[question]]
+id = "tw-ru-night-extra"
+text = "Как считается ночная надбавка к причальному сбору?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "tidewater/fees.py", symbol = "night_surcharge" }]
+
+[[question]]
+id = "tw-ru-berth-choice"
+text = "Какой свободный причал выбирается, если судну подходят несколько?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "BerthAllocator.allocate" }]
+
+[[question]]
+id = "tw-ru-retry"
+text = "Сколько ждать перед повторным запросом к сервису приливов?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "tidewater/retry.py", symbol = "backoff_delay" }]
+
+[[question]]
+id = "tw-ru-water-height"
+text = "Как вычисляется высота воды между двумя точками таблицы приливов?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "tidewater/tides.py", symbol = "TideTable.height_at" }]
+
+[[question]]
+id = "tw-ru-wind-closure"
+text = "При каком ветре порт закрывается для захода судов?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "tidewater/weather.py", symbol = "should_close_harbour" }]
+
+[[question]]
+id = "tw-ru-invoice"
+text = "Из чего складывается итоговая сумма счёта за стоянку судна?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "tidewater/fees.py", symbol = "invoice_total" }]
+
+[[question]]
+id = "tw-ru-hazardous"
+text = "К какому причалу можно поставить судно с опасным грузом?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "Berth.fits" }]
+
+# --- Code, in English: beacon (English names, Russian comments) ----------------------------------
+
+[[question]]
+id = "bc-lens-stalled"
+text = "How does the agent detect that the lens has stopped turning?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/lamp/rotation.go", symbol = "Lamp.CheckRotation" }]
+
+[[question]]
+id = "bc-battery-levels"
+text = "Which battery charge raises a warning and which an alarm?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/telemetry/battery.go", symbol = "BatterySeverity" }]
+
+[[question]]
+id = "bc-fog-horn"
+text = "When does the fog horn switch on and when does it switch off again?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/telemetry/fog.go", symbol = "ShouldSoundHorn" }]
+
+[[question]]
+id = "bc-uptime"
+text = "Format the uptime of the agent in days, hours and minutes"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "web/src/dashboard.ts", symbol = "formatUptime" }]
+
+[[question]]
+id = "bc-dedupe"
+text = "Suppress repeated alerts from the same beacon within a time window"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "web/src/alerts.ts", symbol = "dedupeAlerts" }]
+
+[[question]]
+id = "bc-offline"
+text = "What happens to a telemetry packet when the shore station cannot be reached?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["multi"]
+expect = [
+  { repository = "beacon", path = "internal/telemetry/packet.go", symbol = "Enqueue" },
+  { repository = "beacon", path = "cmd/beacon/main.go", symbol = "main" },
+]
+
+[[question]]
+id = "bc-solar"
+text = "How much does a sunny day recharge the batteries?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/telemetry/solar.go", symbol = "ChargeGain" }]
+
+# --- Code, in Russian: beacon --------------------------------------------------------------------
+
+[[question]]
+id = "bc-ru-lens-stalled"
+text = "Как агент понимает, что линза перестала вращаться?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/lamp/rotation.go", symbol = "Lamp.CheckRotation" }]
+
+[[question]]
+id = "bc-ru-nights"
+text = "Сколько ночей маяк продержится на батареях без подзарядки?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/telemetry/battery.go", symbol = "NightsLeft" }]
+
+[[question]]
+id = "bc-ru-sort-alerts"
+text = "В каком порядке тревоги показываются на панели?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "web/src/alerts.ts", symbol = "sortAlerts" }]
+
+[[question]]
+id = "bc-ru-escape"
+text = "Где текст экранируется перед вставкой в HTML-разметку?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "web/src/dashboard.ts", symbol = "escapeHtml" }]
+
+[[question]]
+id = "bc-ru-flashes"
+text = "Сколько вспышек в минуту даёт маяк?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/lamp/rotation.go", symbol = "FlashesPerMinute" }]
+
+[[question]]
+id = "bc-ru-grey-days"
+text = "Сколько дней подряд солнечная панель вырабатывала меньше нормы?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "internal/telemetry/solar.go", symbol = "GreyDays" }]
+
+# --- Code, in Russian: zhernov (Russian names and docstrings) ------------------------------------
+
+[[question]]
+id = "zh-ru-starter-mass"
+text = "Сколько закваски поставить с вечера на завтрашние замесы?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/starter.py", symbol = "starter_mass" }]
+
+[[question]]
+id = "zh-ru-starter-share"
+text = "Как доля закваски зависит от температуры в цехе?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/starter.py", symbol = "starter_share" }]
+
+[[question]]
+id = "zh-ru-oven-order"
+text = "В каком порядке партии ставятся в печи?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/ovens.py", symbol = "plan_batches" }]
+
+[[question]]
+id = "zh-ru-preheat"
+text = "Сколько минут разогревать печь до нужной температуры?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/ovens.py", symbol = "preheat_minutes" }]
+
+[[question]]
+id = "zh-ru-writeoff"
+text = "Как мука списывается со склада на замес?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/sklad.py", symbol = "Склад.списать_муку" }]
+
+[[question]]
+id = "zh-ru-low-stock"
+text = "Какие сорта муки пора заказать?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/sklad.py", symbol = "Склад.мало_муки" }]
+
+[[question]]
+id = "zh-ru-defect-rate"
+text = "Как считается процент брака?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/reports.py", symbol = "defect_rate" }]
+
+[[question]]
+id = "zh-ru-cutoff"
+text = "До какого часа принимаются заказы на завтра?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "web/orders.ts", symbol = "isTooLate" }]
+
+[[question]]
+id = "zh-ru-discount"
+text = "Какую скидку получает магазин за большой заказ?"
+language = "ru"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "zhernov/prices.py", symbol = "discount" }]
+
+# --- Code, in English: zhernov (Russian names and docstrings) ------------------------------------
+
+[[question]]
+id = "zh-en-starter"
+text = "How much sourdough starter should be set the evening before?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "zhernov/starter.py", symbol = "starter_mass" }]
+
+[[question]]
+id = "zh-en-oven-plan"
+text = "Assign baking batches to ovens, the hottest first"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "zhernov/ovens.py", symbol = "plan_batches" }]
+
+[[question]]
+id = "zh-en-feeding"
+text = "How much flour and water does the starter get when it is fed?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "zhernov/starter.py", symbol = "feeding" }]
+
+[[question]]
+id = "zh-en-low-flour"
+text = "Which kinds of flour are running low and need to be reordered?"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "zhernov/sklad.py", symbol = "Склад.мало_муки" }]
+
+[[question]]
+id = "zh-en-order-check"
+text = "Validate a shop's order form before it is sent"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "web/orders.ts", symbol = "validateOrder" }]
+
+[[question]]
+id = "zh-en-report"
+text = "Daily report for the technologist with the output and the defects"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "zhernov/reports.py", symbol = "daily_report" }]
+
+[[question]]
+id = "zh-en-bulk-price"
+text = "Total price of a shop's order with a discount for volume"
+language = "en"
+kind = "code"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "zhernov/prices.py", symbol = "order_price_kopecks" }]
+
+# --- Code, by pattern ----------------------------------------------------------------------------
+
+[[question]]
+id = "rx-night-defs"
+text = '^def \w*night\w*\('
+language = "en"
+kind = "code"
+modes = ["regex"]
+tags = ["multi"]
+expect = [
+  { repository = "tidewater", path = "tidewater/fees.py", symbol = "is_night" },
+  { repository = "tidewater", path = "tidewater/fees.py", symbol = "night_surcharge" },
+  { repository = "tidewater", path = "tidewater/fees.py", symbol = "count_night_hours" },
+]
+
+[[question]]
+id = "rx-severity"
+text = 'Severity(Alarm|Warning)'
+language = "en"
+kind = "code"
+modes = ["regex"]
+tags = ["multi"]
+expect = [
+  { repository = "beacon", path = "internal/telemetry/battery.go", lines = [12, 16] },
+  { repository = "beacon", path = "internal/telemetry/battery.go", symbol = "BatterySeverity" },
+]
+
+[[question]]
+id = "rx-raise-f"
+text = 'raise \w+\(f"'
+language = "en"
+kind = "code"
+modes = ["regex"]
+tags = ["multi", "filtered"]
+filters = { repositories = ["zhernov"] }
+expect = [
+  { repository = "zhernov", path = "zhernov/ovens.py", symbol = "plan_batches" },
+  { repository = "zhernov", path = "zhernov/sklad.py", symbol = "Склад.списать_муку" },
+  { repository = "zhernov", path = "zhernov/starter.py", symbol = "starter_mass" },
+]
+
+[[question]]
+id = "rx-export-alerts"
+text = '^export function \w+Alerts\('
+language = "en"
+kind = "code"
+modes = ["regex"]
+tags = ["multi"]
+expect = [
+  { repository = "beacon", path = "web/src/alerts.ts", symbol = "sortAlerts" },
+  { repository = "beacon", path = "web/src/alerts.ts", symbol = "dedupeAlerts" },
+]
+
+[[question]]
+id = "rx-lamp-methods"
+text = '^func \(l \*Lamp\) '
+language = "en"
+kind = "code"
+modes = ["regex"]
+tags = ["multi"]
+expect = [
+  { repository = "beacon", path = "internal/lamp/rotation.go", symbol = "Lamp.Turn" },
+  { repository = "beacon", path = "internal/lamp/rotation.go", symbol = "Lamp.CheckRotation" },
+]
+
+# --- Code, by an exact string --------------------------------------------------------------------
+
+[[question]]
+id = "ex-no-berth"
+text = "no free berth fits"
+language = "en"
+kind = "code"
+modes = ["exact", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "BerthAllocator.allocate" }]
+
+[[question]]
+id = "ex-tide-unavailable"
+text = "the tide service did not answer"
+language = "en"
+kind = "code"
+modes = ["exact", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/retry.py", symbol = "with_retries" }]
+
+[[question]]
+id = "ex-lens-stalled"
+text = "lens stalled"
+language = "en"
+kind = "code"
+modes = ["exact", "lexical", "hybrid"]
+expect = [{ repository = "beacon", path = "internal/lamp/rotation.go", symbol = "ErrStalled" }]
+
+[[question]]
+id = "ex-order-cutoff"
+text = "Заказ на завтра принимается до 14:00"
+language = "ru"
+kind = "code"
+modes = ["exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "web/orders.ts", symbol = "validateOrder" }]
+
+# --- Symbols, by name ----------------------------------------------------------------------------
+
+[[question]]
+id = "sym-berth-allocator"
+text = "BerthAllocator"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "BerthAllocator" }]
+
+[[question]]
+id = "sym-night-surcharge"
+text = "night_surcharge"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/fees.py", symbol = "night_surcharge" }]
+
+[[question]]
+id = "sym-height-at"
+text = "TideTable.height_at"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/tides.py", symbol = "TideTable.height_at" }]
+
+[[question]]
+id = "sym-safety-margin"
+text = "SAFETY_MARGIN_METRES"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/berths.py", symbol = "SAFETY_MARGIN_METRES" }]
+
+[[question]]
+id = "sym-with-retries"
+text = "with_retries"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/retry.py", symbol = "with_retries" }]
+
+[[question]]
+id = "sym-fee-berth"
+text = "FeeSchedule.berth"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "lexical", "hybrid"]
+expect = [{ repository = "tidewater", path = "tidewater/fees.py", symbol = "FeeSchedule.berth" }]
+
+[[question]]
+id = "sym-check-rotation"
+text = "CheckRotation"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "beacon", path = "internal/lamp/rotation.go", symbol = "Lamp.CheckRotation" }]
+
+[[question]]
+id = "sym-should-sound-horn"
+text = "ShouldSoundHorn"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "beacon", path = "internal/telemetry/fog.go", symbol = "ShouldSoundHorn" }]
+
+[[question]]
+id = "sym-format-uptime"
+text = "formatUptime"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "beacon", path = "web/src/dashboard.ts", symbol = "formatUptime" }]
+
+[[question]]
+id = "sym-charge-gain"
+text = "ChargeGain"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "beacon", path = "internal/telemetry/solar.go", symbol = "ChargeGain" }]
+
+[[question]]
+id = "sym-plan-batches"
+text = "plan_batches"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "zhernov/ovens.py", symbol = "plan_batches" }]
+
+[[question]]
+id = "sym-validate-order"
+text = "validateOrder"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "web/orders.ts", symbol = "validateOrder" }]
+
+[[question]]
+id = "sym-oven-overloaded"
+text = "OvenOverloaded"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "zhernov/ovens.py", symbol = "OvenOverloaded" }]
+
+[[question]]
+id = "sym-spisat-muku"
+text = "списать_муку"
+language = "ru"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "zhernov/sklad.py", symbol = "Склад.списать_муку" }]
+
+[[question]]
+id = "sym-sklad"
+text = "Склад"
+language = "ru"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "zhernov/sklad.py", symbol = "Склад" }]
+
+[[question]]
+id = "sym-zames"
+text = "Замес"
+language = "ru"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "zhernov/starter.py", symbol = "Замес" }]
+
+[[question]]
+id = "sym-dolya"
+text = "ДОЛЯ_ПО_ТЕМПЕРАТУРЕ"
+language = "ru"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical", "hybrid"]
+expect = [{ repository = "zhernov", path = "zhernov/starter.py", symbol = "ДОЛЯ_ПО_ТЕМПЕРАТУРЕ" }]
+
+# --- Documents, in English -----------------------------------------------------------------------
+
+[[question]]
+id = "doc-tide-format"
+text = "What format does the tide table file have?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "README.md", heading = "Tide tables" }]
+
+[[question]]
+id = "doc-storm"
+text = "What happens at the harbour when a force 8 wind is forecast?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "docs/operations.md", heading = "Storm protocol" }]
+
+[[question]]
+id = "doc-pilot"
+text = "Where and when does the pilot board an arriving vessel?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "docs/operations.md", heading = "Pilot boarding" }]
+
+[[question]]
+id = "doc-spill"
+text = "What has to be done after fuel is spilled at a berth?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "docs/operations.md", heading = "Fuel spills" }]
+
+[[question]]
+id = "doc-handover"
+text = "What does the outgoing harbour master hand over at the end of the night?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "docs/operations.md", heading = "Night shift handover" }]
+
+[[question]]
+id = "doc-install"
+text = "How do I install the berth scheduler?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "README.md", heading = "Install" }]
+
+[[question]]
+id = "doc-hazard-berth"
+text = "Which berths may take a vessel with hazardous cargo?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "README.md", heading = "Berth limits" }]
+
+[[question]]
+id = "doc-flash"
+text = "What is the flash pattern of the light?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "docs/signals.md", heading = "Flash pattern" }]
+
+[[question]]
+id = "doc-battery-reserve"
+text = "How many nights can the batteries power the light without charging?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "docs/signals.md", heading = "Battery reserve" }]
+
+[[question]]
+id = "doc-brak"
+text = "What does brak mean in the bakery's reports?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["filtered"]
+filters = { kinds = ["document"] }
+expect = [{ repository = "zhernov", path = "docs/glossary.md", heading = "Defects" }]
+
+[[question]]
+id = "doc-en-rye"
+text = "At what temperature is rye sourdough bread baked?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "docs/рецептуры.md", heading = "Ржаной хлеб на закваске" }]
+
+[[question]]
+id = "doc-en-flour-storage"
+text = "How should sacks of flour be stored in the warehouse?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "docs/рецептуры.md", heading = "Хранение муки" }]
+
+[[question]]
+id = "doc-en-oven-order"
+text = "Why are the batches baked from the hottest to the coolest?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "README.md", heading = "Расписание печей" }]
+
+[[question]]
+id = "doc-en-beacon-build"
+text = "How are the beacon agent and its web panel built?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "beacon", path = "README.md", heading = "Установка" }]
+
+[[question]]
+id = "doc-en-offline"
+text = "What does the agent do with its packets while the link to the shore is down?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "beacon", path = "README.md", heading = "Протокол сигналов" }]
+
+[[question]]
+id = "doc-en-dues"
+text = "How are harbour dues calculated for a stay at a berth?"
+language = "en"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["multi", "cross-language"]
+expect = [
+  { repository = "tidewater", path = "README.md", heading = "Fees" },
+  { repository = "tidewater", path = "docs/ru/dispatcher.md", heading = "Расчёт портовых сборов" },
+]
+
+# --- Documents, in Russian -----------------------------------------------------------------------
+
+[[question]]
+id = "doc-ru-arrival"
+text = "Что делает диспетчер, когда к порту подходит судно?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "docs/ru/dispatcher.md", heading = "Приём судна" }]
+
+[[question]]
+id = "doc-ru-storm"
+text = "Что делать в порту при штормовом предупреждении?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["multi"]
+expect = [
+  { repository = "tidewater", path = "docs/ru/dispatcher.md", heading = "Штормовое предупреждение" },
+  { repository = "tidewater", path = "docs/operations.md", heading = "Storm protocol" },
+]
+
+[[question]]
+id = "doc-ru-sensors"
+text = "Где задаются адреса датчиков маяка?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "README.md", heading = "Настройка датчиков" }]
+
+[[question]]
+id = "doc-ru-event-log"
+text = "Сколько хранится журнал событий маяка?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "beacon", path = "README.md", heading = "Журнал событий" }]
+
+[[question]]
+id = "doc-ru-baton"
+text = "Как выпекают пшеничный батон?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "docs/рецептуры.md", heading = "Пшеничный батон" }]
+
+[[question]]
+id = "doc-ru-report"
+text = "Кому и когда уходит ежедневный отчёт пекарни?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "zhernov", path = "README.md", heading = "Отчёты" }]
+
+[[question]]
+id = "doc-ru-units"
+text = "Какие единицы измерения используются в настройках пекарни?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["filtered"]
+filters = { workspaces = ["mill"] }
+expect = [{ repository = "zhernov", path = "README.md", heading = "Конфигурация" }]
+
+[[question]]
+id = "doc-ru-shift-log"
+text = "Что записывается в журнал смены диспетчера?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+expect = [{ repository = "tidewater", path = "docs/ru/dispatcher.md", heading = "Журнал смены" }]
+
+[[question]]
+id = "doc-ru-fog"
+text = "Как часто подаёт сигнал туманный горн?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "beacon", path = "docs/signals.md", heading = "Fog signal" }]
+
+[[question]]
+id = "doc-ru-pilot"
+text = "Каким судам нужен лоцман и где он поднимается на борт?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "docs/operations.md", heading = "Pilot boarding" }]
+
+[[question]]
+id = "doc-ru-troubleshoot"
+text = "Почему планировщик не назначает судну ни одного причала?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "tidewater", path = "README.md", heading = "Troubleshooting" }]
+
+[[question]]
+id = "doc-ru-proofing"
+text = "Что такое расстойка теста и зачем она нужна?"
+language = "ru"
+kind = "document"
+modes = ["hybrid", "dense", "lexical"]
+tags = ["cross-language"]
+expect = [{ repository = "zhernov", path = "docs/glossary.md", heading = "Proofing" }]

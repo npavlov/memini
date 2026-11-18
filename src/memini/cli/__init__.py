@@ -14,6 +14,9 @@ Usage::
     memini token list
     memini token revoke <id-or-prefix>
     memini reindex --workspace <name>
+    memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--margin M] [--k 1,5,10]
+                [--modes MODE,...] [--fake-embeddings] [--lexical NAME] [--reranker NAME]
+                [--json PATH] [--keep]
 
 Global options go before the command. ``--config FILE`` sets ``MEMINI_CONFIG_FILE`` for this run;
 every other setting comes from the environment and that file, as for the service
@@ -35,6 +38,11 @@ URL or its password; the server is named as ``host:port``.
 the chunker of this build (:func:`memini.index.reindex`); it is what a refused search names. It
 needs an embedding provider (``MEMINI_EMBEDDING_PROVIDER``).
 
+``eval`` runs the retrieval eval (:mod:`memini.cli.evaluate`, :mod:`memini.evaluation`): it indexes
+the suite's fixture repositories into a scratch database it creates on the configured server and
+drops afterwards, prints recall@k and MRR per mode, kind and language, and compares them with a
+baseline report. It never reads or writes the configured database itself; the role needs CREATEDB.
+
 Exit codes:
 
 - 0: done; also ``serve`` stopped by SIGINT or SIGTERM.
@@ -42,8 +50,12 @@ Exit codes:
   or is pending, a server that did not start; for ``reindex`` also a rebuild of the workspace that
   is running already, raw content that cannot be read, an embedding model that failed, or an index
   built with another fingerprint.
-- 2: wrong usage or invalid configuration, including no embedding provider for ``reindex``.
+  For ``eval``: a search that failed, or an expected result of the suite not in the index.
+- 2: wrong usage or invalid configuration, including no embedding provider for ``reindex`` and
+  ``eval`` (without ``--fake-embeddings``), and a suite or baseline file of ``eval`` that is not
+  valid.
 - 3: the database cannot be reached.
+- 4: ``eval`` only: a tracked metric fell below the baseline by more than the margin.
 - 130: interrupted by Ctrl-C.
 """
 
@@ -52,13 +64,14 @@ import asyncio
 import os
 import sys
 from collections.abc import Callable, Coroutine, Sequence
+from pathlib import Path
 from typing import Any
 
 import psycopg
 
 from memini import __version__
 from memini.auth import SCOPES
-from memini.cli import admin, index, serve
+from memini.cli import admin, evaluate, index, serve
 from memini.cli.common import (
     EXIT_FAILURE,
     EXIT_INTERRUPTED,
@@ -71,6 +84,13 @@ from memini.cli.common import (
 from memini.config import CONFIG_FILE_VAR, ConfigError, Settings, load_settings
 from memini.db import MigrationError
 from memini.embeddings import EmbeddingError, EmbeddingsNotConfiguredError
+from memini.evaluation import (
+    DEFAULT_KS,
+    DEFAULT_LEXICAL,
+    DEFAULT_RERANKER,
+    LEXICAL_VARIANTS,
+    RERANKERS,
+)
 from memini.index import IndexMismatchError
 
 __all__ = ["build_parser", "main"]
@@ -242,5 +262,86 @@ def build_parser() -> argparse.ArgumentParser:
         help="the workspace whose index to rebuild",
     )
     reindex.set_defaults(command=index.reindex_command)
+
+    evaluation = commands.add_parser(
+        "eval",
+        help="run the retrieval eval on the fixture repositories",
+        description="Index the suite's fixture repositories into a scratch database on the"
+        " configured Postgres server (created and dropped by the command; the role needs"
+        " CREATEDB), run every question in every mode, print recall@k and MRR per kind and"
+        " language, and compare with a baseline. Uses the configured embedding provider, or the"
+        " FakeEmbedder with --fake-embeddings. Exit codes: 0 no regression, 1 a search failed or"
+        " an expected result is not in the index, 2 an invalid suite or baseline,"
+        f" {evaluate.EXIT_REGRESSION} a metric fell below the baseline by more than the margin.",
+    )
+    evaluation.add_argument(
+        "--suite",
+        metavar="PATH",
+        type=Path,
+        default=evaluate.DEFAULT_SUITE,
+        help=f"the suite file (default: {evaluate.DEFAULT_SUITE}, from the repository root)",
+    )
+    evaluation.add_argument(
+        "--baseline",
+        metavar="PATH",
+        type=Path,
+        help="a report to compare with; with --write-baseline, where to write this run's",
+    )
+    evaluation.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="write this run's report to --baseline instead of comparing with it",
+    )
+    evaluation.add_argument(
+        "--margin",
+        type=evaluate.parse_margin,
+        default=evaluate.DEFAULT_MARGIN,
+        help=f"how far a metric may fall below the baseline (default: {evaluate.DEFAULT_MARGIN})",
+    )
+    evaluation.add_argument(
+        "--k",
+        dest="ks",
+        type=evaluate.parse_ks,
+        default=DEFAULT_KS,
+        metavar="K,...",
+        help=f"recall cutoffs (default: {','.join(map(str, DEFAULT_KS))})",
+    )
+    evaluation.add_argument(
+        "--modes",
+        type=evaluate.parse_modes,
+        metavar="MODE,...",
+        help="search modes to measure, or all (default: every mode the suite uses; with"
+        f" --fake-embeddings, {','.join(evaluate.FAKE_MODES)})",
+    )
+    evaluation.add_argument(
+        "--fake-embeddings",
+        action="store_true",
+        help="use the deterministic FakeEmbedder instead of the configured model: dense and"
+        " hybrid results then carry no meaning",
+    )
+    evaluation.add_argument(
+        "--lexical",
+        choices=sorted(LEXICAL_VARIANTS),
+        default=DEFAULT_LEXICAL,
+        help=f"the lexical retriever to measure (default: {DEFAULT_LEXICAL}, the service's)",
+    )
+    evaluation.add_argument(
+        "--reranker",
+        choices=sorted(RERANKERS),
+        default=DEFAULT_RERANKER,
+        help=f"the reranker to measure (default: {DEFAULT_RERANKER})",
+    )
+    evaluation.add_argument(
+        "--json",
+        metavar="PATH",
+        type=Path,
+        help="also write the report as JSON to PATH (- for stdout, instead of the table)",
+    )
+    evaluation.add_argument(
+        "--keep",
+        action="store_true",
+        help="keep the scratch database and the temporary repositories, for inspection",
+    )
+    evaluation.set_defaults(command=evaluate.eval_command)
 
     return parser

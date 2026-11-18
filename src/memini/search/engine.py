@@ -57,6 +57,7 @@ from memini.search.model import (
 )
 from memini.search.retrieval import (
     ChunkScope,
+    LexicalStatement,
     Statement,
     chunk_rows,
     dense_statement,
@@ -84,6 +85,7 @@ async def search(
     *,
     options: SearchOptions | None = None,
     reranker: Reranker | None = None,
+    lexical: LexicalStatement = lexical_statement,
 ) -> list[Hit]:
     """Run ``query`` over what ``access`` lets the caller read. Best hits first, at most
     ``query.limit``.
@@ -91,6 +93,9 @@ async def search(
     ``conn`` must have no transaction open: the search runs in one of its own and leaves the
     connection idle. ``embedder`` is the service's: its spec is what the index fingerprint is
     checked against in every mode, and it embeds the query in ``hybrid`` and ``dense``.
+    ``lexical`` makes the statement of the lexical retriever (``hybrid`` and ``lexical``); the
+    service always uses :func:`~memini.search.retrieval.lexical_statement`, the retrieval eval
+    passes others to compare them (open question 1).
 
     Raises:
         UnsupportedFilterError: the ``persons`` filter is set.
@@ -123,7 +128,7 @@ async def search(
             scope = await _scope(conn, access, query.filters, expected, index)
             if scope is None:
                 return []
-            hits = await _retrieve(conn, scope, query, options, vector, depth)
+            hits = await _retrieve(conn, scope, query, options, vector, depth, lexical)
     except errors.QueryCanceled as error:
         raise SearchTimeoutError(options.timeout) from error
     except errors.InvalidRegularExpression as error:
@@ -244,6 +249,7 @@ async def _retrieve(
     options: SearchOptions,
     vector: Vector | None,
     depth: int,
+    lexical_retriever: LexicalStatement,
 ) -> list[Hit]:
     """The hits of ``query`` in ``scope``, at most ``depth``, in the mode's order."""
     mode = query.mode
@@ -288,7 +294,7 @@ async def _retrieve(
             raise RuntimeError(f"a {mode} search needs the query's vector")
         dense = await dense_statement(scope, vector, candidates).rows(conn)
     if mode in ("hybrid", "lexical"):
-        lexical = await lexical_statement(scope, query.text, candidates).rows(conn)
+        lexical = await lexical_retriever(scope, query.text, candidates).rows(conn)
 
     fused = reciprocal_rank_fusion(
         [[row[0] for row in dense], [row[0] for row in lexical]], k=options.rrf_k

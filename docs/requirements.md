@@ -473,6 +473,33 @@ the record's stream.
   recorded responses.
 - Fixtures in the repository are synthetic only.
 
+**Retrieval eval** (decided 2026-11-18). `memini eval` runs a suite: a TOML file of fixture
+repositories and questions (`eval/code/suite.toml`, the code suite: three synthetic repositories in
+two workspaces, about a hundred questions in English and Russian, a quarter of them asked in the
+other language than the text that answers them). A question has an id, a text, a language, a kind
+(`code`, `document` or `symbol`: what its answers are), the search modes it targets, optional
+filters and tags, and its expected results. An expected result names a place in a fixture file,
+never a chunk id, so a question survives a change of the chunker: a repository and a path, and a
+definition (a hit matches when its lines overlap the definition's in the symbol table), a heading
+(a hit matches when its header holds a trail that ends with it) or a line range. The eval commits
+the fixtures to new git repositories, creates a scratch database on the configured server, indexes
+them through the service's own git sync with the configured embedding model (or the FakeEmbedder,
+whose vectors carry no meaning), resolves every expected result against the index (one the index
+does not hold stops the run), searches each question in each mode, and drops the database. The
+user's database is not touched; the role needs CREATEDB. It reports recall at k (1, 5, 10) and the
+mean reciprocal rank per mode, kind, language and tag. An expected result counts once however many
+hits match it, and hits with equal scores count as a tie: a metric is its expected value over the
+orders of the tie, so the chunk ids that break ties in search do not move it. The report (JSON)
+records the suite's digest, the embedding spec, the index fingerprint, the chunker, the lexical
+retriever and the reranker; a baseline is such a report, and a run exits with code 4 when any
+recall or MRR of a group falls below the baseline by more than a margin (0.02). The lexical
+retriever and the reranker are chosen by name from registries of the eval (`--lexical`,
+`--reranker`), and `memini.search.search` takes the lexical statement as a parameter: open question
+1 adds its candidates there and measures them against `tsvector-simple`. The committed baseline,
+`eval/code/baseline-fake.json`, covers the modes the FakeEmbedder does not take part in (lexical,
+exact, regex, symbol) and is what CI compares with; baselines of the dense and hybrid modes need a
+real model and are written by open question 2 with `--modes all --write-baseline`.
+
 ## 11. Later
 
 | Version | What |

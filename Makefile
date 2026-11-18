@@ -4,7 +4,7 @@ SHELL := /bin/bash
 # `uv run` syncs the environment from uv.lock before each command.
 UV_RUN := uv run
 
-.PHONY: help sync lint format typecheck test test-integration check db db-down smoke
+.PHONY: help sync lint format typecheck test test-integration check eval db db-down smoke
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -30,6 +30,9 @@ test-integration: ## Run integration tests against Postgres (make db, or MEMINI_
 	$(UV_RUN) pytest -m integration
 
 check: lint typecheck test ## Everything a pull request must pass
+
+eval: ## Retrieval eval, FakeEmbedder, against the committed baseline (MEMINI_DATABASE_URL, CREATEDB)
+	$(UV_RUN) memini eval --fake-embeddings --baseline eval/code/baseline-fake.json
 
 db: ## Start the development database (Postgres with pgvector) and wait until healthy
 	docker compose up -d --wait db

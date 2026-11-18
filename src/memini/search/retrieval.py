@@ -22,7 +22,8 @@ The retrievers:
 - **lexical**: chunks whose ``lexical`` tsvector holds any word of the query, ranked by
   ``ts_rank_cd``. This is the baseline of open question 1 (BM25 in Postgres, per language): the
   column uses the ``simple`` configuration of migration 0005. A different lexical index replaces
-  :func:`lexical_statement` and nothing else.
+  :func:`lexical_statement` and nothing else; :func:`memini.search.search` takes another one of
+  the same shape (:data:`LexicalStatement`), which is how the retrieval eval compares them.
 - **exact**: ``LIKE`` / ``ILIKE`` on the content; **regex**: ``~`` / ``~*``. Both are served by the
   trigram index on the content (``pg_trgm``), and run under the search's statement timeout,
   because a regular expression can take time without end and a short pattern gives the trigram
@@ -30,7 +31,7 @@ The retrievers:
 - **symbol**: the ``symbol`` table by name or qualified name.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, Literal
@@ -59,6 +60,7 @@ __all__ = [
     "LEXICAL_CONFIG",
     "ChunkRow",
     "ChunkScope",
+    "LexicalStatement",
     "Params",
     "Statement",
     "chunk_conditions",
@@ -189,6 +191,12 @@ def lexical_statement(scope: ChunkScope, text: str, limit: int) -> Statement:
         " ORDER BY rank DESC, c.id LIMIT {limit}"
     ).format(tsquery=tsquery, from_=_FROM, where=where, limit=sql.Literal(limit))
     return Statement(query, param.values)
+
+
+type LexicalStatement = Callable[[ChunkScope, str, int], Statement]
+"""Makes the statement of the lexical retriever from the scope, the query text and a limit: rows of
+``(chunk id, score)``, best first, at most the limit, under :func:`chunk_conditions`.
+:func:`lexical_statement` is the service's."""
 
 
 def match_statement(

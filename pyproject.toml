@@ -61,7 +61,7 @@ dev = [
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-extend-exclude = ["tests/fixtures"] # inputs for parsers, not code of this project
+extend-exclude = ["tests/fixtures", "eval"] # inputs for parsers and the eval, not code of this project
 
 [tool.ruff.lint]
 select = [
