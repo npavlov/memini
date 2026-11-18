@@ -34,8 +34,24 @@ cd memini
 uv sync
 ```
 
-`uv sync` installs the dependencies into `.venv`. `make db` starts Postgres with pgvector on
-`127.0.0.1:55432` and `make db-down` stops it; the data stays in a named volume.
+`uv sync` installs the dependencies into `.venv`. `make db` starts only Postgres with pgvector on
+`127.0.0.1:55432` (the `db` service of `compose.yaml`) and `make db-down` stops the compose services;
+the data stays in a named volume.
+
+To run the service from source instead of in its container, stop the container first if it runs
+(`docker compose stop memini`: both use port 6364), then:
+
+```sh
+make db
+export MEMINI_DATABASE_URL=postgresql://memini:memini@127.0.0.1:55432/memini
+uv run memini migrate
+uv run memini workspace create demo
+TOKEN=$(uv run memini token create --scope read --name dev)   # shown once
+uv run memini serve                       # http://127.0.0.1:6364, MCP at /mcp
+```
+
+`make smoke` builds the image, starts both services with compose and checks the service end to end
+from the host: health, the localhost-only port, a non-root user, a token, MCP `status`, JSON logs.
 
 ## Test
 
