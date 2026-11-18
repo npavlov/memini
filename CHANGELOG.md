@@ -139,10 +139,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `memini extract` and `POST /v1/workspaces/{workspace}/extract`: enqueue decision extraction of stored
   records the current extractor has not read (backfill after configuring a provider, re-run after a new
   prompt or model); a new reading no longer brings back replaced, answered or retracted items.
+- Failure tests: a worker killed mid-sync, the database crashed mid-batch, MCP and git sources that
+  hang, with a reusable consistency check; `make test-integration` starts a throwaway Postgres container
+  for them (they skip without Docker).
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
 
+
+### Fixed
+
+- The HTTP API answers 503 `unavailable`, not 500, while the database is down or restarting.
+- A stalled MCP server's handshake is reported as `ConnectError`, not an exception group.
 ### Security
 
 - A secret scan before each commit (`make hooks`) and over the whole history in CI (gitleaks, pinned and
