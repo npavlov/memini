@@ -17,7 +17,8 @@ Responses follow RFC 6750:
 - a valid token without the scope: 403, code ``insufficient_scope``, with
   ``error="insufficient_scope"`` and the scope.
 
-The challenges are plain functions, so the MCP endpoint can answer the same way.
+The challenges and the errors that carry them are plain functions, so the MCP endpoint
+(:mod:`memini.api.mcp`) answers the same way.
 """
 
 import functools
@@ -50,9 +51,11 @@ __all__ = [
     "ReadPrincipal",
     "authenticate_request",
     "insufficient_scope_challenge",
+    "insufficient_scope_error",
     "read_access",
     "require_scope",
     "unauthorized_challenge",
+    "unauthorized_error",
 ]
 
 REALM: Final = "memini"
@@ -79,14 +82,16 @@ def insufficient_scope_challenge(scope: Scope) -> str:
     return f'Bearer realm="{REALM}", error="insufficient_scope", scope="{scope}"'
 
 
-def _unauthorized(reason: AuthenticationFailure) -> ApiError:
+def unauthorized_error(reason: AuthenticationFailure) -> ApiError:
+    """The 401 for a request refused with ``reason``, with its challenge."""
     headers = {"WWW-Authenticate": unauthorized_challenge(reason)}
     if reason == "missing":
         return ApiError(401, "unauthorized", "A bearer token is required.", headers=headers)
     return ApiError(401, "invalid_token", "The bearer token is not valid.", headers=headers)
 
 
-def _forbidden(scope: Scope) -> ApiError:
+def insufficient_scope_error(scope: Scope) -> ApiError:
+    """The 403 for a token that lacks ``scope``, with its challenge."""
     return ApiError(
         403,
         "insufficient_scope",
@@ -112,7 +117,7 @@ async def authenticate_request(
             raise ApiError(503, "unavailable", "Authentication is not available.")
         principal = await authenticator(token)
     except AuthenticationError as exc:
-        raise _unauthorized(exc.reason) from None
+        raise unauthorized_error(exc.reason) from None
     request.state.principal = principal
     return principal
 
@@ -136,7 +141,7 @@ def require_scope(scope: Scope) -> Callable[[Principal], Awaitable[Principal]]:
         try:
             ensure_scope(principal, scope)
         except InsufficientScopeError as exc:
-            raise _forbidden(exc.scope) from None
+            raise insufficient_scope_error(exc.scope) from None
         return principal
 
     return scoped
