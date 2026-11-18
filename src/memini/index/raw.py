@@ -2,15 +2,17 @@
 
 Principle 1: every index is derived and can be rebuilt from the raw records. A rebuild
 (:func:`memini.index.reindex`) asks a :class:`RawContent` for each record's bytes and chunks them
-again. Where the bytes are depends on the kind of record:
+again. Where the bytes are depends on where the record came from:
 
-- A thread, a meeting or a document keeps its payload in the ``record`` row, byte for byte
-  (:class:`StoredPayload`).
-- A code file is not copied into the database: the service's mirror of the repository is the raw
-  store, and the record's ``content_hash`` is the file's git blob id. Reading it is the git
-  connector's part, :class:`memini.gitsync.MirrorContent`, which ``memini reindex`` passes as
-  ``code``. Without it, :class:`MirrorNotAvailable` refuses, and a rebuild of a workspace with code
-  records stops with a message instead of deleting their chunks.
+- A thread, a meeting or a document of a push or MCP source keeps its payload in the ``record``
+  row, byte for byte (:class:`StoredPayload`).
+- A file of a git source, a code file or a Markdown document, is not copied into the database:
+  the service's mirror of the repository is the raw store, and the record's ``content_hash`` is
+  the file's git blob id. Reading it is the git connector's part,
+  :class:`memini.gitsync.MirrorContent`, which ``memini reindex`` passes as ``code``. Without it,
+  :class:`MirrorNotAvailable` refuses, and a rebuild of a workspace with such records stops with a
+  message instead of deleting their chunks. A document goes to the one or the other by the kind
+  of its source (:class:`BySourceKind`).
 
 A provider returns ``None`` for a record that has nothing to index, so its chunks are deleted; it
 raises :class:`RawContentUnavailableError` when it cannot tell right now (a mirror not cloned yet,
@@ -30,6 +32,7 @@ from memini.ids import RecordKind
 __all__ = [
     "RECORD_COLUMNS",
     "ByKind",
+    "BySourceKind",
     "MirrorNotAvailable",
     "RawContent",
     "RawContentUnavailableError",
@@ -96,7 +99,7 @@ class RawDocument:
 
     content: bytes
     path: str | None = None
-    """For a code file: its path in the repository, for chunk headers and symbols."""
+    """For a file of a repository: its path, for chunk headers and symbols."""
 
 
 class RawContentUnavailableError(Exception):
@@ -116,7 +119,8 @@ class RawContent(Protocol):
 
 
 class StoredPayload:
-    """The payload kept in the ``record`` row: threads, meetings, documents.
+    """The payload kept in the ``record`` row: threads, meetings, documents of other sources than
+    git.
 
     It reads the payload as it is now, which may be newer than ``record``: a rebuild compares the
     version again under the record's lock and reads once more if it changed. It reads on ``conn``,
@@ -143,9 +147,17 @@ class MirrorNotAvailable:
 
     async def read(self, record: RecordRef) -> RawDocument | None:
         raise RawContentUnavailableError(
-            f"code record {record.id} cannot be read: no reader for repository mirrors was"
-            " given, so code cannot be rebuilt from raw"
+            f"{_NAMES[record.kind]} record {record.id} cannot be read: no reader for repository"
+            " mirrors was given, so files of repositories cannot be rebuilt from raw"
         )
+
+
+_NAMES: Final[dict[RecordKind, str]] = {
+    "code_file": "code",
+    "document": "document",
+    "thread": "thread",
+    "meeting": "meeting",
+}
 
 
 class ByKind:
@@ -159,16 +171,43 @@ class ByKind:
         return None if provider is None else await provider.read(record)
 
 
+class BySourceKind:
+    """Records of git sources from ``git``, records of other sources from ``other``.
+
+    It looks up the kind of each source once, on ``conn``; a source's kind does not change. A
+    record whose source is gone has nothing to index: its records went with it.
+    """
+
+    def __init__(self, conn: Conn, *, git: RawContent, other: RawContent) -> None:
+        self._conn = conn
+        self._git = git
+        self._other = other
+        self._kinds: dict[UUID, str] = {}
+
+    async def read(self, record: RecordRef) -> RawDocument | None:
+        kind = self._kinds.get(record.source_id)
+        if kind is None:
+            cur = await self._conn.execute(
+                "SELECT kind FROM source WHERE id = %s", (record.source_id,)
+            )
+            row = await cur.fetchone()
+            if row is None:
+                return None
+            kind = self._kinds[record.source_id] = row[0]
+        return await (self._git if kind == "git" else self._other).read(record)
+
+
 def default_raw_content(conn: Conn, *, code: RawContent | None = None) -> RawContent:
-    """Payloads from the ``record`` table for every kind but code; code from ``code``
-    (:class:`memini.gitsync.MirrorContent` in ``memini reindex``), by default
-    :class:`MirrorNotAvailable`."""
+    """Files of git sources from ``code`` (:class:`memini.gitsync.MirrorContent` in
+    ``memini reindex``; by default :class:`MirrorNotAvailable`): code files, and documents of git
+    sources. Payloads from the ``record`` table for everything else."""
     stored = StoredPayload(conn)
+    files = code or MirrorNotAvailable()
     return ByKind(
         {
-            "code_file": code or MirrorNotAvailable(),
+            "code_file": files,
             "thread": stored,
             "meeting": stored,
-            "document": stored,
+            "document": BySourceKind(conn, git=files, other=stored),
         }
     )

@@ -20,8 +20,8 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow, dict_row
 
 from git_helpers import SourceRepo
-from memini.auth import WriteAccess
-from memini.chunking import chunk_file
+from memini.auth import Principal, WriteAccess, authorize_read
+from memini.chunking import FileChunks, chunk_file, chunk_markdown
 from memini.cli.serve import background_jobs
 from memini.db import Pool, connect, open_pool
 from memini.embeddings import EmbeddingError, EmbeddingSpec, FakeEmbedder
@@ -38,6 +38,7 @@ from memini.gitsync import (
     split_code_external_id,
     stream_pin,
 )
+from memini.gitsync import rules as file_rules
 from memini.index import (
     IndexMismatchError,
     RawContentUnavailableError,
@@ -49,6 +50,7 @@ from memini.index import (
 )
 from memini.jobs import Job, execute_job
 from memini.runs import wait_for_run_writes
+from memini.search import SearchFilters, SearchQuery, search
 from memini.sources import (
     GitConfig,
     NewGitSource,
@@ -297,15 +299,21 @@ async def chunks_of(env: Env, src: Src, external_id: str) -> int:
     return int(row[0]) + int(row[1])
 
 
+def chunk_by_kind(kind: str, rid: str, path: str, content: bytes) -> FileChunks:
+    if kind == "document":
+        return chunk_markdown(rid, path, content)
+    return chunk_file(rid, path, content)
+
+
 async def assert_consistent(env: Env, src: Src) -> None:
     """Every live record has exactly the chunks its blob gives; no tombstone has any."""
     mirror = env.mirrors.open(src.id)
     cur = await env.db.execute(
-        "SELECT id, external_id, content_hash, deleted_at IS NOT NULL FROM record"
+        "SELECT id, external_id, content_hash, deleted_at IS NOT NULL, kind FROM record"
         " WHERE source_id = %s",
         (src.id,),
     )
-    for rid, external_id, content_hash, deleted in await cur.fetchall():
+    for rid, external_id, content_hash, deleted, kind in await cur.fetchall():
         found = await env.db.execute("SELECT id FROM chunk WHERE record_id = %s", (rid,))
         stored = {row[0] for row in await found.fetchall()}
         if deleted:
@@ -316,7 +324,24 @@ async def assert_consistent(env: Env, src: Src) -> None:
             content_hash
         ]
         _, path = split_code_external_id(external_id)
-        assert stored == {chunk.id for chunk in chunk_file(rid, path, content).chunks}, external_id
+        expected = chunk_by_kind(kind, rid, path, content)
+        assert stored == {chunk.id for chunk in expected.chunks}, external_id
+
+
+async def kinds(env: Env, src: Src) -> dict[str, tuple[str, list[str]]]:
+    """path -> (record kind, chunk kinds), of the live records of ``main``."""
+    cur = await env.db.execute(
+        "SELECT r.external_id, r.kind,"
+        " array(SELECT c.kind FROM chunk c WHERE c.record_id = r.id AND c.record_kind = r.kind"
+        " ORDER BY c.start_byte)"
+        " FROM record r WHERE r.source_id = %s AND r.deleted_at IS NULL",
+        (src.id,),
+    )
+    return {
+        split_code_external_id(row[0])[1]: (row[1], list(row[2]))
+        for row in await cur.fetchall()
+        if row[0].startswith(f"{MAIN}:")
+    }
 
 
 def blob(repo: SourceRepo, path: str, ref: str = "main") -> str:
@@ -365,7 +390,7 @@ async def test_a_first_sync_indexes_every_selected_file_and_pins_the_commit(env:
         "files_skipped_binary": 1,
     }
     counts = run["report"]["counts"]
-    assert counts["chunks_inserted"] == 4  # total, average, clamp, the README window
+    assert counts["chunks_inserted"] == 4  # total, average, clamp, the README section
     assert counts["texts_embedded"] == 4
     assert await live(env, src) == {
         f"{MAIN}:README.md": blob(repo, "README.md"),
@@ -373,6 +398,11 @@ async def test_a_first_sync_indexes_every_selected_file_and_pins_the_commit(env:
         f"{MAIN}:src/util.py": blob(repo, "src/util.py"),
     }
     assert embedded_paths(env.embedder) == {"README.md", "src/shop.py", "src/util.py"}
+    assert await kinds(env, src) == {
+        "README.md": ("document", ["section"]),
+        "src/shop.py": ("code_file", ["function", "function"]),
+        "src/util.py": ("code_file", ["function"]),
+    }
 
     cursor, checked_until = await stream_row(env, src)
     rules = FileRules(GitConfig(location="", exclude=("docs/**",)), MAX_BLOB)
@@ -763,7 +793,13 @@ async def test_two_refs_of_one_source_sync_independently(env: Env) -> None:
     repo = env.repo
     repo.commit({"src/app.py": module(function("run", 1))})
     repo.git("checkout", "--quiet", "-b", "dev")
-    repo.commit({"src/app.py": module(function("run", 2)), "src/extra.py": function("x", 3)})
+    repo.commit(
+        {
+            "src/app.py": module(function("run", 2)),
+            "src/extra.py": function("x", 3),
+            "docs/dev.md": "# Dev notes\n\nA synthetic note on the dev branch.\n",
+        }
+    )
     repo.git("checkout", "--quiet", "main")
     src = await add_source(env, refs=["main", "dev"])
 
@@ -774,6 +810,7 @@ async def test_two_refs_of_one_source_sync_independently(env: Env) -> None:
         f"{MAIN}:src/app.py": blob(repo, "src/app.py", "main"),
         f"{DEV}:src/app.py": blob(repo, "src/app.py", "dev"),
         f"{DEV}:src/extra.py": blob(repo, "src/extra.py", "dev"),
+        f"{DEV}:docs/dev.md": blob(repo, "docs/dev.md", "dev"),
     }
     main_cursor, main_checked = await stream_row(env, src, MAIN)
     before = await chunk_versions(env, src)
@@ -803,9 +840,10 @@ async def test_two_refs_of_one_source_sync_independently(env: Env) -> None:
     await update_source(env.db, env.access, "acme", src.name, SourceUpdate(refs=["main"]))
     run = await sync(env, src, MAIN)
 
-    assert file_counts(run)["files_deleted"] == 1
+    assert file_counts(run)["files_deleted"] == 2  # the code file and the document of dev
     assert set(await live(env, src)) == {f"{MAIN}:src/app.py"}
     assert await chunks_of(env, src, f"{DEV}:src/app.py") == 0
+    assert await chunks_of(env, src, f"{DEV}:docs/dev.md") == 0
     await assert_consistent(env, src)
 
 
@@ -836,6 +874,168 @@ async def test_a_job_without_a_stream_syncs_every_ref_of_its_source(env: Env) ->
     assert len(env.embedder.texts) == 1  # the same text on both refs is embedded once
 
 
+# --- Markdown documents --------------------------------------------------------------------------
+
+README = """# Lantern Tea Shop
+
+A synthetic fixture: the handbook of a tea shop that does not exist.
+Every name and number in it is made up.
+It is cut into sections by its headings.
+Each section is long enough to be a chunk of its own.
+Small sections would merge with their neighbours.
+
+## Opening hours
+
+The shop opens at nine and closes at six on weekdays.
+On Saturdays it opens at ten and closes at four.
+On Sundays it is closed.
+Public holidays follow the Sunday hours.
+Deliveries arrive before opening.
+
+## Brewing
+
+### Oolong
+
+Rinse the leaves once, then steep them in the gaiwan
+for forty seconds, adding ten seconds for each
+further infusion.
+Serve in small cups.
+Up to six infusions per serving.
+
+### Green tea
+
+Water at seventy-five degrees.
+Steep for two minutes.
+Never pour boiling water on green tea.
+Serve at once.
+Keep the leaves away from light.
+"""
+
+TEAPOT = (
+    "def steep(seconds):\n"
+    '    """Steep the leaves in the gaiwan for the given seconds."""\n'
+    "    total = 0\n"
+    "    for second in range(seconds):\n"
+    "        total += second\n"
+    "    if total < 0:\n"
+    "        total = 0\n"
+    "    return total\n"
+)
+
+OOLONG = "README.md: Lantern Tea Shop > Brewing, Lantern Tea Shop > Brewing > Oolong"
+
+
+async def test_a_readme_section_is_found_by_search_as_a_document(env: Env) -> None:
+    """Acceptance of memini-0fw."""
+    head = env.repo.commit({"README.md": README, "src/teapot.py": TEAPOT})
+    src = await add_source(env)
+
+    run = await sync(env, src)
+
+    assert run["status"] == "succeeded", run["error"]
+    assert await kinds(env, src) == {
+        "README.md": ("document", ["section", "section", "group", "section"]),
+        "src/teapot.py": ("code_file", ["function"]),
+    }
+    access = authorize_read(
+        Principal(principal_id=env.owner, token_id=uuid.uuid4(), scopes=frozenset({"read"}))
+    )
+    question = "How many infusions does oolong take in the gaiwan?"
+    documents = SearchFilters(kinds=("document",))
+
+    hits = await search(env.db, env.embedder, access, SearchQuery(text=question, filters=documents))
+
+    top = hits[0]
+    assert (top.record_kind, top.source_kind, top.chunk_kind) == ("document", "git", "group")
+    assert (top.path, top.header, top.language, top.symbol) == ("README.md", OOLONG, None, None)
+    assert (top.start_line, top.end_line, top.commit) == (17, 25, head)
+    assert top.locator == f"shop@{head}:README.md#L17-L25"
+    assert top.snippet.startswith("## Brewing\n\n### Oolong\n")
+    assert {hit.record_kind for hit in hits} == {"document"}
+    # Documents and code side by side: the lexical retriever finds the word in both.
+    lexical = await search(env.db, env.embedder, access, SearchQuery(text="gaiwan", mode="lexical"))
+    assert sorted((hit.record_kind, hit.header) for hit in lexical) == [
+        ("code_file", "src/teapot.py: steep"),
+        ("document", OOLONG),
+    ]
+    await assert_consistent(env, src)
+
+
+async def test_markdown_files_synced_as_code_before_become_documents(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = env.repo
+    repo.commit({"README.md": README, "src/teapot.py": TEAPOT})
+    src = await add_source(env)
+    with monkeypatch.context() as patch:
+        # A sync as it ran before Markdown files were documents.
+        patch.setattr(file_rules, "DOCUMENT_SUFFIXES", ())
+        await sync(env, src)
+    assert await kinds(env, src) == {
+        "README.md": ("code_file", ["window"]),
+        "src/teapot.py": ("code_file", ["function"]),
+    }
+    before = await chunk_versions(env, src)
+    env.embedder.reset()
+
+    run = await sync(env, src)  # no new commit: the rules changed
+
+    assert run["status"] == "succeeded", run["error"]
+    assert steps(run) == [("fetch", "succeeded"), ("list", "succeeded"), ("index", "succeeded")]
+    assert file_counts(run) == {
+        "files_added": 1,  # the document
+        "files_changed": 0,
+        "files_deleted": 1,  # the code record of README.md
+        "files_unchanged": 1,
+        "files_skipped": 0,
+    }
+    cur = await env.db.execute(
+        "SELECT r.kind, r.content_hash, r.deleted_at IS NOT NULL,"
+        " (SELECT count(*) FROM chunk c WHERE c.record_id = r.id)"
+        " FROM record r WHERE r.source_id = %s AND r.external_id = %s ORDER BY r.kind",
+        (src.id, f"{MAIN}:README.md"),
+    )
+    readme = blob(repo, "README.md")
+    assert [tuple(row) for row in await cur.fetchall()] == [
+        ("code_file", readme, True, 0),
+        ("document", readme, False, 4),
+    ]
+    assert (await kinds(env, src))["README.md"][0] == "document"
+    assert embedded_paths(env.embedder) == {"README.md"}
+    after = await chunk_versions(env, src)
+    teapot = await chunk_ids(
+        env,
+        "SELECT c.id FROM chunk c JOIN record r ON r.id = c.record_id WHERE r.external_id = %s",
+        (f"{MAIN}:src/teapot.py",),
+    )
+    assert {chunk: after[chunk] for chunk in teapot} == {chunk: before[chunk] for chunk in teapot}
+    await assert_consistent(env, src)
+
+    run = await sync(env, src)
+
+    assert steps(run) == [("fetch", "succeeded"), ("diff", "succeeded"), ("index", "succeeded")]
+    assert set(file_counts(run).values()) == {0}
+
+
+async def test_editing_one_section_of_a_document_embeds_only_that_section(env: Env) -> None:
+    env.repo.commit({"README.md": README})
+    src = await add_source(env)
+    await sync(env, src)
+    before = await chunk_versions(env, src)
+    env.embedder.reset()
+
+    env.repo.commit({"README.md": README.replace("closes at four", "closes at five")})
+    run = await sync(env, src)
+
+    assert file_counts(run)["files_changed"] == 1
+    assert len(env.embedder.texts) == 1
+    assert env.embedder.texts[0].startswith("README.md: Lantern Tea Shop > Opening hours\n")
+    after = await chunk_versions(env, src)
+    assert set(after) == set(before)
+    assert len([chunk for chunk in after if after[chunk] != before[chunk]]) == 1
+    await assert_consistent(env, src)
+
+
 # --- The index fingerprint and the rebuild -------------------------------------------------------
 
 OTHER_MODEL = EmbeddingSpec(provider="openai_compatible", model="fake-embedder-2", dimension=12)
@@ -845,7 +1045,13 @@ async def test_a_stale_index_blocks_the_sync_until_reindex_reads_code_from_the_m
     env: Env,
 ) -> None:
     repo = env.repo
-    repo.commit({"src/a.py": module(function("alpha", 1)), "src/b.py": function("beta", 2)})
+    repo.commit(
+        {
+            "src/a.py": module(function("alpha", 1)),
+            "src/b.py": function("beta", 2),
+            "README.md": README,
+        }
+    )
     src = await add_source(env)
     await sync(env, src)
     chunk_ids = set(await chunk_versions(env, src))
@@ -874,7 +1080,7 @@ async def test_a_stale_index_blocks_the_sync_until_reindex_reads_code_from_the_m
         )
         state = await read_index_state(conn, env.workspace)
 
-    assert result.records_indexed == 2
+    assert result.records_indexed == 3  # the README document read from the mirror too
     assert set(await chunk_versions(env, src)) == chunk_ids  # the same chunks, at the old pin
     assert state is not None
     assert state.built_with == current_fingerprint(OTHER_MODEL)

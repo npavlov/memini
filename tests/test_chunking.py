@@ -21,6 +21,7 @@ from memini.chunking import (
     CHUNK_ID_DOMAIN,
     CHUNKER_VERSION,
     DEFAULT_SIZES,
+    MARKDOWN_CHUNKER_VERSION,
     ChunkSizes,
     FileChunks,
     Language,
@@ -588,6 +589,8 @@ def test_inconsistent_sizes_are_refused(changes: dict[str, int]) -> None:
 def test_the_fingerprint_names_the_version_and_the_grammars() -> None:
     fingerprint = chunker_fingerprint()
 
-    assert fingerprint.startswith(f"memini-chunker/{CHUNKER_VERSION} tree-sitter/")
+    assert fingerprint.startswith(
+        f"memini-chunker/{CHUNKER_VERSION} markdown/{MARKDOWN_CHUNKER_VERSION} tree-sitter/"
+    )
     for package in ("go", "javascript", "python", "ruby", "typescript"):
         assert f" tree-sitter-{package}/" in fingerprint

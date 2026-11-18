@@ -16,6 +16,7 @@ from memini.cli.common import EXIT_FAILURE, EXIT_OK
 from memini.config import Settings, environment_variables
 from memini.db import connect, migrate
 from memini.embeddings import Embedder, FakeEmbedder
+from memini.ids import RecordKind
 from memini.index import current_fingerprint, read_index_state
 from memini.workspaces import create_workspace, ensure_principal
 
@@ -91,7 +92,7 @@ def query(url: str, sql: Any, params: Any = None) -> list[tuple[Any, ...]]:
     return asyncio.run(run())
 
 
-def add(world: World, kind: str) -> str:
+def add(world: World, kind: RecordKind) -> str:
     async def run() -> str:
         async with connect(world.url, autocommit=True) as conn:
             if kind == "code_file":
@@ -110,7 +111,7 @@ def add(world: World, kind: str) -> str:
                 source_id=world.notes,
                 external_id="note-1",
                 content=b"A synthetic note.",
-                kind="document",
+                kind=kind,
             )
 
     return asyncio.run(run())
@@ -119,7 +120,7 @@ def add(world: World, kind: str) -> str:
 def test_reindex_records_the_fingerprint_and_a_run(
     capsys: pytest.CaptureFixture[str], world: World
 ) -> None:
-    add(world, "document")  # no chunker for documents yet: nothing to index
+    add(world, "thread")  # no chunker for threads yet: nothing to index
 
     result = invoke(capsys, "reindex", "--workspace", "acme")
 

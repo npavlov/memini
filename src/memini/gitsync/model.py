@@ -1,12 +1,14 @@
-"""What the git connector stores: the identity of a code record, and the pin of a stream.
+"""What the git connector stores: the identity of a file's record, and the pin of a stream.
 
-Code records
-    One record per file per tracked ref, kind ``code_file``. Its ``external_id`` is the full ref
-    name and the path, joined by ``:`` (:func:`code_external_id`), so the same file on two refs is
-    two records, and the ref and path can be read back (:func:`split_code_external_id`): git does
-    not allow ``:`` in a ref name. ``content_hash`` is the file's git blob id, ``occurred_at`` the
-    committer time of the commit the file was last written at, ``stream_id`` the stream of the
-    ref, ``payload`` NULL: the code itself stays in the mirror (requirements, section 3).
+File records
+    One record per file per tracked ref: kind ``document`` for a Markdown file, ``code_file`` for
+    any other (:func:`memini.gitsync.rules.file_kind`). Its ``external_id`` is the full ref name
+    and the path, joined by ``:`` (:func:`code_external_id`), so the same file on two refs is two
+    records, and the ref and path can be read back (:func:`split_code_external_id`): git does not
+    allow ``:`` in a ref name. The kind is part of the record id, so a file whose kind changed is
+    another record. ``content_hash`` is the file's git blob id, ``occurred_at`` the committer time
+    of the commit the file was last written at, ``stream_id`` the stream of the ref, ``payload``
+    NULL: the file itself stays in the mirror (requirements, section 3).
 
 Pins
     ``stream.cursor`` of a git stream is a :class:`Pin`::
@@ -29,12 +31,14 @@ from uuid import UUID
 from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 
+from memini.gitsync.rules import file_kind
 from memini.ids import record_id
 
 __all__ = [
     "Pin",
     "code_external_id",
     "code_record_id",
+    "file_record_id",
     "read_pin",
     "split_code_external_id",
     "stream_pin",
@@ -46,14 +50,15 @@ _OID: Final = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 
 
 def code_external_id(ref: str, path: str) -> str:
-    """The external id of the file at ``path`` on the tracked ref ``ref``: ``ref:path``."""
+    """The external id of the file at ``path`` on the tracked ref ``ref``: ``ref:path``. The same
+    for a code file and a Markdown document."""
     if not ref.startswith("refs/") or ":" in ref or not path:
         raise ValueError("a code record needs a full ref name without ':' and a path")
     return f"{ref}:{path}"
 
 
 def split_code_external_id(external_id: str) -> tuple[str, str]:
-    """The ref and the path of a code record's external id; :class:`ValueError` if it is not one."""
+    """The ref and the path of a file record's external id; :class:`ValueError` if it is not one."""
     ref, separator, path = external_id.partition(":")
     if not separator or not ref.startswith("refs/") or not path:
         raise ValueError("not the external id of a code record (refs/...:path)")
@@ -61,8 +66,16 @@ def split_code_external_id(external_id: str) -> tuple[str, str]:
 
 
 def code_record_id(source_id: UUID, ref: str, path: str) -> str:
-    """The record id of the file at ``path`` on ``ref`` in the git source ``source_id``."""
+    """The id of the ``code_file`` record of the file at ``path`` on ``ref`` in the git source
+    ``source_id``. Every file but a Markdown one has this record; :func:`file_record_id` gives the
+    record of the kind the file becomes."""
     return record_id(source_id, "code_file", code_external_id(ref, path))
+
+
+def file_record_id(source_id: UUID, ref: str, path: str) -> str:
+    """The record id of the file at ``path`` on ``ref`` in the git source ``source_id``, of the
+    kind the file becomes (:func:`memini.gitsync.rules.file_kind`)."""
+    return record_id(source_id, file_kind(path), code_external_id(ref, path))
 
 
 @dataclass(frozen=True, slots=True)

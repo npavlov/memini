@@ -8,6 +8,7 @@ __all__ = [
     "CHUNK_ID_DOMAIN",
     "DEFAULT_SIZES",
     "LANGUAGES",
+    "MARKDOWN_CHUNKER_VERSION",
     "Chunk",
     "ChunkKind",
     "ChunkSizes",
@@ -25,6 +26,10 @@ boundaries, ids, texts, headers, symbols or the default sizes. The index fingerp
 
 2: a NUL byte past the binary probe becomes U+FFFD in the chunk text, so the content hash is
 computed over the text that is stored."""
+
+MARKDOWN_CHUNKER_VERSION: Final = 1
+"""Version of the rules of the Markdown chunker (:mod:`memini.chunking.markdown`), the same way:
+it changes whenever its output for some input can change. The index fingerprint includes it."""
 
 CHUNK_ID_DOMAIN: Final = "memini.chunk.v1"
 """Domain tag of chunk ids (see :mod:`memini.chunking`). A new rule gets a new tag."""
@@ -49,10 +54,12 @@ SymbolKind = Literal[
 """Kinds of definitions. ``module`` is a Ruby module or a TypeScript namespace; ``struct`` is a
 Go struct type; ``type`` is any other type definition or alias."""
 
-ChunkKind = SymbolKind | Literal["group", "code", "window"]
-"""A chunk is one definition, or a part of one (the kind of that definition); several small
+ChunkKind = SymbolKind | Literal["group", "code", "window", "section"]
+"""A chunk of code is one definition, or a part of one (the kind of that definition); several small
 siblings merged together (``group``); statements outside definitions (``code``); or a line window
-of a file that was not parsed (``window``)."""
+of a file that was not parsed (``window``). A chunk of a Markdown document is one section, or a
+window of one, or the text before the first heading (``section``); or several small sections
+merged together (``group``)."""
 
 Fallback = Literal["unknown_language", "too_large", "binary"]
 """Why a file was not parsed: no grammar for its language, larger than
@@ -119,14 +126,16 @@ class Chunk:
     kind: ChunkKind
     symbol: str | None
     """Qualified name of the definition this chunk is or is a part of; for a group or for
-    statements, the definition that encloses them; None at the top of a file."""
+    statements, the definition that encloses them; None at the top of a file and in a document."""
     language: Language | None
+    """The language the file was parsed as; None for a file without a grammar and a document."""
     start_line: int
     end_line: int
     start_byte: int
     end_byte: int
     header: str
-    """One line: the path, then the definitions the chunk holds, or the one it is a part of."""
+    """One line: the path, then the definitions the chunk holds, or the one it is a part of; in a
+    document, the heading trails of the sections it holds."""
     content: str
     """The source lines, decoded as UTF-8 with invalid bytes and NUL bytes replaced by U+FFFD:
     Postgres text cannot hold a NUL character."""

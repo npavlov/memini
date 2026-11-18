@@ -1,4 +1,5 @@
-"""Which files of a tracked ref are indexed: the source's globs, built-in exclusions, type and size.
+"""Which files of a tracked ref are indexed, and as what: the source's globs, built-in exclusions,
+type and size, and the kind of record a file becomes.
 
 A file of a tree is indexed when it is a regular file (mode ``100644`` or ``100755``: not a
 symlink, not a submodule), its path can be stored (UTF-8), the source's ``include`` and ``exclude``
@@ -12,9 +13,14 @@ answer no question about how something is implemented: lock files, minified bund
 installed packages. They are few on purpose; vendored code, generated code and fixtures are left to
 the source's own ``exclude``. They cannot be switched off yet.
 
+A Markdown file (:data:`DOCUMENT_SUFFIXES`, by the end of its name, in any case) becomes a
+``document`` record, chunked by headings; every other file a ``code_file`` record
+(:func:`file_kind`). Both keep no payload: the mirror is the raw store of both.
+
 :attr:`FileRules.digest` names the rules; the pin of a stream stores it, and a sync whose rules
 differ from the pinned ones lists the ref in full instead of diffing it, so a changed glob or size
-limit adds and removes files that no commit touched.
+limit adds and removes files that no commit touched, and a file whose kind changed is written as a
+record of its new kind while its record of the old kind becomes a tombstone.
 """
 
 from dataclasses import dataclass
@@ -25,15 +31,26 @@ from memini.sources import GitConfig, path_matches
 
 __all__ = [
     "BUILTIN_EXCLUDE",
+    "DOCUMENT_SUFFIXES",
     "FILE_MODES",
     "RULES_DOMAIN",
+    "FileKind",
     "FileRules",
     "SkipReason",
+    "file_kind",
     "storable_path",
 ]
 
-RULES_DOMAIN: Final = "memini.gitsync.rules.v1"
-"""Domain tag of :attr:`FileRules.digest`. A change of what the digest covers takes a new one."""
+RULES_DOMAIN: Final = "memini.gitsync.rules.v2"
+"""Domain tag of :attr:`FileRules.digest`. A change of what the digest covers takes a new one.
+v2 added the kinds of record (:data:`DOCUMENT_SUFFIXES`)."""
+
+DOCUMENT_SUFFIXES: Final[tuple[str, ...]] = (".md", ".markdown", ".mdx")
+"""Ends of file names, in lower case, that make a file a Markdown ``document`` record. MDX is
+Markdown with JSX in it; its headings are Markdown headings."""
+
+FileKind = Literal["code_file", "document"]
+"""The kinds of record a file of a repository becomes."""
 
 BUILTIN_EXCLUDE: Final[tuple[str, ...]] = (
     "**/node_modules/**",
@@ -62,6 +79,14 @@ FILE_MODES: Final = frozenset({"100644", "100755"})
 SkipReason = Literal["bad_path", "not_a_file", "excluded", "too_large", "binary"]
 """Why a file is not indexed: a path that is not UTF-8; a symlink, submodule or directory; left
 out by a glob; larger than ``git_max_blob_size``; binary."""
+
+
+def file_kind(path: str) -> FileKind:
+    """The kind of record the file at ``path`` becomes: ``document`` for Markdown
+    (:data:`DOCUMENT_SUFFIXES`), else ``code_file``."""
+    return (
+        "document" if path.rsplit("/", 1)[-1].lower().endswith(DOCUMENT_SUFFIXES) else "code_file"
+    )
 
 
 def storable_path(path: str) -> bool:
@@ -100,14 +125,20 @@ class FileRules:
 
     @property
     def digest(self) -> str:
-        """A digest of everything that decides which files are indexed, besides their content."""
+        """A digest of everything that decides which files are indexed, and as which kind of
+        record, besides their content."""
         include, exclude = self.config.include, self.config.exclude
         return hash_fields(
             RULES_DOMAIN,
             str(self.max_size).encode(),
-            str(len(include)).encode(),
-            *(pattern.encode() for pattern in include),
-            str(len(exclude)).encode(),
-            *(pattern.encode() for pattern in exclude),
-            *(pattern.encode() for pattern in BUILTIN_EXCLUDE),
+            *_counted(include),
+            *_counted(exclude),
+            *_counted(BUILTIN_EXCLUDE),
+            *_counted(DOCUMENT_SUFFIXES),
         )
+
+
+def _counted(values: tuple[str, ...]) -> list[bytes]:
+    """The number of ``values``, then each of them: fields of a digest that a list of another
+    length cannot run into."""
+    return [str(len(values)).encode(), *(value.encode() for value in values)]

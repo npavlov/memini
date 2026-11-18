@@ -1,9 +1,10 @@
-"""The raw content of code records, read from the repository mirrors: what a rebuild chunks again.
+"""The raw content of file records, read from the repository mirrors: what a rebuild chunks again.
 
-Code is not copied into the database; the mirror of each git source is its raw store (principle 1,
-requirements section 3). :class:`MirrorContent` is the :class:`~memini.index.RawContent` of code
-records for :func:`memini.index.reindex`: it reads the blob ``record.content_hash`` (the file's git
-blob id) from the mirror of ``record.source_id`` and takes the path from ``record.external_id``.
+Code, and Markdown documents of repositories, are not copied into the database; the mirror of each
+git source is its raw store (principle 1, requirements section 3). :class:`MirrorContent` is the
+:class:`~memini.index.RawContent` of the records of git sources for :func:`memini.index.reindex`:
+code files and documents. It reads the blob ``record.content_hash`` (the file's git blob id) from
+the mirror of ``record.source_id`` and takes the path from ``record.external_id``.
 
 - No mirror for the source, or git failing: :class:`~memini.index.RawContentUnavailableError`, so
   the rebuild stops and deletes nothing. A source's mirror is created by its first sync, which runs
@@ -30,46 +31,51 @@ log = logging.getLogger(__name__)
 
 
 class MirrorContent:
-    """Reads code records from the mirrors under one :class:`~memini.git.MirrorManager`."""
+    """Reads the records of git sources from the mirrors under one
+    :class:`~memini.git.MirrorManager`."""
 
     def __init__(self, mirrors: MirrorManager) -> None:
         self._mirrors = mirrors
 
     async def read(self, record: RecordRef) -> RawDocument | None:
-        if record.kind != "code_file":
-            raise ValueError(f"record {record.id} is a {record.kind}, not a code file")
+        if record.kind not in ("code_file", "document"):
+            raise ValueError(f"record {record.id} is a {record.kind}, not a file of a repository")
         if record.deleted:
             return None
+        noun = "code" if record.kind == "code_file" else "document"
         mirror = self._mirrors.find(record.source_id)
         if mirror is None:
             raise RawContentUnavailableError(
-                f"code record {record.id} cannot be read: source {record.source_id} has no"
+                f"{noun} record {record.id} cannot be read: source {record.source_id} has no"
                 " repository mirror yet; its next sync creates it"
             )
         try:
             _, path = split_code_external_id(record.external_id)
         except ValueError:
             log.warning(
-                "code record %s has an external id of another form; nothing to index", record.id
+                "%s record %s has an external id of another form; nothing to index",
+                noun,
+                record.id,
             )
             return None
         try:
             blobs = await self._mirrors.read_blobs(mirror, [record.content_hash])
         except (BlobTooLarge, InvalidRevision) as error:
-            log.warning("code record %s is not indexed: %s", record.id, error)
+            log.warning("%s record %s is not indexed: %s", noun, record.id, error)
             return None
         except GitError as error:
             raise RawContentUnavailableError(
-                f"code record {record.id} cannot be read from the mirror of source"
+                f"{noun} record {record.id} cannot be read from the mirror of source"
                 f" {record.source_id}: {error}"
             ) from error
         content = blobs.get(record.content_hash)
         if content is None:
             log.warning(
-                "the mirror of source %s no longer holds blob %s of code record %s; its chunks"
+                "the mirror of source %s no longer holds blob %s of %s record %s; its chunks"
                 " are cleared until the next sync writes it again",
                 record.source_id,
                 record.content_hash,
+                noun,
                 record.id,
             )
             return None

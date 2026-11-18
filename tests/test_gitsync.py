@@ -16,16 +16,21 @@ from memini.embeddings import EmbeddingError
 from memini.git import GitOptions
 from memini.gitsync import (
     BUILTIN_EXCLUDE,
+    DOCUMENT_SUFFIXES,
     GIT_SYNC,
+    FileKind,
     FileRules,
     Pin,
     SyncLimits,
     code_external_id,
     code_record_id,
+    file_kind,
+    file_record_id,
     mirrors_unusable,
     read_pin,
     split_code_external_id,
 )
+from memini.gitsync import rules as file_rules
 from memini.ids import record_id
 from memini.sources import GitConfig
 
@@ -91,6 +96,37 @@ def test_the_rules_digest_changes_with_every_rule() -> None:
     assert len(BUILTIN_EXCLUDE) == len(set(BUILTIN_EXCLUDE))
 
 
+def test_the_rules_digest_names_the_kinds_of_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    current = rules().digest
+    # Before Markdown files were documents: a pin of then lists the ref again, once.
+    monkeypatch.setattr(file_rules, "DOCUMENT_SUFFIXES", ())
+
+    assert rules().digest != current
+    assert file_kind("README.md") == "code_file"
+
+
+@pytest.mark.parametrize(
+    ("path", "kind"),
+    [
+        ("README.md", "document"),
+        ("docs/guide/install.md", "document"),
+        ("CHANGES.markdown", "document"),
+        ("site/docs/intro.mdx", "document"),
+        ("NOTES.MD", "document"),
+        ("docs/Setup.Markdown", "document"),
+        ("src/app.py", "code_file"),
+        ("README", "code_file"),
+        ("README.txt", "code_file"),
+        ("docs/guide.rst", "code_file"),
+        ("md/readme", "code_file"),
+        ("docs.md/index.html", "code_file"),
+    ],
+)
+def test_markdown_files_are_documents(path: str, kind: FileKind) -> None:
+    assert file_kind(path) == kind
+    assert all(suffix == suffix.lower() for suffix in DOCUMENT_SUFFIXES)
+
+
 def test_a_code_record_is_named_by_its_ref_and_path() -> None:
     source = uuid.UUID("00000000-0000-7000-8000-000000000001")
 
@@ -101,6 +137,16 @@ def test_a_code_record_is_named_by_its_ref_and_path() -> None:
     )
     assert code_record_id(source, "refs/heads/main", "a") != code_record_id(
         source, "refs/heads/dev", "a"
+    )
+    # A file's record is of the kind the file becomes; the external id is the same for both.
+    assert file_record_id(source, "refs/heads/main", "src/app.py") == code_record_id(
+        source, "refs/heads/main", "src/app.py"
+    )
+    assert file_record_id(source, "refs/heads/main", "README.md") == record_id(
+        source, "document", "refs/heads/main:README.md"
+    )
+    assert file_record_id(source, "refs/heads/main", "README.md") != code_record_id(
+        source, "refs/heads/main", "README.md"
     )
     for ref, path in (("main", "a"), ("refs/heads/a:b", "c"), ("refs/heads/main", "")):
         with pytest.raises(ValueError, match="a code record needs"):

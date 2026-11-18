@@ -44,6 +44,7 @@ from memini.index import (
     VectorIndex,
     check_index,
     current_fingerprint,
+    default_raw_content,
     index_record,
     read_index_state,
     reindex,
@@ -253,14 +254,14 @@ async def test_records_with_nothing_to_index_lose_their_chunks(
     await db.execute("UPDATE record SET deleted_at = now() WHERE id = %s", (tombstone,))
     vanished = await index_file(db, fake, scope, raw, FILE_V1, path="src/lost.py")
     del raw.files[vanished]  # the raw store has nothing for it
-    document = await add_record(
+    thread = await add_record(
         db,
         workspace_id=scope.acme,
         owner_id=scope.owner,
         source_id=scope.notes,
-        external_id="note-1",
-        content=b"A synthetic note.",
-        kind="document",
+        external_id="thread-1",
+        content=b"A synthetic thread.",
+        kind="thread",
     )
 
     result = await reindex(db, fake, workspace_id=scope.acme, raw=raw, page_size=2)
@@ -272,7 +273,7 @@ async def test_records_with_nothing_to_index_lose_their_chunks(
     assert result.counts.deleted == 8
     # A tombstone is not read, nor a record of a kind without a chunker.
     assert sorted(raw.reads) == sorted([kept, vanished])
-    assert document not in raw.reads
+    assert thread not in raw.reads
 
 
 async def test_a_stored_payload_is_chunked_by_the_chunker_of_its_kind(
@@ -303,6 +304,53 @@ async def test_a_stored_payload_is_chunked_by_the_chunker_of_its_kind(
     assert result.records_indexed == 1
     found = await rows(db, "SELECT record_id, record_kind, kind, path, content FROM chunk")
     assert found == [(rid, "document", "window", None, note.decode().rstrip("\n"))]
+
+
+NOTE = b"# Synthetic note\n\nThe greenhouse vents open at noon.\n"
+
+
+async def test_documents_are_read_by_the_kind_of_their_source_and_chunked_by_headings(
+    db: Conn, scope: Scope, fake: FakeEmbedder
+) -> None:
+    # A document of a push source keeps its payload; one of a git source is a file in the mirror.
+    pushed = await add_record(
+        db,
+        workspace_id=scope.acme,
+        owner_id=scope.owner,
+        source_id=scope.notes,
+        external_id="note-1",
+        content=NOTE,
+        kind="document",
+    )
+    synced = await add_record(
+        db,
+        workspace_id=scope.acme,
+        owner_id=scope.owner,
+        source_id=scope.repo,
+        external_id="refs/heads/main:docs/vents.md",
+        content=NOTE,
+        kind="document",
+    )
+    await db.execute("UPDATE record SET payload = NULL WHERE id = %s", (synced,))
+    mirror = FakeRaw()
+    mirror.put(synced, NOTE, path="docs/vents.md")
+
+    with pytest.raises(RawContentUnavailableError, match=f"document record {synced}"):
+        await reindex(db, fake, workspace_id=scope.acme, raw=default_raw_content(db))
+    result = await reindex(
+        db, fake, workspace_id=scope.acme, raw=default_raw_content(db, code=mirror)
+    )
+
+    assert result.records_indexed == 2
+    assert mirror.reads == [synced]
+    found = await rows(
+        db, "SELECT record_id, record_kind, kind, key, path, header FROM chunk ORDER BY path"
+    )
+    assert found == [
+        (synced, "document", "section", "Synthetic note#0", "docs/vents.md",
+         "docs/vents.md: Synthetic note"),
+        (pushed, "document", "section", "Synthetic note#0", None, "note-1: Synthetic note"),
+    ]  # fmt: skip
 
 
 async def test_a_record_changed_during_the_rebuild_is_read_again(

@@ -2,11 +2,11 @@
 
 A thin wrapper of :func:`memini.index.reindex`; the work and its rules are there. The command
 builds the embedder of the settings first, so that without an embedding provider it refuses before
-it touches the database. Code records are read again from the repository mirrors under
-``git_mirror_dir`` (:class:`memini.gitsync.MirrorContent`); a source without a mirror stops the
-rebuild until its next sync has created one. It records the rebuild as a ``reindex`` run, prints
-one line of counts when it is done, and is safe to run again after a failure: what was rebuilt is
-kept.
+it touches the database. The records of git sources, code files and Markdown documents, are read
+again from the repository mirrors under ``git_mirror_dir`` (:class:`memini.gitsync.MirrorContent`);
+a source without a mirror stops the rebuild until its next sync has created one. It records the
+rebuild as a ``reindex`` run, prints one line of counts when it is done, and is safe to run again
+after a failure: what was rebuilt is kept.
 """
 
 import argparse

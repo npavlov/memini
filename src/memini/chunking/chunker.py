@@ -2,11 +2,9 @@
 
 import functools
 import hashlib
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib import metadata
-from typing import Final
 
 import tree_sitter
 from tree_sitter import Node
@@ -24,6 +22,7 @@ from memini.chunking.model import (
     CHUNKER_VERSION,
     DEFAULT_SIZES,
     LANGUAGES,
+    MARKDOWN_CHUNKER_VERSION,
     Chunk,
     ChunkKind,
     ChunkSizes,
@@ -33,13 +32,18 @@ from memini.chunking.model import (
     Symbol,
     SymbolKind,
 )
+from memini.chunking.text import (
+    Lines,
+    Span,
+    check_path,
+    check_record_id,
+    fits,
+    is_binary,
+    windows,
+)
 from memini.ids import hash_fields
 
 __all__ = ["chunk_file", "chunk_id", "chunker_fingerprint"]
-
-_RECORD_ID: Final = re.compile(r"[0-9a-f]{64}")
-_BINARY_PROBE: Final = 8000
-"""A NUL byte among the first this many bytes makes a file binary, as in git."""
 
 Key = tuple[str, ...]
 """The identity of a chunk inside its file; see :mod:`memini.chunking`."""
@@ -54,19 +58,14 @@ def chunk_id(record_id: str, key: Key) -> str:
     return hash_fields(CHUNK_ID_DOMAIN, record_id.encode(), *(part.encode() for part in key))
 
 
-def decode_text(data: bytes) -> str:
-    """``data`` as text Postgres can store: UTF-8, with every invalid byte and every NUL byte
-    replaced by U+FFFD. One character per NUL, so character counts do not change."""
-    return data.decode("utf-8", "replace").replace("\0", "\N{REPLACEMENT CHARACTER}")
-
-
 def chunker_fingerprint() -> str:
-    """:data:`CHUNKER_VERSION` and the versions of tree-sitter and of every grammar package.
+    """:data:`CHUNKER_VERSION`, :data:`MARKDOWN_CHUNKER_VERSION` and the versions of tree-sitter
+    and of every grammar package.
 
-    The chunker's output depends on all of them, so the index fingerprint should include this.
+    The chunkers' output depends on all of them, so the index fingerprint should include this.
     """
     versions = " ".join(f"{name}/{metadata.version(name)}" for name in GRAMMAR_PACKAGES)
-    return f"memini-chunker/{CHUNKER_VERSION} {versions}"
+    return f"memini-chunker/{CHUNKER_VERSION} markdown/{MARKDOWN_CHUNKER_VERSION} {versions}"
 
 
 def chunk_file(
@@ -88,16 +87,15 @@ def chunk_file(
     Raises ``ValueError`` for a record id that is not 64 lowercase hex characters, a path that is
     not valid Unicode or holds a NUL character, or an unknown language.
     """
-    if _RECORD_ID.fullmatch(record_id) is None:
-        raise ValueError("a record id is 64 lowercase hex characters")
+    check_record_id(record_id)
     check_path(path)
     if language is not None and language not in LANGUAGES:
         raise ValueError(f"unknown language {language!r}; expected one of {list(LANGUAGES)}")
     language = language or detect_language(path)
-    if b"\0" in content[:_BINARY_PROBE]:
+    if is_binary(content):
         return FileChunks(language, (), (), fallback="binary", syntax_errors=False)
 
-    lines = _Lines(content)
+    lines = Lines(content)
     fallback: Fallback | None = None
     if language is None:
         fallback = "unknown_language"
@@ -113,56 +111,6 @@ def chunk_file(
         syntax_errors = tree.root_node.has_error
         drafts = builder.file(tree.root_node)
     return _assemble(record_id, path, language, fallback, syntax_errors, lines, builder, drafts)
-
-
-def check_path(path: str) -> None:
-    """Refuse a path that cannot be stored as text: not valid Unicode, or with a NUL character
-    (git paths never have one)."""
-    try:
-        path.encode()
-    except UnicodeEncodeError:
-        raise ValueError("the path is not valid Unicode") from None
-    if "\0" in path:
-        raise ValueError("the path holds a NUL character")
-
-
-class _Lines:
-    """The rows of a file: byte offsets, decoded text, character counts."""
-
-    def __init__(self, content: bytes) -> None:
-        self.content = content
-        raw = content.split(b"\n")
-        self.text = [decode_text(row) for row in raw]
-        self._starts: list[int] = []
-        self._chars = [0]  # characters before each row, newlines included
-        offset = 0
-        for row, text in zip(raw, self.text, strict=True):
-            self._starts.append(offset)
-            offset += len(row) + 1
-            self._chars.append(self._chars[-1] + len(text) + 1)
-        self._lengths = [len(row) for row in raw]
-        nonblank = [i for i, text in enumerate(self.text) if text.strip()]
-        self.first_nonblank = nonblank[0] if nonblank else 0
-        self.last_nonblank = nonblank[-1] if nonblank else -1
-
-    def start(self, row: int) -> int:
-        return self._starts[row]
-
-    def end(self, row: int) -> int:
-        """Offset of the end of ``row``, before its newline."""
-        return self._starts[row] + self._lengths[row]
-
-    def chars(self, first: int, last: int) -> int:
-        """Characters of rows ``first`` to ``last``, with the newlines between them."""
-        return self._chars[last + 1] - self._chars[first] - 1
-
-    def blank(self, row: int) -> bool:
-        return not self.text[row].strip()
-
-    def slice(self, first: int, last: int, byte_range: tuple[int, int] | None) -> str:
-        if byte_range is not None:
-            return decode_text(self.content[byte_range[0] : byte_range[1]])
-        return "\n".join(self.text[first : last + 1])
 
 
 def _rows(node: Node) -> tuple[int, int]:
@@ -235,7 +183,7 @@ class _Anchor:
 
 
 class _Builder:
-    def __init__(self, lines: _Lines, sizes: ChunkSizes, language: Spec | None) -> None:
+    def __init__(self, lines: Lines, sizes: ChunkSizes, language: Spec | None) -> None:
         self.lines = lines
         self.sizes = sizes
         self.spec = language
@@ -245,53 +193,11 @@ class _Builder:
     # Sizes -------------------------------------------------------------------------------------
 
     def _fits(self, first: int, last: int, max_lines: int | None = None) -> bool:
-        limit = self.sizes.max_lines if max_lines is None else max_lines
-        return last - first + 1 <= limit and self.lines.chars(first, last) <= self.sizes.max_chars
+        return fits(self.lines, self.sizes, first, last, max_lines)
 
-    def _windows(self, first: int, last: int) -> list[tuple[int, int, tuple[int, int] | None]]:
+    def _windows(self, first: int, last: int) -> list[Span]:
         """Rows ``first`` to ``last`` as one span if they fit, else as overlapping windows."""
-        if self._fits(first, last):
-            return [(first, last, None)]
-        sizes, lines = self.sizes, self.lines
-        spans: list[tuple[int, int, tuple[int, int] | None]] = []
-        row, covered = first, first - 1
-        while row <= last:
-            if lines.chars(row, row) > sizes.max_chars:
-                spans += [(row, row, piece) for piece in self._line_pieces(row)]
-                covered, row = row, row + 1
-                continue
-            end = row
-            while (
-                end < last
-                and end + 1 - row < sizes.window_lines
-                and lines.chars(row, end + 1) <= sizes.max_chars
-            ):
-                end += 1
-            if end <= covered:  # the overlap adds nothing: a line too long follows
-                row = covered + 1
-                continue
-            if not all(lines.blank(r) for r in range(row, end + 1)):
-                spans.append((row, end, None))
-            covered = end
-            if end >= last:
-                break
-            row = end + 1 - min(sizes.window_overlap, (end - row + 1) // 2)
-        return spans
-
-    def _line_pieces(self, row: int) -> list[tuple[int, int]]:
-        """Byte ranges of at most ``max_chars`` bytes that cut ``row`` at character boundaries."""
-        content, limit = self.lines.content, self.sizes.max_chars
-        at, end = self.lines.start(row), self.lines.end(row)
-        pieces: list[tuple[int, int]] = []
-        while at < end:
-            cut = min(at + limit, end)
-            while at < cut < end and content[cut] & 0xC0 == 0x80:  # a UTF-8 continuation byte
-                cut -= 1
-            if cut == at:
-                cut = min(at + limit, end)
-            pieces.append((at, cut))
-            at = cut
-        return pieces
+        return windows(self.lines, self.sizes, first, last)
 
     # Symbols -----------------------------------------------------------------------------------
 
@@ -613,7 +519,7 @@ def _assemble(
     language: Language | None,
     fallback: Fallback | None,
     syntax_errors: bool,
-    lines: _Lines,
+    lines: Lines,
     builder: _Builder,
     drafts: list[_Draft],
 ) -> FileChunks:

@@ -1,7 +1,9 @@
 """Sync one tracked ref: from its pinned commit to the commit the ref names now.
 
-:func:`sync_stream` brings the code records of one stream (a tracked ref) and their chunks to the
-commit the ref names in the mirror, and then moves the stream's pin there.
+:func:`sync_stream` brings the records of one stream (a tracked ref) and their chunks to the commit
+the ref names in the mirror, and then moves the stream's pin there. A file is a ``code_file`` record
+chunked by :func:`~memini.chunking.chunk_file`, or a Markdown ``document`` record chunked by
+:func:`~memini.chunking.chunk_markdown` (:func:`~memini.gitsync.rules.file_kind`).
 
 What changed
     With a pin whose rules are the current ones, the files are the ones that differ from the
@@ -9,9 +11,10 @@ What changed
     deleted, or changed in type. Otherwise the ref is listed in full
     (:meth:`~memini.git.MirrorManager.ls_tree`) and compared with every stored record of the ref:
     on the first sync, when the pinned commit is no longer in the mirror (a force push, then
-    ``gc``), when the rules changed (globs or the size limit), and after a sync that failed past
-    its first transaction (the pin says ``partial``). Records of the ref that the listing does not
-    select become tombstones.
+    ``gc``), when the rules changed (globs, the size limit or the kinds of record), and after a
+    sync that failed past its first transaction (the pin says ``partial``). Records of the ref that
+    the listing does not select become tombstones, records of a kind a file no longer has among
+    them: a Markdown file synced as code before Markdown files were documents.
 
     Each file is then compared with its stored record. A file whose record already holds its blob
     id is left alone: it is not read, chunked or embedded. The others are written; files that are
@@ -36,8 +39,8 @@ Transactions
     anyone else in between rolls the last transaction back.
 
 Untracked refs
-    The last transaction also turns into tombstones the live code records of the source whose ref
-    is no longer tracked: removing a ref deletes its stream and leaves its records without one.
+    The last transaction also turns into tombstones the live records of the source whose ref is no
+    longer tracked: removing a ref deletes its stream and leaves its records without one.
 """
 
 import logging
@@ -55,11 +58,11 @@ from psycopg.abc import QueryNoTemplate
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
-from memini.chunking import FileChunks, chunk_file
+from memini.chunking import FileChunks, chunk_file, chunk_markdown
 from memini.embeddings import Embedder
 from memini.git import Mirror, MirrorManager, RevisionNotFound
-from memini.gitsync.model import Pin, code_external_id, code_record_id, read_pin
-from memini.gitsync.rules import FileRules, SkipReason, storable_path
+from memini.gitsync.model import Pin, code_external_id, file_record_id, read_pin
+from memini.gitsync.rules import FileKind, FileRules, SkipReason, file_kind, storable_path
 from memini.index import IndexCounts, delete_record_chunks, index_record
 from memini.runs import current_run
 from memini.sources import GitConfig
@@ -171,6 +174,7 @@ class _File:
     """A file to write."""
 
     record_id: str
+    kind: FileKind
     path: str
     oid: str
     size: int
@@ -201,27 +205,28 @@ def _plan(
     for entry in entries:
         if entry.mode is None:  # deleted by the diff
             if storable_path(entry.path):
-                plan.tombstones[code_record_id(source_id, stream.key, entry.path)] = None
+                plan.tombstones[file_record_id(source_id, stream.key, entry.path)] = None
             continue
         reason = rules.skip_reason(entry.path, entry.mode, entry.size)
         if reason is not None:
             plan.skipped[reason] += 1
             if reason != "bad_path":
-                plan.tombstones[code_record_id(source_id, stream.key, entry.path)] = None
+                plan.tombstones[file_record_id(source_id, stream.key, entry.path)] = None
             continue
         if entry.oid is None or entry.size is None:  # a selected file has both
             raise RuntimeError(f"no blob id or size for {entry.path!r}")
-        rid = code_record_id(source_id, stream.key, entry.path)
+        rid = file_record_id(source_id, stream.key, entry.path)
         selected.add(rid)
         record = stored.get(rid)
         live = record is not None and not record.deleted
         if record is None or record.deleted or record.content_hash != entry.oid:
-            plan.writes.append(_File(rid, entry.path, entry.oid, entry.size, live))
+            kind = file_kind(entry.path)
+            plan.writes.append(_File(rid, kind, entry.path, entry.oid, entry.size, live))
         else:
             plan.unchanged += 1
             if record.stream_id != stream.id:
                 plan.relinks.append(rid)
-    if full:
+    if full:  # the records of the ref no file selects, of whatever kind
         for rid in stored:
             if rid not in selected:
                 plan.tombstones[rid] = None
@@ -251,7 +256,8 @@ async def _stored_of_ref(conn: Conn, source_id: UUID, ref: str) -> dict[str, _St
     async with conn.transaction():
         cur = await conn.execute(
             "SELECT id, content_hash, deleted_at IS NOT NULL, stream_id FROM record"
-            " WHERE source_id = %s AND kind = 'code_file' AND starts_with(external_id, %s)",
+            " WHERE source_id = %s AND kind IN ('code_file', 'document')"
+            " AND starts_with(external_id, %s)",
             (source_id, f"{ref}:"),
         )
         return {row[0]: _Stored(row[1], row[2], row[3]) for row in await cur.fetchall()}
@@ -284,7 +290,7 @@ async def _plan_diff(
     stored = await _stored_by_id(
         conn,
         [
-            code_record_id(source.id, stream.key, entry.path)
+            file_record_id(source.id, stream.key, entry.path)
             for entry in entries
             if storable_path(entry.path)
         ],
@@ -315,7 +321,7 @@ async def _plan_listing(
 _UPSERT_RECORD: Final = (
     "INSERT INTO record (id, workspace_id, owner_id, source_id, stream_id, kind, external_id,"
     " content_hash, occurred_at)"
-    " VALUES (%s, %s, %s, %s, %s, 'code_file', %s, %s, %s)"
+    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
     " ON CONFLICT (id) DO UPDATE SET stream_id = EXCLUDED.stream_id,"
     " content_hash = EXCLUDED.content_hash, occurred_at = EXCLUDED.occurred_at,"
     " deleted_at = NULL, updated_at = now()"
@@ -328,11 +334,11 @@ _TOMBSTONE: Final = (
     " WHERE id = ANY(%s) AND deleted_at IS NULL RETURNING id"
 )
 
-# Live code records of the source on a ref that no stream tracks. Removing a ref deletes its stream,
+# Live file records of the source on a ref that no stream tracks. Removing a ref deletes its stream,
 # which sets the records' stream_id to NULL; a stream added again for the same ref adopts them.
 _UNTRACKED: Final = (
     "UPDATE record r SET deleted_at = now(), updated_at = now()"
-    " WHERE r.source_id = %s AND r.kind = 'code_file' AND r.stream_id IS NULL"
+    " WHERE r.source_id = %s AND r.kind IN ('code_file', 'document') AND r.stream_id IS NULL"
     " AND r.deleted_at IS NULL AND NOT EXISTS ("
     "   SELECT 1 FROM stream s WHERE s.source_id = r.source_id"
     "   AND starts_with(r.external_id, s.key || ':'))"
@@ -362,8 +368,14 @@ def _batches(files: Sequence[_File], limits: SyncLimits) -> Iterator[list[_File]
         yield batch
 
 
+def _chunk(file: _File, content: bytes) -> FileChunks:
+    if file.kind == "document":
+        return chunk_markdown(file.record_id, file.path, content)
+    return chunk_file(file.record_id, file.path, content)
+
+
 def _chunk_all(files: Sequence[tuple[_File, bytes]]) -> list[FileChunks]:
-    return [chunk_file(file.record_id, file.path, content) for file, content in files]
+    return [_chunk(file, content) for file, content in files]
 
 
 async def _prepare(
@@ -441,6 +453,7 @@ async def _apply(
                         source.owner_id,
                         source.id,
                         stream.id,
+                        file.kind,
                         code_external_id(stream.key, file.path),
                         file.oid,
                         occurred_at,

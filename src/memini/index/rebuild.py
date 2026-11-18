@@ -42,7 +42,7 @@ import psycopg
 from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow
 
-from memini.chunking import FileChunks, chunk_file
+from memini.chunking import FileChunks, chunk_file, chunk_markdown
 from memini.embeddings import Embedder
 from memini.ids import RecordKind
 from memini.index.fingerprint import (
@@ -68,6 +68,7 @@ __all__ = [
     "ReindexInProgressError",
     "ReindexResult",
     "chunk_code",
+    "chunk_document",
     "reindex",
     "reindex_lock_key",
 ]
@@ -87,9 +88,21 @@ def chunk_code(record: RecordRef, document: RawDocument) -> FileChunks:
     return chunk_file(record.id, document.path, document.content)
 
 
-DEFAULT_CHUNKERS: Final[Mapping[RecordKind, RecordChunker]] = {"code_file": chunk_code}
-"""The chunker of each kind of record. Threads, meetings and documents get theirs with their
-intake; until then their records have nothing to index."""
+def chunk_document(record: RecordRef, document: RawDocument) -> FileChunks:
+    """The chunks of a document: :func:`memini.chunking.chunk_markdown`, by headings.
+
+    A Markdown file of a repository is named by its path in the chunk headers; a document without
+    one (pushed, from M2 on) by its external id.
+    """
+    return chunk_markdown(record.id, document.path or record.external_id, document.content)
+
+
+DEFAULT_CHUNKERS: Final[Mapping[RecordKind, RecordChunker]] = {
+    "code_file": chunk_code,
+    "document": chunk_document,
+}
+"""The chunker of each kind of record. Threads and meetings get theirs with their intake; until
+then their records have nothing to index."""
 
 REINDEX_LOCK_NAMESPACE: Final = 0x6D726978
 """First key of the session advisory lock a rebuild holds on its workspace: "mrix" in ASCII."""

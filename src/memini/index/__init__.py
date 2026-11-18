@@ -29,6 +29,7 @@ from memini.index.fingerprint import (
 )
 from memini.index.raw import (
     ByKind,
+    BySourceKind,
     MirrorNotAvailable,
     RawContent,
     RawContentUnavailableError,
@@ -43,6 +44,7 @@ from memini.index.rebuild import (
     ReindexInProgressError,
     ReindexResult,
     chunk_code,
+    chunk_document,
     reindex,
 )
 from memini.index.vectors import (
@@ -65,6 +67,7 @@ __all__ = [
     "DEFAULT_CHUNKERS",
     "REINDEX_COMMAND",
     "ByKind",
+    "BySourceKind",
     "IndexCounts",
     "IndexFingerprint",
     "IndexMismatchError",
@@ -82,6 +85,7 @@ __all__ = [
     "VectorIndex",
     "check_index",
     "chunk_code",
+    "chunk_document",
     "clear_record_chunks",
     "current_fingerprint",
     "default_raw_content",

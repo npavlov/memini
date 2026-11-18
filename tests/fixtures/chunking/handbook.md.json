@@ -1,0 +1,145 @@
+{
+  "chunker_version": 1,
+  "language": null,
+  "fallback": null,
+  "chunks": [
+    {
+      "key": "(preamble)",
+      "id": "a0f264f0b1ec9b02944bb43ea6ef3b90a9f89ceae6f7765c33bb8ba99c1f190f",
+      "kind": "section",
+      "lines": [1, 7],
+      "bytes": [0, 177],
+      "content_hash": "7368d669c6e35bcddae7d4bf9a751875956235c74d4cd03ab664b3b1ed888abc",
+      "text": [
+        "handbook.md",
+        "---",
+        "title: Lantern Tea Shop handbook",
+        "# a YAML comment, not a heading",
+        "tags: [synthetic, fixture]",
+        "---",
+        "",
+        "A synthetic fixture for the Markdown chunker tests. The shop does not exist."
+      ]
+    },
+    {
+      "key": "Lantern Tea Shop#0",
+      "id": "66442bb12c7fe7f703cb768392c3185468865074eb8f7defdefb8ac2b5bc8bc5",
+      "kind": "group",
+      "lines": [9, 21],
+      "bytes": [179, 528],
+      "content_hash": "2eab837c3908fb798469ec229c99d97b28e700694ed127d5dc476775d72ebbb8",
+      "text": [
+        "handbook.md: Lantern Tea Shop, Lantern Tea Shop > Opening hours",
+        "Lantern Tea Shop",
+        "================",
+        "",
+        "The handbook of a small tea shop.",
+        "",
+        "## Opening hours ##",
+        "",
+        "The shop opens at nine and closes at six on weekdays.",
+        "On Saturdays it opens at ten and closes at four.",
+        "On Sundays it is closed.",
+        "Public holidays follow the Sunday hours.",
+        "Deliveries arrive before opening.",
+        "The last order is taken fifteen minutes before closing."
+      ]
+    },
+    {
+      "key": "Lantern Tea Shop > Brewing#0",
+      "id": "3cddf6bbb5748bc1dbee07f8fc3352cb1d128ecb12b8dcc6df3af0ec8e28ea74",
+      "kind": "group",
+      "lines": [23, 29],
+      "bytes": [530, 658],
+      "content_hash": "7908edad6772b583013555d8211492d705168a03660b120c0b0fa2bd01117faa",
+      "text": [
+        "handbook.md: Lantern Tea Shop > Brewing, Lantern Tea Shop > Brewing > Green tea",
+        "## Brewing",
+        "",
+        "Every pot is brewed to order, never kept warm.",
+        "",
+        "### Green tea",
+        "",
+        "Water at seventy-five degrees; steep for two minutes."
+      ]
+    },
+    {
+      "key": "Lantern Tea Shop > Brewing > Oolong#0",
+      "id": "098f636cfa0fc6017c13e2bf541103ca49af3010c2126c9e26790e9e955d5dd7",
+      "kind": "section",
+      "lines": [31, 41],
+      "bytes": [660, 877],
+      "content_hash": "78d445c1489c2cf3d8abab5b7c2f347103bc0eece82a0c286b2f1ff87ff631c0",
+      "text": [
+        "handbook.md: Lantern Tea Shop > Brewing > Oolong",
+        "### Oolong",
+        "",
+        "Rinse the leaves once, then steep them in the gaiwan",
+        "for forty seconds, adding ten seconds for each",
+        "further infusion.",
+        "",
+        "```sh",
+        "# not a heading: a comment in a fenced block",
+        "",
+        "brew --tea oolong --seconds 40",
+        "```"
+      ]
+    },
+    {
+      "key": "Lantern Tea Shop > Brewing > Green tea#1",
+      "id": "e977778737516953e08adba7fc4c0a613a702fb53460c34c2d1a83ba1717111e",
+      "kind": "section",
+      "lines": [43, 45],
+      "bytes": [879, 953],
+      "content_hash": "6a651de7d4c9c98a4d8dd0712ed8d7c6bee55633d1a5c56b2aed2ee4a0a00989",
+      "text": [
+        "handbook.md: Lantern Tea Shop > Brewing > Green tea",
+        "### Green tea",
+        "",
+        "A second note on green tea: never pour boiling water on it."
+      ]
+    },
+    {
+      "key": "Lantern Tea Shop > Cleaning the counter#0",
+      "id": "7d254de3b98dc1eaa74b8fea1c6ca33074590dea6c3c3e453a21258be7c041b8",
+      "kind": "section",
+      "lines": [47, 60],
+      "bytes": [955, 1173],
+      "content_hash": "3b511525ec4ec7b685367423fd01290a5ad7f33aceafe3c168218e3b7cad6f99",
+      "text": [
+        "handbook.md: Lantern Tea Shop > Cleaning the counter",
+        "Cleaning the",
+        "counter",
+        "-------",
+        "",
+        "Wipe the counter after every order.",
+        "Polish the brass kettle on Fridays.",
+        "<!--",
+        "# Not a heading either: commented out",
+        "-->",
+        "Empty the compost bin every evening.",
+        "",
+        "~~~",
+        "## inside a tilde fence",
+        "~~~"
+      ]
+    },
+    {
+      "key": "Suppliers#0",
+      "id": "1eb9756e94a7cbf3620dd429d33a4798089b6714291e3475e61974cbe10b49dd",
+      "kind": "section",
+      "lines": [62, 67],
+      "bytes": [1175, 1273],
+      "content_hash": "1323f4e5a762125b0454e44b3a052409ba316032f132ff6c5a117e345f23d285",
+      "text": [
+        "handbook.md: Suppliers",
+        "# Suppliers",
+        "",
+        "- Leaves come from a cooperative in the hills.",
+        "---",
+        "",
+        "Water comes from the town supply."
+      ]
+    }
+  ]
+}

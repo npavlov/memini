@@ -73,9 +73,9 @@ Three layers: raw, index, knowledge.
 Notes:
 - A record id is a hash of its source, kind and external id, so the same record always gets the same id;
   the stream it arrived through is not part of it.
-- Code is not copied into the database. The service keeps its own bare mirror of each repository; the
-  mirror is the raw store, the database holds the file list at the pinned commit. The service never touches
-  a user's working copy.
+- Code is not copied into the database, nor are the Markdown documents of a repository. The service keeps
+  its own bare mirror of each repository; the mirror is the raw store, the database holds the file list at
+  the pinned commit. The service never touches a user's working copy.
 - A `thread` holds messages with author, time, text, recipients and mentions. A `meeting` holds title,
   start and end, participants, summary, action items and transcript.
 - Person resolution uses deterministic keys first (email, chat user id). Unmatched names stay as separate
@@ -177,11 +177,31 @@ anything over 80 lines or 3000 characters is cut into windows of 60 lines that o
 without a grammar, or larger than 1 MiB, is cut into windows only; a binary file (a NUL byte in
 its first 8000 bytes) gives no chunks. Bytes that are not UTF-8, and NUL bytes further on, become
 U+FFFD in the chunk text: Postgres text cannot hold a NUL, and the content hash is computed over
-the text that is stored. The text embedded is a header line (path and qualified names) and the source lines. A chunk id is a
-hash of the record id and a structural key: the qualified name of the definition with an ordinal
-for repeated names, or for statements a count from the definition before them. Line numbers and
-content are not in the key, so editing one function changes the content hash of its chunk and
-nothing else. The chunker version and the grammar versions are part of the index fingerprint.
+the text that is stored. The text embedded is a header line (path and qualified names) and the
+source lines. A chunk id is a hash of the record id and a structural key: the qualified name of the
+definition with an ordinal for repeated names, or for statements a count from the definition
+before them. Line numbers and content are not in the key, so editing one function changes the
+content hash of its chunk and nothing else. The chunker version and the grammar versions are part
+of the index fingerprint.
+
+**Document chunks** (decided 2026-11-18). A Markdown document is cut by its headings: ATX (`#` to
+`######`) and setext (a paragraph underlined with `=` or `-`), as CommonMark has them at the top
+level; no line of front matter, of a fenced code block or of an HTML comment is a heading. A
+section is a heading and its text up to the next heading of any level; the text before the first
+heading, front matter included, is a section too. Each section is one chunk of kind `section`; one
+over 80 lines or 3000 characters is cut into windows of whole blocks (runs of non-blank lines; a
+fenced block or a comment is one block, blank lines inside it included) of at most 60 lines, and
+a block larger than that into line windows as code is. Neighbours of at most 6 lines merge into a
+`group` while it spans at most 40 lines and stays under the heading that encloses the first of
+them; a section of at most 6 lines also goes with its first subsection when the two fit 80 lines,
+as a class line goes with its first member, so a heading without text of its own is never a chunk
+alone. The text embedded is a header line, the path and the heading trail of each section
+(`README.md: Shop > Install > Docker`), and the lines. A chunk id is a hash of the record id and
+the trail with an ordinal for a repeated trail: editing one section changes the content hash of
+its chunk and nothing else, and renaming a heading changes the ids of the sections under it.
+Documents have no symbols and no language. The Markdown chunker has its own version in the index
+fingerprint. The Markdown files of repositories are documents (code sync, section 9); a pushed
+document is chunked the same way from its payload until its intake (M2) decides otherwise.
 
 ## 6. Query surface
 
@@ -353,9 +373,9 @@ question 1 to measure against, not its answer. A trigram index on the content se
 regex code search. `memini reindex --workspace NAME` rebuilds one workspace from raw records,
 record by record through the same writer under the new fingerprint; one last transaction deletes
 the chunks of other embedding keys and records the new fingerprint, so search stays refused until
-it commits. A rebuild that stopped resumes without embedding anything twice. Code is read again
-from the repository mirror (a code record's content hash is its blob id), other kinds from the
-stored payload.
+it commits. A rebuild that stopped resumes without embedding anything twice. The files of git
+sources, code and Markdown documents, are read again from the repository mirror (their content
+hash is the blob id), other records from the stored payload.
 
 **Code sync** (decided 2026-11-18). Each tracked ref of a git source is a stream; its pin, kept in
 `stream.cursor`, is the commit its records are complete at and a digest of the rules that selected
@@ -363,9 +383,13 @@ them. A sync (the `git_sync` job, one stream at a time) fetches the mirror, then
 against the commit the ref names now and writes only the files that differ; with no pin, a pin no
 longer in the mirror (a force push, then gc), changed rules, or after a sync that failed part way,
 it lists the ref in full and compares every file with its stored record instead. A file whose record
-already holds its blob id is not read, chunked or embedded. A code record is one file on one ref:
-its external id is `refs/heads/main:src/app.py`, its content hash the blob id, its time the
-committer time of the commit it was written at. A file is indexed when it is a regular file (not a
+already holds its blob id is not read, chunked or embedded. A file's record is one file on one
+ref: a Markdown file (`.md`, `.markdown`, `.mdx`, in any case) is a `document`, chunked by
+headings, any other file a `code_file`; neither keeps a payload. Its external id is
+`refs/heads/main:src/app.py`, its content hash the blob id, its time the committer time of the
+commit it was written at. The kind is part of the record id and of the rules digest: when the
+kinds change, the next sync lists the ref, writes each file as a record of its new kind and turns
+its record of the old kind into a tombstone. A file is indexed when it is a regular file (not a
 symlink or submodule) with a UTF-8 path, the source's globs select it, no built-in exclusion matches
 it (lock files, minified bundles, source maps, `node_modules`; generated, large and of no use to
 search), it is at most `git_max_blob_size` and it is not binary. Every other file, and a deleted
