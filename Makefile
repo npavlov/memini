@@ -37,6 +37,10 @@ test-integration: ## Run integration tests against Postgres (make db, or MEMINI_
 
 check: lint typecheck test ## Everything a pull request must pass
 
+.PHONY: config-docs
+config-docs: ## Regenerate docs/configuration.md from the settings model (a test checks it is current)
+	$(UV_RUN) python -m memini.config_reference docs/configuration.md
+
 eval: ## Retrieval eval, FakeEmbedder, against the committed baseline (MEMINI_DATABASE_URL, CREATEDB)
 	$(UV_RUN) memini eval --fake-embeddings --baseline eval/code/baseline-fake.json $(EVAL_ARGS)
 
