@@ -304,6 +304,29 @@ class Settings(BaseModel):
         " against",
     )
 
+    # --- Search (memini.search) -------------------------------------------------------------------
+    # Limits of one search: how long a statement may run (a regular expression can backtrack
+    # without end), how many candidates each retriever of a hybrid search contributes, and the k
+    # of reciprocal rank fusion.
+    search_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        le=600,
+        description="seconds one search statement may run, more than 0, at most 600",
+    )
+    search_candidates: int = Field(
+        default=50,
+        ge=1,
+        le=1000,
+        description="candidates per retriever of a hybrid search, an integer from 1 to 1000",
+    )
+    search_rrf_k: int = Field(
+        default=60,
+        ge=1,
+        le=1000,
+        description="the k of reciprocal rank fusion, an integer from 1 to 1000",
+    )
+
     @field_validator("git_https_token_hosts")
     @classmethod
     def _token_has_hosts(cls, hosts: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:

@@ -383,6 +383,32 @@ stay out of the index. For the same reason `serve` syncs git sources only when a
 is configured. A ref no longer tracked loses its stream; the next sync of the source turns its
 records into tombstones.
 
+**Search** (decided 2026-11-18). One library, `memini.search`, serves the MCP tools and the HTTP
+API. Its modes are `hybrid` (the default), `dense`, `lexical`, `exact`, `regex` and `symbol`; the
+"semantic" mode of `search_code` is `hybrid` over code records. A hybrid search takes up to
+`search_candidates` (50) chunks from the dense and from the lexical retriever and merges them by
+reciprocal rank fusion: a chunk scores the sum of 1 / (k + rank) over the retrievers that found
+it, k being `search_rrf_k` (60). Only ranks count, so a cosine distance and a lexical rank need no
+common scale. The dense retriever scans the HNSW index iteratively, so a selective filter still
+fills the list. The lexical one looks for any word of the query in the `simple` tsvector, ranked
+by `ts_rank_cd`: the baseline of open question 1, replaceable in one place. Exact search
+(`LIKE`) and regex search (`~`, newline-sensitive, as grep reads a pattern) use the trigram
+index. A search runs in one read-only transaction, so the fingerprint check and every statement
+see one snapshot, and each statement under `statement_timeout` (`search_timeout`, 5 s): a regular
+expression that backtracks without end is cancelled and reported as a timeout. Filters
+(workspaces, sources, repositories, record kinds, languages, path globs with the rules of
+`.gitignore`, a time range on `occurred_at`) apply inside the authorization filter, to every
+retriever and to the final read; a tombstoned record never appears. Every mode refuses a
+workspace whose index fingerprint differs, not only the modes that embed the query (principle 9).
+The fingerprint covers the chunker, whose chunks, lines and symbols exact and symbol search
+return. During a rebuild the index mixes old and new chunks. One stale workspace in reach refuses
+the whole search, so a result is never silently incomplete. The person filter is refused until
+records are linked to persons (M2), because an empty answer would read as "nobody said it". A hit
+carries the kinds of its source and record, the source's name, the external id and URL,
+`occurred_at`, the path, symbol and lines, and the chunk's content as stored, cut to 2000
+characters (data, never instructions). For code it also carries the commit pinned in the cursor of
+the record's stream.
+
 ## 10. Quality
 
 - **Retrieval eval**: a question set per workspace with expected records; recall@k per kind. Run on every
