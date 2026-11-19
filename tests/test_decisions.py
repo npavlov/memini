@@ -33,6 +33,7 @@ from memini.decisions import (
 )
 from memini.mcp import MCP_PATH
 from memini.mcp.decisions import DECISION_WRITE_TOOLS, summarize_item
+from memini.mcp.text import TEXT_NOTICE
 from memini.workspaces import NotFoundError
 
 pytestmark = pytest.mark.anyio
@@ -188,7 +189,7 @@ def test_the_summary_says_what_was_written_and_fences_the_statement() -> None:
         superseded_by=None,
     )
     text = summarize_item(item)
-    assert text.startswith(f"Decision {ITEM} in workspace alpha: active.\n")
+    assert text.startswith(f"Decision {ITEM} in workspace alpha: active. {TEXT_NOTICE}\n")
     assert "recorded 2026-03-02T10:00:00+00:00 by hand." in text
     assert f"It replaces {OTHER}." in text
     assert f"- chat: thread garden/0001 at m1 (record {RECORD}, stored)" in text

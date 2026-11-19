@@ -30,6 +30,16 @@ or a trap, or it is in ``no_items``.
 A record's language, for the groups of the report, is Russian when its parts hold at least as
 many Cyrillic letters as Latin ones, and English otherwise (:func:`text_language`); an item's is
 its label's.
+
+**Injected runs.** :func:`load_inserts` reads a file of injection attempts (``inserts``: id,
+language, text; ``eval/injection/inserts.json``), and ``load_set(root, inserts=...)`` adds one to
+every live thread, as its last message, and to every meeting, as its last transcript segment,
+after the batches are replayed: the attempt of the record's language, in turn, by the set's
+order. The added part has an id that names nothing (a hash of the record and the attempt); a
+message has the time of the thread's last one and a segment starts after the last one ends, so
+the record keeps its time and its order, and its labels stand as they are: whatever is extracted
+from the attempt is a false item. :attr:`DecisionSet.injected`
+names the anchor added to each record, and the set's digest covers the attempts.
 """
 
 import hashlib
@@ -52,16 +62,20 @@ from memini.workspaces import check_handle
 
 __all__ = [
     "BATCHES_DIR",
+    "DEFAULT_INSERTS",
     "DEFAULT_SETS",
     "LABELS_FILE",
     "DecisionSet",
     "DecisionSetError",
     "Evidence",
+    "Insert",
+    "Inserts",
     "LabelItem",
     "LabelLink",
     "NoItems",
     "Restatement",
     "Trap",
+    "load_inserts",
     "load_set",
     "load_sets",
     "text_language",
@@ -70,8 +84,16 @@ __all__ = [
 DEFAULT_SETS: Final = (Path("eval/comms"), Path("eval/decisions/cases"))
 """The sets of this repository, relative to its root: the comms fixtures of M2 and the hard
 cases of the decision eval."""
+DEFAULT_INSERTS: Final = Path("eval/injection/inserts.json")
+"""The injection attempts of this repository (see the module, "Injected runs")."""
 BATCHES_DIR: Final = "batches"
 LABELS_FILE: Final = Path("labels") / "decisions.json"
+
+_GUEST_CHAT: Final = "U0GUEST77"
+_GUEST_MAIL: Final = "Guest <guest@outside.example.test>"
+_GUEST_SPEAKER: Final = "Guest"
+"""Who an added part is from: a chat user id, a mail address (when the thread's first author is
+one), a meeting's speaker. Invented, as the attempts are."""
 
 _CYRILLIC: Final = re.compile(r"[Ѐ-ӿ]")
 _LATIN: Final = re.compile(r"[A-Za-z]")
@@ -166,6 +188,9 @@ class DecisionSet:
     no_items: tuple[NoItems, ...]
     languages: Mapping[RecordRef, str] = field(default_factory=dict[RecordRef, str])
     """The language of each record (:func:`text_language`)."""
+    injected: Mapping[RecordRef, str] = field(default_factory=dict[RecordRef, str])
+    """The anchor of the injection attempt added to each record; empty unless inserts were
+    given (see the module)."""
 
     def item(self, item_id: str) -> LabelItem:
         for item in self.items:
@@ -191,6 +216,94 @@ def text_language(texts: Iterable[str]) -> str:
         cyrillic += len(_CYRILLIC.findall(text))
         latin += len(_LATIN.findall(text))
     return "ru" if cyrillic and cyrillic >= latin else "en"
+
+
+# --- Injection attempts --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Insert:
+    """One injection attempt to add to records."""
+
+    id: str
+    language: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class Inserts:
+    """The attempts of a file, and the SHA-256 of the file as read."""
+
+    attempts: tuple[Insert, ...]
+    digest: str
+
+    def for_language(self, language: str) -> tuple[Insert, ...]:
+        """The attempts in ``language``; all of them when none is."""
+        chosen = tuple(each for each in self.attempts if each.language == language)
+        return chosen or self.attempts
+
+
+def load_inserts(path: Path) -> Inserts:
+    """The injection attempts of ``path``: ``{"inserts": [{"id", "language", "text"}, ...]}``.
+    Raises :class:`DecisionSetError`."""
+    top = _read_json(path, "the inserts")
+    raw = cast(Json, top).get("inserts") if isinstance(top, dict) else None
+    if not isinstance(raw, list) or not raw:
+        raise DecisionSetError(f"{path}: expected an object with a non-empty list inserts")
+    attempts: list[Insert] = []
+    for i, entry in enumerate(cast("list[object]", raw)):
+        data = cast(Json, entry) if isinstance(entry, dict) else {}
+        values = [data.get(key) for key in ("id", "language", "text")]
+        if not all(isinstance(value, str) and value.strip() for value in values):
+            raise DecisionSetError(f"{path}: inserts[{i}]: id, language and text are strings")
+        attempts.append(Insert(*cast("list[str]", values)))
+    if len({each.id for each in attempts}) != len(attempts):
+        raise DecisionSetError(f"{path}: inserts: ids are unique")
+    return Inserts(tuple(attempts), hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def _inserted_id(ref: RecordRef, attempt: Insert, taken: Iterable[str]) -> str:
+    """An id for the added part that names nothing: a hash of the record and the attempt."""
+    used = set(taken)
+    seed = f"{ref}\0{attempt.id}"
+    while True:
+        candidate = hashlib.sha256(seed.encode()).hexdigest()[:16]
+        if candidate not in used:
+            return candidate
+        seed += "\0"
+
+
+def _with_attempt(ref: RecordRef, payload: Json, attempt: Insert) -> tuple[Json, str]:
+    """``payload`` with ``attempt`` as its last message or transcript segment, and its id."""
+    if ref.kind == "thread":
+        messages = [cast(Json, m) for m in cast("list[object]", payload.get("messages", []))]
+        last = messages[-1]
+        first_author = str(messages[0].get("author", ""))
+        part_id = _inserted_id(ref, attempt, (str(m.get("id")) for m in messages))
+        added: Json = {
+            "id": part_id,
+            "author": _GUEST_MAIL if "@" in first_author else _GUEST_CHAT,
+            "sent_at": last["sent_at"],
+            "text": attempt.text,
+        }
+        return {**payload, "messages": [*messages, added]}, part_id
+    segments = [cast(Json, s) for s in cast("list[object]", payload.get("transcript") or [])]
+    ends = [
+        float(value)
+        for segment in segments
+        for value in (segment.get("end"), segment.get("start"))
+        if isinstance(value, int | float)
+    ]
+    start = max(ends, default=0.0) + 5
+    part_id = _inserted_id(ref, attempt, (str(s.get("id")) for s in segments))
+    added = {
+        "id": part_id,
+        "speaker": _GUEST_SPEAKER,
+        "start": start,
+        "end": start + 15,
+        "text": attempt.text,
+    }
+    return {**payload, "transcript": [*segments, added]}, part_id
 
 
 # --- Reading -------------------------------------------------------------------------------------
@@ -483,8 +596,37 @@ def _read_labels(path: Path, records: Mapping[RecordRef, RecordInput]) -> _Read:
     return _Read(workspace, items, tuple(links), tuple(restatements), tuple(traps), tuple(no_items))
 
 
-def load_set(root: Path) -> DecisionSet:
-    """The set in the directory ``root`` (see the module). Raises :class:`DecisionSetError`."""
+def _inject(
+    records: Mapping[RecordRef, RecordInput],
+    payloads: Mapping[RecordRef, Json],
+    inserts: Inserts,
+) -> tuple[dict[RecordRef, RecordInput], dict[RecordRef, str]]:
+    """Every record with an attempt added (see the module), and the anchor added to each."""
+    turns: dict[str, int] = {}
+    changed: dict[RecordRef, RecordInput] = {}
+    injected: dict[RecordRef, str] = {}
+    for record in sorted(records.values(), key=lambda r: (r.occurred_at, r.ref)):
+        language = text_language(part.text for part in record.parts)
+        choices = inserts.for_language(language)
+        turn = turns.get(language, 0)
+        turns[language] = turn + 1
+        payload, anchor = _with_attempt(
+            record.ref, payloads[record.ref], choices[turn % len(choices)]
+        )
+        changed[record.ref] = record_input(
+            workspace=record.workspace,
+            ref=record.ref,
+            occurred_at=record.occurred_at,
+            payload=payload,
+            external_url=record.external_url,
+        )
+        injected[record.ref] = anchor
+    return changed, injected
+
+
+def load_set(root: Path, *, inserts: Inserts | None = None) -> DecisionSet:
+    """The set in the directory ``root`` (see the module), with an injection attempt added to
+    every record when ``inserts`` are given. Raises :class:`DecisionSetError`."""
     if not root.is_dir():
         raise DecisionSetError(f"{root}: not a directory")
     files = _batch_files(root)
@@ -493,17 +635,27 @@ def load_set(root: Path) -> DecisionSet:
     if not labels_path.is_file():
         raise DecisionSetError(f"{root}: no {LABELS_FILE.as_posix()}")
     records: dict[RecordRef, RecordInput] = {}
+    payloads: dict[RecordRef, Json] = {}
     for ref, each in state.items():
         if each.deleted or ref.kind not in EXTRACTED_KINDS:
             continue
+        payloads[ref] = cast(Json, json.loads(each.record.payload))
         records[ref] = record_input(
             workspace="",  # the labels name it; set below
             ref=ref,
             occurred_at=each.record.occurred_at,
-            payload=cast(Json, json.loads(each.record.payload)),
+            payload=payloads[ref],
             external_url=each.record.external_url,
         )
     read = _read_labels(labels_path, records)
+    digest = _digest(root, files)
+    injected: dict[RecordRef, str] = {}
+    if inserts is not None:
+        try:
+            records, injected = _inject(records, payloads, inserts)
+        except PayloadError as error:
+            raise DecisionSetError(f"{root}: an injected record is not valid: {error}") from None
+        digest = hashlib.sha256(f"{digest}\0{inserts.digest}".encode()).hexdigest()
     ordered = tuple(
         sorted(
             (replace(record, workspace=read.workspace) for record in records.values()),
@@ -513,7 +665,7 @@ def load_set(root: Path) -> DecisionSet:
     return DecisionSet(
         name=root.resolve().name,
         workspace=read.workspace,
-        digest=_digest(root, files),
+        digest=digest,
         records=ordered,
         items=read.items,
         links=read.links,
@@ -521,14 +673,19 @@ def load_set(root: Path) -> DecisionSet:
         traps=read.traps,
         no_items=read.no_items,
         languages={
-            record.ref: text_language(part.text for part in record.parts) for record in ordered
+            record.ref: text_language(
+                part.text for part in record.parts if part.anchor != injected.get(record.ref)
+            )
+            for record in ordered
         },
+        injected=injected,
     )
 
 
-def load_sets(roots: Sequence[Path]) -> tuple[DecisionSet, ...]:
-    """Every set of ``roots``, each once; two sets may not share a name or a workspace."""
-    sets = tuple(load_set(root) for root in dict.fromkeys(roots))
+def load_sets(roots: Sequence[Path], *, inserts: Inserts | None = None) -> tuple[DecisionSet, ...]:
+    """Every set of ``roots``, each once, with ``inserts`` added to its records when given; two
+    sets may not share a name or a workspace."""
+    sets = tuple(load_set(root, inserts=inserts) for root in dict.fromkeys(roots))
     for attribute in ("name", "workspace"):
         values = [getattr(each, attribute) for each in sets]
         if len(values) != len(set(values)):

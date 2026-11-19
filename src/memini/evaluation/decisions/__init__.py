@@ -6,7 +6,8 @@ pipeline"). Open question 5 (the smallest local model that extracts decisions we
 settled by its numbers.
 
 - :mod:`~memini.evaluation.decisions.dataset`: the sets (``eval/comms``,
-  ``eval/decisions/cases``), read from their batches and labels, and checked.
+  ``eval/decisions/cases``, ``eval/injection``), read from their batches and labels, and
+  checked; and the injection attempts an injected run adds to their records.
 - :mod:`~memini.evaluation.decisions.matching`: proposed items against labels, by evidence, then
   by a deterministic likeness of statements.
 - :mod:`~memini.evaluation.decisions.runner`: :func:`run_decision_eval` extracts, matches and
@@ -20,9 +21,12 @@ settled by its numbers.
 """
 
 from memini.evaluation.decisions.dataset import (
+    DEFAULT_INSERTS,
     DEFAULT_SETS,
     DecisionSet,
     DecisionSetError,
+    Inserts,
+    load_inserts,
     load_set,
     load_sets,
 )
@@ -47,6 +51,7 @@ from memini.evaluation.decisions.stubs import (
 
 __all__ = [
     "DEFAULT_EXTRACTOR",
+    "DEFAULT_INSERTS",
     "DEFAULT_SETS",
     "EXTRACTORS",
     "SIMILARITY_THRESHOLD",
@@ -57,11 +62,13 @@ __all__ = [
     "DecisionSet",
     "DecisionSetError",
     "ExtractorVariant",
+    "Inserts",
     "Pipeline",
     "VariantContext",
     "compare",
     "format_comparison",
     "format_report",
+    "load_inserts",
     "load_set",
     "load_sets",
     "match_record",

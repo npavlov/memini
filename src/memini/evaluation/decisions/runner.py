@@ -331,7 +331,14 @@ def _proposal_json(data: DecisionSet, proposal: _Proposal) -> dict[str, Any]:
         "by": proposal.match.by,
         "verdict": None if proposal.verdict is None else proposal.verdict.describe(),
         **({"invalid": proposal.invalid} if proposal.invalid else {}),
+        **({"injected": True} if _cites_injected(data, proposal) else {}),
     }
+
+
+def _cites_injected(data: DecisionSet, proposal: _Proposal) -> bool:
+    """Whether the item cites the injection attempt added to its record (an injected run)."""
+    anchor = data.injected.get(proposal.record.ref)
+    return anchor is not None and anchor in proposal.item.anchors
 
 
 def _extraction(
@@ -458,6 +465,7 @@ def _setup(
                 "restatements": len(each.restatements),
                 "traps": len(each.traps),
                 "no_items": len(each.no_items),
+                **({"injected": len(each.injected)} if each.injected else {}),
             }
             for each in sets
         ],
@@ -498,6 +506,9 @@ async def run_decision_eval(
     invalid = sum(1 for run in runs for p in run.proposals if p.invalid is not None)
     if invalid:
         notes.append(f"{invalid} verdicts named items that were no candidates; each counts wrong")
+    if any(data.injected for data in sets):
+        citing = sum(1 for run in runs for p in run.proposals if _cites_injected(run.data, p))
+        notes.append(f"{citing} proposed items cite an injected part")
     return DecisionReport(
         setup=_setup(sets, pipeline.extractor.name, variant, threshold, candidates),
         extraction=extraction,

@@ -38,6 +38,7 @@ from memini.git import GitOptions, MirrorManager
 from memini.gitsync import GIT_SYNC, run_git_sync
 from memini.jobs import Job
 from memini.mcp import MCP_PATH
+from memini.mcp.text import TEXT_NOTICE
 from memini.query import QueryServices, ReadLimits
 from memini.rerank import RerankError
 from memini.search import Hit
@@ -491,7 +492,7 @@ async def test_get_symbol_finds_functions_and_methods_with_their_location(world:
     assert (total["qualified_name"], total["language"]) == ("totalPrice", "typescript")
     assert ok(filtered)["definitions"] == []
     assert ok(missing)["definitions"] == []
-    assert text(method).startswith("1 definition.\n\n1. method Lamp.on at shop@")
+    assert text(method).startswith(f"1 definition. {TEXT_NOTICE}\n\n1. method Lamp.on at shop@")
 
 
 # --- read_source ---------------------------------------------------------------------------------

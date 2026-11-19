@@ -22,6 +22,7 @@ from pydantic import (
 from memini import knowledge
 from memini.ids import RecordKind
 from memini.ingest import MAX_EXTERNAL_ID_BYTES
+from memini.provenance import Labelled
 
 __all__ = [
     "MAX_NAME_CHARS",
@@ -279,7 +280,7 @@ class LinkInfo(BaseModel):
         )
 
 
-class DecisionItem(BaseModel):
+class DecisionItem(Labelled):
     """A decision or an open question with its evidence, participants and links."""
 
     id: UUID

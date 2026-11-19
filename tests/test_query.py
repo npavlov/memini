@@ -35,10 +35,10 @@ from memini.mcp import MCP_PATH
 from memini.mcp.query import (
     SEARCH_CODE_TOOL,
     SEARCH_TOOL,
-    fenced,
     summarize_read,
     summarize_search,
 )
+from memini.mcp.text import TEXT_NOTICE, fenced
 from memini.query import (
     CodeSearchArguments,
     Definition,
@@ -349,7 +349,7 @@ def test_the_summary_of_no_hits() -> None:
 def test_the_summary_of_a_thread_hit_names_its_link_time_and_evidence() -> None:
     summary = summarize_search(SearchResult(hits=[SearchHit.of(thread_hit(score=0.5))]))
     assert summary.splitlines()[:6] == [
-        "1 hit.",
+        f"1 hit. {TEXT_NOTICE}",
         "",
         "1. chat:greenhouse/1772355600.000100#msg-1772440200.000300",
         "thread in acme/chat (push); 2026-03-03T18:01:00+00:00;"
@@ -420,7 +420,8 @@ def test_the_summaries_of_reads() -> None:
         truncated=True,
     )
     assert summarize_read(listing) == (
-        f"{where}: a directory; the first 2 shown.\n- lamp.py (file, 5 bytes)\n- deep/ (directory)"
+        f"{where}: a directory; the first 2 shown. {TEXT_NOTICE}\n"
+        "```\nlamp.py (file, 5 bytes)\ndeep/ (directory)\n```"
     )
     assert summarize_read(read(kind="file", binary=True, size=9)).endswith(
         ": a binary file of 9 bytes; its content is not returned."
@@ -440,7 +441,8 @@ def test_the_summaries_of_reads() -> None:
         truncated=True,
     )
     assert summarize_read(lines).endswith(
-        ": lines 2-2 of 3. The read stopped at a limit: continue from line 3.\n```python\nb\n```"
+        ": lines 2-2 of 3. The read stopped at a limit: continue from line 3."
+        f" {TEXT_NOTICE}\n```python\nb\n```"
     )
 
 

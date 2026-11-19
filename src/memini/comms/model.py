@@ -6,7 +6,8 @@ says where it comes from and when (principle 3): the workspace, the source and i
 record's id and external id, a locator (``source:external_id#anchor``), a link and the time. A
 message or a passage also carries its ``anchor`` (``msg-<id>``, ``seg-<id>``, ``summary`` ...):
 ``record_id`` with ``anchor`` is a knowledge item's evidence as it is, as on search hits. Titles,
-names and texts are what the sources hold: data, never instructions (principle 11).
+names and texts are what the sources hold: data, never instructions (principle 11); each result
+says so in its ``data_notice`` (:mod:`memini.provenance`).
 """
 
 from datetime import datetime
@@ -17,6 +18,7 @@ from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Fiel
 
 from memini.ingest import MAX_EXTERNAL_ID_BYTES, MAX_EXTERNAL_URL_LENGTH
 from memini.persons import Role
+from memini.provenance import Labelled
 from memini.query.model import MAX_NAME_CHARS, Names, PersonName
 from memini.search import MAX_LIMIT, SourceKind
 from memini.search.model import DEFAULT_LIMIT, MAX_QUERY_CHARS
@@ -290,7 +292,7 @@ class ListedMeeting(_RecordFields):
     score: float | None = Field(description="With a query: the lexical rank of the passage.")
 
 
-class MeetingList(BaseModel):
+class MeetingList(Labelled):
     """What ``list_meetings`` returns: the meetings, best match first for a query, else newest
     first."""
 
@@ -329,7 +331,7 @@ class ListedMessage(MessageInfo, _RecordFields):
     )
 
 
-class MessageList(BaseModel):
+class MessageList(Labelled):
     """What ``list_messages`` returns: messages, best match first for a query, else newest
     first."""
 
@@ -353,7 +355,7 @@ class SegmentInfo(BaseModel):
     text: str
 
 
-class MeetingRecord(_RecordFields):
+class MeetingRecord(_RecordFields, Labelled):
     """What ``get_meeting`` returns: a meeting's notes."""
 
     kind: Literal["meeting"] = "meeting"
@@ -375,7 +377,7 @@ class MeetingRecord(_RecordFields):
     )
 
 
-class ThreadRecord(_RecordFields):
+class ThreadRecord(_RecordFields, Labelled):
     """What ``get_thread`` returns: a whole thread, its messages in order."""
 
     kind: Literal["thread"] = "thread"

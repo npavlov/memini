@@ -436,6 +436,11 @@ def _sets_line(setup: Mapping[str, Any]) -> list[str]:
             f" {each.get('items')} items, {each.get('links')} links,"
             f" {each.get('restatements')} restatements, {each.get('traps')} traps,"
             f" {each.get('no_items')} with nothing to extract"
+            + (
+                f"; an injection attempt added to {each['injected']}"
+                if each.get("injected")
+                else ""
+            )
         )
     return lines
 

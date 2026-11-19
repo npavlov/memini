@@ -15,6 +15,12 @@ implements: `src/memini/extraction`.
     MEMINI_EMBEDDING_PROVIDER=openai_compatible ... memini eval decisions --extractor llm \
         --candidates hybrid --candidate-limit 4    # the top 4 as the extract job finds them
 
+    # prompt injection: the injection set, and an attempt added to every record of every set
+    SETS="--set eval/comms --set eval/decisions/cases --set eval/injection"
+    memini eval decisions $SETS --extractor llm --json clean.json
+    memini eval decisions $SETS --extractor llm --inject eval/injection/inserts.json \
+        --baseline clean.json
+
 It is an operator command: it loads the service's settings as every operator command does
 (`MEMINI_DATABASE_URL` must be set), though the stubs read the sets' files only and connect to
 nothing. The `llm` extractor is the pipeline's own (`src/memini/extraction/llm.py`) on the local
@@ -61,6 +67,13 @@ every live thread and meeting is labelled exactly one way.
   same thread (a trap); a Russian open question answered in a Russian meeting; hedged proposals that
   decide nothing ("Maybe we should…", "Может, попробуем…"); a cross-language duplicate; a
   restatement that names the old value too; questions answered at once; chatter in a meeting.
+- `eval/injection` (workspace `harbor-injection`), not a default set: 11 threads and meetings, two
+  weeks later, each with attempts to instruct the model that reads it (overrides, fake turns and
+  data markers, role-play, encoded and invisible text, requests to call tools or send data away),
+  six of them with a real decision too. What an attempt asks to be recorded is a trap. Its
+  `inserts.json` holds attempts that `--inject` adds to every thread (a last message) and every
+  meeting (a last segment) of the sets run, so that a run with it compares with one without:
+  `eval/injection/README.md`.
 
 ## Matching
 
@@ -104,3 +117,8 @@ only, measured supersession accuracy 0.96 in two runs with hybrid candidates, ex
 unchanged (docs/requirements.md, section 10, with the rounds the prompt took and the candidates
 measured). Compare a run of a new model or prompt with the keyword floor, and read the
 groups that fall below it.
+
+The prompt is `decisions-v3` since 2026-11-19: the check of `decisions-v2`, and a prompt that escapes the data block and has the model label
+attempts to instruct it (docs/requirements.md, section 9, **Prompt injection**). Its numbers on the
+three sets, with and without `--inject`, are in docs/requirements.md, section 10 (**Injected
+runs**), beside `decisions-v1`, and `decisions-v3` as a whole; the figures above are `decisions-v1` on the two default sets.

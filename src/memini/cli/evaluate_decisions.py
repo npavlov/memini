@@ -30,6 +30,7 @@ from memini.cli.evaluate import EXIT_REGRESSION, parse_margin
 from memini.config import Settings
 from memini.evaluation.decisions import (
     DEFAULT_EXTRACTOR,
+    DEFAULT_INSERTS,
     DEFAULT_SETS,
     EXTRACTORS,
     DecisionEvalError,
@@ -40,6 +41,7 @@ from memini.evaluation.decisions import (
     compare,
     format_comparison,
     format_report,
+    load_inserts,
     load_sets,
     read_report,
     run_decision_eval,
@@ -90,6 +92,13 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         action="append",
         help="a set directory (batches/ and labels/decisions.json); repeat for several"
         f" (default: {', '.join(str(path) for path in DEFAULT_SETS)}, from the repository root)",
+    )
+    parser.add_argument(
+        "--inject",
+        metavar="PATH",
+        type=Path,
+        help="add an injection attempt of this file to every thread and meeting of the sets"
+        f" (the corpus: {DEFAULT_INSERTS}); compare the report with one of a run without it",
     )
     parser.add_argument(
         "--extractor",
@@ -146,10 +155,12 @@ async def decisions_command(args: argparse.Namespace, settings: Settings) -> int
     baseline_path: Path | None = args.baseline
     write_baseline: bool = args.write_baseline
     json_path: Path | None = args.json
+    inject_path: Path | None = args.inject
     if write_baseline and baseline_path is None:
         raise CommandError("--write-baseline needs --baseline PATH", EXIT_USAGE)
     try:
-        sets = load_sets(roots)
+        inserts = None if inject_path is None else load_inserts(inject_path)
+        sets = load_sets(roots, inserts=inserts)
     except DecisionSetError as error:
         raise CommandError(f"invalid set: {error}", EXIT_USAGE) from None
     baseline: DecisionReport | None = None

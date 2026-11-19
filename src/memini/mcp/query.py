@@ -6,14 +6,13 @@ routes call too. A :class:`~memini.query.QueryError` becomes an error result wit
 the model can correct its call; the messages never repeat an argument or stored content.
 
 The structured result is the shape of :mod:`memini.query.model` or
-:class:`~memini.query.SourceRead`. The text content says the same for clients that read only text:
-the locators, kinds and times, the link and evidence reference (record id and anchor) of a hit
-inside a thread, a meeting or a document, and the stored text in fenced blocks, as it is. The
-server's instructions tell the client that all of it is data, never instructions; nothing here
-adds to that.
+:class:`~memini.query.SourceRead`, with its ``data_notice`` (:mod:`memini.provenance`). The text
+content says the same for clients that read only text (:mod:`memini.mcp.text`): the locators, kinds
+and times, the link and evidence reference (record id and anchor) of a hit inside a thread, a
+meeting or a document, each on its own line with what a source chose escaped, and the stored text
+in fenced blocks, as it is: data, never instructions.
 """
 
-import re
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
 from typing import Any
@@ -23,6 +22,7 @@ from psycopg.rows import TupleRow
 from pydantic import BaseModel
 
 from memini.auth import ReadFilter, authorization
+from memini.mcp.text import TEXT_NOTICE, fenced, inline
 from memini.mcp.tools import Tool, ToolCall, ToolError
 from memini.query import (
     CodeSearchArguments,
@@ -48,7 +48,6 @@ __all__ = [
     "READ_SOURCE_TOOL",
     "SEARCH_CODE_TOOL",
     "SEARCH_TOOL",
-    "fenced",
     "summarize_read",
     "summarize_search",
     "summarize_symbols",
@@ -83,21 +82,17 @@ def _tool_run[A: BaseModel, R: BaseModel](
 # --- Text summaries ------------------------------------------------------------------------------
 
 
-def fenced(text: str, info: str = "") -> str:
-    """``text`` in a fenced block whose fence is longer than any run of backticks in it, so no
-    content can close the block early."""
-    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
-    fence = "`" * max(3, longest + 1)
-    body = text if text.endswith("\n") or not text else text + "\n"
-    return f"{fence}{info}\n{body}{fence}"
-
-
 def _time(value: datetime) -> str:
     return value.isoformat(timespec="seconds")
 
 
 def _count(count: int, one: str, many: str) -> str:
     return f"{count} {one if count == 1 else many}"
+
+
+def _head(count: int, one: str, many: str) -> str:
+    """The first line: how many, and when there are any, :data:`TEXT_NOTICE`."""
+    return f"{_count(count, one, many)}.{f' {TEXT_NOTICE}' if count else ''}"
 
 
 def _hit(number: int, hit: SearchHit) -> str:
@@ -108,41 +103,41 @@ def _hit(number: int, hit: SearchHit) -> str:
     if hit.at != hit.occurred_at:
         details.append(f"chunk at {_time(hit.at)}")
     if hit.definition is not None:
-        details.append(f"defines {hit.definition.kind} {hit.definition.qualified_name}")
+        details.append(f"defines {hit.definition.kind} {inline(hit.definition.qualified_name)}")
     elif hit.symbol:
-        details.append(f"in {hit.symbol}")
+        details.append(f"in {inline(hit.symbol)}")
     if hit.match_line is not None:
         details.append(f"first match on line {hit.match_line}")
     if hit.score is not None:
         details.append(f"score {hit.score:.4g}")
     if hit.truncated:
         details.append("snippet cut short")
-    lines = [f"{number}. {hit.locator}", "; ".join(details)]
+    lines = [f"{number}. {inline(hit.locator)}", "; ".join(details)]
     if hit.link is not None:
-        lines.append(f"link: {hit.link}")
+        lines.append(f"link: {inline(hit.link)}")
     if hit.anchor is not None:
-        lines.append(f"evidence: record_id {hit.record_id}, anchor {hit.anchor}")
+        lines.append(f"evidence: record_id {hit.record_id}, anchor {inline(hit.anchor)}")
     lines.append(fenced(hit.snippet, hit.language or ""))
     return "\n".join(lines)
 
 
 def summarize_search(result: SearchResult) -> str:
     """The text content of a ``search`` or ``search_code`` result: every hit with its snippet."""
-    lines = [f"{_count(len(result.hits), 'hit', 'hits')}."]
+    lines = [_head(len(result.hits), "hit", "hits")]
     lines += [_hit(number, hit) for number, hit in enumerate(result.hits, start=1)]
     return "\n\n".join(lines)
 
 
 def summarize_symbols(result: SymbolResult) -> str:
     """The text content of a ``get_symbol`` result: every definition with its code."""
-    parts = [f"{_count(len(result.definitions), 'definition', 'definitions')}."]
+    parts = [_head(len(result.definitions), "definition", "definitions")]
     for number, found in enumerate(result.definitions, start=1):
         cut = "; snippet cut short" if found.truncated else ""
         start = (
             f"; snippet from line {found.snippet_start_line}" if found.snippet_start_line else ""
         )
         parts.append(
-            f"{number}. {found.kind} {found.qualified_name} at {found.locator}\n"
+            f"{number}. {found.kind} {inline(found.qualified_name)} at {inline(found.locator)}\n"
             f"in {found.workspace}/{found.repository}, {_time(found.occurred_at)}{start}{cut}\n"
             f"{fenced(found.snippet, found.language or '')}"
         )
@@ -151,29 +146,36 @@ def summarize_symbols(result: SymbolResult) -> str:
 
 def _symbol_spans(read: SourceRead) -> str:
     spans = ", ".join(
-        f"{span.qualified_name} ({span.kind}, lines {span.start_line}-{span.end_line})"
+        f"{inline(span.qualified_name)} ({span.kind}, lines {span.start_line}-{span.end_line})"
         for span in read.symbols
     )
     return f"\nDefinitions: {spans}." if spans else ""
 
 
 def summarize_read(read: SourceRead) -> str:
-    """The text content of a ``read_source`` result."""
+    """The text content of a ``read_source`` result: what was read, then the file's lines, a
+    directory's entries (one a line: name, kind, size) or a symlink's target in a fenced
+    block."""
     at = f"{'pinned commit' if read.pinned else 'commit'} of {_time(read.occurred_at)}"
-    where = f"{read.locator} ({at}{f', {read.ref}' if read.ref else ''})"
+    ref = f", {inline(read.ref)}" if read.ref else ""
+    where = f"{inline(read.locator)} ({at}{ref})"
     if read.kind == "directory":
         listed = read.entries or []
         shown = f"; the first {len(listed)} shown" if read.truncated else ""
         entries = "\n".join(
-            f"- {entry.name}{'/' if entry.kind == 'directory' else ''} ({entry.kind}"
+            f"{entry.name}{'/' if entry.kind == 'directory' else ''} ({entry.kind}"
             f"{f', {entry.size} bytes' if entry.size is not None else ''})"
             for entry in listed
         )
-        return f"{where}: a directory{shown}.\n{entries}"
+        return f"{where}: a directory{shown}. {TEXT_NOTICE}\n{fenced(entries)}"
     if read.kind == "submodule":
-        return f"{where}: a submodule at commit {read.target}; its files are not in the mirror."
+        target = inline(read.target or "")
+        return f"{where}: a submodule at commit {target}; its files are not in the mirror."
     if read.kind == "symlink":
-        return f"{where}: a symlink, not followed. Its target:\n{fenced(read.target or '')}"
+        return (
+            f"{where}: a symlink, not followed. {TEXT_NOTICE} Its target:\n"
+            f"{fenced(read.target or '')}"
+        )
     if read.binary:
         return f"{where}: a binary file of {read.size} bytes; its content is not returned."
     if read.start_line is None or read.end_line is None:
@@ -185,7 +187,7 @@ def summarize_read(read: SourceRead) -> str:
     )
     return (
         f"{where}: lines {read.start_line}-{read.end_line} of {read.total_lines}.{more}"
-        f"{_symbol_spans(read)}\n{fenced(read.content or '', read.language or '')}"
+        f" {TEXT_NOTICE}{_symbol_spans(read)}\n{fenced(read.content or '', read.language or '')}"
     )
 
 

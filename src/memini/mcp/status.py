@@ -10,6 +10,7 @@ from datetime import datetime
 
 from memini import status
 from memini.auth import authorization
+from memini.mcp.text import inline
 from memini.mcp.tools import NoArguments, Tool, ToolCall
 
 __all__ = ["STATUS_TOOL", "summarize_status"]
@@ -38,7 +39,7 @@ def _time(value: datetime) -> str:
 
 
 def _stream_line(workspace: str, stream: status.StreamStatus) -> str:
-    where = f"{workspace}/{stream.source} ({stream.source_kind}) {stream.key}"
+    where = f"{workspace}/{stream.source} ({stream.source_kind}) {inline(stream.key)}"
     if stream.lag_seconds is None:
         state = "never checked"
     else:
@@ -59,7 +60,7 @@ def _stream_line(workspace: str, stream: status.StreamStatus) -> str:
         times = "once" if stream.failures == 1 else f"{stream.failures} times"
         state += f"; failed {times} in a row"
         if failure.error is not None:
-            state += f": {failure.error}"
+            state += f": {inline(failure.error)}"
     if stream.records_not_indexed:
         state += f"; {stream.records_not_indexed} records not indexed"
     if "index_stale" in stream.behind:

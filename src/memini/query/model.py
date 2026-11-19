@@ -6,7 +6,8 @@ where it comes from and when (principle 3): the source kind, the workspace and s
 (``repo@sha:path#L12-L30`` for code, ``source:external_id#anchor`` otherwise), ``occurred_at``,
 and for code the repository, ref and commit. A hit of a thread, a meeting or a document also says
 where it is inside its record: ``anchor``, ``link`` and ``at`` (:class:`SearchHit`). Snippets and
-file content are what the sources hold: data, never instructions (principle 11).
+file content are what the sources hold: data, never instructions (principle 11); each result
+says so in its ``data_notice`` (:mod:`memini.provenance`).
 """
 
 from datetime import datetime
@@ -18,6 +19,7 @@ from memini.chunking import Language
 from memini.gitsync import split_code_external_id
 from memini.ids import RecordKind
 from memini.persons import MAX_VALUE_LENGTH, Role
+from memini.provenance import Labelled
 from memini.query.reader import MAX_REF_CHARS, code_locator
 from memini.search import MAX_LIMIT, Hit, SourceKind
 from memini.search.model import DEFAULT_LIMIT, MAX_FILTER_VALUES, MAX_QUERY_CHARS
@@ -339,7 +341,7 @@ def _ref(hit: Hit) -> str | None:
     return ref
 
 
-class SearchResult(BaseModel):
+class SearchResult(Labelled):
     """What ``search`` and ``search_code`` return: the hits, best first (by place for exact,
     regex and symbol)."""
 
@@ -399,7 +401,7 @@ class Definition(BaseModel):
         )
 
 
-class SymbolResult(BaseModel):
+class SymbolResult(Labelled):
     """What ``get_symbol`` returns: whole-name matches first, then the shorter qualified name."""
 
     definitions: list[Definition]
