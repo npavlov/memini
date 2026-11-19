@@ -466,7 +466,7 @@ def everything_changed(_name: str, lines: list[Json]) -> Json:
     return {
         "about": "everything",
         "matches": [
-            {"item": line["n"], "its_value": "void", "says": "changed"} for line in lines[1:]
+            {"item": line["n"], "its_value": "void", "verdict": "replaced"} for line in lines[1:]
         ],
     }
 
