@@ -1020,7 +1020,8 @@ way, and `memini status` exits 0: the answer is in the output.
   credentials leave the service. A few operator commands work on the database directly, inside the
   service's container, because they run before a token exists or below the API: migrations, the first
   admin token (bootstrap), the credentials of sources and key rotation, a workspace's opt-in to a cloud
-  LLM (`memini workspace llm`, which no token may give), a full reindex and the eval. A client command reads the service URL
+  LLM (`memini workspace llm`, which no token may give), a full reindex, the eval and the benchmark
+  (`memini bench`, in a scratch database as the eval). A client command reads the service URL
   from `MEMINI_URL` (default `http://127.0.0.1:6364`) and the token from `MEMINI_TOKEN` or the file
   `MEMINI_TOKEN_FILE` names; no option takes the token itself, which shell history and the process
   list would keep. Data comes in through the client command `memini push` (the `ingest` scope;
@@ -1325,7 +1326,12 @@ of the query in the lexical column, ranked by `ts_rank` (Lexical search, below).
 (`LIKE`) and regex search (`~`, newline-sensitive, as grep reads a pattern) use the trigram
 index. A search runs in one read-only transaction, so the fingerprint check and every statement
 see one snapshot, and each statement under `statement_timeout` (`search_timeout`, 5 s): a regular
-expression that backtracks without end is cancelled and reported as a timeout. Filters
+expression that backtracks without end is cancelled and reported as a timeout. Each statement is
+also planned for its own values (`plan_cache_mode = force_custom_plan`, decided 2026-11-19):
+psycopg prepares a statement once a connection has run it five times, and Postgres then keeps a
+plan made for any values when it looks cheaper; for the lexical retriever, which cannot know how
+many chunks its words match, that plan was three to four times slower on 77,000 chunks
+([operations/performance.md](operations/performance.md), Search). Filters
 (workspaces, sources, repositories, record kinds, languages, path globs with the rules of
 `.gitignore`, a time range on `occurred_at`) apply inside the authorization filter, to every
 retriever and to the final read; a tombstoned record never appears. Every mode refuses a
@@ -1835,6 +1841,27 @@ version still supports an old format). With examples that resemble no case it fe
 0.75 (three runs alike): a small model leans on its examples, and these sets are small. The fifth
 said that a reported decision is the team's on its own work, and that a server set up, an event
 or date others set and an outsider's wish are status: the `decisions-v1` measured above.
+
+**Performance** (decided 2026-11-19; memini-6jy). `memini bench` is the benchmark, one operator
+command that builds a scratch database as the eval does: it syncs a repository (a path, or an
+https URL cloned once, shallow, into a cache; the default is Django 6.1.3, about 7,000 files) and
+a synthetic message set (5,000 threads and 1,000 meetings by default) through the service's code,
+and reports the time of each step (reading, chunking, embedding and the database writes apart),
+the database and index sizes, the configured model's throughput on a sample, the latency of every
+search mode at concurrency 1 and 8, the dense retriever's recall against exact search for HNSW
+settings and `ef_search` values, and the process's peak memory, as text and JSON. It indexes with a
+fake embedder of the default model's dimension unless asked for the real one, which takes most of
+an hour on that corpus. It stays out of `make check` and CI, which run a smoke test of it. The
+numbers, the targets, the knobs and the smallest supported machine are in
+[operations/performance.md](operations/performance.md). On the reference machine (an M4 Max) the
+default corpus is 77,084 chunks and 1.4 GB; at concurrency 1 every mode answers within 250 ms at
+p95 (hybrid 111 ms, before the query's embedding), at concurrency 8 within 1 s; the database
+writes about 13 ms a chunk, and Ollama embeds about 20 texts a second, which sets the time of a
+first sync. The measurements found one fault and changed one thing: search plans each statement
+for its values (section 9, Search), which took hybrid's p95 from 1.2 s to 0.11 s. pgvector's HNSW
+defaults (`m` 16, `ef_construction` 64), `search_candidates` 50 (also the `ef_search`),
+`embedding_batch_size` 32 and the git sync batch of 100 files stay: the grids measured no better
+choice. The smallest supported machine is 4 cores, 8 GB and 20 GB of SSD with Ollama on it.
 
 ## 11. Later
 

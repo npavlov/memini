@@ -230,6 +230,7 @@ def test_help_lists_client_and_operator_commands_apart(
         "replay",
         "eval",
         "credentials",
+        "bench",
     }
     assert "  workspace llm " in operator_part
     assert "docker compose exec memini memini" in " ".join(operator.split())

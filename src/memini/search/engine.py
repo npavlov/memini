@@ -8,7 +8,8 @@
 2. One read-only transaction at ``REPEATABLE READ``, so that the check and every statement after it
    see one snapshot: a rebuild that finishes meanwhile cannot change the index under the search.
    ``statement_timeout`` bounds each statement; ``hnsw.ef_search`` and ``hnsw.iterative_scan``
-   are set for the dense retriever.
+   are set for the dense retriever; ``plan_cache_mode = force_custom_plan`` makes every statement
+   be planned for its own values (below).
 3. The scope: the workspaces the caller may read (the :class:`~memini.auth.ReadFilter`, narrowed
    by the ``workspaces`` filter), each checked with :func:`~memini.index.check_index` against the
    fingerprint the embedder and this chunker make. Any mismatch raises
@@ -25,6 +26,16 @@
    below them keep their fused order. Reranking is an optional refinement: when the reranker
    raises (its model is missing, it timed out), the search logs a warning and returns the fused
    order rather than failing.
+
+Every statement of a search is planned for the values it runs with. psycopg prepares a statement
+on a connection once it has run five times there, and Postgres then plans it once for any
+values if that generic plan looks cheaper than the plans made for the values so far. For the
+lexical retriever it does: not knowing the words, it expects a few hundred matches and walks the
+GIN index on one process, where a query of common words matches a fifth of the chunks, which a
+parallel scan ranks in a third of the time (docs/operations/performance.md, Search: 630 ms
+against 180 ms on 77,000 chunks). A pooled connection serves hundreds of searches, so without
+``force_custom_plan`` most of them ran the generic plan. Planning each statement again costs
+under a millisecond.
 
 Every mode refuses a stale index, not only those that embed the query. Principle 9 blocks search
 on an index built with another fingerprint, and the fingerprint covers the chunker as well as the
@@ -170,6 +181,8 @@ async def _transaction(
         sql.SQL("SET LOCAL statement_timeout = {}").format(
             sql.Literal(max(1, round(options.timeout * 1000)))
         ),
+        # Plans for the values at hand, also once psycopg has prepared a statement (module).
+        sql.SQL("SET LOCAL plan_cache_mode = force_custom_plan"),
     ]
     if ef_search is not None:
         settings += [

@@ -1,0 +1,3897 @@
+{
+  "corpus": {
+    "binary_files": 2,
+    "bytes_selected": 7510574,
+    "chunks": 16789,
+    "code_chunks": 10027,
+    "code_files": 979,
+    "commit": "d143055a55bb402cf5396f9f87f550e4eb8a7a80",
+    "documents": 0,
+    "files_listed": 7085,
+    "files_selected": 981,
+    "meetings": 200,
+    "message_chunks": 6762,
+    "records": 2179,
+    "ref": "refs/tags/6.1.3",
+    "repository": "https://github.com/django/django.git",
+    "symbols": 13773,
+    "threads": 1000,
+    "upstream_commit": "f16e25dcb9fe55734ba4ea2b00ac34405b7df74a"
+  },
+  "embedding": [
+    {
+      "batch_size": 1,
+      "corpus_estimate_seconds": 1681.8078673960786,
+      "mean_chars": 980.386,
+      "seconds": 50.08660037512891,
+      "texts": 500,
+      "texts_per_second": 9.982709871606316
+    },
+    {
+      "batch_size": 8,
+      "corpus_estimate_seconds": 1480.396214062323,
+      "mean_chars": 980.386,
+      "seconds": 44.088278457988054,
+      "texts": 500,
+      "texts_per_second": 11.34088282617913
+    },
+    {
+      "batch_size": 32,
+      "corpus_estimate_seconds": 9103.057692647966,
+      "mean_chars": 980.386,
+      "seconds": 271.1018432499841,
+      "texts": 500,
+      "texts_per_second": 1.8443253428526047
+    },
+    {
+      "batch_size": 64,
+      "corpus_estimate_seconds": 1579.3214399661724,
+      "mean_chars": 980.386,
+      "seconds": 47.03441062499769,
+      "texts": 500,
+      "texts_per_second": 10.630514837030013
+    }
+  ],
+  "hnsw": [
+    {
+      "as_built": true,
+      "cast": "vector",
+      "ef_construction": 64,
+      "m": 16,
+      "maintenance_work_mem": "64MB",
+      "seconds": 6.357344125164673,
+      "size_bytes": 137543680
+    },
+    {
+      "as_built": false,
+      "cast": "vector",
+      "ef_construction": 32,
+      "m": 8,
+      "maintenance_work_mem": "1GB",
+      "seconds": 1.4554212498478591,
+      "size_bytes": 137543680
+    },
+    {
+      "as_built": false,
+      "cast": "vector",
+      "ef_construction": 32,
+      "m": 16,
+      "maintenance_work_mem": "1GB",
+      "seconds": 2.036061249906197,
+      "size_bytes": 137543680
+    },
+    {
+      "as_built": false,
+      "cast": "vector",
+      "ef_construction": 64,
+      "m": 16,
+      "maintenance_work_mem": "1GB",
+      "seconds": 2.763985750032589,
+      "size_bytes": 137543680
+    },
+    {
+      "as_built": false,
+      "cast": "vector",
+      "ef_construction": 128,
+      "m": 16,
+      "maintenance_work_mem": "1GB",
+      "seconds": 3.8061811251100153,
+      "size_bytes": 137543680
+    },
+    {
+      "as_built": false,
+      "cast": "vector",
+      "ef_construction": 64,
+      "m": 24,
+      "maintenance_work_mem": "1GB",
+      "seconds": 4.024061042116955,
+      "size_bytes": 137543680
+    },
+    {
+      "as_built": false,
+      "cast": "vector",
+      "ef_construction": 128,
+      "m": 32,
+      "maintenance_work_mem": "1GB",
+      "seconds": 6.4588042080868036,
+      "size_bytes": 137543680
+    },
+    {
+      "as_built": false,
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "m": 16,
+      "maintenance_work_mem": "1GB",
+      "seconds": 1.6700124579947442,
+      "size_bytes": 45858816
+    }
+  ],
+  "notes": [
+    "corpus embedding times are extrapolated from the sample's rate, not measured"
+  ],
+  "peak_rss_bytes": 154910720,
+  "phases": [
+    {
+      "chunk_seconds": 0.0,
+      "chunks": 0,
+      "embed_seconds": 0.0,
+      "items": 0,
+      "name": "mirror fetch",
+      "peak_rss_bytes": 104841216,
+      "read_seconds": 0.0,
+      "seconds": 0.47367020905949175,
+      "texts_embedded": 0,
+      "write_seconds": 0.0
+    },
+    {
+      "chunk_seconds": 0.9849241673946381,
+      "chunks": 10027,
+      "embed_seconds": 0.0,
+      "items": 981,
+      "name": "read and chunk",
+      "peak_rss_bytes": 122421248,
+      "read_seconds": 0.23489641631022096,
+      "seconds": 1.2200428328942508,
+      "texts_embedded": 0,
+      "write_seconds": 0.0
+    },
+    {
+      "chunk_seconds": 0.9849241673946381,
+      "chunks": 10027,
+      "embed_seconds": 832.4652753740083,
+      "items": 979,
+      "name": "git sync",
+      "peak_rss_bytes": 123895808,
+      "read_seconds": 0.23489641631022096,
+      "seconds": 870.4548974579666,
+      "texts_embedded": 10027,
+      "write_seconds": 36.76980150025338
+    },
+    {
+      "chunk_seconds": 0.5306100819725543,
+      "chunks": 6762,
+      "embed_seconds": 1237.3608819735236,
+      "items": 1200,
+      "name": "messages",
+      "peak_rss_bytes": 154910720,
+      "read_seconds": 0.0,
+      "seconds": 1289.0294529167004,
+      "texts_embedded": 6762,
+      "write_seconds": 51.13796086120419
+    }
+  ],
+  "query_embedding": {
+    "count": 50,
+    "max": 738.3832500781864,
+    "mean": 196.38823755085468,
+    "p50": 175.303646014072,
+    "p95": 448.714264517184,
+    "p99": 721.6360711771994
+  },
+  "recall": [
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.273458082228899,
+        "mean": 2.749763341853395,
+        "p50": 2.6573543436825275,
+        "p95": 3.429598268121479,
+        "p99": 4.370188340544696
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8095
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.875416893512011,
+        "mean": 4.098386656260118,
+        "p50": 3.980270936153829,
+        "p95": 5.31293099047616,
+        "p99": 6.875909233931444
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8834000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.799457896500826,
+        "mean": 2.8915683494415134,
+        "p50": 2.7820623945444822,
+        "p95": 3.7738868151791394,
+        "p99": 4.405952850356692
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8665
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.644541958346963,
+        "mean": 4.254686837084591,
+        "p50": 4.093749914318323,
+        "p95": 5.8438211795873904,
+        "p99": 6.9499091920442835
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8965000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 8.80337506532669,
+        "mean": 3.401600419310853,
+        "p50": 3.25787509791553,
+        "p95": 4.705024743452668,
+        "p99": 6.708829638082533
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9109999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 9.378958959132433,
+        "mean": 4.388207943411544,
+        "p50": 4.33489540591836,
+        "p95": 5.48039183486253,
+        "p99": 5.680233261082312
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9151
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.759542040526867,
+        "mean": 3.590532906819135,
+        "p50": 3.4785415045917034,
+        "p95": 4.846191534306854,
+        "p99": 5.84746919805184
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9185
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.410625159740448,
+        "mean": 4.589331486495212,
+        "p50": 4.386728978715837,
+        "p95": 6.499720481224357,
+        "p99": 7.705020217690615
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8972
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 7.344749988988042,
+        "mean": 4.072811260120943,
+        "p50": 3.9513964438810945,
+        "p95": 5.495252390392125,
+        "p99": 6.406078923027959
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9415
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 68.13366594724357,
+        "mean": 46.85845206025988,
+        "p50": 46.5353544568643,
+        "p95": 51.03562923613936,
+        "p99": 55.92729736119507
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 1.0
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 21.786750061437488,
+        "mean": 6.342925820499659,
+        "p50": 5.562770995311439,
+        "p95": 11.715057841502114,
+        "p99": 15.764845879748432
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.95
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 119.66841598041356,
+        "mean": 46.96647265460342,
+        "p50": 45.94122897833586,
+        "p95": 54.66720430413261,
+        "p99": 67.39233795320614
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 1.0
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 33.728749956935644,
+        "mean": 8.157873093150556,
+        "p50": 6.467166473157704,
+        "p95": 18.804256117437035,
+        "p99": 26.978197952266747
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6995
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 47.298458172008395,
+        "mean": 9.95967228198424,
+        "p50": 8.185916347429156,
+        "p95": 20.393440185580385,
+        "p99": 29.99291775980961
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8661
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 37.90783300064504,
+        "mean": 8.363426841096953,
+        "p50": 6.49775005877018,
+        "p95": 18.994981597643346,
+        "p99": 28.46341975498942
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8170000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 36.45916702225804,
+        "mean": 9.880003585712984,
+        "p50": 7.680833572521806,
+        "p95": 21.004005859140303,
+        "p99": 34.698804996442036
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8819
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 32.81320910900831,
+        "mean": 8.581998134031892,
+        "p50": 6.894228979945183,
+        "p95": 19.040169054642316,
+        "p99": 24.56312565831465
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.883
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 42.72716701962054,
+        "mean": 9.943796725710854,
+        "p50": 8.382062427699566,
+        "p95": 20.135339826811087,
+        "p99": 29.43137816153465
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.904
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 31.864708987995982,
+        "mean": 8.002786228898913,
+        "p50": 6.533645559102297,
+        "p95": 16.699729533866037,
+        "p99": 23.535336803179206
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8955
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 31.72000008635223,
+        "mean": 8.962491479469463,
+        "p50": 7.586104096844792,
+        "p95": 18.478410749230527,
+        "p99": 26.160855500493195
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8704000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 33.03483407944441,
+        "mean": 8.503005234524608,
+        "p50": 7.023937068879604,
+        "p95": 17.58084992179647,
+        "p99": 25.01046603545546
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9259999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 33.24766689911485,
+        "mean": 23.513686244841665,
+        "p50": 23.318645893596113,
+        "p95": 26.336364576127377,
+        "p99": 27.501299169380207
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 1.0
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 35.61329212971032,
+        "mean": 9.77071876055561,
+        "p50": 8.108146023005247,
+        "p95": 18.643132993020114,
+        "p99": 24.846968208439588
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.95
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 43.993207858875394,
+        "mean": 24.187961864518,
+        "p50": 23.76716712024063,
+        "p95": 27.516864635981616,
+        "p99": 30.756767264101597
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 1.0
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.389500176534057,
+        "mean": 2.6080798043403774,
+        "p50": 2.5259375106543303,
+        "p95": 3.4509899676777422,
+        "p99": 4.557439042255281
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.6335000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.614291040226817,
+        "mean": 3.4989962459076196,
+        "p50": 3.435458056628704,
+        "p95": 4.3566919979639325,
+        "p99": 5.746458582580085
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7502
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.479792132973671,
+        "mean": 2.3732318833936006,
+        "p50": 2.258770982734859,
+        "p95": 3.060725599061696,
+        "p99": 4.769146295730019
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7375
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.6580839920789,
+        "mean": 3.3025368372909725,
+        "p50": 3.1688959570601583,
+        "p95": 4.34999212156981,
+        "p99": 5.65951681928709
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7661
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.788750015199184,
+        "mean": 2.667476620990783,
+        "p50": 2.5494375731796026,
+        "p95": 3.7033146596513666,
+        "p99": 5.06369842449203
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7865000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.12654210999608,
+        "mean": 3.479090810287744,
+        "p50": 3.3728539710864425,
+        "p95": 4.393095662817358,
+        "p99": 5.19547595642507
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7902
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.05025002732873,
+        "mean": 2.704009390436113,
+        "p50": 2.5870620738714933,
+        "p95": 3.578115988057106,
+        "p99": 4.758851255755861
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.8025
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 5.655959015712142,
+        "mean": 3.129267899785191,
+        "p50": 3.041333518922329,
+        "p95": 4.026954760774967,
+        "p99": 5.111814390402284
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7619
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.741124972701073,
+        "mean": 3.3446483546867967,
+        "p50": 3.273666021414101,
+        "p95": 4.0482709533534935,
+        "p99": 5.163316829130052
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.823
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 29.82454188168049,
+        "mean": 3.9893407945055515,
+        "p50": 3.8218743866309524,
+        "p95": 5.023619113489985,
+        "p99": 6.39910582685843
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.8162999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 8.917707949876785,
+        "mean": 4.0518620843067765,
+        "p50": 3.910375526174903,
+        "p95": 5.391725176014005,
+        "p99": 7.181697234045707
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.8525
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.451375178992748,
+        "mean": 4.471629424951971,
+        "p50": 4.343000473454595,
+        "p95": 5.58200217783451,
+        "p99": 6.95078259566798
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.8617999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 28.565417043864727,
+        "mean": 5.988776484737173,
+        "p50": 4.124874598346651,
+        "p95": 15.177820145618167,
+        "p99": 23.207965099718393
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.5429999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 31.60024993121624,
+        "mean": 7.478300029179081,
+        "p50": 5.160083528608084,
+        "p95": 16.38754389714448,
+        "p99": 26.975668761879184
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7109000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 28.076374903321266,
+        "mean": 5.9856299858074635,
+        "p50": 3.835520474240184,
+        "p95": 14.46661235531791,
+        "p99": 27.02310579828918
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.6435
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 29.78041605092585,
+        "mean": 7.186098503880203,
+        "p50": 4.964875406585634,
+        "p95": 16.51985823409632,
+        "p99": 23.56627504574131
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7306
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 22.631500149145722,
+        "mean": 5.932172955945134,
+        "p50": 4.066249821335077,
+        "p95": 14.432024722918865,
+        "p99": 19.91768461884929
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.718
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 33.13895803876221,
+        "mean": 8.00707375165075,
+        "p50": 5.803958512842655,
+        "p95": 17.819250328466293,
+        "p99": 28.200693596154434
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7585
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 27.00724988244474,
+        "mean": 6.085925388615578,
+        "p50": 4.112562979571521,
+        "p95": 14.861550228670236,
+        "p99": 22.057279266882684
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7415
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 33.28312491066754,
+        "mean": 7.186369448900223,
+        "p50": 4.921916523016989,
+        "p95": 15.760460367891922,
+        "p99": 23.887249038089003
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7168000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 25.687166955322027,
+        "mean": 6.757948704762384,
+        "p50": 4.508416983298957,
+        "p95": 14.528805832378541,
+        "p99": 24.026243472471826
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7915000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 34.88241694867611,
+        "mean": 7.703990440350026,
+        "p50": 5.341082927770913,
+        "p95": 16.843137994874247,
+        "p99": 27.310092025436447
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.7863
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 29.832917032763362,
+        "mean": 7.37153580179438,
+        "p50": 5.36583352368325,
+        "p95": 16.30011820234358,
+        "p99": 26.11692957347258
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.8315
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 33.93312497064471,
+        "mean": 8.412252721609548,
+        "p50": 6.346916547045112,
+        "p95": 17.725352058187127,
+        "p99": 24.396313149481927
+      },
+      "m": 8,
+      "queries": 200,
+      "recall": 0.8417
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.092875100672245,
+        "mean": 2.629638909129426,
+        "p50": 2.518313005566597,
+        "p95": 3.6057939752936354,
+        "p99": 4.8129221214912805
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.568
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.712165893986821,
+        "mean": 3.78742229542695,
+        "p50": 3.6837919615209103,
+        "p95": 4.91300399880856,
+        "p99": 5.996729417238378
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6678999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 7.819124963134527,
+        "mean": 2.770879997406155,
+        "p50": 2.5417079450562596,
+        "p95": 4.485670279245823,
+        "p99": 6.028154881205406
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.634
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.136708125472069,
+        "mean": 3.8200870796572417,
+        "p50": 3.74014547560364,
+        "p95": 4.859404230955988,
+        "p99": 6.724766236729919
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6812
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.108582951128483,
+        "mean": 3.1116203917190433,
+        "p50": 2.9954584315419197,
+        "p95": 4.1658832924440485,
+        "p99": 5.616801055148243
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6765000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 12.319667031988502,
+        "mean": 4.438816640758887,
+        "p50": 4.235083004459739,
+        "p95": 6.340303563047197,
+        "p99": 7.459375367034226
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7014
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.376375047490001,
+        "mean": 3.349809783976525,
+        "p50": 3.2680415315553546,
+        "p95": 4.257818439509718,
+        "p99": 4.95432085590437
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.685
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.453709142282605,
+        "mean": 3.9339526905678213,
+        "p50": 3.7388959899544716,
+        "p95": 5.23442254634574,
+        "p99": 7.170730216894297
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6783
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.913915975019336,
+        "mean": 3.7922866467852145,
+        "p50": 3.7362289149314165,
+        "p95": 4.92793711600825,
+        "p99": 5.7753980811685315
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.742
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 30.69737507030368,
+        "mean": 4.625403545796871,
+        "p50": 4.369437461718917,
+        "p95": 5.87501039262861,
+        "p99": 6.823162392247465
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7467999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 11.833291035145521,
+        "mean": 5.038944963598624,
+        "p50": 4.92958293762058,
+        "p95": 7.143542345147577,
+        "p99": 8.033801550045606
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7845
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 10.656540980562568,
+        "mean": 5.657740832539275,
+        "p50": 5.489291506819427,
+        "p95": 7.299087254796176,
+        "p99": 9.030819386243818
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7968
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 62.77399999089539,
+        "mean": 6.572741904528812,
+        "p50": 3.3797710202634335,
+        "p95": 18.11078076716512,
+        "p99": 33.49524231627562
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.621
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 53.65899996832013,
+        "mean": 9.279697493184358,
+        "p50": 5.857249372638762,
+        "p95": 23.84670977480709,
+        "p99": 37.60401711566373
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8189
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 31.076125102117658,
+        "mean": 5.354952288325876,
+        "p50": 3.0497920233756304,
+        "p95": 15.004350221715866,
+        "p99": 23.219451818149523
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7340000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 35.931000020354986,
+        "mean": 7.383605771465227,
+        "p50": 4.44581254851073,
+        "p95": 19.307290914002795,
+        "p99": 23.53274170076468
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8381000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 34.44004198536277,
+        "mean": 6.1216995981521904,
+        "p50": 3.6258124746382236,
+        "p95": 15.924045536667101,
+        "p99": 26.222214226145233
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8045
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 34.562583081424236,
+        "mean": 7.777567922603339,
+        "p50": 5.01937500666827,
+        "p95": 18.82019579643383,
+        "p99": 28.193558796774557
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8591
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 33.38945796713233,
+        "mean": 6.335925433086231,
+        "p50": 3.859208431094885,
+        "p95": 16.538372135255475,
+        "p99": 26.56147718895222
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.821
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 40.28458287939429,
+        "mean": 7.628178538288921,
+        "p50": 4.737521056085825,
+        "p95": 18.952795548830164,
+        "p99": 29.48870256310328
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.826
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 39.25320808775723,
+        "mean": 7.115780847379938,
+        "p50": 4.783020936883986,
+        "p95": 17.251165979541835,
+        "p99": 30.613578115589867
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8665
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 37.168625043705106,
+        "mean": 8.34970453986898,
+        "p50": 5.331770516932011,
+        "p95": 20.858304097782803,
+        "p99": 26.367162163369308
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8822
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 37.381500005722046,
+        "mean": 7.661343088839203,
+        "p50": 5.520354025065899,
+        "p95": 16.116461704950765,
+        "p99": 28.864705900195943
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.899
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 32,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 43.11449988745153,
+        "mean": 9.378163784276694,
+        "p50": 6.471729604527354,
+        "p95": 21.61057057091966,
+        "p99": 29.18096792884166
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9128000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.441333098337054,
+        "mean": 2.5676370970904827,
+        "p50": 2.4585629580542445,
+        "p95": 3.31755643710494,
+        "p99": 5.255418228916819
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7675
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.414207793772221,
+        "mean": 3.790960219921544,
+        "p50": 3.6545624025166035,
+        "p95": 4.916248028166587,
+        "p99": 6.530230729840692
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8615999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.995624931529164,
+        "mean": 2.6986287522595376,
+        "p50": 2.6294169947504997,
+        "p95": 3.2148710102774185,
+        "p99": 4.238415863364932
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8345
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.002166075631976,
+        "mean": 3.8812835421413183,
+        "p50": 3.7935415748506784,
+        "p95": 4.940850497223437,
+        "p99": 5.772380111739038
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8732
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.169040989130735,
+        "mean": 3.1124710012227297,
+        "p50": 2.9815209563821554,
+        "p95": 4.194266360718754,
+        "p99": 5.099377264268696
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.877
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.770667085424066,
+        "mean": 3.9526556350756437,
+        "p50": 3.84735397528857,
+        "p95": 5.069152649957686,
+        "p99": 6.83494828874245
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8886
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 7.749290904030204,
+        "mean": 3.120056438492611,
+        "p50": 3.004729514941573,
+        "p95": 4.085389676038176,
+        "p99": 5.847379711922255
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8809999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 24.298167089000344,
+        "mean": 3.9835233241319656,
+        "p50": 3.6851459881290793,
+        "p95": 5.674110422842204,
+        "p99": 7.134033453185096
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8682
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 7.3232080321758986,
+        "mean": 3.7681923306081444,
+        "p50": 3.6436044611036777,
+        "p95": 4.924229520838704,
+        "p99": 6.311550224199889
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9079999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.449374999850988,
+        "mean": 4.095842496026307,
+        "p50": 4.050874966196716,
+        "p95": 5.274441780056802,
+        "p99": 5.972286488395182
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9125
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 8.131999988108873,
+        "mean": 4.528283525723964,
+        "p50": 4.388645524159074,
+        "p95": 5.874545767437666,
+        "p99": 7.002974541392172
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9420000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.567833177745342,
+        "mean": 5.288441887823865,
+        "p50": 5.16225048340857,
+        "p95": 6.919249705970286,
+        "p99": 7.551251268014312
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9490999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 34.54599995166063,
+        "mean": 6.708762274356559,
+        "p50": 4.498687922023237,
+        "p95": 16.068460652604692,
+        "p99": 28.481742283329325
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6970000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 39.49883300811052,
+        "mean": 8.566815815865993,
+        "p50": 6.597541971132159,
+        "p95": 19.137970637530085,
+        "p99": 26.758913926314545
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.862
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 29.709333088248968,
+        "mean": 6.863003938924521,
+        "p50": 4.8957709223032,
+        "p95": 16.206687001977105,
+        "p99": 26.871248285751765
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7975
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 38.299875101074576,
+        "mean": 8.604892070870847,
+        "p50": 6.5355830593034625,
+        "p95": 18.20337249664589,
+        "p99": 26.564692182000666
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8741
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 29.75345915183425,
+        "mean": 6.460510425968096,
+        "p50": 4.634479410015047,
+        "p95": 15.306776552461086,
+        "p99": 21.398819587193426
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.858
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 39.0173748601228,
+        "mean": 9.110567033058032,
+        "p50": 6.964604021050036,
+        "p95": 19.368862069677537,
+        "p99": 29.22337719239293
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8875
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 61.40666618011892,
+        "mean": 6.957404991844669,
+        "p50": 4.897270351648331,
+        "p95": 15.455642109736793,
+        "p99": 23.344183419831086
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8725
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 31.434166943654418,
+        "mean": 8.35044457577169,
+        "p50": 6.31139543838799,
+        "p95": 17.760985274799165,
+        "p99": 25.921357723418584
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8697
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 34.716834081336856,
+        "mean": 7.744710852857679,
+        "p50": 5.56893739849329,
+        "p95": 16.8932186323218,
+        "p99": 26.792214608285537
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8985
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 34.30270799435675,
+        "mean": 9.235973134636879,
+        "p50": 7.262978935614228,
+        "p95": 19.05904414597898,
+        "p99": 27.325550538953337
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9054000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 36.04466700926423,
+        "mean": 8.379044372122735,
+        "p50": 6.462041521444917,
+        "p95": 16.90826446283607,
+        "p99": 27.67352449940514
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9215000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 36.40195890329778,
+        "mean": 9.658661445137113,
+        "p50": 7.602229132317007,
+        "p95": 19.307343568652865,
+        "p99": 26.816346310079048
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9287000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 4.089833004400134,
+        "mean": 2.3151349811814725,
+        "p50": 2.2320623975247145,
+        "p95": 2.94444658793509,
+        "p99": 3.931399986613541
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6225
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 33.45912508666515,
+        "mean": 4.209550826344639,
+        "p50": 3.925229422748089,
+        "p95": 5.184315191581845,
+        "p99": 7.528244513086952
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7306999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.91683404147625,
+        "mean": 3.082775811199099,
+        "p50": 2.9629374621436,
+        "p95": 3.917370259296149,
+        "p99": 4.973469569813455
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7045
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.938125006854534,
+        "mean": 4.17747309897095,
+        "p50": 4.033062374219298,
+        "p95": 5.3993873880244765,
+        "p99": 6.74174168612808
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7515999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.65216613560915,
+        "mean": 3.1573214835952967,
+        "p50": 3.022375050932169,
+        "p95": 4.072160646319389,
+        "p99": 4.578983823303125
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7490000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.116415934637189,
+        "mean": 4.312216201797128,
+        "p50": 4.21277096029371,
+        "p95": 5.700521019753069,
+        "p99": 6.954426092561332
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7695000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.257666973397136,
+        "mean": 3.192464408930391,
+        "p50": 3.0091250082477927,
+        "p95": 4.39014994772151,
+        "p99": 5.921797410119323
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7625
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 48.367708921432495,
+        "mean": 5.705764988670126,
+        "p50": 4.704354447312653,
+        "p95": 9.531333798076952,
+        "p99": 23.581553215626442
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7582
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.852708989754319,
+        "mean": 4.423120022984222,
+        "p50": 4.288458963856101,
+        "p95": 5.714433570392429,
+        "p99": 6.2052797107025945
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.818
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.4153749737888575,
+        "mean": 4.657506633084267,
+        "p50": 4.584061913192272,
+        "p95": 5.928114231210201,
+        "p99": 6.602461999282236
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8244
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 10.34604199230671,
+        "mean": 4.957305626012385,
+        "p50": 4.830083576962352,
+        "p95": 6.775512278545645,
+        "p99": 7.812483068555591
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.875
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 10.99674985744059,
+        "mean": 5.465992303797975,
+        "p50": 5.27083408087492,
+        "p95": 7.390131568536162,
+        "p99": 8.544841110706328
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8874
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 30.304583022370934,
+        "mean": 5.469553755829111,
+        "p50": 2.856250503100455,
+        "p95": 14.841087476816016,
+        "p99": 22.679396297316956
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7145
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 31.575166154652834,
+        "mean": 7.607115838909522,
+        "p50": 4.8432499170303345,
+        "p95": 17.328210105188184,
+        "p99": 25.38867431459946
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.882
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 26.760291075333953,
+        "mean": 5.575294785667211,
+        "p50": 3.0620829202234745,
+        "p95": 15.18300629686563,
+        "p99": 25.41046323021873
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8005
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 37.09712508134544,
+        "mean": 9.598406299483031,
+        "p50": 7.242749445140362,
+        "p95": 22.69097332609817,
+        "p99": 28.88772690435871
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8923000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 40.39374995045364,
+        "mean": 7.4355891603045166,
+        "p50": 5.263083497993648,
+        "p95": 18.6207725550048,
+        "p99": 27.150661773048313
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.856
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 42.22487495280802,
+        "mean": 8.73015689314343,
+        "p50": 5.929896025918424,
+        "p95": 19.732596108224243,
+        "p99": 26.475338316522524
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9081
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 33.82854210212827,
+        "mean": 6.470621199114248,
+        "p50": 4.1122500551864505,
+        "p95": 15.807119151577341,
+        "p99": 22.227275604382122
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8695
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 33.30066683702171,
+        "mean": 8.450622085947543,
+        "p50": 5.317062488757074,
+        "p95": 20.593976427335292,
+        "p99": 30.675792177207754
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8876999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 39.03933288529515,
+        "mean": 9.072123538935557,
+        "p50": 6.432000431232154,
+        "p95": 23.06018887320533,
+        "p99": 33.89705732231959
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.895
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 44.721666956320405,
+        "mean": 10.9403341577854,
+        "p50": 7.290708599612117,
+        "p95": 25.04794204141944,
+        "p99": 35.43368455022568
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9224
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 46.942291082814336,
+        "mean": 9.724962725304067,
+        "p50": 7.4172914028167725,
+        "p95": 21.337220829445855,
+        "p99": 30.906231037806702
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9145
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 43.08887501247227,
+        "mean": 11.305061265593395,
+        "p50": 8.423979510553181,
+        "p95": 24.163929175119836,
+        "p99": 34.5981149189174
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9428
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.221124971285462,
+        "mean": 2.8275360947009176,
+        "p50": 2.753458567894995,
+        "p95": 3.468664363026618,
+        "p99": 4.676951349247243
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.8115000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.177792092785239,
+        "mean": 4.200181907508522,
+        "p50": 4.156083567067981,
+        "p95": 5.284883943386375,
+        "p99": 6.060389296617358
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.8867999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.7139580603688955,
+        "mean": 2.9809080983977765,
+        "p50": 2.8934171423316,
+        "p95": 3.861687402240932,
+        "p99": 5.152741963975126
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.8795000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 7.96187506057322,
+        "mean": 4.013737075729296,
+        "p50": 3.897916991263628,
+        "p95": 5.340266379062086,
+        "p99": 7.375322873704132
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.8967999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.468583898618817,
+        "mean": 3.4360154205933213,
+        "p50": 3.362082992680371,
+        "p95": 4.334556544199586,
+        "p99": 4.933610728476195
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9135
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.937458042055368,
+        "mean": 4.890818112762645,
+        "p50": 4.854854429140687,
+        "p95": 6.51552458293736,
+        "p99": 7.622821973636745
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9115000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.453917128965259,
+        "mean": 3.698332302737981,
+        "p50": 3.6403954727575183,
+        "p95": 4.923119128216057,
+        "p99": 5.927335731685162
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9179999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.882458925247192,
+        "mean": 4.192640399560332,
+        "p50": 4.144229111261666,
+        "p95": 5.367302428930998,
+        "p99": 6.594558435026554
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.8976000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 7.496792124584317,
+        "mean": 4.277917683357373,
+        "p50": 4.107229062356055,
+        "p95": 6.040655635297298,
+        "p99": 6.917479611001908
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.934
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.637750055640936,
+        "mean": 4.557071062736213,
+        "p50": 4.474541405215859,
+        "p95": 5.818434897810221,
+        "p99": 6.8580711050890315
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9248999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 9.913332993164659,
+        "mean": 5.193999391049147,
+        "p50": 5.067562568001449,
+        "p95": 7.127055618911982,
+        "p99": 7.998811148572712
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9525
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.908124873414636,
+        "mean": 5.614337277365848,
+        "p50": 5.529395653866231,
+        "p95": 7.427420723251996,
+        "p99": 8.477824984584002
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9512
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 34.76158413104713,
+        "mean": 7.5579593842849135,
+        "p50": 5.38910401519388,
+        "p95": 17.967377346940335,
+        "p99": 28.504302094224833
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.7395
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 41.61358415149152,
+        "mean": 10.421109979506582,
+        "p50": 7.69858353305608,
+        "p95": 22.612870694138103,
+        "p99": 32.403833924327
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9009
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 30.93929192982614,
+        "mean": 7.140099580865353,
+        "p50": 5.264813080430031,
+        "p95": 17.30832738103345,
+        "p99": 24.35615984257308
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.815
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 36.40841692686081,
+        "mean": 9.389379584463313,
+        "p50": 7.144291535951197,
+        "p95": 20.331519027240567,
+        "p99": 29.01740164030342
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9101
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 36.50891687721014,
+        "mean": 8.042689568828791,
+        "p50": 5.723021109588444,
+        "p95": 19.373896496836092,
+        "p99": 29.00035178521646
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.861
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 38.46662514843047,
+        "mean": 10.776505683315918,
+        "p50": 7.845542044378817,
+        "p95": 23.542995448224243,
+        "p99": 34.278496343176805
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9207
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 36.024041939526796,
+        "mean": 8.940009819343686,
+        "p50": 6.232479005120695,
+        "p95": 21.73624327406287,
+        "p99": 28.468142258934627
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.8675
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 42.22445911727846,
+        "mean": 10.481826277682558,
+        "p50": 7.593999966047704,
+        "p95": 23.104351887013756,
+        "p99": 35.22802394349127
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9078
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 36.386042134836316,
+        "mean": 9.213006460340694,
+        "p50": 6.880270899273455,
+        "p95": 21.050370938610282,
+        "p99": 32.168508707545676
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 38.32325013354421,
+        "mean": 10.40141565608792,
+        "p50": 8.434666553512216,
+        "p95": 22.721897845622138,
+        "p99": 30.322714743670055
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9336
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 34.53075001016259,
+        "mean": 9.522540208417922,
+        "p50": 7.7660828828811646,
+        "p95": 20.83793338388204,
+        "p99": 25.693003565538664
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9265000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 38.889666786417365,
+        "mean": 11.46122264675796,
+        "p50": 8.820312446914613,
+        "p95": 22.904895921237763,
+        "p99": 30.76936909696081
+      },
+      "m": 24,
+      "queries": 200,
+      "recall": 0.9501999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 29.275082983076572,
+        "mean": 3.100187317468226,
+        "p50": 2.8217295184731483,
+        "p95": 4.029222391545772,
+        "p99": 5.340907066129121
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.757
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.478958064690232,
+        "mean": 4.127836881671101,
+        "p50": 4.10385406576097,
+        "p95": 5.326850397977977,
+        "p99": 5.987144266255199
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8467
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.690583027899265,
+        "mean": 2.992716054432094,
+        "p50": 2.91389599442482,
+        "p95": 3.8185458863154054,
+        "p99": 4.300519500393414
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.815
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.985792191699147,
+        "mean": 4.515521286521107,
+        "p50": 4.365416592918336,
+        "p95": 5.97561439499259,
+        "p99": 6.709219224285334
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8613
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 6.7745831329375505,
+        "mean": 3.4871033567469567,
+        "p50": 3.371583530679345,
+        "p95": 5.056369071826338,
+        "p99": 6.186038760934021
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8465
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.124625077471137,
+        "mean": 4.5913682878017426,
+        "p50": 4.56897949334234,
+        "p95": 5.929804674815386,
+        "p99": 6.398280914872881
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8729
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 7.808624999597669,
+        "mean": 3.60968645545654,
+        "p50": 3.53502098005265,
+        "p95": 4.525785543955861,
+        "p99": 5.585003714077169
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8484999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 9.427167009562254,
+        "mean": 4.306699386797845,
+        "p50": 4.209770471788943,
+        "p95": 5.417060328181832,
+        "p99": 7.960328368935732
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8609
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 7.237249985337257,
+        "mean": 4.423231250839308,
+        "p50": 4.3513961136341095,
+        "p95": 5.80406276276335,
+        "p99": 6.4704808080568865
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8759999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.659415878355503,
+        "mean": 4.952100443188101,
+        "p50": 4.915916593745351,
+        "p95": 6.3518211129121465,
+        "p99": 7.327341565396635
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8928
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 9.234749944880605,
+        "mean": 5.8172856096643955,
+        "p50": 5.637895897962153,
+        "p95": 7.78768575983122,
+        "p99": 8.845407031476498
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9159999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 11.089416919276118,
+        "mean": 6.644562076544389,
+        "p50": 6.463312543928623,
+        "p95": 9.311146417167034,
+        "p99": 10.488549901638175
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9335
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 37.30524983257055,
+        "mean": 7.1338020847179,
+        "p50": 3.898228984326124,
+        "p95": 16.746712021995318,
+        "p99": 29.856858481653013
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.795
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 38.32137491554022,
+        "mean": 10.493354622740299,
+        "p50": 7.73254141677171,
+        "p95": 22.73864188464358,
+        "p99": 32.63455200474707
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9354
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 42.65229101292789,
+        "mean": 8.09049413073808,
+        "p50": 4.967666929587722,
+        "p95": 19.65418959734961,
+        "p99": 29.939121697098
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.8695
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 44.40775001421571,
+        "mean": 10.748252097982913,
+        "p50": 8.427312481217086,
+        "p95": 22.242156649008365,
+        "p99": 34.57572603831065
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9434999999999999
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 37.85783308558166,
+        "mean": 8.37123540812172,
+        "p50": 5.549020483158529,
+        "p95": 18.171052762772888,
+        "p99": 30.625966968946145
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9025
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 50.00545806251466,
+        "mean": 11.582101651001722,
+        "p50": 8.244000491686165,
+        "p95": 24.32108540087938,
+        "p99": 34.56584312021721
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9509000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 41.59820801578462,
+        "mean": 8.899051019689068,
+        "p50": 5.401583621278405,
+        "p95": 20.15729398699477,
+        "p99": 30.596270202659042
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.907
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 42.22316690720618,
+        "mean": 11.098687932826579,
+        "p50": 8.060562540777028,
+        "p95": 25.712875439785407,
+        "p99": 38.23662400711326
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9386
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 37.62187482789159,
+        "mean": 9.903891480062157,
+        "p50": 7.1762710576877,
+        "p95": 22.999784874264137,
+        "p99": 30.078290395904265
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9285
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 45.675208093598485,
+        "mean": 12.359983724309132,
+        "p50": 9.505916968919337,
+        "p95": 28.66908529540524,
+        "p99": 38.18451680475846
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9578
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 47.38216707482934,
+        "mean": 11.119257464306429,
+        "p50": 9.367166552692652,
+        "p95": 21.153404191136342,
+        "p99": 33.15906839445223
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9465
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 128,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 53.27491695061326,
+        "mean": 13.104529565898702,
+        "p50": 10.476729017682374,
+        "p95": 26.329878717660886,
+        "p99": 34.21812334563582
+      },
+      "m": 32,
+      "queries": 200,
+      "recall": 0.9673999999999999
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 9.168458171188831,
+        "mean": 2.530465421732515,
+        "p50": 2.340520382858813,
+        "p95": 3.327849763445553,
+        "p99": 5.935920735355461
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.669
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 5.310750100761652,
+        "mean": 3.0309804040007293,
+        "p50": 2.9852085281163454,
+        "p95": 3.869093488901853,
+        "p99": 4.536106155719605
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7652
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.023250123485923,
+        "mean": 2.6434089429676533,
+        "p50": 2.6062290417030454,
+        "p95": 3.299251513089984,
+        "p99": 3.846488220151513
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.732
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.054083816707134,
+        "mean": 3.7270729045849293,
+        "p50": 3.593811998143792,
+        "p95": 4.7599849407561114,
+        "p99": 5.5162254511378706
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.778
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.120374960824847,
+        "mean": 2.7393698575906456,
+        "p50": 2.6624585734680295,
+        "p95": 3.472745348699391,
+        "p99": 3.76457204343751
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7659999999999999
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 10.021167108789086,
+        "mean": 3.9227933471556753,
+        "p50": 3.7705214926972985,
+        "p95": 5.1860623876564205,
+        "p99": 7.805678187869485
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7939
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 13.763415860012174,
+        "mean": 3.2981902069877833,
+        "p50": 3.076562425121665,
+        "p95": 4.42174324998632,
+        "p99": 7.76476772734895
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.773
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 6.918709026649594,
+        "mean": 3.337528951233253,
+        "p50": 3.201374551281333,
+        "p95": 4.343251802492885,
+        "p99": 5.129627063870417
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.7709
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 5.976750049740076,
+        "mean": 3.214426253689453,
+        "p50": 3.1400625593960285,
+        "p95": 4.090547689702362,
+        "p99": 5.882372104097157
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.805
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 5.966207943856716,
+        "mean": 3.6131396528799087,
+        "p50": 3.552937530912459,
+        "p95": 4.53324771951884,
+        "p99": 5.440863631665705
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8195999999999999
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 23.015416925773025,
+        "mean": 4.094796238932759,
+        "p50": 3.856583032757044,
+        "p95": 5.5124836042523375,
+        "p99": 9.170360683929175
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8695
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 8.366458117961884,
+        "mean": 4.238941690418869,
+        "p50": 4.081854480318725,
+        "p95": 6.086377170868214,
+        "p99": 6.82369168847799
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8835999999999999
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 28.45620783045888,
+        "mean": 5.496139418100938,
+        "p50": 2.945458050817251,
+        "p95": 14.122481236699967,
+        "p99": 19.567770268768026
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.6735
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 10,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 32.25962514989078,
+        "mean": 7.5809997983742505,
+        "p50": 4.617645521648228,
+        "p95": 16.654096101410683,
+        "p99": 27.90016022277994
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8608
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 32.47633296996355,
+        "mean": 6.296345816226676,
+        "p50": 3.3775210613384843,
+        "p95": 15.734747482929375,
+        "p99": 25.305687570944404
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.773
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 20,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 27.864000061526895,
+        "mean": 6.746217681793496,
+        "p50": 4.350937553681433,
+        "p95": 15.048747567925597,
+        "p99": 21.710056820884297
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8753
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 25.31633386388421,
+        "mean": 5.7337313203606755,
+        "p50": 3.3727920381352305,
+        "p95": 13.988465070724486,
+        "p99": 20.29962532222267
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.85
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 30.89324990287423,
+        "mean": 7.087082929210737,
+        "p50": 4.7039794735610485,
+        "p95": 15.41770817711949,
+        "p99": 24.497087474446687
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8925
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 24.512958014383912,
+        "mean": 5.675276475958526,
+        "p50": 3.330479608848691,
+        "p95": 13.976895529776803,
+        "p99": 19.919531415216596
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8654999999999999
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 50,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 29.546082951128483,
+        "mean": 6.6890720394439995,
+        "p50": 4.422708414494991,
+        "p95": 15.32966283848508,
+        "p99": 27.66869806451723
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8662000000000001
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 26.66012500412762,
+        "mean": 6.31442622281611,
+        "p50": 4.17952099815011,
+        "p95": 13.57358786044642,
+        "p99": 21.960708789993063
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.8935
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 28.1119579449296,
+        "mean": 7.169374143704772,
+        "p50": 4.810228827409446,
+        "p95": 16.533753788098686,
+        "p99": 26.640781010501076
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9102
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 200,
+        "max": 27.24762517027557,
+        "mean": 6.747829838423058,
+        "p50": 5.222208448685706,
+        "p95": 13.926951983012248,
+        "p99": 20.583101422525925
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9229999999999999
+    },
+    {
+      "cast": "halfvec",
+      "ef_construction": 64,
+      "ef_search": 200,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 200,
+        "max": 27.96258288435638,
+        "mean": 8.026433545164764,
+        "p50": 6.364604108966887,
+        "p95": 16.251172660849985,
+        "p99": 21.05285890167575
+      },
+      "m": 16,
+      "queries": 200,
+      "recall": 0.9328
+    }
+  ],
+  "search": [
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 855.7517498265952,
+        "mean": 164.20411831815727,
+        "p50": 143.59329163562506,
+        "p95": 355.13953465269856,
+        "p99": 515.4083679569882
+      },
+      "mode": "hybrid",
+      "queries_per_second": 6.089925437499774
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 225.35629197955132,
+        "mean": 72.47683707042597,
+        "p50": 62.78554198797792,
+        "p95": 153.84047295665368,
+        "p99": 205.56488587055352
+      },
+      "mode": "dense",
+      "queries_per_second": 13.797231675231998
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 269.84270801767707,
+        "mean": 71.29051776020788,
+        "p50": 56.98952102102339,
+        "p95": 172.40603496320546,
+        "p99": 208.2297797407955
+      },
+      "mode": "lexical",
+      "queries_per_second": 14.026869122759953
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 29.182833153754473,
+        "mean": 11.97557169245556,
+        "p50": 14.782333048060536,
+        "p95": 21.208862785715606,
+        "p99": 26.344472777564075
+      },
+      "mode": "exact",
+      "queries_per_second": 83.49527502448568
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 41.0774580668658,
+        "mean": 19.311246032593772,
+        "p50": 25.59222897980362,
+        "p95": 36.72525595175102,
+        "p99": 38.302119658328586
+      },
+      "mode": "regex",
+      "queries_per_second": 51.77986602264294
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 6.270457990467548,
+        "mean": 3.371141906827688,
+        "p50": 3.25931201223284,
+        "p95": 4.95747929671779,
+        "p99": 6.0222774860449135
+      },
+      "mode": "symbol",
+      "queries_per_second": 296.53324830816905
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 1008.0883752088994,
+        "mean": 443.879935402656,
+        "p50": 419.05064531601965,
+        "p95": 736.3557493663392,
+        "p99": 927.7162595000115
+      },
+      "mode": "hybrid",
+      "queries_per_second": 17.782249815944155
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 1009.2779998667538,
+        "mean": 436.8671206047293,
+        "p50": 399.04975006356835,
+        "p95": 820.3054644051008,
+        "p99": 964.4191413209772
+      },
+      "mode": "dense",
+      "queries_per_second": 17.805347446647023
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 188.01995879039168,
+        "mean": 37.49178254278377,
+        "p50": 32.81212504953146,
+        "p95": 87.121233320795,
+        "p99": 138.78550854278717
+      },
+      "mode": "lexical",
+      "queries_per_second": 204.20090598940845
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 65.15458296053112,
+        "mean": 24.92269959882833,
+        "p50": 25.23049956653267,
+        "p95": 41.45421403227374,
+        "p99": 53.437224572990054
+      },
+      "mode": "exact",
+      "queries_per_second": 312.1327766983659
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 118.17208305001259,
+        "mean": 37.412934163585305,
+        "p50": 34.26289604976773,
+        "p95": 96.16812060121445,
+        "p99": 107.16404066886749
+      },
+      "mode": "regex",
+      "queries_per_second": 209.09199971237388
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 70.0910419691354,
+        "mean": 13.641170402988791,
+        "p50": 11.375833535566926,
+        "p95": 16.563327726908017,
+        "p99": 67.82587222289294
+      },
+      "mode": "symbol",
+      "queries_per_second": 585.1128997321423
+    }
+  ],
+  "setup": {
+    "config": {
+      "concurrency": [
+        1,
+        8
+      ],
+      "exclude": [],
+      "include": [
+        "django/**/*.py",
+        "docs/topics/**"
+      ],
+      "ingest_batch": 200,
+      "meetings": 200,
+      "queries": 200,
+      "ref": "refs/tags/6.1.3",
+      "repository": "https://github.com/django/django.git",
+      "seed": 1,
+      "sync_batch_files": 100,
+      "threads": 1000
+    },
+    "embedder": {
+      "batch_size": 32,
+      "description": "model qwen3-embedding:0.6b (openai_compatible, dimension 1024, digest ac6da0dfba84a81fdbfb...)"
+    },
+    "machine": {
+      "cpus": 16,
+      "machine": "arm64",
+      "memory_gib": 48.0,
+      "processor": "arm",
+      "python": "3.12.12",
+      "system": "Darwin 27.2.0"
+    },
+    "memini": "0.0.0",
+    "postgres": {
+      "effective_cache_size": "4GB",
+      "maintenance_work_mem": "64MB",
+      "max_parallel_maintenance_workers": "2",
+      "max_parallel_workers_per_gather": "2",
+      "pgvector": "0.8.7",
+      "shared_buffers": "128MB",
+      "version": "18.7 (Debian 18.7-1.pgdg12+2)",
+      "work_mem": "4MB"
+    },
+    "search": {
+      "candidates": 50,
+      "dense_weight": 3.0,
+      "rrf_k": 1,
+      "timeout": 5.0
+    }
+  },
+  "sizes": {
+    "chunk_heap": 119070720,
+    "chunk_total": 292438016,
+    "database": 332519103,
+    "indexes": {
+      "chunk_content_trgm_idx": 17424384,
+      "chunk_embedding_866dbb561b1738641fe336987be043c2": 137543680,
+      "chunk_lexical_idx": 7020544,
+      "chunk_pkey": 2162688,
+      "chunk_vector_reuse_idx": 4259840,
+      "chunk_workspace_id_source_id_record_id_id_key": 4907008
+    },
+    "record_total": 7225344,
+    "symbol_total": 9461760
+  },
+  "total_seconds": 3077.0212850000244
+}

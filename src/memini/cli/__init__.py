@@ -62,6 +62,9 @@ below the API::
     memini credentials list [--workspace <name>]
     memini credentials delete --workspace <name> --source <name>
     memini credentials rotate-key [--batch-size N]
+    memini bench [--repo PATH_OR_URL] [--ref REF] [--threads N] [--meetings N]
+                 [--embedder {fake,configured}] [--embedding-sample N] [--concurrency N,...]
+                 [--hnsw M:EFC,...] [--ef-search N,...] [--json PATH] [--keep] ...
 
 ``--config FILE`` sets ``MEMINI_CONFIG_FILE`` for an operator command; every other setting comes
 from the environment and that file, as for the service (:mod:`memini.config`). ``bootstrap``
@@ -90,6 +93,12 @@ baseline report. It never reads or writes the configured database itself; the ro
 :mod:`memini.evaluation.decisions`) on the labelled synthetic threads and meetings: extraction
 precision and recall and supersession accuracy, compared with a baseline. Its stub extractors read
 files only.
+
+``bench`` is the performance benchmark (:mod:`memini.cli.bench`, :mod:`memini.bench`): like
+``eval`` it builds a scratch database on the configured server and drops it afterwards; it syncs a
+repository (an https one is cloned once into a cache) and a synthetic message set, and reports
+indexing time, sizes, HNSW recall and the latency of every search mode
+(docs/operations/performance.md).
 
 ``credentials`` stores the API keys and OAuth tokens of sources, encrypted with
 ``MEMINI_CREDENTIAL_KEY``, and re-encrypts them under a new key (:mod:`memini.cli.credentials`).
@@ -144,6 +153,7 @@ import psycopg
 from memini import __version__
 from memini.cli import (
     admin,
+    bench,
     comms,
     credentials,
     decisions,
@@ -557,6 +567,9 @@ def build_parser() -> argparse.ArgumentParser:
         commands.add_parser(
             "credentials", help=credentials.HELP, description=credentials.DESCRIPTION
         )
+    )
+    bench.configure_parser(
+        commands.add_parser("bench", help=bench.HELP, description=bench.DESCRIPTION)
     )
 
     # --- Offline commands: files only, no service and no database ---------------------------------

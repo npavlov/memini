@@ -1,0 +1,509 @@
+{
+  "corpus": {
+    "binary_files": 1382,
+    "bytes_selected": 46482297,
+    "chunks": 77084,
+    "code_chunks": 43788,
+    "code_files": 5683,
+    "commit": "d143055a55bb402cf5396f9f87f550e4eb8a7a80",
+    "documents": 9,
+    "files_listed": 7085,
+    "files_selected": 7074,
+    "meetings": 1000,
+    "message_chunks": 33296,
+    "records": 11692,
+    "ref": "refs/tags/6.1.3",
+    "repository": "https://github.com/django/django.git",
+    "symbols": 46759,
+    "threads": 5000,
+    "upstream_commit": "f16e25dcb9fe55734ba4ea2b00ac34405b7df74a"
+  },
+  "embedding": [],
+  "hnsw": [
+    {
+      "as_built": true,
+      "cast": "vector",
+      "ef_construction": 64,
+      "m": 16,
+      "maintenance_work_mem": "64MB",
+      "seconds": 219.77945454209112,
+      "size_bytes": 631373824
+    }
+  ],
+  "notes": [
+    "indexed with the fake embedder: vectors carry no meaning, so dense and hybrid latency is the database's alone, and recall against exact search is a floor (random directions are the hardest case for HNSW)"
+  ],
+  "peak_rss_bytes": 168296448,
+  "phases": [
+    {
+      "chunk_seconds": 0.0,
+      "chunks": 0,
+      "embed_seconds": 0.0,
+      "items": 0,
+      "name": "mirror fetch",
+      "peak_rss_bytes": 104628224,
+      "read_seconds": 0.0,
+      "seconds": 0.35711899981833994,
+      "texts_embedded": 0,
+      "write_seconds": 0.0
+    },
+    {
+      "chunk_seconds": 3.507852169452235,
+      "chunks": 43788,
+      "embed_seconds": 0.0,
+      "items": 7074,
+      "name": "read and chunk",
+      "peak_rss_bytes": 139362304,
+      "read_seconds": 1.1509842032101005,
+      "seconds": 4.659759582951665,
+      "texts_embedded": 0,
+      "write_seconds": 0.0
+    },
+    {
+      "chunk_seconds": 3.507852169452235,
+      "chunks": 43788,
+      "embed_seconds": 8.44397972500883,
+      "items": 5692,
+      "name": "git sync",
+      "peak_rss_bytes": 139362304,
+      "read_seconds": 1.1509842032101005,
+      "seconds": 576.8292529589962,
+      "texts_embedded": 43775,
+      "write_seconds": 563.726436861325
+    },
+    {
+      "chunk_seconds": 2.5507639623247087,
+      "chunks": 33296,
+      "embed_seconds": 5.517492157174274,
+      "items": 6000,
+      "name": "messages",
+      "peak_rss_bytes": 168296448,
+      "read_seconds": 0.0,
+      "seconds": 490.4552457863465,
+      "texts_embedded": 33296,
+      "write_seconds": 482.3869896668475
+    }
+  ],
+  "query_embedding": null,
+  "recall": [
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 50,
+        "max": 12.028791010379791,
+        "mean": 7.498454176820815,
+        "p50": 7.225000066682696,
+        "p95": 10.249073395971209,
+        "p99": 11.410043505020438
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.044000000000000004
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 50,
+        "max": 23.006000090390444,
+        "mean": 14.43237004801631,
+        "p50": 13.674687477760017,
+        "p95": 19.755875354167074,
+        "p99": 22.891278751194477
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.0696
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 10,
+      "latency": {
+        "count": 50,
+        "max": 30.139333102852106,
+        "mean": 15.220224154181778,
+        "p50": 14.248354593291879,
+        "p95": 21.266962622757994,
+        "p99": 26.802371870726333
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.086
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": false,
+      "k": 50,
+      "latency": {
+        "count": 50,
+        "max": 19.587457878515124,
+        "mean": 13.95438747946173,
+        "p50": 13.988145510666072,
+        "p95": 17.744512448552996,
+        "p99": 19.07001838786527
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.08120000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 50,
+        "max": 16.357250045984983,
+        "mean": 9.156821584329009,
+        "p50": 8.941083098761737,
+        "p95": 13.036508369259536,
+        "p99": 14.83788252808153
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.04800000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 40,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 50,
+        "max": 34.82812503352761,
+        "mean": 22.780606704764068,
+        "p50": 22.73495844565332,
+        "p95": 28.617156471591443,
+        "p99": 33.45822759205475
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.0928
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 10,
+      "latency": {
+        "count": 50,
+        "max": 23.23308400809765,
+        "mean": 12.820615908131003,
+        "p50": 12.38445844501257,
+        "p95": 17.011856380850073,
+        "p99": 22.398715922608968
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.07200000000000001
+    },
+    {
+      "cast": "vector",
+      "ef_construction": 64,
+      "ef_search": 100,
+      "filtered": true,
+      "k": 50,
+      "latency": {
+        "count": 50,
+        "max": 39.326957892626524,
+        "mean": 24.739377480000257,
+        "p50": 23.930749972350895,
+        "p95": 32.836077734827995,
+        "p99": 37.18778163194656
+      },
+      "m": 16,
+      "queries": 50,
+      "recall": 0.1052
+    }
+  ],
+  "search": [
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 246.65820901282132,
+        "mean": 86.77915207459591,
+        "p50": 95.74341692496091,
+        "p95": 110.76809144578874,
+        "p99": 122.82632630085571
+      },
+      "mode": "hybrid",
+      "queries_per_second": 11.523348362649983
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 31.50725015439093,
+        "mean": 12.233371472684667,
+        "p50": 11.442270479165018,
+        "p95": 16.86282712034881,
+        "p99": 23.53511655470353
+      },
+      "mode": "dense",
+      "queries_per_second": 81.73580838822406
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 106.78945784457028,
+        "mean": 73.3248702227138,
+        "p50": 84.94520897511393,
+        "p95": 96.54107367387041,
+        "p99": 100.3965502907522
+      },
+      "mode": "lexical",
+      "queries_per_second": 13.637698116069057
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 86.25179203227162,
+        "mean": 30.59603144763969,
+        "p50": 40.53587547969073,
+        "p95": 82.74020259268582,
+        "p99": 85.1965780952014
+      },
+      "mode": "exact",
+      "queries_per_second": 32.68231990551242
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 219.69616692513227,
+        "mean": 73.34065497620031,
+        "p50": 72.29339552577585,
+        "p95": 153.50879157194868,
+        "p99": 178.04848435334858
+      },
+      "mode": "regex",
+      "queries_per_second": 13.634707561898773
+    },
+    {
+      "candidates": 50,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 8.108374895527959,
+        "mean": 3.7656514695845544,
+        "p50": 3.5856040194630623,
+        "p95": 5.393575737252823,
+        "p99": 7.444779542274773
+      },
+      "mode": "symbol",
+      "queries_per_second": 265.4814100862755
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 591.1989170126617,
+        "mean": 237.81802583602257,
+        "p50": 212.15297910384834,
+        "p95": 465.70251018274575,
+        "p99": 528.9611160452474
+      },
+      "mode": "hybrid",
+      "queries_per_second": 33.186270680526896
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 36.42225009389222,
+        "mean": 28.089870399562642,
+        "p50": 27.810332947410643,
+        "p95": 34.1333776130341,
+        "p99": 35.922804600559175
+      },
+      "mode": "dense",
+      "queries_per_second": 281.2901774870901
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 603.8672500289977,
+        "mean": 227.77256705332547,
+        "p50": 211.0851249890402,
+        "p95": 503.41475618770335,
+        "p99": 552.4821605556643
+      },
+      "mode": "lexical",
+      "queries_per_second": 34.730910225681725
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 257.4966249521822,
+        "mean": 60.91695398907177,
+        "p50": 54.83993759844452,
+        "p95": 153.49092697724606,
+        "p99": 243.57603112002832
+      },
+      "mode": "exact",
+      "queries_per_second": 128.58599209270542
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 634.7366662230343,
+        "mean": 173.1622293475084,
+        "p50": 131.65383355226368,
+        "p95": 508.7157021975144,
+        "p99": 566.9439192255958
+      },
+      "mode": "regex",
+      "queries_per_second": 43.97890371669238
+    },
+    {
+      "candidates": 50,
+      "concurrency": 8,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 28.88337499462068,
+        "mean": 14.283176882890984,
+        "p50": 13.210500008426607,
+        "p95": 21.335071302019053,
+        "p99": 24.516661665402324
+      },
+      "mode": "symbol",
+      "queries_per_second": 557.2760167355012
+    },
+    {
+      "candidates": 20,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 415.93620809726417,
+        "mean": 111.22233170317486,
+        "p50": 114.71625044941902,
+        "p95": 174.29642549250272,
+        "p99": 240.71364965056983
+      },
+      "mode": "hybrid",
+      "queries_per_second": 8.990844651303526
+    },
+    {
+      "candidates": 100,
+      "concurrency": 1,
+      "errors": 0,
+      "latency": {
+        "count": 200,
+        "max": 292.15495800599456,
+        "mean": 108.37266039452516,
+        "p50": 115.9072294831276,
+        "p95": 153.5059807240031,
+        "p99": 191.49676783708847
+      },
+      "mode": "hybrid",
+      "queries_per_second": 9.227260033115597
+    }
+  ],
+  "setup": {
+    "config": {
+      "concurrency": [
+        1,
+        8
+      ],
+      "exclude": [],
+      "include": [],
+      "ingest_batch": 200,
+      "meetings": 1000,
+      "queries": 200,
+      "ref": "refs/tags/6.1.3",
+      "repository": "https://github.com/django/django.git",
+      "seed": 1,
+      "sync_batch_files": 100,
+      "threads": 5000
+    },
+    "embedder": {
+      "batch_size": 32,
+      "description": "model bench-fake (openai_compatible, dimension 1024)"
+    },
+    "machine": {
+      "cpus": 16,
+      "machine": "arm64",
+      "memory_gib": 48.0,
+      "processor": "arm",
+      "python": "3.12.12",
+      "system": "Darwin 27.2.0"
+    },
+    "memini": "0.0.0",
+    "postgres": {
+      "effective_cache_size": "4GB",
+      "maintenance_work_mem": "64MB",
+      "max_parallel_maintenance_workers": "2",
+      "max_parallel_workers_per_gather": "2",
+      "pgvector": "0.8.7",
+      "shared_buffers": "128MB",
+      "version": "18.7 (Debian 18.7-1.pgdg12+2)",
+      "work_mem": "4MB"
+    },
+    "search": {
+      "candidates": 50,
+      "dense_weight": 3.0,
+      "rrf_k": 1,
+      "timeout": 5.0
+    }
+  },
+  "sizes": {
+    "chunk_heap": 554778624,
+    "chunk_total": 1330372608,
+    "database": 1474721471,
+    "indexes": {
+      "chunk_content_trgm_idx": 69959680,
+      "chunk_embedding_9297bd6e1a4a6cbdc3ff7431c1e13e46": 631373824,
+      "chunk_lexical_idx": 22929408,
+      "chunk_pkey": 9682944,
+      "chunk_vector_reuse_idx": 19398656,
+      "chunk_workspace_id_source_id_record_id_id_key": 22183936
+    },
+    "record_total": 35872768,
+    "symbol_total": 36036608
+  },
+  "total_seconds": 1498.8445387091488
+}

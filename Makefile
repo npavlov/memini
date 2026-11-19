@@ -8,6 +8,8 @@ UV_RUN := uv run
 EVAL_ARGS ?=
 # Extra arguments of `memini eval decisions` for eval-decisions, e.g. "--extractor oracle".
 DECISION_EVAL_ARGS ?=
+# Extra arguments of `memini bench` for the bench target, e.g. BENCH_ARGS="--json bench.json".
+BENCH_ARGS ?=
 # The margin of eval-qwen3. Hybrid results move by up to about 0.03 from run to run until tied
 # lexical results are ordered by something stable across runs (docs/requirements.md, section 10).
 QWEN3_MARGIN ?= 0.05
@@ -72,6 +74,10 @@ eval-qwen3: ## Retrieval eval, every mode, default model from local Ollama, rera
 
 eval-decisions: ## Decision eval, keyword stub, against the committed baseline (MEMINI_DATABASE_URL set; the stubs connect to nothing)
 	$(UV_RUN) memini eval decisions --baseline eval/decisions/baseline-keyword.json $(DECISION_EVAL_ARGS)
+
+.PHONY: bench
+bench: ## Performance benchmark in a scratch database (MEMINI_DATABASE_URL, CREATEDB; ~25 min; docs/operations/performance.md)
+	$(UV_RUN) memini bench $(BENCH_ARGS)
 
 db: ## Start the development database (Postgres with pgvector) and wait until healthy
 	docker compose up -d --wait db

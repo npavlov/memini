@@ -81,6 +81,7 @@ from the host: health, the localhost-only port, a non-root user, the first admin
 | `make check` | lint, typecheck and unit tests together |
 | `make hooks` | use the versioned git hooks and fetch the secret scanner |
 | `make secret-scan` | scan every commit of `HEAD` for secrets, as CI does |
+| `make bench` | the performance benchmark, in a scratch database (about 25 minutes; not part of `check` or CI; [docs/operations/performance.md](docs/operations/performance.md)) |
 
 `make check` and `make test-integration` must pass before you open a pull request. Integration tests read
 the server from `MEMINI_TEST_DATABASE_URL` (default: the `make db` database), create a new empty database
