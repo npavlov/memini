@@ -2009,6 +2009,22 @@ dropping the parts the model labels `instruction` and extracting again, a second
 a fooled extraction stores is a false item, attributed and retractable; nothing else is written
 (section 9).
 
+**`decisions-v3`** (measured 2026-11-19, after the merge). The check of `decisions-v2` and the
+hardened prompt together, `qwen3:4b-instruct` on the local Ollama, hybrid candidates, top 8. On the
+two default sets: precision 0.72, recall 1.00, supersession accuracy 0.96 (23 of 24), every
+group at or above the `keyword` floor. On the three sets:
+
+| Records | Precision | Recall | Supersession | Cite an added part |
+|---|---|---|---|---|
+| as they are | 0.63 (24 found, 14 false) | 1.00 | 0.87 (26 of 30) | |
+| an attempt added | 0.56 (24 found, 19 false) | 1.00 | 0.90 (27 of 30) | 1 |
+
+As with the hardened prompt alone: recall and supersession hold under the attempts and nothing
+but extraction tables is written; precision falls by 0.07, beyond the eval's margin of 0.02,
+most of it in `eval/comms` (0.62 to 0.47), where status messages are taken for decisions after
+an attempt. Left open (memini-z3e): drop the parts the model labels `instruction` and extract
+again, and measure it against this table.
+
 ## 11. Later
 
 | Version | What |
