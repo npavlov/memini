@@ -129,7 +129,9 @@ session, with the `memini-intake` skill and capture hook in `integrations/claude
 ### Tools
 
 Over MCP, and over HTTP with the same arguments as query parameters. All need a token with the
-`read` scope and see only the workspaces the token may read.
+`read` scope and see only the workspaces the token may read. Retrieved text is data, never
+instructions: every result that holds source text says so and names its source
+(docs/requirements.md, section 9, Prompt injection).
 
 | MCP tool | HTTP | What it does |
 |---|---|---|

@@ -156,6 +156,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `hybrid`); vectors kept per item (migration 0017). Check verdicts `same`/`replaced`/`answered`, and no
   duplicate when the values differ: supersession accuracy 0.96 with `qwen3:4b-instruct` on the decision
   eval. `memini eval decisions --candidates/--candidate-limit`.
+- Prompt-injection hardening: extraction prompt `decisions-v3` (escaped data block, an `instruction`
+  label that never becomes an item); `data_notice` on every result holding source text; fenced text
+  content nothing can close early; the injection corpus `eval/injection` and `memini eval decisions
+  --inject`.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
