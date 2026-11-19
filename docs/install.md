@@ -83,7 +83,10 @@ docker compose up -d --wait
 ```
 
 The first time, this builds the service's image from the checkout and pulls Postgres: a few
-minutes. It returns when the database and the service are healthy and the migrations are applied.
+minutes. The build fetches the reranker's model files from Hugging Face, about 610 MB, checks them
+against their pinned SHA-256 and keeps them in the image, so the service never fetches them; later
+builds take them from Docker's build cache. It returns when the database and the service are
+healthy and the migrations are applied.
 `docker compose ps` shows both containers `(healthy)`. They restart with Docker until you stop them.
 
 ## 4. The `memini` command
@@ -273,17 +276,30 @@ setting, and what a change of it needs: [configuration.md](configuration.md). Ev
 Rough figures from following this guide on a laptop (Apple M4 Max, Ollama on its GPU). The
 performance baseline states the smallest supported machine here, with measured numbers.
 
-- **Disk:** the images, about 0.8 GB (the service 0.33 GB, Postgres with pgvector 0.49 GB), and the
-  embedding model, 0.64 GB. The database grows with what is indexed: about 110 MB after steps 6 and
-  7, most of it Postgres's own files; about 400 MB with the whole Memini repository indexed as well.
-- **Memory:** the service and the database, under 200 MB each while indexing and about 80 MB each
-  at rest. Ollama with the model loaded: about 1 GB, more with the longer context Ollama gives it on
-  a machine with much memory.
+- **Disk:** the images, about 1.6 GB (the service 1.1 GB, of which 0.61 GB is the reranker's model;
+  Postgres with pgvector 0.49 GB), and the embedding model, 0.64 GB. The database grows with what
+  is indexed: about 110 MB after steps 6 and 7, most of it Postgres's own files; about 400 MB with
+  the whole Memini repository indexed as well.
+- **Memory:** the service about 1.1 GB, nearly all of it the reranker's model (about 100 MB with
+  `MEMINI_SEARCH_RERANKER=none` in `.env.memini`); the database under 200 MB while indexing and
+  about 80 MB at rest. Ollama with the model loaded: about 1 GB, more with the longer context Ollama
+  gives it on a machine with much memory.
+- **CPU:** reranking adds 0.5 to 0.7 s to a search with 4 CPUs, 1.2 s with 2 and 2.2 s with 1
+  (requirements.md, section 9, Reranker).
 - **Time:** indexing is the model's work. The sync of step 6, 28 files and 460 chunks, took 28 s;
   the whole Memini repository, 518 files and about 7,300 chunks, 4.5 minutes. On a CPU only, expect
   several times longer.
 
 ## Troubleshooting
+
+**`reranking is off: …`** in the log (`docker compose logs memini`). Search works without the
+reranker, in the order of its retrievers; the line says why. `the files of model … are not in
+/opt/memini/models/…, and it cannot be created`: the image was built without them
+(`MEMINI_RERANKER_FILES=none` in `.env`): remove that line and `docker compose up -d --wait`, or set
+`MEMINI_SEARCH_RERANKER=none` in `.env.memini` to keep it off without the warning. Another model
+named in `.env.memini` needs a writable `MEMINI_SEARCH_RERANKER_MODEL_DIR`
+([configuration.md](configuration.md)). Once it works, the log says
+`reranking with n24q02m/Qwen3-Reranker-0.6B-ONNX …, 4 threads`.
 
 **`docker: 'compose' is not a docker command`, or `docker compose up` fails on `env_file` in
 `compose.yaml`.** Compose is missing or older than 2.24.0, which reads an optional `env_file`. Check
