@@ -146,6 +146,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or stdin into a push source; each record is checked first, bad ones are reported while the rest are
   stored, batches stay under the service limits, and 429/503 are retried. `docs/intake.md` has the record
   shapes and the agent rules; the `memini-push` skill is for agents.
+- The service image reranks by default: the reranker's runtime and pinned model files are baked in
+  (checked by SHA-256 at build and by digest at start; no download at run time), depth 3;
+  `MEMINI_SEARCH_RERANKER=none` turns it off; `search_reranker_threads` caps its threads.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
@@ -153,6 +156,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- onnxruntime no longer sends usage telemetry (`ORT_DISABLE_TELEMETRY` is set before it loads), for
+  local embeddings and the reranker.
+- A model run uses no more threads than the container's CPU limit: one thread per host core made
+  reranking 11 times slower in a 2-CPU container.
 - The HTTP API answers 503 `unavailable`, not 500, while the database is down or restarting.
 - A stalled MCP server's handshake is reported as `ConnectError`, not an exception group.
 ### Security
