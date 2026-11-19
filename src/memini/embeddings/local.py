@@ -40,7 +40,7 @@ import httpx2
 from memini.config import EmbeddingPooling
 from memini.embeddings.base import BatchingEmbedder, EmbeddingError, EmbeddingSpec
 from memini.embeddings.model_files import HUB_URL, TOKENIZER_FILE, ensure_model_files
-from memini.embeddings.runtime import quiet_runtime, session_options
+from memini.embeddings.runtime import native_output_logged, quiet_runtime, session_options
 
 __all__ = ["LOCAL_EXTRA", "RUNTIME_MODULES", "LocalEmbedder"]
 
@@ -169,7 +169,8 @@ def _import_runtime() -> _Modules:
     loaded: dict[str, Any] = {}
     for name in RUNTIME_MODULES:
         try:
-            loaded[name] = importlib.import_module(name)
+            with native_output_logged():  # its first import writes past the JSON log
+                loaded[name] = importlib.import_module(name)
         except ImportError:
             raise EmbeddingError(
                 "the local embedding provider needs the optional dependencies"

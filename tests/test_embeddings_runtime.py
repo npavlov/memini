@@ -1,9 +1,14 @@
-"""How onnxruntime runs: its telemetry off, and its threads within the CPU limit of a cgroup.
+"""How onnxruntime runs: its telemetry off, its threads within the CPU limit of a cgroup, and
+what its native code writes past the JSON log given to the log.
 
 The cgroup files are written into a temporary root; nothing reads the machine's own.
 """
 
+import io
+import json
+import logging
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,9 +16,11 @@ import pytest
 
 from memini.embeddings import runtime
 from memini.embeddings.runtime import (
+    NATIVE_LOGGER,
     TELEMETRY_VAR,
     cpu_limit,
     model_threads,
+    native_output_logged,
     quiet_runtime,
     session_options,
 )
@@ -118,3 +125,39 @@ def test_session_options_take_the_limit(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(runtime, "cpu_limit", lambda: None)
     assert not hasattr(session_options(fake), "intra_op_num_threads")
     assert session_options(fake, 3).intra_op_num_threads == 3
+
+
+NATIVE_WARNING = (
+    "2026-11-19 01:38:22.231 [W:onnxruntime:Default, device_discovery.cc:95 GetPciBusId]"
+    " Skipping pci_bus_id for PCI path"
+)
+
+
+def test_native_output_of_the_import_becomes_a_log_record(
+    capfd: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    """What native code writes to the descriptor of stderr while onnxruntime is first imported is
+    a warning of the logger onnxruntime; a JSON log line another thread wrote meanwhile is given
+    back as it was; nothing else reaches stderr."""
+    record = json.dumps({"level": "info", "logger": "memini.other", "message": "meanwhile"})
+    with caplog.at_level(logging.WARNING, logger=NATIVE_LOGGER), native_output_logged():
+        fd = sys.stderr.fileno()
+        os.write(fd, f"{NATIVE_WARNING}\n".encode())
+        os.write(fd, f"{record}\n\n".encode())
+
+    assert [(r.name, r.levelno, r.getMessage()) for r in caplog.records] == [
+        (NATIVE_LOGGER, logging.WARNING, NATIVE_WARNING)
+    ]
+    err = capfd.readouterr().err
+    assert record in err.splitlines()
+    assert "GetPciBusId" not in err
+
+
+def test_without_a_descriptor_the_block_runs_as_it_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    stream = io.StringIO()  # no fileno, as a captured stream of a test
+    monkeypatch.setattr(sys, "stderr", stream)
+    ran: list[bool] = []
+    with native_output_logged():
+        ran.append(True)
+    assert ran == [True]
+    assert stream.getvalue() == ""

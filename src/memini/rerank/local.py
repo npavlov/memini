@@ -53,7 +53,12 @@ import httpx2
 from memini.embeddings import EmbeddingError
 from memini.embeddings.local import LOCAL_EXTRA, RUNTIME_MODULES
 from memini.embeddings.model_files import HUB_URL, TOKENIZER_FILE, ensure_model_files
-from memini.embeddings.runtime import model_threads, quiet_runtime, session_options
+from memini.embeddings.runtime import (
+    model_threads,
+    native_output_logged,
+    quiet_runtime,
+    session_options,
+)
 from memini.search import Hit
 
 __all__ = ["INSTRUCTION", "THREADS", "LocalReranker", "RerankError", "relevance"]
@@ -261,7 +266,8 @@ def _import_runtime() -> _Modules:
     loaded: dict[str, Any] = {}
     for name in RUNTIME_MODULES:
         try:
-            loaded[name] = importlib.import_module(name)
+            with native_output_logged():  # its first import writes past the JSON log
+                loaded[name] = importlib.import_module(name)
         except ImportError:
             raise RerankError(
                 f"the local reranker needs the optional dependencies memini[{LOCAL_EXTRA}]"

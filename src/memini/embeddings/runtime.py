@@ -15,18 +15,41 @@ runtime after :func:`quiet_runtime` and open their sessions with :func:`session_
   Reranker). So a session gets no more threads than the CPU limit allows, rounded up
   (:func:`cpu_limit`). Without a limit the embedding provider leaves the choice to onnxruntime;
   the reranker takes at most 4 (:func:`model_threads`, :data:`memini.rerank.local.THREADS`).
+- Its own output. onnxruntime's native code writes warnings to file descriptor 2 by itself, past
+  Python's logging, and does so when it is first imported (on some machines: ``GetPciBusId
+  Skipping pci_bus_id`` from its device discovery, seen on GitHub's runners), before any of its
+  settings can be changed. The service's log is JSON lines on that descriptor (:mod:`memini.logs`),
+  so the first import runs inside :func:`native_output_logged`: what is written to descriptor 2
+  meanwhile goes to a temporary file, and is then given back, a JSON line as it was (a log record
+  of another thread), any other line as a warning of the logger ``onnxruntime``.
 """
 
+import json
+import logging
 import math
 import os
 import sys
+import tempfile
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-__all__ = ["TELEMETRY_VAR", "cpu_limit", "model_threads", "quiet_runtime", "session_options"]
+__all__ = [
+    "TELEMETRY_VAR",
+    "cpu_limit",
+    "model_threads",
+    "native_output_logged",
+    "quiet_runtime",
+    "session_options",
+]
 
 TELEMETRY_VAR: Final = "ORT_DISABLE_TELEMETRY"
 """Keeps onnxruntime from sending usage events to Microsoft; read once, when it starts."""
+
+NATIVE_LOGGER: Final = "onnxruntime"
+"""The logger of the lines onnxruntime writes past Python's logging
+(:func:`native_output_logged`)."""
 
 _CGROUP_V1_QUOTAS: Final = ("sys/fs/cgroup/cpu", "sys/fs/cgroup/cpu,cpuacct")
 """Where cgroup v1 keeps ``cpu.cfs_quota_us`` and ``cpu.cfs_period_us``, inside a container."""
@@ -37,6 +60,52 @@ def quiet_runtime() -> None:
     set already. Call it before onnxruntime is imported; once it has started, the variable is not
     read again."""
     os.environ.setdefault(TELEMETRY_VAR, "1")
+
+
+@contextmanager
+def native_output_logged() -> Generator[None]:
+    """Run the block with file descriptor 2 sent to a temporary file, then give back what was
+    written there: a line that is a JSON object unchanged (a log record of another thread), any
+    other line as a warning of :data:`NATIVE_LOGGER`. Without a descriptor 2 to redirect (a test's
+    captured stream) or a temporary file, the block runs as it is."""
+    try:
+        fd = sys.stderr.fileno()
+    except (AttributeError, OSError, ValueError):
+        yield
+        return
+    try:
+        capture = tempfile.TemporaryFile()  # noqa: SIM115 (closed by the `with capture` below)
+    except OSError:
+        yield
+        return
+    with capture:
+        sys.stderr.flush()
+        saved = os.dup(fd)
+        os.dup2(capture.fileno(), fd)
+        try:
+            yield
+        finally:
+            sys.stderr.flush()
+            os.dup2(saved, fd)
+            os.close(saved)
+            capture.seek(0)
+            text = capture.read().decode("utf-8", "replace")
+    log = logging.getLogger(NATIVE_LOGGER)
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if _is_json_object(line):
+            sys.stderr.write(line + "\n")
+        else:
+            log.warning("%s", line.strip())
+    sys.stderr.flush()
+
+
+def _is_json_object(line: str) -> bool:
+    try:
+        return isinstance(json.loads(line), dict)
+    except ValueError:
+        return False
 
 
 def cpu_limit(root: Path = Path("/")) -> int | None:
