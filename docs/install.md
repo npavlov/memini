@@ -273,8 +273,11 @@ setting, and what a change of it needs: [configuration.md](configuration.md). Ev
 
 ## Machine size
 
-Rough figures from following this guide on a laptop (Apple M4 Max, Ollama on its GPU). The
-performance baseline states the smallest supported machine here, with measured numbers.
+**Smallest supported machine:** 4 cores, 8 GB of memory and a 20 GB SSD, with Ollama on the same
+machine. The reasons and the measured numbers (indexing, search latency by mode, sizes) are in
+[operations/performance.md](operations/performance.md); `make bench` measures your own machine.
+
+Rough figures from following this guide on a laptop (Apple M4 Max, Ollama on its GPU):
 
 - **Disk:** the images, about 1.6 GB (the service 1.1 GB, of which 0.61 GB is the reranker's model;
   Postgres with pgvector 0.49 GB), and the embedding model, 0.64 GB. The database grows with what

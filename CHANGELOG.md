@@ -149,6 +149,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The service image reranks by default: the reranker's runtime and pinned model files are baked in
   (checked by SHA-256 at build and by digest at start; no download at run time), depth 3;
   `MEMINI_SEARCH_RERANKER=none` turns it off; `search_reranker_threads` caps its threads.
+- `memini bench` (`make bench`): indexing time, embedding throughput, sizes, HNSW recall and search
+  latency by mode over a repository and a generated message set; numbers, targets and the smallest
+  supported machine in `docs/operations/performance.md`.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
@@ -156,6 +159,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Search no longer runs value-blind cached plans: each statement is planned for its own values (hybrid
+  p95 1.2 s → 0.11 s at 77,000 chunks).
 - onnxruntime no longer sends usage telemetry (`ORT_DISABLE_TELEMETRY` is set before it loads), for
   local embeddings and the reranker.
 - A model run uses no more threads than the container's CPU limit: one thread per host core made
