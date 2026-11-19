@@ -1,4 +1,5 @@
-"""The reranker: the rerank step of search, the local cross-encoder, its settings and its factory.
+"""The reranker: the rerank step of search, the local cross-encoder, its settings and its factory,
+the service starting without its runtime, and the model files the image bakes in.
 
 No test downloads a model. The local reranker's ordering, timeout and failures run with a scorer in
 place of the model; one test runs the real model, and only when the extra is installed and the
@@ -9,6 +10,7 @@ default model). Search with a reranker against a database is in test_search_db.p
 import importlib.util
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -20,18 +22,23 @@ from typing import Any
 
 import httpx2
 import pytest
+from fastapi.testclient import TestClient
 
+from memini.api import create_app
 from memini.config import (
     DEFAULT_RERANK_DEPTH,
     DEFAULT_RERANKER_DIGEST,
     DEFAULT_RERANKER_MODEL,
     DEFAULT_RERANKER_MODEL_FILE,
+    DEFAULT_RERANKER_REVISION,
     ConfigError,
     Settings,
     load_settings,
 )
-from memini.embeddings.model_files import model_files_dir
+from memini.embeddings.model_files import TOKENIZER_FILE, files_digest, model_files_dir
+from memini.embeddings.runtime import TELEMETRY_VAR
 from memini.evaluation import DEFAULT_RERANKER, RERANKERS
+from memini.evaluation.variants import EVAL_RERANK_TIMEOUT
 from memini.rerank import (
     LocalReranker,
     RerankError,
@@ -45,6 +52,7 @@ from memini.search.engine import _rerank  # pyright: ignore[reportPrivateUsage] 
 
 pytestmark = pytest.mark.anyio
 
+ROOT = Path(__file__).resolve().parent.parent
 URL = "postgresql://synthetic:synthetic@db.invalid:5432/memini"
 WHEN = datetime(2026, 1, 1, tzinfo=UTC)
 REVISION = "0123456789abcdef0123456789abcdef01234567"
@@ -207,6 +215,8 @@ async def test_without_the_extra_the_error_names_it_and_nothing_is_fetched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setitem(sys.modules, "onnxruntime", None)  # makes `import onnxruntime` fail
+    monkeypatch.setenv(TELEMETRY_VAR, "unset by the test")
+    monkeypatch.delenv(TELEMETRY_VAR)  # restored, that is removed, after the test
     requests: list[str] = []
 
     def hub(request: httpx2.Request) -> httpx2.Response:
@@ -221,6 +231,7 @@ async def test_without_the_extra_the_error_names_it_and_nothing_is_fetched(
     assert "memini[local-embeddings]" in str(info.value)
     assert "onnxruntime is missing" in str(info.value)
     assert requests == []
+    assert os.environ[TELEMETRY_VAR] == "1"  # set before the import was tried
 
 
 @pytest.mark.skipif(
@@ -235,7 +246,7 @@ async def test_files_that_do_not_match_the_digest_are_never_loaded(tmp_path: Pat
         await reranker(tmp_path).load()
 
 
-@pytest.mark.parametrize("changes", [{"max_tokens": 63}, {"timeout": 0.0}])
+@pytest.mark.parametrize("changes", [{"max_tokens": 63}, {"timeout": 0.0}, {"threads": -1}])
 def test_the_limits_must_be_usable(tmp_path: Path, changes: dict[str, Any]) -> None:
     with pytest.raises(ValueError, match="max_tokens"):
         reranker(tmp_path, **changes)
@@ -251,8 +262,9 @@ def settings(**environ: str) -> Settings:
 def test_the_reranker_is_off_by_default_and_the_depth_reaches_search() -> None:
     plain = settings()
 
-    assert plain.search_reranker is None
+    assert plain.search_reranker == "none"
     assert create_reranker(plain) is None
+    assert create_reranker(settings(MEMINI_SEARCH_RERANKER="none")) is None
     assert SearchOptions.from_settings(plain).rerank_depth == DEFAULT_RERANK_DEPTH
     deeper = settings(MEMINI_SEARCH_RERANK_DEPTH="50")  # needs no reranker: the eval reads it
     assert SearchOptions.from_settings(deeper).rerank_depth == 50
@@ -265,6 +277,9 @@ def test_a_local_reranker_is_made_from_the_settings(monkeypatch: pytest.MonkeyPa
     made = create_reranker(on)
 
     assert made is not None
+    assert made.threads == 0  # chosen when the model loads
+    threaded = settings(MEMINI_SEARCH_RERANKER="local", MEMINI_SEARCH_RERANKER_THREADS="3")
+    assert local_reranker(threaded).threads == 3
     root = Path("/srv/cache/memini/models")
     assert made.files_dir == model_files_dir(root, DEFAULT_RERANKER_MODEL, DEFAULT_RERANKER_DIGEST)
     assert DEFAULT_RERANKER_MODEL_FILE in made.describe()
@@ -287,12 +302,22 @@ def test_the_default_model_dir_is_the_user_cache() -> None:
     [
         {"MEMINI_SEARCH_RERANKER_MODEL": "org/other"},
         {"MEMINI_SEARCH_RERANKER_TIMEOUT": "5"},
-        {"MEMINI_SEARCH_RERANKER_MAX_TOKENS": "512"},
+        {"MEMINI_SEARCH_RERANKER": "none", "MEMINI_SEARCH_RERANKER_MAX_TOKENS": "512"},
     ],
 )
 def test_a_reranker_setting_without_the_reranker_is_refused(environ: dict[str, str]) -> None:
-    with pytest.raises(ConfigError, match="has no effect without search_reranker"):
+    with pytest.raises(ConfigError, match="has no effect while search_reranker is none"):
         settings(**environ)
+
+
+def test_the_model_dir_may_stay_set_when_the_reranker_is_turned_off() -> None:
+    """The image sets both; a settings file that turns the reranker off sets the first only."""
+    off = settings(
+        MEMINI_SEARCH_RERANKER="none", MEMINI_SEARCH_RERANKER_MODEL_DIR="/opt/memini/models"
+    )
+
+    assert off.search_reranker == "none"
+    assert create_reranker(off) is None
 
 
 def test_other_model_files_need_their_own_digest_and_revision() -> None:
@@ -333,7 +358,69 @@ def test_the_eval_measures_none_and_the_local_reranker() -> None:
     assert RERANKERS[DEFAULT_RERANKER].create is None
     local = RERANKERS["local"].create
     assert local is not None
-    assert isinstance(local(settings()), LocalReranker)  # measured whether or not it is on
+    made = local(settings())  # measured whether or not it is on
+    assert isinstance(made, LocalReranker)
+    # Not the service's latency budget: a reranking cut short would lower the metrics silently.
+    assert made._timeout == EVAL_RERANK_TIMEOUT  # pyright: ignore[reportPrivateUsage]
+
+
+# --- The service without the runtime -------------------------------------------------------------
+
+
+def test_the_service_starts_without_the_runtime_and_says_once_that_reranking_is_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A source install without memini[local-embeddings], with the reranker turned on: the
+    service serves, logs one warning naming the extra, fetches nothing and reranks nothing."""
+    monkeypatch.setitem(sys.modules, "onnxruntime", None)
+    on = settings(MEMINI_SEARCH_RERANKER="local", MEMINI_SEARCH_RERANKER_MODEL_DIR=str(tmp_path))
+    app = create_app(on)
+
+    with caplog.at_level(logging.INFO, logger="memini.api.app"), TestClient(app) as client:
+        deadline = time.monotonic() + 10
+        while "reranking is off" not in caplog.text and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert client.get("/healthz").status_code == 200
+        assert app.state.services.reranker is None
+
+    warnings = [r for r in caplog.records if "reranking is off" in r.getMessage()]
+    assert len(warnings) == 1
+    assert warnings[0].levelno == logging.WARNING
+    assert "memini[local-embeddings]" in warnings[0].getMessage()
+    assert list(tmp_path.iterdir()) == []
+
+
+# --- The files the image bakes in ----------------------------------------------------------------
+
+
+def dockerfile_args() -> dict[str, str]:
+    """The ``ARG NAME=value`` lines of the Dockerfile."""
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    return dict(re.findall(r"(?m)^ARG ([A-Z0-9_]+)=(\S+)$", text))
+
+
+def test_the_image_bakes_in_the_files_the_settings_pin() -> None:
+    args = dockerfile_args()
+
+    assert args["RERANKER_FILES"] == "baked"
+    assert args["RERANKER_MODEL"] == DEFAULT_RERANKER_MODEL
+    assert args["RERANKER_REVISION"] == DEFAULT_RERANKER_REVISION
+    assert args["RERANKER_MODEL_FILE"] == DEFAULT_RERANKER_MODEL_FILE
+    assert args["RERANKER_DIGEST"] == DEFAULT_RERANKER_DIGEST
+    hashes = {
+        DEFAULT_RERANKER_MODEL_FILE: args["RERANKER_MODEL_SHA256"],
+        TOKENIZER_FILE: args["RERANKER_TOKENIZER_SHA256"],
+    }
+    assert files_digest(hashes) == DEFAULT_RERANKER_DIGEST, (
+        "the SHA-256 values of the reranker's files in the Dockerfile do not fold into"
+        " DEFAULT_RERANKER_DIGEST: change them together"
+    )
+
+
+def test_the_nightly_eval_caches_the_files_the_settings_pin() -> None:
+    workflow = (ROOT / ".github/workflows/eval-nightly.yml").read_text(encoding="utf-8")
+
+    assert re.findall(r"(?m)^  RERANKER_DIGEST: (\S+)$", workflow) == [DEFAULT_RERANKER_DIGEST]
 
 
 # --- The real model ------------------------------------------------------------------------------

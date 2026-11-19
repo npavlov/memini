@@ -588,7 +588,7 @@ retention when that lands.
 | Chunking | Code: tree-sitter, by class and function, small siblings merged, line windows as fallback. Threads: message groups. Meetings: summary sections and transcript windows. Documents: headings. |
 | Dense vectors | Local multilingual embedding model, pinned in config with its digest: Qwen3-Embedding 0.6B through Ollama by default. |
 | Lexical | Postgres full-text search (`tsvector`) with stemming for English and Russian, code identifiers cut into words. Trigram index for exact and regex code search. |
-| Rerank | Local cross-encoder, optional and off by default: Qwen3-Reranker 0.6B run in the process reorders the best hits of a ranked search (section 9, Reranker). |
+| Rerank | Local cross-encoder, on in the image: Qwen3-Reranker 0.6B run in the process reorders the best hits of a ranked search (section 9, Reranker). |
 | Decision extraction | One LLM call per new or changed thread or meeting, structured output. Skipped when `llm_policy` is `none`. |
 | Supersession | For each extracted item: fetch the top-k similar active items of the workspace, one LLM call classifies it as new, duplicate, or replacing or answering specific items. |
 
@@ -1143,7 +1143,7 @@ does not mean migrating data.
 | Migrations | Numbered SQL files and a small runner in `memini.db` | Forward only; one transaction per file; an advisory lock for concurrent starts. See below |
 | Lexical search | Built-in `tsvector`, `russian` configuration; `pg_trgm` | In the stock image; as good as BM25 on the eval. See below |
 | Embeddings | Local, in-process or through an OpenAI-compatible endpoint; by default Qwen3-Embedding 0.6B in Ollama | Open question 2, settled |
-| Reranker | Optional, off by default: Qwen3-Reranker 0.6B as ONNX in the process | Ollama serves no reranking; measured on the eval. See below |
+| Reranker | Qwen3-Reranker 0.6B as ONNX in the process; on in the image, which carries it | Ollama serves no reranking; measured on the eval. See below |
 | LLM | OpenAI-compatible endpoint for local models; cloud providers as opt-in | Principle 8 |
 
 **Database access** (decided 2026-11-18). Memini targets one database. What later work needs is Postgres
@@ -1184,8 +1184,11 @@ per stream keeps at most one sync of a stream queued or running, also with sever
 **Embeddings and the index fingerprint** (decided 2026-11-18). One async interface, `memini.embeddings`,
 with two providers: an OpenAI-compatible `/embeddings` endpoint (Ollama, llama.cpp, vLLM or a cloud
 service; retries with backoff, a timeout per attempt) and an ONNX model in the process. The in-process
-provider needs the optional extra `memini[local-embeddings]` (onnxruntime, tokenizers, numpy: about 150 MB
-installed), so the base install and image go without it. Its model files are pinned by a digest over
+provider needs the optional extra `memini[local-embeddings]` (onnxruntime, tokenizers, numpy: about 170 MB
+installed), so the base install goes without it. The image has it, for the reranker (below), but no
+embedding model and no writable place for one, so the provider is not set up under compose.
+onnxruntime is imported with its telemetry off and runs no more threads than a CPU limit allows
+(Reranker, below). Its model files are pinned by a digest over
 their paths and SHA-256, verified before they are loaded and fetched at a pinned commit when missing; files
 that do not match are never used. It runs the model once per text: in a padded batch a quantized model
 makes a text's vector depend on its neighbours. Every vector is L2-normalized and rounded to float32.
@@ -1334,7 +1337,7 @@ records are linked to persons (M2), because an empty answer would read as "nobod
 carries the kinds of its source and record, the source's name, the external id and URL,
 `occurred_at`, the path, symbol and lines, and the chunk's content as stored, cut to 2000
 characters (data, never instructions). For code it also carries the commit pinned in the cursor of
-the record's stream. A ranked search can be reranked, off by default (Reranker, below).
+the record's stream. A ranked search is reranked in the image (Reranker, below).
 
 **Credential store** (decided 2026-11-18). The service executor needs a credential for each source
 it reaches on its own: an API key, or OAuth tokens with a refresh token. They are kept in the table
@@ -1473,8 +1476,9 @@ image) and principle 12, for no gain on the eval. ParadeDB `pg_search` was not m
 (prior-art.md). The `bm25-textsearch-*` variants stay in the eval's registry, to measure again on
 a larger suite, where inverse document frequency has more to work with.
 
-**Reranker** (decided 2026-11-18; memini-2ee). Optional and off by default. One setting,
-`search_reranker = local`, turns on what was measured: the best `search_rerank_depth` (5) hits of a
+**Reranker** (decided 2026-11-18; memini-2ee; on in the image and depth 3 since 2026-11-19,
+memini-eas, below). One setting, `search_reranker = local`, turns on what was measured: the best
+`search_rerank_depth` (5 then, 3 now) hits of a
 `hybrid`, `dense` or `lexical` search are put in the order of a cross-encoder run in the process,
 and the hits below keep their fused place. Ollama 0.34.2 serves no reranking API (`/api/rerank`,
 `/v1/rerank` and the like answer 404, and its binary names no such route), so the model runs in the
@@ -1556,14 +1560,94 @@ machine, as an interactive MCP tool should answer within about a second. Depth 5
 the latency bar. R@5 moves by up to 0.03 either way at depth 5: reordering the top 5 cannot move a
 hit across the fifth place, but it ends the ties the fused order has there, which the metric
 counts at their expected value.
-Hence `search_rerank_depth` 5 and replacing, not blending. It still ships off: turning it on by
-default would make every install that has the optional runtime fetch 600 MB from Hugging Face on
-its first start, and the image, the way the service is meant to run, does not carry the runtime;
-a CPU slower than this one pays several times the latency, up to the timeout. Embeddings follow
-the same rule: off until set, with the measured model one setting away. Putting the runtime and
-the model into the image, and the reranker on, is the next step if the owner wants it there.
+Hence replacing, not blending, and at first depth 5, shipped off: turned on by default it would
+have made every install with the optional runtime fetch 600 MB from Hugging Face on its first
+start, and the image did not carry the runtime.
 
-To turn it on: install the extra (`pip install 'memini[local-embeddings]'`, or
+**Reranker in the image** (decided 2026-11-19; memini-eas). The owner's decision: add the reranker
+if it really adds value, which the measurements above show. The image carries the runtime and the
+model files and sets `search_reranker = local`; `MEMINI_SEARCH_RERANKER=none` in `.env.memini`
+turns it off. Outside the image the default stays `none`: a source install has neither runtime nor
+files, and a reranker turned on there without the extra logs one warning that names it, and the
+service serves without it.
+
+- Runtime: the image installs the extra `local-embeddings` (onnxruntime 1.32, tokenizers, numpy).
+  The image (linux/arm64, `docker image inspect`, uncompressed) grows from 325 MB to 493 MB.
+- Model files: baked into the image rather than fetched on the first start into a named volume.
+  With them the image is 1,105 MB. Baking follows principle 8: the service never reaches Hugging
+  Face, works without a network once built, and reranks from its first search; the files are
+  owned by root and read-only, like the code. The build fetches them at the pinned commit and
+  checks each file's SHA-256, pinned in the Dockerfile beside the model and commit, which fold into
+  the digest of the settings (a test checks that they agree); the service verifies them against
+  that digest again at each start, before it loads them. They are a layer of their own that
+  depends on the pins only, so a change of the code does not fetch them again; on disk they take
+  what a volume would. A volume would keep the image at 493 MB, but every new install would need
+  the network on its first start, search without reranking until 610 MB arrived, and keep old
+  files after each new pin. `MEMINI_RERANKER_FILES=none` in `.env` builds the image without
+  them; the reranker then logs that it is off. Another model needs a writable
+  `search_reranker_model_dir`, such as a volume.
+- Telemetry: onnxruntime's official builds send usage events to Microsoft over HTTPS unless
+  `ORT_DISABLE_TELEMETRY` is set when it starts (its `Privacy.md`), which principles 8 and 11 do
+  not allow. Memini sets it to `1` before it imports the runtime, unless it is set (`0` is the
+  explicit opt-in), for the local embedding provider as well, and the image sets it for every
+  process in the container.
+- Threads: onnxruntime runs one thread per core of the machine, and each step of a run waits for
+  the slowest. In a container limited to 2 CPUs, its 16 threads reranked a search at depth 3 in
+  14.3 s at the median (4 searches), against 1.31 s with 2. A run now takes as many threads as the
+  container's CPU limit allows (cgroup v2 `cpu.max`, or v1), rounded up, and at most 4 unless
+  `search_reranker_threads` says otherwise: on a machine shared with other work, 4 threads were
+  faster than 8 and 16 even without a limit (table below). The log line `reranking with ...` names
+  the threads.
+
+The rerank step, timed on 89 searches (every third of the eval's 267 in hybrid, dense and lexical,
+with their queries and top hits as the eval's index gave them), one after another, in a container
+of the image limited with `docker run --cpus` (OrbStack on an Apple M4 Max with 16 cores) and on
+the host itself. p50 / p95 in seconds:
+
+| Where, CPUs | Threads | Depth 2 | Depth 3 | Depth 5 |
+|---|---|---|---|---|
+| container, 1 | 1 | 1.55 / 2.43 | 2.20 / 3.29 | 3.53 / 4.52 |
+| container, 2 | 2 | 0.82 / 1.20 | 1.21 / 1.62 | 1.92 / 2.42 |
+| container, 4 | 4 | | 0.71 / 1.00 | 1.08 / 1.42 |
+| container, no limit | 4 | | 0.66 / 0.92 | |
+| container, no limit | 8 | | 0.76 / 1.07 | |
+| container, no limit | 16 (onnxruntime's own) | | 2.36 / 3.07 | 3.99 / 5.31 |
+| host | 4 | | 0.46 / 0.62 | 0.75 / 0.94 |
+| host | 16 | | 1.08 / 1.48 | 1.77 / 2.43 |
+
+Other work shared the machine throughout (load averages of 60 to 97 on its 16 cores), which is
+why 16 threads did badly: on the host at a quieter moment they took 0.55 / 0.77 s at depth 5. In
+the container the files are verified and the model loaded in 1.5 to 6 s. Hybrid search, its 96
+questions reranked at each depth on one index, gives R@1 / R@5 / R@10 / MRR over all questions and
+the Russian ones:
+none 0.61 / 0.98 / 0.99 / 0.77 and 0.47 / 0.97 / 1.00 / 0.68; depth 2 0.71 / 0.98 / 0.99 / 0.82
+and 0.65 / 0.97 / 1.00 / 0.77; depth 3 0.77 / 0.98 / 0.99 / 0.86 and 0.76 / 0.97 / 1.00 / 0.85;
+depth 5 0.78 / 0.98 / 0.99 / 0.88 and 0.78 / 0.97 / 1.00 / 0.88 (cross-language R@1 0.46, 0.58,
+0.62, 0.67).
+
+Hence `search_rerank_depth` 3. The bar: at most 1 s added at p95 with 4 CPUs (the rule above, on
+fewer and shared cores) and at most 2 s with 2, keeping the gain within hybrid's run-to-run noise
+(0.03) of depth 5's. Depth 3 adds 1.00 and 1.62 s and keeps R@1 0.77 and MRR 0.86 against 0.78
+and 0.88; depth 5 adds 1.42 and 2.42 s. A bar of 1.5 s at p95 on 2 CPUs only depth 2 meets
+(1.20 s), and it keeps less than two thirds of the gain (R@1 0.71, MRR 0.82). On 1 CPU no depth
+that keeps the gain stays within 2 s: depth 3 adds 2.20 s at the median and 3.29 s at p95, every
+search within the 5 s of `search_reranker_timeout`. No guard turns reranking off by itself: a
+guard on timeouts would not fire there, and one on slow searches would turn it off for good at a
+busy moment, which is where the tails above come from. On 1 CPU, a smaller depth or
+`MEMINI_SEARCH_RERANKER=none` is the operator's call. With the model loaded, the service's
+container holds 1.03 GiB, against 97 MiB without it; scoring a prompt of 1024 tokens, the process
+peaked at 1.7 GB on the host.
+
+CI builds the image without the files: its smoke job has no layer cache, so it would fetch 610 MB
+on every run (`MEMINI_RERANKER_FILES=none`). Its smoke test checks that the runtime is in the image
+and that the reranker, on without its files, says in the log that it is off while the service
+serves; `make smoke` with the default build checks the log line `reranking with`. The nightly eval
+runs with the reranker on (`make eval-qwen3` passes `--reranker local`), its files cached by their
+digest, and `eval/code/baseline-qwen3.json` is measured so; the eval gives the reranker 600 s a
+search rather than `search_reranker_timeout`, so a slow runner cannot fall back to the fused order
+unseen.
+
+To turn it on outside the image: install the extra (`pip install 'memini[local-embeddings]'`, or
 `uv sync --extra local-embeddings` in a checkout), set `MEMINI_SEARCH_RERANKER=local` and start the
 service. On its first start it fetches the two files at the pinned revision into
 `search_reranker_model_dir` (unset: `$XDG_CACHE_HOME/memini/models`, or `~/.cache/memini/models`),
@@ -1668,16 +1752,18 @@ committed baseline,
 exact, regex, symbol) and is what CI compares with on every pull request (`make eval` in the `eval`
 job of `ci.yml`): a change that lowers a recall or an MRR below it by more than the margin fails the
 check. `eval/code/baseline-qwen3.json` covers every mode, dense and hybrid included, with the
-default model (open question 2). It needs Ollama on the machine that runs the eval, with
-`qwen3-embedding:0.6b` pulled; CI runs it nightly and on demand (`eval-nightly.yml`): Ollama at a
-pinned release, its archive checked by SHA-256, the model checked against its pinned digest
-(manifest and blobs) and cached between runs, the JSON report kept as an artifact. Rerun it after a
-change of the model, the chunker, the lexical retriever or the fusion, and write it again when a
-change is meant to move it (about 10 s):
+default model (open question 2) and the reranker on, at its default depth, as the image searches
+(measured 2026-11-19, memini-eas). It needs Ollama on the machine that runs the eval, with
+`qwen3-embedding:0.6b` pulled, and the extra `local-embeddings` (`make eval-qwen3` asks uv for it);
+CI runs it nightly and on demand (`eval-nightly.yml`): Ollama at a pinned release, its archive
+checked by SHA-256, the model checked against its pinned digest (manifest and blobs) and cached
+between runs, the reranker's files cached by their digest and verified before they are loaded, the
+JSON report kept as an artifact. Rerun it after a change of the model, the chunker, the lexical
+retriever, the fusion or the reranker, and write it again when a change is meant to move it (a few
+minutes, most of it the reranker):
 
     make eval-qwen3                     # every mode, compared with the baseline
-    MEMINI_EMBEDDING_PROVIDER=openai_compatible memini eval --modes all \
-        --baseline eval/code/baseline-qwen3.json --write-baseline   # write it again
+    make eval-qwen3 EVAL_ARGS=--write-baseline   # write it again
 
 Dense results are the same on every run. Hybrid results move by up to about 0.03 in a group from
 run to run (one of four reruns flagged a drop of 0.021): lexical ties are broken by chunk id, and

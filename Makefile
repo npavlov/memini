@@ -62,8 +62,12 @@ config-docs: ## Regenerate docs/configuration.md from the settings model (a test
 eval: ## Retrieval eval, FakeEmbedder, against the committed baseline (MEMINI_DATABASE_URL, CREATEDB)
 	$(UV_RUN) memini eval --fake-embeddings --baseline eval/code/baseline-fake.json $(EVAL_ARGS)
 
-eval-qwen3: ## Retrieval eval, every mode, default model from local Ollama, against its baseline
-	MEMINI_EMBEDDING_PROVIDER=openai_compatible $(UV_RUN) memini eval --modes all \
+# eval-qwen3 searches as the image does, with the reranker on: it needs the extra local-embeddings,
+# which uv installs, and the reranker's files, fetched on the first run into ~/.cache/memini/models
+# (or MEMINI_SEARCH_RERANKER_MODEL_DIR) and verified against their digest.
+eval-qwen3: ## Retrieval eval, every mode, default model from local Ollama, reranker on, against its baseline
+	MEMINI_EMBEDDING_PROVIDER=openai_compatible $(UV_RUN) --extra local-embeddings memini eval \
+		--modes all --reranker local \
 		--baseline eval/code/baseline-qwen3.json --margin $(QWEN3_MARGIN) $(EVAL_ARGS)
 
 eval-decisions: ## Decision eval, keyword stub, against the committed baseline (MEMINI_DATABASE_URL set; the stubs connect to nothing)

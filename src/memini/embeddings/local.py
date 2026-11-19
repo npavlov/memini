@@ -2,20 +2,23 @@
 
 It needs the optional dependencies ``memini[local-embeddings]``: ``onnxruntime`` runs the model,
 ``tokenizers`` splits text into tokens, ``numpy`` carries the arrays between them. They add about
-150 MB to an install, so the base install and image go without them, and this module imports them
-only when the first text is embedded. Without them, that first call fails with a message naming
-the extra.
+170 MB to an install, so the base install goes without them (the image has them, for the
+reranker), and this module imports them only when the first text is embedded. Without them, that
+first call fails with a message naming the extra.
 
 On first use the embedder makes sure the model files are present and match the pinned digest
 (:func:`memini.embeddings.model_files.ensure_model_files`; fetched at the pinned revision if
 missing), then loads them: files that do not match are never loaded. Inference runs in a worker
-thread, so the event loop stays free; onnxruntime uses the cores of the machine for each run.
+thread, so the event loop stays free; onnxruntime uses the cores it may for each run.
 
 The model runs once per text, never on a padded batch. With a quantized model the scale of the
 activations is computed over the whole batch, so a padded batch makes a text's vector depend on
 its neighbours (by up to 0.06 per value, measured on an int8 MiniLM; 6e-7 in float32). One run per
 text keeps the vector of a text a function of the text alone, and on a CPU it was no slower: no
 work is spent on padding. ``batch_size`` is then the number of texts per hop to the worker thread.
+
+onnxruntime is imported with its telemetry off, and a session gets no more threads than a CPU
+limit of the container allows (:mod:`memini.embeddings.runtime`).
 
 A text is cut to ``max_tokens`` tokens. The model's first output is either one vector per token,
 pooled by ``pooling`` (``mean`` of the tokens, or ``cls``, the first token), or already one vector
@@ -37,6 +40,7 @@ import httpx2
 from memini.config import EmbeddingPooling
 from memini.embeddings.base import BatchingEmbedder, EmbeddingError, EmbeddingSpec
 from memini.embeddings.model_files import HUB_URL, TOKENIZER_FILE, ensure_model_files
+from memini.embeddings.runtime import quiet_runtime, session_options
 
 __all__ = ["LOCAL_EXTRA", "RUNTIME_MODULES", "LocalEmbedder"]
 
@@ -159,7 +163,9 @@ class _Modules:
 
 
 def _import_runtime() -> _Modules:
-    """The optional modules, imported now; an :class:`EmbeddingError` naming the extra if absent."""
+    """The optional modules, imported now, onnxruntime without telemetry; an
+    :class:`EmbeddingError` naming the extra if absent."""
+    quiet_runtime()
     loaded: dict[str, Any] = {}
     for name in RUNTIME_MODULES:
         try:
@@ -202,8 +208,7 @@ class _Runtime:
         max_tokens: int,
     ) -> "_Runtime":
         ort = modules.onnxruntime
-        options = ort.SessionOptions()
-        options.log_severity_level = 3  # errors only; warnings about the graph are noise here
+        options = session_options(ort)
         session = ort.InferenceSession(
             str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
         )

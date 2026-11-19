@@ -24,10 +24,10 @@ def default_model_dir(environ: Mapping[str, str] | None = None) -> Path:
     return base / "memini" / "models"
 
 
-def local_reranker(settings: Settings) -> LocalReranker:
-    """The local reranker the ``search_reranker_*`` settings describe, whether ``search_reranker``
-    is set or not: ``memini eval --reranker local`` measures it either way. Cheap: the model
-    loads on first use."""
+def local_reranker(settings: Settings, *, timeout: float | None = None) -> LocalReranker:
+    """The local reranker the ``search_reranker_*`` settings describe, whatever ``search_reranker``
+    is: ``memini eval --reranker local`` measures it either way. ``timeout`` replaces
+    ``search_reranker_timeout`` (the eval's does). Cheap: the model loads on first use."""
     root = settings.search_reranker_model_dir or default_model_dir()
     return LocalReranker(
         model=settings.search_reranker_model,
@@ -38,13 +38,14 @@ def local_reranker(settings: Settings) -> LocalReranker:
         digest=settings.search_reranker_digest,
         revision=settings.search_reranker_revision,
         max_tokens=settings.search_reranker_max_tokens,
-        timeout=settings.search_reranker_timeout,
+        timeout=settings.search_reranker_timeout if timeout is None else timeout,
+        threads=settings.search_reranker_threads,
     )
 
 
 def create_reranker(settings: Settings) -> LocalReranker | None:
-    """The service's reranker, or ``None`` when ``search_reranker`` is not set. The caller loads
+    """The service's reranker, or ``None`` when ``search_reranker`` is ``none``. The caller loads
     it (``load()``) and closes it (``aclose()``)."""
-    if settings.search_reranker is None:
+    if settings.search_reranker == "none":
         return None
     return local_reranker(settings)

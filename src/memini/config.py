@@ -44,13 +44,15 @@ chosen, or any ``embedding_*`` setting without a provider, is an error. The inde
 (:mod:`memini.index`) covers provider, model, digest, dimension, pooling, token limit and document
 prefix: a change of any of them blocks search until ``memini reindex`` rebuilds the index.
 
-The reranker (the ``search_reranker*`` settings, :mod:`memini.rerank`) is off until
-``search_reranker`` is set; then ``local`` reorders the best ``search_rerank_depth`` hits of a
-ranked search with a cross-encoder run in the process. It needs ``memini[local-embeddings]`` too,
-and its files are pinned by ``search_reranker_digest`` and fetched at ``search_reranker_revision``.
-The defaults name the model the eval measured; another model or model file needs its own digest
-(and revision). A ``search_reranker_*`` setting without ``search_reranker`` is an error. Nothing
-of the reranker is part of the index fingerprint.
+The reranker (the ``search_reranker*`` settings, :mod:`memini.rerank`) is ``none`` by default
+and ``local`` in the image, which carries its runtime and files. ``local`` reorders the best
+``search_rerank_depth`` hits of a ranked search with a cross-encoder run in the process. It needs
+``memini[local-embeddings]`` too, and its files are pinned by ``search_reranker_digest`` and
+fetched at ``search_reranker_revision`` when they are not in ``search_reranker_model_dir``. The
+defaults name the model the eval measured; another model or model file needs its own digest (and
+revision). A ``search_reranker_*`` setting with ``search_reranker`` ``none`` is an error, but for
+``search_reranker_model_dir``, which the image sets either way. Nothing of the reranker is part of
+the index fingerprint.
 
 The ``llm_*`` settings declare at most two LLM providers (:mod:`memini.llm`), each an
 OpenAI-compatible chat API: ``llm_local_*`` one you trust with the content of every source (Ollama,
@@ -164,15 +166,17 @@ LlmStructuredOutput = Literal["json_schema", "json_object", "none"]
 ``json_object``, or not at all (the schema goes into the prompt). The reply is parsed and validated
 against the schema in every case."""
 
-RerankerProvider = Literal["local"]
-"""Where reranking runs: a cross-encoder in the process (ONNX)."""
+RerankerProvider = Literal["local", "none"]
+"""Where reranking runs: ``local``, a cross-encoder in the process (ONNX); ``none``, nowhere."""
 
 EMBEDDING_MAX_DIMENSION: Final = 16000
 """The largest dimension a pgvector ``vector`` column holds."""
 
-DEFAULT_RERANK_DEPTH: Final = 5
+DEFAULT_RERANK_DEPTH: Final = 3
 """How many fused hits a reranker reorders (``search_rerank_depth``). Also the default of
-:attr:`memini.search.SearchOptions.rerank_depth`."""
+:attr:`memini.search.SearchOptions.rerank_depth`. 3 rather than 5: nearly the same gain on the
+eval for three fifths of the time, which keeps a search within its budget on 2 to 4 CPUs
+(docs/requirements.md, section 9, Reranker)."""
 
 DEFAULT_RERANKER_MODEL: Final = "n24q02m/Qwen3-Reranker-0.6B-ONNX"
 """Qwen3-Reranker 0.6B as an ONNX export with a two-logit head (docs/requirements.md, section 9,
@@ -565,14 +569,15 @@ class Settings(BaseModel):
     )
 
     # --- Reranker (memini.rerank). Rules across these fields: _reranker_problems. ---------------
-    # Off unless search_reranker is set: it needs the optional runtime and a 600 MB download. The
-    # defaults are what the retrieval eval measured and chose (docs/requirements.md, section 9,
-    # Reranker). `local` runs a cross-encoder in the process, with the optional dependencies
-    # memini[local-embeddings]; its files are pinned by search_reranker_digest like those of the
-    # local embedding provider. search_rerank_depth is read by any reranker, also the one
-    # `memini eval --reranker` measures.
-    search_reranker: RerankerProvider | None = Field(
-        default=None, description="local: a cross-encoder run in the process"
+    # none by default: outside the image it needs the optional runtime and a 610 MB download. The
+    # image, which carries both, sets local (Dockerfile). The other defaults are what the
+    # retrieval eval measured and chose (docs/requirements.md, section 9, Reranker). `local` runs
+    # a cross-encoder in the process, with the optional dependencies memini[local-embeddings]; its
+    # files are pinned by search_reranker_digest like those of the local embedding provider.
+    # search_rerank_depth is read by any reranker, also the one `memini eval --reranker` measures.
+    search_reranker: RerankerProvider = Field(
+        default="none",
+        description="local: a cross-encoder run in the process; none: no reranking",
     )
     search_rerank_depth: int = Field(
         default=DEFAULT_RERANK_DEPTH,
@@ -620,6 +625,13 @@ class Settings(BaseModel):
         gt=0,
         le=600,
         description="seconds the reranking of one search may take, more than 0, at most 600",
+    )
+    search_reranker_threads: int = Field(
+        default=0,
+        ge=0,
+        le=256,
+        description="threads of one model run, 0 to 256; 0: as many as the CPUs or a CPU limit of"
+        " the container allow, at most 4",
     )
 
     # --- Ingest (memini.ingest) -------------------------------------------------------------------
@@ -1076,9 +1088,12 @@ def _embedding_problems(settings: Settings, origin: Mapping[str, str]) -> list[s
 
 # --- Reranker: rules across settings -------------------------------------------------------------
 
-_RERANKER_FREE: Final = frozenset({"search_reranker", "search_rerank_depth"})
-"""Reranker settings that may be set without ``search_reranker``: the depth is also what
-``memini eval --reranker`` reorders."""
+_RERANKER_FREE: Final = frozenset(
+    {"search_reranker", "search_rerank_depth", "search_reranker_model_dir"}
+)
+"""Reranker settings that may be set while ``search_reranker`` is ``none``: the depth is also what
+``memini eval --reranker`` reorders, and the image sets the model directory whether the reranker
+is on or not."""
 
 
 def _reranker_problems(settings: Settings, origin: Mapping[str, str]) -> list[str]:
@@ -1088,10 +1103,10 @@ def _reranker_problems(settings: Settings, origin: Mapping[str, str]) -> list[st
         for name in Settings.model_fields
         if name.startswith("search_reranker") and name not in _RERANKER_FREE and name in origin
     ]
-    if settings.search_reranker is None:
+    if settings.search_reranker == "none":
         return [
-            f"{origin[name]}: has no effect without search_reranker;"
-            f" set {_env_var('search_reranker')}, or remove it"
+            f"{origin[name]}: has no effect while search_reranker is none;"
+            f" set {_env_var('search_reranker')}=local, or remove it"
             for name in given
         ]
     problems: list[str] = []

@@ -216,6 +216,11 @@ jobs:
   # that does not start, serve MCP or log JSON, fails the run. No secrets: the smoke test creates
   # its token in the stack and revokes it. No layer cache: a cold build takes a few minutes, while
   # the GitHub Actions cache for a compose build needs more actions and the runtime token exposed.
+  # Without that cache a build with the reranker's model files would fetch 610 MB from Hugging Face
+  # on every run, so this one builds the image without them (MEMINI_RERANKER_FILES=none): the smoke
+  # test then checks that the runtime is in the image and that the reranker, on but without its
+  # files, says so in the log while the service serves. The baked files are checked by
+  # `make smoke` with the default, and their pins by tests/test_rerank.py.
   smoke:
     name: Image and compose smoke test
     runs-on: ubuntu-latest
@@ -246,6 +251,8 @@ jobs:
       # Builds the image, starts the database and the service (compose.yaml, default ports), waits
       # until both are healthy (at most 180 s), then checks them; see scripts/compose-smoke.sh.
       - name: Smoke test (make smoke)
+        env:
+          MEMINI_RERANKER_FILES: none
         run: make smoke
 
       - name: Show the stack after a failure

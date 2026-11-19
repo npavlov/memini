@@ -319,8 +319,17 @@ def test_compose_sets_no_setting_but_the_listed_ones() -> None:
         "postgresql://memini:${MEMINI_DB_PASSWORD:-memini}@db:5432/memini"
     )
     for name, value in IMAGE_SETTINGS.items():
-        assert COMPOSE_SET_SETTINGS[name] == value
-        assert environment[env_var(name)] == value, f"{env_var(name)} in compose.yaml"
+        if name in COMPOSE_SET_SETTINGS:
+            assert COMPOSE_SET_SETTINGS[name] == value
+            assert environment[env_var(name)] == value, f"{env_var(name)} in compose.yaml"
+
+
+def test_the_settings_file_can_change_the_reranker_the_image_turns_on() -> None:
+    """The image sets the reranker's settings; compose leaves them to the settings file."""
+    left = {name for name in IMAGE_SETTINGS if name not in COMPOSE_SET_SETTINGS}
+
+    assert left == {"search_reranker", "search_reranker_model_dir"}
+    assert left <= set(EXAMPLE_SETTINGS)
 
 
 def test_every_secret_setting_is_a_file_in_compose() -> None:
@@ -410,7 +419,9 @@ def test_env_memini_example_shows_defaults_unless_it_says_otherwise() -> None:
     assert listed[env_var("embedding_url")] == COMPOSE_EMBEDDING_URL
     for name in EXAMPLE_SETTINGS:
         default = Settings.model_fields[name].default
-        if default is not None and name not in computed_defaults():
+        if name in IMAGE_SETTINGS:  # under compose, the image's value is the default
+            assert str(getattr(settings, name)) == IMAGE_SETTINGS[name], env_var(name)
+        elif default is not None and name not in computed_defaults():
             assert getattr(settings, name) == default, f"{env_var(name)} in .env.memini.example"
 
 

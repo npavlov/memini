@@ -16,8 +16,9 @@
 #   published on the host (MEMINI_HTTP_PORT, default 6364, MCP at http://127.0.0.1:6364/mcp;
 #   MEMINI_DB_PORT, default 55432), the database password (MEMINI_DB_PASSWORD, default memini:
 #   letters and digits only, set before the first start, as the database keeps the password it was
-#   created with), where the settings file is (MEMINI_ENV_FILE), and the paths of the files that
-#   hold secrets (MEMINI_CREDENTIAL_KEY_FILE and the others under `secrets` below).
+#   created with), where the settings file is (MEMINI_ENV_FILE), whether the image carries the
+#   reranker's model files (MEMINI_RERANKER_FILES, below), and the paths of the files that hold
+#   secrets (MEMINI_CREDENTIAL_KEY_FILE and the others under `secrets` below).
 # - `.env.memini` (.env.memini.example): the settings of the service, one MEMINI_NAME=value per
 #   line, passed into the container as they are. Embeddings, git, search, ingest, retention, LLM
 #   providers, logging: every setting but the few compose sets itself (below). Its values show in
@@ -60,6 +61,13 @@ services:
   memini:
     build:
       context: .
+      args:
+        # The reranker, on in the image, with its model files in the image (about 610 MB):
+        # fetched once at the first build, checked against their pinned SHA-256, and kept by the
+        # layer cache, so the service never fetches them and works offline. `none` builds the
+        # image without them (CI does): the reranker then logs that it is off, and search keeps
+        # the fused order; set MEMINI_SEARCH_RERANKER=none in the settings file as well.
+        RERANKER_FILES: ${MEMINI_RERANKER_FILES:-baked}
     # The image is built from this checkout on every `up`, so it always matches the code; the
     # layer cache makes an unchanged rebuild take seconds. Never pulled from a registry.
     image: memini:dev

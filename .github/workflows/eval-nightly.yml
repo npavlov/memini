@@ -1,9 +1,10 @@
 name: Nightly eval
 
 # The full retrieval eval: every search mode, dense and hybrid included, with the default embedding
-# model (qwen3-embedding:0.6b) served by Ollama on the runner, compared with
-# eval/code/baseline-qwen3.json (make eval-qwen3, margin 0.05: docs/requirements.md, section 10).
-# The small eval, with the FakeEmbedder, runs on every pull request (ci.yml).
+# model (qwen3-embedding:0.6b) served by Ollama on the runner and the reranker on, as the image
+# searches (Qwen3-Reranker 0.6B in the process), compared with eval/code/baseline-qwen3.json
+# (make eval-qwen3, margin 0.05: docs/requirements.md, section 10). The small eval, with the
+# FakeEmbedder and no reranker, runs on every pull request (ci.yml).
 #
 # TODO(memini-f9a): the decision eval (docs/requirements.md, section 10: labelled synthetic
 # threads; precision and recall of extraction, accuracy of supersession) does not exist yet. It
@@ -37,6 +38,9 @@ env:
   # digest as DEFAULT_MODEL_SETTINGS in src/memini/config.py; change them together.
   EMBEDDING_MODEL: "qwen3-embedding:0.6b"
   EMBEDDING_DIGEST: ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d
+  # The digest of the reranker's model files, DEFAULT_RERANKER_DIGEST in src/memini/config.py
+  # (tests/test_rerank.py checks that they agree); it keys their cache.
+  RERANKER_DIGEST: sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea
 
 defaults:
   run:
@@ -44,9 +48,9 @@ defaults:
 
 jobs:
   retrieval:
-    name: Retrieval eval (qwen3-embedding:0.6b, every mode)
+    name: Retrieval eval (qwen3-embedding:0.6b, every mode, reranker on)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
 
     services:
       postgres:
@@ -79,8 +83,9 @@ jobs:
           cache-dependency-glob: uv.lock
           cache-suffix: eval-nightly
 
+      # With the extra local-embeddings: the runtime of the reranker.
       - name: Install dependencies
-        run: uv sync --locked
+        run: uv sync --locked --extra local-embeddings
 
       # The release archive at the pinned version, checked against the pinned SHA-256 before it is
       # unpacked; not the install script, which needs root and installs a system service. The GPU
@@ -165,15 +170,36 @@ jobs:
           path: ~/.ollama/models
           key: ${{ steps.model-cache.outputs.cache-primary-key }}
 
+      # The reranker's files, where the eval reads them when MEMINI_SEARCH_RERANKER_MODEL_DIR is not
+      # set (~/.cache/memini/models). On a miss the eval fetches them at the pinned revision;
+      # restored or fetched, it verifies them against the digest before it loads them, and stops if
+      # they differ. Saved below: files are only ever put in place once they matched.
+      - name: Restore the reranker's model files
+        id: reranker-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/memini/models
+          key: memini-reranker-${{ env.RERANKER_DIGEST }}
+
       # The margin of eval-qwen3 is 0.05 (QWEN3_MARGIN in the Makefile): hybrid results move by up
       # to about 0.03 from run to run. On the runner's CPU a batch of chunks takes longer than on
       # a GPU, hence the longer timeout per embedding request; it is not part of the report's setup.
+      # The reranker runs on the runner's CPU too, a few seconds a search for 267 searches; the
+      # eval gives it 600 s a search rather than the service's search_reranker_timeout, so a slow
+      # runner takes longer but measures the same.
       - name: Retrieval eval against the baseline (make eval-qwen3)
-        timeout-minutes: 20
+        timeout-minutes: 45
         env:
           MEMINI_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
           MEMINI_EMBEDDING_TIMEOUT: "600"
         run: make eval-qwen3 EVAL_ARGS="--json ${RUNNER_TEMP}/eval-qwen3.json"
+
+      - name: Save the reranker's model files
+        if: ${{ !cancelled() && steps.reranker-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/memini/models
+          key: ${{ steps.reranker-cache.outputs.cache-primary-key }}
 
       - name: Upload the report
         if: ${{ !cancelled() }}

@@ -169,8 +169,11 @@ async def fetch_model_files(
     try:
         directory.parent.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(prefix=".fetch-", dir=directory.parent))
-    except OSError as error:
-        raise EmbeddingError(f"cannot create {directory}: {_reason(error)}") from None
+    except OSError as error:  # a read-only directory, such as the image's own
+        raise EmbeddingError(
+            f"the files of model {model} are not in {directory}, and it cannot be created to"
+            f" fetch them into: {_reason(error)}"
+        ) from None
     base = f"{hub_url.rstrip('/')}/{model}/resolve/{revision}"
     log.info("fetching model %s at revision %s from %s", model, revision, hub_url)
     try:

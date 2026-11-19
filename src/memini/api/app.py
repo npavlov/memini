@@ -32,11 +32,12 @@ created from the settings when the application starts and closed when it stops, 
 given to :func:`create_app`, which its caller then owns and closes. Without an embedding provider
 there is none: search answers 503 ``embeddings_not_configured``, and reading files still works.
 
-The reranker (:mod:`memini.rerank`, off unless ``search_reranker`` is set) is created when the
-application starts and loaded in the background, so a model being fetched or loaded does not hold
-up the start: searches rerank once it is loaded. If it cannot load (no optional dependencies, files
-that do not match their digest), a warning says why and search goes on without it. It is closed
-when the application stops, unless it was given to :func:`create_app`.
+The reranker (:mod:`memini.rerank`; ``search_reranker`` is ``local`` in the image, ``none`` by
+default elsewhere) is created when the application starts and loaded in the background, so a model
+being fetched or loaded does not hold up the start: searches rerank once it is loaded. If it cannot
+load (no optional dependencies, no model files, files that do not match their digest), one warning
+says why and search goes on without it: the service never fails for it. It is closed when the
+application stops, unless it was given to :func:`create_app`.
 
 The interactive documentation pages (Swagger UI and ReDoc) are off: they load scripts from a CDN,
 so a browser that opens them on a local service would run third-party code in the service's
@@ -125,7 +126,7 @@ async def _load_reranker(reranker: LocalReranker, services: QueryServices) -> No
         log.warning("reranking is off: %s", error)
         return
     services.reranker = reranker
-    log.info("reranking with %s", reranker.describe())
+    log.info("reranking with %s, %d threads", reranker.describe(), reranker.threads)
 
 
 def _lifespan(
@@ -198,8 +199,8 @@ def create_app(
             is created from the settings while the application runs, if a provider is
             configured.
         reranker: the reranker of ranked searches, owned by the caller (tests pass a fake).
-            Without it, one is created from the settings while the application runs, if
-            ``search_reranker`` is set.
+            Without it, one is created from the settings while the application runs, unless
+            ``search_reranker`` is ``none``.
 
     Raises:
         ValueError: ``readiness_timeout`` is not a finite number above zero.

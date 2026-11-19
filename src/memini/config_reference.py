@@ -150,14 +150,16 @@ GROUPS: Final[tuple[Group, ...]] = (
         ("search_",),
         "The limits of one search, and how a hybrid search fuses its retrievers: each contributes"
         " `search_candidates` results, merged by reciprocal rank fusion with k `search_rrf_k`,"
-        " each retriever's ranks weighted. The reranker is off unless `search_reranker` is set"
-        " (what it gains and costs: docs/requirements.md, section 9, Reranker). `local` runs a"
-        " cross-encoder in the process; it needs the optional dependencies"
-        " `memini[local-embeddings]`, which the image does not have, and its files, about"
-        " 600 MB, are fetched at the pinned revision when the service first starts with it and"
-        " verified against `search_reranker_digest` before they are loaded. A `search_reranker_*`"
-        " setting without `search_reranker` is an error; another model or model file needs its"
-        " own digest, and another model its own revision.",
+        " each retriever's ranks weighted. The reranker (what it gains and costs:"
+        " docs/requirements.md, section 9, Reranker) is `none` by default and `local` in the"
+        " image, which carries its runtime and its files, about 610 MB; they are verified against"
+        " `search_reranker_digest` each time the service starts, before they are loaded. Outside"
+        " the image, `local` needs the optional dependencies `memini[local-embeddings]`, and its"
+        " files are fetched at the pinned revision when the service first starts with it. A"
+        " `search_reranker_*` setting while `search_reranker` is `none` is an error, but for"
+        " `search_reranker_model_dir`. Another model or model file needs its own digest, and"
+        " another model its own revision; in the image it also needs a writable"
+        " `search_reranker_model_dir`, such as a volume, as the image's own is read-only.",
     ),
     Group(
         "Git connector",
@@ -273,11 +275,12 @@ NOTES: Final[Mapping[str, str]] = {
     "embedding_pooling": "How the token vectors of a text become one: their mean, or the vector"
     " of the first token.",
     "embedding_max_tokens": "A longer text is cut to this many tokens.",
-    "search_reranker": "Unset: no reranking, hits stay in the fused order. The model loads in"
-    " the background at start; until it is loaded, and if it cannot load, search does not"
-    " rerank, and the log says why.",
+    "search_reranker": "The model loads in the background at start; until it is loaded, and if"
+    " it cannot load, search keeps the fused order, and the log says why once. Under compose,"
+    " `MEMINI_SEARCH_RERANKER=none` in the settings file turns it off.",
     "search_rerank_depth": "Hits below it keep their fused place. `memini eval --reranker` reads it"
-    " too, so it may be set without `search_reranker`.",
+    " too, so it may be set while `search_reranker` is `none`.",
+    "search_reranker_model_dir": "In the image it holds the default model's files, read-only.",
     "search_reranker_model_file": "The digest covers this file and `tokenizer.json`, with their"
     " paths.",
     "search_reranker_digest": "Files that do not match are never loaded.",
@@ -285,6 +288,9 @@ NOTES: Final[Mapping[str, str]] = {
     "search_reranker_max_tokens": "A longer prompt is cut at the end of the hit. Each token costs"
     " time: about 0.5 ms on an Apple M4 Max.",
     "search_reranker_timeout": "Past it, the search answers in the fused order and logs a warning.",
+    "search_reranker_threads": "onnxruntime would take one per core, and each step of a run waits"
+    " for the slowest thread: on a machine shared with other work, fewer threads answer sooner."
+    " The log line `reranking with ...` says how many.",
     "git_local_roots": "With compose, mount the directory into the container as well; compose.yaml"
     " has an example.",
     "credential_key": "Unset: the service starts, and storing or reading a credential fails with"
@@ -317,8 +323,12 @@ IMAGE_SETTINGS: Final[Mapping[str, str]] = {
     "http_host": "0.0.0.0",  # noqa: S104 - documents the image, which binds inside its container
     "http_port": "6364",
     "git_mirror_dir": "/var/lib/memini/mirrors",
+    "search_reranker": "local",
+    "search_reranker_model_dir": "/opt/memini/models",
 }
-"""The settings the Dockerfile sets in the image, by setting name. A test reads the Dockerfile."""
+"""The settings the Dockerfile sets in the image, by setting name. A test reads the Dockerfile.
+Compose sets the first three again (:data:`COMPOSE_SET_SETTINGS`); the reranker's are left to the
+settings file, where a line changes them."""
 
 COMPOSE_VARIABLES: Final[Mapping[str, tuple[str, str]]] = {
     "MEMINI_HTTP_PORT": (
@@ -338,6 +348,13 @@ COMPOSE_VARIABLES: Final[Mapping[str, tuple[str, str]]] = {
         ".env.memini",
         "The settings file, which compose passes into the service's container; relative to"
         " `compose.yaml`, or absolute. Optional: a file that does not exist is skipped.",
+    ),
+    "MEMINI_RERANKER_FILES": (
+        "baked",
+        "The reranker's model files in the image compose builds: `baked`, fetched at the build"
+        " (about 610 MB, once: the layer cache keeps them) and checked against their pinned"
+        " SHA-256; `none` leaves them out, and the reranker then says in the log that it is off."
+        " With `none`, set `MEMINI_SEARCH_RERANKER=none` in the settings file as well.",
     ),
 }
 """The variables compose.yaml reads on the host, besides the paths of the secret files: name,
@@ -838,7 +855,8 @@ def _compose_section() -> list[str]:
         f"Compose sets these itself, over a line of that file: {pinned}. Inside the container"
         " 127.0.0.1 is the container itself: with `embedding_provider`, set"
         f" `{env_var('embedding_url')}={COMPOSE_EMBEDDING_URL}` for Ollama on the host. The image"
-        " has no in-process model, so `local` is not available there.",
+        " has the runtime of in-process models, for the reranker, but no embedding model and no"
+        " writable place for one, so the `local` embedding provider is not set up there.",
         "",
         "### Secrets and other files",
         "",

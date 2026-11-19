@@ -12,6 +12,10 @@
 #
 # - the service port is published on 127.0.0.1 only, and the service does not run as root;
 # - git and ssh are installed, the mirror volume is writable and the root filesystem is not;
+# - the reranker's runtime is in the image, and the reranker is on: with the model files in the
+#   image (MEMINI_RERANKER_FILES=baked, the default) the log says it reranks with the model; built
+#   without them (none, as CI builds it, so a pull request fetches no 610 MB) the log says it is
+#   off and why, and search keeps the fused order. Skipped if the settings file turns it off;
 # - the settings reach the service as compose.yaml says: in a one-off container of the service
 #   (`docker compose run`), started with a settings file of its own (MEMINI_ENV_FILE) that sets
 #   MEMINI_SEARCH_TIMEOUT, and a credential key made for the check in a secret file
@@ -48,6 +52,8 @@ readonly TOKEN_NAME=compose-smoke
 readonly ADMIN_TOKEN_NAME=compose-smoke-admin
 readonly CONTAINER_PORT=6364
 readonly WAIT_TIMEOUT=180
+# Seconds the reranker may take to verify and load its model after the service is healthy.
+readonly RERANKER_TIMEOUT=120
 # Not the default (5), so that only the settings file can have set it.
 readonly SEARCH_TIMEOUT=7.5
 # Run inside the one-off container: the settings as the service reads them. No secret is printed:
@@ -209,6 +215,44 @@ if docker compose exec -T memini sh -c 'touch /opt/memini/write-test' >/dev/null
   fail "the root filesystem of the service is writable"
 fi
 ok "the mirror volume is writable; the root filesystem is not"
+
+step "the reranker"
+docker compose exec -T memini python -c 'import numpy, onnxruntime, tokenizers' \
+  || fail "the reranker's runtime (memini[local-embeddings]) is not in the image"
+ok "its runtime is in the image"
+# What compose built the image with: RERANKER_FILES among the build arguments, baked or none.
+reranker_files="$(docker compose config 2>/dev/null \
+  | sed -n 's/^ *RERANKER_FILES: *"\{0,1\}\([a-z]*\)"\{0,1\} *$/\1/p' | sed -n 1p)"
+case "$reranker_files" in
+  baked | none) ;;
+  *) fail "cannot read the build argument RERANKER_FILES from docker compose config: '$reranker_files'" ;;
+esac
+# The image sets local; a settings file may set none, or an empty value, which means the default:
+# none as well.
+reranker_setting="$(docker compose exec -T memini printenv MEMINI_SEARCH_RERANKER || true)"
+if [ "$reranker_setting" = none ] || [ -z "$reranker_setting" ]; then
+  ok "the settings file turns the reranker off: not checked (model files: $reranker_files)"
+else
+  # The model loads in the background: wait for the line that says how it went.
+  reranker_line=""
+  deadline=$((SECONDS + RERANKER_TIMEOUT))
+  while [ -z "$reranker_line" ]; do
+    reranker_line="$(docker compose logs --no-color --no-log-prefix memini 2>/dev/null \
+      | grep -E '"reranking (with |is off: )' | sed -n 1p || true)"
+    if [ -z "$reranker_line" ]; then
+      [ "$SECONDS" -lt "$deadline" ] \
+        || fail "the log says nothing of the reranker within ${RERANKER_TIMEOUT}s"
+      sleep 1
+    fi
+  done
+  case "$reranker_files:$reranker_line" in
+    baked:*'"reranking with '*) ok "the model files are in the image; the log: reranking with the model" ;;
+    baked:*) fail "the model files are in the image, but the reranker did not load: $reranker_line" ;;
+    none:*'memini[local-embeddings]'*) fail "the reranker's runtime is missing: $reranker_line" ;;
+    none:*'"reranking is off: '*) ok "built without the model files: the log says reranking is off" ;;
+    *) fail "built without the model files, but the log says: $reranker_line" ;;
+  esac
+fi
 
 step "settings from a settings file and a secret file, in a one-off container"
 # Its own settings file, its own key, and every other secret file unset, whatever .env says: the

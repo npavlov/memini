@@ -188,6 +188,21 @@ async def test_fetched_files_that_do_not_match_are_never_put_in_place(tmp_path: 
     assert list(target.parent.iterdir()) == []
 
 
+async def test_missing_files_where_nothing_can_be_written_are_named_and_not_fetched(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "file").write_bytes(b"")  # a directory cannot be made under a file
+    hub = FakeHub()
+    target = tmp_path / "file" / "models" / "pinned"
+
+    with pytest.raises(EmbeddingError) as info:
+        await ensure(target, hub)
+
+    assert f"the files of model {MODEL} are not in {target}" in str(info.value)
+    assert "cannot be created to fetch them into" in str(info.value)
+    assert hub.requests == []
+
+
 async def test_a_failed_download_names_the_file_and_leaves_nothing(tmp_path: Path) -> None:
     hub = FakeHub({MODEL_FILE: CONTENT[MODEL_FILE]})  # no tokenizer on the hub
     target = tmp_path / "models" / "pinned"

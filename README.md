@@ -108,9 +108,13 @@ sync git sources and search answers `embeddings_not_configured`. Changing the mo
 digest or document prefix changes the index fingerprint: run `memini reindex --workspace NAME`
 afterwards.
 
-Optional reranking: Qwen3-Reranker 0.6B in the process, off by default. Install
-`memini[local-embeddings]` and set `MEMINI_SEARCH_RERANKER=local`; on the code suite it lifts hybrid
-R@1 from 0.61 to 0.78 for about 0.5 s per search. `memini eval --reranker local` measures it.
+Reranking: Qwen3-Reranker 0.6B in the process reorders the best 3 hits of each search, on in the
+image. The image carries its runtime and model files (about 610 MB, fetched once when the image is
+first built, so the service needs no network for them), which makes it about 1.1 GB. On the code
+suite it lifts hybrid R@1 from 0.61 to 0.77, for 0.5 to 0.7 s per search with 4 CPUs and 1.2 s with
+2; the service holds about 1 GB more memory. `MEMINI_SEARCH_RERANKER=none` in `.env.memini` turns
+it off. From source, install `memini[local-embeddings]` and set `MEMINI_SEARCH_RERANKER=local`.
+`memini eval --reranker local` measures it.
 
 MCP sources: the service syncs MCP servers on a schedule (`memini source add <ws> <name> --kind mcp
 --url URL --recipe PATH --stream KEY`); list their servers in `MEMINI_MCP_ALLOWED_ENDPOINTS` or

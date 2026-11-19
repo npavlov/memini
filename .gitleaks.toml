@@ -45,3 +45,11 @@ description = "A keyword argument passed a variable"
 targetRules = ["generic-api-key"]
 regexTarget = "secret"
 regexes = ['''^[a-z_]+=[a-z_]+$''']
+
+# A checksum pinned under a name that ends in _SHA256, such as the Dockerfile's pins of the
+# reranker's model files (RERANKER_TOKENIZER_SHA256): the SHA-256 of a published file, not a secret.
+[[allowlists]]
+description = "Pinned SHA-256 checksums: a name ending in _SHA256 and 64 hex characters"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''_SHA256\W{1,8}[0-9a-f]{64}(?:\W|$)''']

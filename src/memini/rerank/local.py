@@ -28,13 +28,14 @@ in a left-padded batch a pair's positions, and its score, would depend on the lo
 it; and the int8 quantization is dynamic, scaled over the whole batch. Measured: a "yes" logit of
 20.42 alone and 21.24 beside one other pair. Each run hops to a worker thread, so the event loop
 stays free and the timeout is checked between pairs. One search reranks at a time: onnxruntime
-uses every core for one run already.
+uses every core it may for one run already.
 
 It needs the optional dependencies ``memini[local-embeddings]`` (onnxruntime, tokenizers, numpy),
-imported on first use. The model files are verified against the pinned digest before they are
-loaded, and fetched at the pinned revision when missing
-(:func:`memini.embeddings.model_files.ensure_model_files`): files that do not match are never
-loaded.
+imported on first use: onnxruntime with its telemetry off, with no more threads than a CPU limit
+of the container allows, and at most :data:`THREADS` unless set (:mod:`memini.embeddings.runtime`).
+The model files are verified against the pinned digest before they are loaded, and fetched at the
+pinned revision when missing (:func:`memini.embeddings.model_files.ensure_model_files`): files that
+do not match are never loaded.
 """
 
 import importlib
@@ -52,15 +53,22 @@ import httpx2
 from memini.embeddings import EmbeddingError
 from memini.embeddings.local import LOCAL_EXTRA, RUNTIME_MODULES
 from memini.embeddings.model_files import HUB_URL, TOKENIZER_FILE, ensure_model_files
+from memini.embeddings.runtime import model_threads, quiet_runtime, session_options
 from memini.search import Hit
 
-__all__ = ["INSTRUCTION", "LocalReranker", "RerankError", "relevance"]
+__all__ = ["INSTRUCTION", "THREADS", "LocalReranker", "RerankError", "relevance"]
 
 INSTRUCTION: Final = (
     "Given a search query, retrieve the relevant code or documentation that can help answer the"
     " query"
 )
 """What the model is told the query is for: the task of the embedding model's queries."""
+
+THREADS: Final = 4
+"""The most threads one model run takes unless set (``search_reranker_threads``). onnxruntime
+would take one per core, and every step of a run waits for the slowest thread: on a 16-core
+machine shared with other work, 4 threads reranked 3.6 times as fast as 16 (docs/requirements.md,
+section 9, Reranker)."""
 
 _PREFIX: Final = (
     "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and"
@@ -92,9 +100,10 @@ class LocalReranker:
     ``files_dir`` holds (or will hold) ``model_file`` and ``tokenizer.json``, pinned by ``digest``;
     ``revision`` is the commit to fetch missing files at. ``timeout`` bounds one call of
     :meth:`rerank`, waiting for another search's reranking included; ``download_timeout`` bounds
-    each request of a download. ``hub_url``, ``transport`` and ``scorer`` are for tests; a
-    ``scorer`` scores a query and a document (``header\nsnippet``) in place of the model, which is
-    then never loaded.
+    each request of a download. ``threads`` is the number of threads of one model run; 0 lets
+    :func:`memini.embeddings.runtime.model_threads` choose, at most :data:`THREADS`. ``hub_url``,
+    ``transport`` and ``scorer`` are for tests; a ``scorer`` scores a query and a document
+    (``header\nsnippet``) in place of the model, which is then never loaded.
     """
 
     def __init__(
@@ -107,14 +116,15 @@ class LocalReranker:
         revision: str | None,
         max_tokens: int = 1024,
         timeout: float = 5.0,
+        threads: int = 0,
         instruction: str = INSTRUCTION,
         download_timeout: float = 600.0,
         hub_url: str = HUB_URL,
         transport: httpx2.AsyncBaseTransport | None = None,
         scorer: Callable[[str, str], float] | None = None,
     ) -> None:
-        if max_tokens < 64 or not (math.isfinite(timeout) and timeout > 0):
-            raise ValueError("needs max_tokens >= 64 and a timeout above 0")
+        if max_tokens < 64 or not (math.isfinite(timeout) and timeout > 0) or threads < 0:
+            raise ValueError("needs max_tokens >= 64, a timeout above 0 and threads >= 0")
         self._model = model
         self._files_dir = files_dir
         self._model_file = model_file
@@ -122,6 +132,7 @@ class LocalReranker:
         self._revision = revision
         self._max_tokens = max_tokens
         self._timeout = timeout
+        self._threads = threads
         self._instruction = instruction
         self._download_timeout = download_timeout
         self._hub_url = hub_url
@@ -135,6 +146,12 @@ class LocalReranker:
     def files_dir(self) -> Path:
         """Where the model files are, or will be fetched to."""
         return self._files_dir
+
+    @property
+    def threads(self) -> int:
+        """The threads of one model run: as set, or as chosen when the model was loaded (0 before
+        that)."""
+        return self._threads
 
     def describe(self) -> str:
         """The model, its file and digest, and the token limit, in one line; no path."""
@@ -170,6 +187,7 @@ class LocalReranker:
                 )
             except EmbeddingError as error:
                 raise RerankError(str(error)) from None
+            threads = self._threads or model_threads(THREADS)
             load = partial(
                 _Runtime.load,
                 modules,
@@ -177,9 +195,11 @@ class LocalReranker:
                 self._files_dir / TOKENIZER_FILE,
                 instruction=self._instruction,
                 max_tokens=self._max_tokens,
+                threads=threads,
             )
             try:
                 self._score = (await anyio.to_thread.run_sync(load)).score
+                self._threads = threads
             except RerankError:
                 raise
             except Exception as error:
@@ -235,7 +255,9 @@ class _Modules:
 
 
 def _import_runtime() -> _Modules:
-    """The optional modules, imported now; a :class:`RerankError` naming the extra if absent."""
+    """The optional modules, imported now, onnxruntime without telemetry
+    (:mod:`memini.embeddings.runtime`); a :class:`RerankError` naming the extra if absent."""
+    quiet_runtime()
     loaded: dict[str, Any] = {}
     for name in RUNTIME_MODULES:
         try:
@@ -280,10 +302,10 @@ class _Runtime:
         *,
         instruction: str,
         max_tokens: int,
+        threads: int,
     ) -> "_Runtime":
         ort = modules.onnxruntime
-        options = ort.SessionOptions()
-        options.log_severity_level = 3  # errors only; warnings about the graph are noise here
+        options = session_options(ort, threads)
         session = ort.InferenceSession(
             str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
         )
