@@ -26,12 +26,14 @@ not asked for: it is the time of the first anchor that has one (the part where i
 else of the record.
 
 **Supersession.** The model says what the new item is about and its value, then, for each existing
-item about the same matter, that item's value and whether it says the ``same``, is a decision the
-new one ``changed``, or a question it ``settled`` (:class:`SupersessionOutput`). Existing items are
-named by the numbers they were shown under; an unknown number is ignored, and so is an item said
-after the new one. A ``same`` of the item's kind is a duplicate. Otherwise the relation follows
-the kinds: a decision answers an open question and replaces a decision; an open question
-supersedes nothing (asked again with a change, it is a new question).
+item about the same matter, that item's value (or what a question asks) and its verdict on it:
+the ``same``, a decision the new one ``replaced``, or a question it ``answered``
+(:class:`SupersessionOutput`). Existing items are named by the numbers they were shown under; an
+unknown number is ignored, and so is an item said after the new one. A ``same`` of the item's
+kind is a duplicate, of the latest such item, unless the two statements name numbers and share
+none (:func:`values_differ`). Otherwise the relation follows the kinds: a decision answers an
+open question and replaces a decision; an open question supersedes nothing (asked again with a
+change, it is a new question).
 
 **Versions.** :data:`PROMPT_VERSION` names the prompts; the extractor of an item is the model and
 it (:func:`extractor_name`), so a change of either is a new extraction of every record.
@@ -76,21 +78,23 @@ __all__ = [
     "Extracted",
     "ExtractedItemOutput",
     "ExtractionOutput",
+    "Judgement",
     "LlmDecisions",
     "MatchOutput",
-    "Says",
     "SupersessionOutput",
     "Totals",
     "data_block",
     "decided_at",
     "extraction_request",
     "extractor_name",
+    "numbers",
     "proposed_items",
     "supersession_request",
+    "values_differ",
     "verdict_of",
 ]
 
-PROMPT_VERSION: Final = "decisions-v1"
+PROMPT_VERSION: Final = "decisions-v2"
 """The version of the extraction and supersession prompts and of the checks of their output.
 Change it with any of them: stored items name it, and a new version extracts every record again."""
 
@@ -106,7 +110,7 @@ _ANCHOR_WRAP: Final = "[]()<>{}#\"'` "
 
 def extractor_name(model: str) -> str:
     """The extractor stored with each item: ``{model}@{PROMPT_VERSION}``, e.g.
-    ``qwen3:4b-instruct@decisions-v1``, in the characters an extractor name allows."""
+    ``qwen3:4b-instruct@decisions-v2``, in the characters an extractor name allows."""
     cleaned = _EXTRACTOR_CHARS.sub("-", model).lstrip("._:@/+=-") or "model"
     suffix = f"@{PROMPT_VERSION}"
     return cleaned[: 200 - len(suffix)] + suffix
@@ -145,19 +149,20 @@ class ExtractionOutput(BaseModel):
     items: list[ExtractedItemOutput]
 
 
-Says = Literal["same", "changed", "settled", "unrelated"]
-"""How an existing item stands to the new one: says the same (a duplicate); a decision the new
-one changes (replaces); a question the new one settles (answers); or not about the same matter
-after all."""
+Judgement = Literal["same", "replaced", "answered", "unrelated"]
+"""What an existing item is to the new one: the same (the new one is a duplicate); a decision the
+new one replaces; an open question the new one answers; or not about the same matter after all.
+Each word says what becomes of the existing item, so a question has a word of its own: asked what
+an open question "says", a small model called the questions a decision answers unrelated."""
 
 
 class MatchOutput(BaseModel):
     item: int
     """The number the existing item was shown under."""
     its_value: str
-    """What the existing item says on the matter: written before the judgement, so that the
-    judgement compares two values the model has spelled out."""
-    says: Says
+    """What the existing item says on the matter, or what it asks: written before the judgement,
+    so that the judgement compares two values the model has spelled out."""
+    verdict: Judgement
 
 
 class SupersessionOutput(BaseModel):
@@ -378,22 +383,24 @@ Work in two steps:
 1. "about": the matter the new item decides or asks about, and its value: the subject, the \
 setting, date or option at stake, and what the new item says of it (for example "font size of \
 the invoice PDF: 11 pt", or "invoice PDF font size: which one?" for a question).
-2. "matches": each existing item about that very matter: the same setting, date, option or \
-question of the same subject. Sharing a product, a version, a project, a meeting or people is \
-not enough, and two different questions about one project do not match. Only items said no later \
-than the new item can match. Most new items match nothing; then the list is empty. For each \
-match give its number ("item"), what it says of the matter ("its_value"), and then, comparing \
-its value with the new item's, what it "says":
+2. "matches": each existing item about that very matter: a decision on the same setting, \
+date or option of the same subject, or a question that asks about it. Sharing a product, a \
+version, a project, a meeting or people is not enough, and two different questions about one \
+project do not match. Only items said no later than the new item can match. Most new items match \
+nothing; then the list is empty. For each match give its number ("item"), what it says of the \
+matter or, for a question, what it asks ("its_value"), and then, comparing it with the new item, \
+your "verdict" on the existing item:
 - "same": the same decision with the same value, or the same question, maybe in other words, in \
 another language, or as a summary, reminder, announcement or confirmation. A new item that \
 repeats a decision and also names the value it replaced still says the same.
-- "changed": an earlier decision on that matter with another value, date or approach, which the \
+- "replaced": an earlier decision on that matter with another value, date or approach, which the \
 new decision changes or reverses, even when it does not mention it.
-- "settled": an open question that the new decision answers.
+- "answered": an open question that the new decision answers: the decision settles what the \
+question asks, whatever the answer is, also in other words or in another language.
 - "unrelated": on a second look it is not about the same matter.
 
 Reply with one JSON object:
-{{"about": ..., "matches": [{{"item": ..., "its_value": ..., "says": ...}}]}}."""
+{{"about": ..., "matches": [{{"item": ..., "its_value": ..., "verdict": ...}}]}}."""
 
 _SUPERSESSION_TASK: Final = "Classify the new item against the existing items."
 
@@ -436,6 +443,32 @@ def supersession_request(
     )
 
 
+_NUMBER: Final = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def numbers(text: str) -> frozenset[str]:
+    """The numbers ``text`` names, as values: ``2.3.0`` and ``v2.3`` are ``2.3``, ``11,5`` is
+    ``11.5``, ``06`` is ``6``; zero, and the zeros that end a version, are left out."""
+    found: set[str] = set()
+    for match in _NUMBER.finditer(text):
+        parts = [part.lstrip("0") or "0" for part in re.split(r"[.,]", match.group())]
+        while len(parts) > 1 and parts[-1] == "0":
+            parts.pop()
+        value = ".".join(parts)
+        if value != "0":
+            found.add(value)
+    return frozenset(found)
+
+
+def values_differ(new: str, old: str) -> bool:
+    """Whether two statements cannot say the same: both name numbers (a date, a limit, a
+    version), and they share none. A small model calls a statement the same as another about the
+    same subject with other values; the same decision said again names at least one of its
+    values again, or none."""
+    ours, theirs = numbers(new), numbers(old)
+    return bool(ours) and bool(theirs) and not ours & theirs
+
+
 def _relation(new: ItemKind, old: ItemKind) -> Relation | None:
     """How a new item may supersede an old one of these kinds: a decision answers an open
     question and replaces a decision; an open question supersedes nothing (one asked again with a
@@ -450,21 +483,30 @@ def verdict_of(
 ) -> Verdict:
     """``output`` as a verdict on ``item`` against ``candidates`` (numbered from 1).
 
-    A match with an unknown number, said after the item, or ``unrelated`` is ignored. A match
-    that says the ``same`` and is of the item's kind makes it a duplicate; a decision that says
-    the same as an open question settles it. Otherwise each match ``changed`` or ``settled`` is a
-    link whose relation follows the kinds (:func:`_relation`); none is new.
+    A match with an unknown number, said after the item, or ``unrelated`` is ignored, and so
+    is a ``same`` of the item's kind whose statement names other numbers than the item's
+    (:func:`values_differ`). A match that is the ``same`` and of the item's kind makes it a
+    duplicate, of the latest such match; a decision that is the same as an open question answers
+    it. Otherwise each match ``replaced`` or ``answered`` is a link whose relation follows the
+    kinds (:func:`_relation`); none is new.
     """
-    matches: dict[int, Says] = {}
+    matches: dict[int, Judgement] = {}
     for match in output.matches:
         n = match.item
-        if match.says == "unrelated" or n in matches or not 1 <= n <= len(candidates):
+        if match.verdict == "unrelated" or n in matches or not 1 <= n <= len(candidates):
             continue
-        if candidates[n - 1].decided_at <= item.decided_at:
-            matches[n] = match.says
-    for n, says in matches.items():
-        if says == "same" and candidates[n - 1].kind == item.kind:
-            return Verdict(duplicate_of=candidates[n - 1].id)
+        candidate = candidates[n - 1]
+        if candidate.decided_at > item.decided_at:
+            continue
+        same_value = not values_differ(item.statement, candidate.statement)
+        if match.verdict == "same" and candidate.kind == item.kind and not same_value:
+            continue
+        matches[n] = match.verdict
+    same = [n for n, verdict in matches.items() if verdict == "same"]
+    same = [n for n in same if candidates[n - 1].kind == item.kind]
+    if same:
+        latest = max(same, key=lambda n: candidates[n - 1].decided_at)
+        return Verdict(duplicate_of=candidates[latest - 1].id)
     links: list[Supersedes] = []
     for n in matches:
         candidate = candidates[n - 1]

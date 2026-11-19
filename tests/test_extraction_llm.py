@@ -7,6 +7,7 @@ Every name, id and text here is synthetic.
 import io
 import json
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -26,8 +27,10 @@ from memini.extraction.llm import (
     data_block,
     extraction_request,
     extractor_name,
+    numbers,
     proposed_items,
     supersession_request,
+    values_differ,
     verdict_of,
 )
 from memini.jobs import EXTRACT_KIND
@@ -260,44 +263,85 @@ CANDIDATES = [
 ]
 
 
-def verdict(*matches: tuple[int, str], item: ProposedItem = NEW) -> tuple[Any, ...]:
+def verdict(
+    *matches: tuple[int, str],
+    item: ProposedItem = NEW,
+    candidates: Sequence[Candidate] = CANDIDATES,
+) -> tuple[Any, ...]:
     result = verdict_of(
         SupersessionOutput.model_validate(
             {
                 "about": "picking start",
-                "matches": [{"item": n, "its_value": "…", "says": says} for n, says in matches],
+                "matches": [{"item": n, "its_value": "…", "verdict": v} for n, v in matches],
             }
         ),
         item,
-        CANDIDATES,
+        candidates,
     )
     return result.duplicate_of, tuple((s.candidate_id, s.relation) for s in result.supersedes)
 
 
-def test_a_changed_decision_is_replaced_and_a_settled_question_answered() -> None:
-    assert verdict((1, "changed"), (2, "settled")) == (
+def test_a_replaced_decision_is_replaced_and_an_answered_question_answered() -> None:
+    assert verdict((1, "replaced"), (2, "answered")) == (
         None,
         (("monday", "replaces"), ("when", "answers")),
     )
 
 
-def test_a_match_that_says_the_same_is_a_duplicate() -> None:
+def test_a_match_that_is_the_same_is_a_duplicate() -> None:
     assert verdict((1, "same")) == ("monday", ())
-    assert verdict((2, "changed"), (1, "same")) == ("monday", ())
+    assert verdict((2, "replaced"), (1, "same")) == ("monday", ())
+    assert verdict((4, "same"), (1, "same")) == ("crates", ())  # said at once: the first named
 
 
 def test_the_relation_follows_the_kinds() -> None:
-    assert verdict((2, "same")) == (None, (("when", "answers"),))  # a decision settles it
-    assert verdict((1, "settled")) == (None, (("monday", "replaces"),))
+    assert verdict((2, "same")) == (None, (("when", "answers"),))  # a decision answers it
+    assert verdict((1, "answered")) == (None, (("monday", "replaces"),))
     question = ProposedItem("open_question", "When does picking start?", T0, ("m1",))
     assert verdict((2, "same"), item=question) == ("when", ())
-    assert verdict((1, "changed"), (2, "changed"), item=question) == (None, ())
+    assert verdict((1, "replaced"), (2, "replaced"), item=question) == (None, ())
 
 
 def test_unknown_later_and_unrelated_matches_are_ignored() -> None:
-    assert verdict((0, "changed"), (9, "changed"), (3, "changed"), (4, "unrelated")) == (None, ())
-    assert verdict((1, "unrelated"), (1, "changed")) == (None, (("monday", "replaces"),))
+    assert verdict((0, "replaced"), (9, "replaced"), (3, "replaced"), (4, "unrelated")) == (
+        None,
+        (),
+    )
+    assert verdict((1, "unrelated"), (1, "replaced")) == (None, (("monday", "replaces"),))
     assert verdict() == (None, ())
+
+
+DATED = [
+    Candidate("inspection", "decision", "The yard inspection is on Thursday 1 October.", EARLIER),
+    Candidate("v1", "decision", "Release 2.3.0 ships on Tuesday 6 October.", EARLIER),
+    Candidate("v2", "decision", "Release v2.3 ships on 6 October.", EARLIER + timedelta(hours=1)),
+    Candidate("plain", "decision", "The release ships on a Tuesday.", EARLIER),
+]
+
+
+def test_a_same_that_names_other_numbers_is_no_duplicate() -> None:
+    new = ProposedItem("decision", "Release 2.3 ships on 06 October 2026.", T0, ("m1",))
+    # Other numbers only: not the same decision, whatever the model says; and not replaced.
+    assert verdict((1, "same"), item=new, candidates=DATED) == (None, ())
+    # A shared value is enough, and a statement without numbers is not checked.
+    assert verdict((1, "same"), (2, "same"), item=new, candidates=DATED) == ("v1", ())
+    assert verdict((4, "same"), item=new, candidates=DATED) == ("plain", ())
+    # Of several duplicates, the latest said.
+    assert verdict((2, "same"), (3, "same"), item=new, candidates=DATED) == ("v2", ())
+
+
+def test_numbers_are_compared_as_values() -> None:
+    assert numbers("Beacon v2.3.0, rc4, RX-40 on 06 Oct; 11,5 V; 0 errors") == {
+        "2.3",
+        "4",
+        "40",
+        "6",
+        "11.5",
+    }
+    assert numbers("No numbers here.") == frozenset()
+    assert values_differ("Hold it for 2 hours.", "Hold it for 30 minutes.")
+    assert not values_differ("Hold it for 2 hours, not 30 minutes.", "Hold it for 30 minutes.")
+    assert not values_differ("Hold it for two hours.", "Hold it for 30 minutes.")
 
 
 # --- The eval's variant --------------------------------------------------------------------------

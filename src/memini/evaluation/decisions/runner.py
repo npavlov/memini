@@ -10,10 +10,11 @@ classifier, :mod:`memini.extraction`) and, set by set:
 2. Replays the journal the pipeline would write: each proposed item, false ones included, is
    classified against the items active at that moment in the set's workspace, in the order they
    were proposed. ``new`` adds it, ``duplicate`` adds nothing, ``replaces`` and ``answers`` add it
-   and take the items it names out of the active ones. Every active item is a candidate: the
-   sets are small, and the top-k search the pipeline will put in front of the classifier is not
-   measured here. A verdict that names something that was no candidate is invalid: it counts as
-   wrong, and the item is added as new.
+   and take the items it names out of the active ones. Every active item is a candidate (the
+   sets are small), unless the run has a :class:`CandidateSelector`: then the items already
+   taken from the same record, and those the selector picks from the others, as the ``extract``
+   job finds them (:mod:`memini.evaluation.decisions.candidates`). A verdict that names something
+   that was no candidate is invalid: it counts as wrong, and the item is added as new.
 3. Scores (:mod:`memini.evaluation.decisions.report`): precision and recall of extraction, and
    the supersession cases. A case is judged on the verdict of the proposal that first found its
    item (or, for a restatement, the restatement), read back to labels through the journal: a
@@ -26,7 +27,7 @@ No database and no model of its own: what the pipeline needs, it brings.
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from memini.evaluation.decisions.dataset import DecisionSet
 from memini.evaluation.decisions.matching import (
@@ -57,6 +58,7 @@ from memini.knowledge import ITEM_KINDS, Relation
 __all__ = [
     "CASE_RELATIONS",
     "MATCHING",
+    "CandidateSelector",
     "DecisionEvalError",
     "LabelVerdict",
     "Pipeline",
@@ -86,6 +88,20 @@ class Pipeline:
     summary: Callable[[], str] | None = None
     """What the run cost and what it refused (calls, tokens, rejected items), for the caller to
     print after the run; not part of the report."""
+
+
+class CandidateSelector(Protocol):
+    """Picks the candidates of a supersession check from the active items of other records."""
+
+    def describe(self) -> dict[str, Any]:
+        """What the report's setup records as ``candidates``."""
+        ...
+
+    async def select(
+        self, item: ProposedItem, record: RecordInput, others: Sequence[Candidate]
+    ) -> list[Candidate]:
+        """The candidates ``item`` of ``record`` is shown from ``others``, in the order shown."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,7 +227,32 @@ async def _classify(
         ) from error
 
 
-async def _run_set(data: DecisionSet, pipeline: Pipeline, threshold: float) -> _SetRun:
+async def _candidates(
+    selector: CandidateSelector | None,
+    item: ProposedItem,
+    record: RecordInput,
+    active: Sequence[_Entry],
+) -> list[_Entry]:
+    """The entries shown with ``item``: every active one without a selector; else those of its
+    own record (the job's pending items) and the selector's pick of the others."""
+    if selector is None:
+        return list(active)
+    pending = [entry for entry in active if entry.record == record.ref]
+    others = {entry.id: entry for entry in active if entry.record != record.ref}
+    try:
+        chosen = await selector.select(item, record, [e.candidate() for e in others.values()])
+    except DecisionEvalError:
+        raise
+    except Exception as error:
+        raise DecisionEvalError(
+            f"the candidates of an item of {record.ref} failed: {type(error).__name__}: {error}"
+        ) from error
+    return [*pending, *(others[each.id] for each in chosen)]
+
+
+async def _run_set(
+    data: DecisionSet, pipeline: Pipeline, threshold: float, selector: CandidateSelector | None
+) -> _SetRun:
     run = _SetRun(data)
     entries: list[_Entry] = []
     for record in data.records:
@@ -233,17 +274,18 @@ async def _run_set(data: DecisionSet, pipeline: Pipeline, threshold: float) -> _
             elif target is not None and target.kind == "restatement":
                 run.restated.setdefault((target.label, record.ref), proposal)
 
-            active = {entry.id: entry for entry in entries if entry.active}
+            active = [entry for entry in entries if entry.active]
+            shown = {e.id: e for e in await _candidates(selector, item, record, active)}
             verdict = await _classify(
-                pipeline, item, record, [entry.candidate() for entry in active.values()]
+                pipeline, item, record, [entry.candidate() for entry in shown.values()]
             )
-            proposal.shown = frozenset(e.label for e in active.values() if e.label is not None)
-            proposal.verdict, proposal.invalid = _read_back(verdict, active)
+            proposal.shown = frozenset(e.label for e in shown.values() if e.label is not None)
+            proposal.verdict, proposal.invalid = _read_back(verdict, shown)
             if proposal.invalid is None:
                 if verdict.duplicate_of is not None:
                     continue
                 for link in verdict.supersedes:
-                    active[link.candidate_id].active = False
+                    shown[link.candidate_id].active = False
             label = None if target is None or target.kind == "trap" else target.label
             entries.append(_Entry(f"c{len(entries) + 1}", label, record.ref, item))
     return run
@@ -397,8 +439,13 @@ def _supersession(
 
 
 def _setup(
-    sets: Sequence[DecisionSet], extractor: str, variant: str, threshold: float
+    sets: Sequence[DecisionSet],
+    extractor: str,
+    variant: str,
+    threshold: float,
+    selector: CandidateSelector | None,
 ) -> dict[str, Any]:
+    candidates = {} if selector is None else {"candidates": selector.describe()}
     return {
         "sets": [
             {
@@ -417,6 +464,7 @@ def _setup(
         "extractor": extractor,
         "variant": variant,
         "matching": {"similarity": MATCHING, "threshold": threshold},
+        **candidates,
     }
 
 
@@ -427,16 +475,18 @@ async def run_decision_eval(
     variant: str,
     threshold: float = SIMILARITY_THRESHOLD,
     say: Callable[[str], None] | None = None,
+    candidates: CandidateSelector | None = None,
 ) -> DecisionReport:
     """Run ``pipeline`` over ``sets`` and score it (see the module). ``variant`` names it in
-    the report, with the extractor's own name.
+    the report, with the extractor's own name; ``candidates`` picks what each check is shown
+    (every active item when ``None``).
 
     Raises:
-        DecisionEvalError: the extractor or the classifier raised.
+        DecisionEvalError: the extractor, the classifier or the candidate selector raised.
     """
     runs: list[_SetRun] = []
     for data in sets:
-        run = await _run_set(data, pipeline, threshold)
+        run = await _run_set(data, pipeline, threshold, candidates)
         if say is not None:
             say(
                 f"set {data.name}: {len(data.records)} records, {len(run.proposals)} items proposed"
@@ -449,7 +499,7 @@ async def run_decision_eval(
     if invalid:
         notes.append(f"{invalid} verdicts named items that were no candidates; each counts wrong")
     return DecisionReport(
-        setup=_setup(sets, pipeline.extractor.name, variant, threshold),
+        setup=_setup(sets, pipeline.extractor.name, variant, threshold, candidates),
         extraction=extraction,
         supersession=supersession,
         items=items,

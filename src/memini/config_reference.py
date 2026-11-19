@@ -314,8 +314,11 @@ NOTES: Final[Mapping[str, str]] = {
     "llm_cloud_structured_output": "Only with `llm_cloud_url`. The reply is validated against"
     " the schema in every case.",
     "llm_timeout": "Only with `llm_local_url` or `llm_cloud_url`.",
-    "extraction_candidates": "Found by the words of the statements; items whose evidence the"
-    " provider may not read are left out. A larger number costs more input tokens per check.",
+    "extraction_candidates": "Items whose evidence the provider may not read are left out. A"
+    " larger number costs more input tokens per check.",
+    "extraction_candidate_retriever": "`hybrid` needs an embedding provider and is `lexical`"
+    " without one; it embeds each statement once, with the configured model, and keeps the"
+    " vector with its item.",
 }
 """Sentences after a setting's description: what it is for, or a rule across settings."""
 

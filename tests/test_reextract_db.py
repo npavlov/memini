@@ -97,7 +97,7 @@ class FakeLlm:
         shown = {line["statement"]: line["n"] for line in lines[1:]}
         verdict = self.verdicts.get(lines[0]["statement"], {})
         matches = [
-            {"item": shown[statement], "its_value": "-", "says": says}
+            {"item": shown[statement], "its_value": "-", "verdict": says}
             for statement, says in verdict.items()
             if statement in shown
         ]
@@ -368,7 +368,7 @@ async def test_after_a_version_bump_each_record_is_read_once_and_manual_items_st
     )
     before = await items(db)
 
-    monkeypatch.setattr("memini.extraction.llm.PROMPT_VERSION", "decisions-v2")
+    monkeypatch.setattr("memini.extraction.llm.PROMPT_VERSION", "decisions-next")
     v2 = extractor_name(LOCAL_MODEL)
     assert v2 != v1
     second_reading = FakeLlm(
@@ -382,7 +382,7 @@ async def test_after_a_version_bump_each_record_is_read_once_and_manual_items_st
         },
         verdicts={
             "Picking starts on Monday.": {"Picking starts on Monday.": "same"},
-            "The van leaves at seven.": {"The van leaves at six.": "changed"},
+            "The van leaves at seven.": {"The van leaves at six.": "replaced"},
             "Harvest ends on Friday.": {"Harvest ends on Friday.": "same"},
         },
     )
@@ -571,8 +571,8 @@ async def test_a_new_reading_brings_back_nothing_replaced_answered_or_retracted(
         },
         verdicts={
             "Picking starts on Wednesday; crates are green.": {
-                "Picking starts on Monday.": "changed",
-                "Which colour are the crates?": "settled",
+                "Picking starts on Monday.": "replaced",
+                "Which colour are the crates?": "answered",
             }
         },
     )
@@ -588,7 +588,7 @@ async def test_a_new_reading_brings_back_nothing_replaced_answered_or_retracted(
         "Picking starts on Wednesday; crates are green.": "active",
     }
 
-    monkeypatch.setattr("memini.extraction.llm.PROMPT_VERSION", "decisions-v2")
+    monkeypatch.setattr("memini.extraction.llm.PROMPT_VERSION", "decisions-next")
     second_reading = FakeLlm(
         readings={
             "Shall we pick on Monday? Which crates?": [
@@ -606,7 +606,7 @@ async def test_a_new_reading_brings_back_nothing_replaced_answered_or_retracted(
             "Which colour are the crates?": {"Which colour are the crates?": "same"},
             "Bins go to the barn.": {"Bins go to the barn.": "same"},
             # A link to an item that is no longer active is dropped; the item is new.
-            "Bins go to the shed.": {"Bins go to the barn.": "changed"},
+            "Bins go to the shed.": {"Bins go to the barn.": "replaced"},
             "Picking starts on Wednesday; crates are green.": {
                 "Picking starts on Wednesday; crates are green.": "same"
             },

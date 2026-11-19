@@ -170,7 +170,10 @@ be deleted. Extraction is idempotent through one row per record, content hash an
 and prompt version), written with the items found, also when none were: the same content read
 again by the same extractor writes nothing. Tables:
 `knowledge_item`, `knowledge_evidence`, `knowledge_participant`, `knowledge_supersession`,
-`knowledge_extraction`; library: `memini.knowledge`.
+`knowledge_extraction`; library: `memini.knowledge`. The vectors of the statements
+(`knowledge_item_vector`, the dense leg of the supersession candidates, section 5) are derived and
+outside the journal: a row per item and embedding model, which goes with its item and is replaced
+when the model changes; the journal's triggers do not guard it.
 
 ## 4. Intake
 
@@ -590,7 +593,7 @@ retention when that lands.
 | Lexical | Postgres full-text search (`tsvector`) with stemming for English and Russian, code identifiers cut into words. Trigram index for exact and regex code search. |
 | Rerank | Local cross-encoder, on in the image: Qwen3-Reranker 0.6B run in the process reorders the best hits of a ranked search (section 9, Reranker). |
 | Decision extraction | One LLM call per new or changed thread or meeting, structured output. Skipped when `llm_policy` is `none`. |
-| Supersession | For each extracted item: fetch the top-k similar active items of the workspace, one LLM call classifies it as new, duplicate, or replacing or answering specific items. |
+| Supersession | For each extracted item: fetch the top-k similar active items of the workspace, by the words of the statements and by their vectors fused, one LLM call classifies it as new, duplicate, or replacing or answering specific items. |
 
 Extraction is idempotent per record content hash and extractor version. A new extractor version can re-run
 over stored records (`memini extract`, Re-extraction below). The user can add, supersede or retract
@@ -606,7 +609,7 @@ own. Git sources write code and documents, which are not extracted. The job read
 is when it runs. A record no LLM may read is skipped and counted, not failed: the gate refuses
 with `policy_none` (the workspace or the source has `llm_policy` `none`) or `no_provider`, and
 nothing is sent. The extractor is the granted model and the prompt version
-(`qwen3:4b-instruct@decisions-v1`); if it has read this content before, nothing is called, so a
+(`qwen3:4b-instruct@decisions-v2`); if it has read this content before, nothing is called, so a
 rerun creates nothing. One call extracts. Record text is data (principle 11): the system message
 holds every instruction and no content; the user message names the task, then the record between
 two marker lines, `<<<BEGIN DATA n>>>` and `<<<END DATA n>>>`, where `n` is taken from the
@@ -625,25 +628,45 @@ items already taken from the record and the record's items that are no longer ac
 (Re-extraction, below), in one call that names the record's source and the
 sources of every candidate, so the gate holds it to the strictest policy; an item whose evidence
 comes from a source the granted provider may not read is no candidate. The model states the
-matter and the new value, then, for each existing item about the same matter, its value and
-whether it says the same, is a decision the new one changes, or a question it settles. A same
-item of the same kind makes a duplicate, which is not stored; a decision replaces a decision and
+matter and the new value, then, for each existing item about the same matter, its value (what a
+question asks) and its verdict on that item: the same, a decision the new one replaced, or a
+question it answered. Each verdict names what becomes of the existing item: asked what a question
+"says", the small model called every question a decision answers unrelated (Decision eval,
+section 10). A same item of the same kind makes a duplicate, which is not stored, of the latest
+such item; but not when both statements name numbers and share none (a date, a limit, a version:
+the same decision said again names one of its values again, or none, and the small model calls
+the same an item about the same subject with another value). A decision replaces a decision and
 answers an open question; an open question supersedes nothing (one asked again with a change is a
 new question); a link to an item said later, to a manual item, or to one another new item of the
 record already links, is dropped. The items, their links and the extraction row are stored in one
 transaction (`record_extraction`); if another job retired a candidate meanwhile, the check runs
 again on fresh candidates, three times at most. The run report counts records extracted,
 unchanged, skipped and gone; items proposed, rejected, duplicate and stored; links made and
-dropped; and the LLM tokens per model. Candidates are found lexically: knowledge items are not in
-the search index, and a check must not depend on an embedding provider. A statement is parsed as
-the lexical leg parses a chunk (`russian` configuration, identifiers cut into words) and ranked by
-`ts_rank` against any word of the new statement; items with evidence in the same record come
-first (an earlier extraction of a changed record), then by rank, then the latest. A workspace with
-at most k eligible items shows them all, so a duplicate in another language is found there; in a
-larger one it is found only when the two statements share a word. Embedding statements is later
-work. Some endpoints write the fields of a JSON schema in the order of their names, whatever the
-schema's order (Ollama does): the names follow the order of the reasoning (`anchors`, `basis`,
-`statement`; `about`, `matches`; `item`, `its_value`, `says`). Ollama takes `json_schema`.
+dropped; statements embedded; and the LLM tokens per model.
+
+**Supersession candidates** (decided 2026-11-19). Knowledge items are not in the search index;
+the candidates are found by the words of the statements and, when an embedding provider is
+configured and `extraction_candidate_retriever` is `hybrid` (the default), by their vectors too
+(`memini.extraction.candidates`). The lexical leg parses a statement as search's lexical leg
+parses a chunk (`russian` configuration, identifiers cut into words) and ranks it by `ts_rank`
+against any word of the new statement; the dense leg ranks by the cosine similarity of the
+statements' vectors, both embedded as documents with the configured model. Items with evidence in
+the same record come first (an earlier extraction of a changed record), then the reciprocal rank
+fusion of the two legs with search's k (1) and weights (dense 3, lexical 1), then the latest.
+Without vectors that is the lexical order: a workspace with at most k eligible items shows them
+all, so a duplicate in another language is found there, and in a larger one only when the two
+statements share a word, a name or a number; the dense leg finds it without one. The vectors are
+kept per item and embedding model (`knowledge_item_vector`, migration 0017) and reused by the hash
+of the statement (principle 6): before its checks, a job embeds the statements of its new items in
+one batch, and the active items of the workspace that have no vector under the current model (an
+item recorded by hand, or before a provider was configured), and drops the vectors of other
+models there; it writes the vectors of the items it stores with them. An embedding provider that
+fails fails the job, which is retried, as an LLM that fails does: a check on fewer candidates
+could store a duplicate for good. There is no vector index: a check reads the active items of one
+workspace. Some endpoints write the fields of a JSON schema in the order of their names, whatever
+the schema's order (Ollama does): the names follow the order of the reasoning (`anchors`,
+`basis`, `statement`; `about`, `matches`; `item`, `its_value`, `verdict`). Ollama takes
+`json_schema`.
 
 **Re-extraction** (decided 2026-11-19). `memini extract <workspace> [--source NAME ...] [--since
 TIME] [--dry-run]`, a client of `POST /v1/workspaces/{workspace}/extract` (scope `admin`; 202, 200
@@ -1805,8 +1828,13 @@ words, statement likeness) is the committed floor, `eval/decisions/baseline-keyw
 `llm_policy` from the database, so the variant creates a scratch database as the retrieval eval
 does, with a workspace per set and a push source per source of its records, all `local`, and
 drops it at the end; a reply that does not match the schema counts as nothing extracted, or as
-new, and is reported with the calls and tokens. Not scored yet: participants, `decided_at`, and
-the top-k search in front of the classifier (every active item of the set is a candidate).
+new, and is reported with the calls and tokens. Every active item of the set is a candidate by
+default; `--candidates lexical`, `dense` or `hybrid` shows each check what the `extract` job would
+(section 5, Supersession candidates): the items already taken from the record and the top
+`--candidate-limit` (`extraction_candidates`) of the others, ranked by the job's own function, the
+lexical leg in a scratch database and the dense one with the embedding provider of the settings.
+A case then counts as reached only when the items it needs were shown. Not scored yet:
+participants and `decided_at`.
 
 Measured on 2026-11-18 with `qwen3:4b-instruct` (Q4_K_M, Ollama 0.34, `json_schema`, temperature
 0), prompt `decisions-v1`, against the `keyword` floor:
@@ -1841,6 +1869,52 @@ version still supports an old format). With examples that resemble no case it fe
 0.75 (three runs alike): a small model leans on its examples, and these sets are small. The fifth
 said that a reported decision is the team's on its own work, and that a server set up, an event
 or date others set and an outsider's wish are status: the `decisions-v1` measured above.
+
+**Supersession, second round** (measured 2026-11-19, `qwen3:4b-instruct` as above, prompt
+`decisions-v2`, which changes only the check). Two error classes of `decisions-v1` were fixed in
+the check, without an example or a word of the sets: `answers` (the model listed the open
+question a decision settles, and then said it was unrelated: asked what a question "says", it
+found nothing to compare) gets a verdict word of its own, each word saying what becomes of the
+existing item (`same`, `replaced`, `answered`); and a `same` is no duplicate when both statements
+name numbers and share none (the release date, 6 October, said to be the same as the inspection
+on 1 October). The candidates were measured with `--candidates`, on one extraction read back for
+every row (that of a `decisions-v1` run: precision 0.75, recall 1.00), so that only the check and
+the candidates differ; correct of 24 cases, then the cases reached (the items a case needs were
+shown) and by expected relation (new 13, duplicate 6, replaces 3, answers 2):
+
+| Check | Candidates | Correct | Reached | new | duplicate | replaces | answers |
+|---|---|---|---|---|---|---|---|
+| `decisions-v1` | all active | 19 (0.79) | 22 | 12 | 4 | 3 | 0 |
+| `decisions-v1` | lexical, top 4 | 18 (0.75) | 21 | 12 | 4 | 2 | 0 |
+| `decisions-v1` | hybrid, top 4 | 20 (0.83) | 23 | 12 | 5 | 3 | 0 |
+| `decisions-v2` | all active | 21 (0.88) | 23 | 12 | 4 | 3 | 2 |
+| `decisions-v2` | lexical, top 4 | 22 (0.92) | 22 | 13 | 5 | 2 | 2 |
+| `decisions-v2` | hybrid, top 4 | 23 (0.96) | 23 | 13 | 5 | 3 | 2 |
+| `decisions-v2` | lexical, top 8 | 23 (0.96) | 23 | 13 | 5 | 3 | 2 |
+| `decisions-v2` | hybrid, top 8 (the default) | 23 (0.96) | 23 | 13 | 5 | 3 | 2 |
+| `decisions-v2` without the value check | hybrid, top 8 | 22 (0.92) | 23 | 12 | 5 | 3 | 2 |
+
+The workspaces of the sets hold 8 to 13 active items when their last records are checked, so a
+top 8 shows nearly all of them; at 4, the lexical candidates miss the replacement of a Russian
+decision by an English statement (logs kept 30 days, not 90: no word in common), which the dense
+leg finds. The check still moves by a case or two from run to run on the same items: the release
+date was called the same as the false inspection item in one run (refused by the value check, so
+it is new, as labelled) and to replace it in another; a restatement that names the old value too
+was a duplicate in one and replaced its item in the other. The value check refused one or two
+`same` verdicts a run: the release date's with the inspection, and that of a status item (a pull
+request approved) with the decision it carries out, which `decisions-v1` hid as a duplicate and
+which now stays as the false item it is. The row without it lost a case by another verdict (the
+release date replacing the inspection), so its effect shows in the verdicts it refuses more than
+in that row. At the top 8 the lexical and the dense legs show the same items on these sets; at the
+top 4 only the dense leg finds the case across languages, so hybrid is the default: it costs one
+embedding batch per record (the new statements and the items without a vector) and none per check.
+
+On fresh extractions, the pipeline as the job runs it (hybrid, top 8): supersession accuracy
+0.96 (23 of 24, each case extraction reached right) in both runs, precision 0.75 and recall
+1.00 as with `decisions-v1`, 71 calls, about 88k input and 8k output tokens; the `comms` set rises
+from 0.58 to 0.92 and `answers` from 0 of 2 to 2 of 2, so no supersession group is below the
+`keyword` floor any more. The case left is a restatement in #general that extraction does not
+find. Still no LLM baseline is committed (above).
 
 **Performance** (decided 2026-11-19; memini-6jy). `memini bench` is the benchmark, one operator
 command that builds a scratch database as the eval does: it syncs a repository (a path, or an
@@ -1920,7 +1994,9 @@ choice. The smallest supported machine is 4 cores, 8 GB and 20 GB of SSD with Ol
    reaches precision 0.75, recall 1.00 and supersession accuracy 0.75 to 0.79 over three runs,
    against 0.64, 0.89 and 0.54 of the `keyword` stub, at about 89k input and 9k output tokens for
    the 41 threads and meetings (71 calls); it misses both `answers` links, and its numbers moved by
-   up to 0.2 with the wording of the prompt's examples. Not settled: one model is no comparison,
+   up to 0.2 with the wording of the prompt's examples. With the check of `decisions-v2` and
+   hybrid candidates (2026-11-19) supersession reached 0.96 (23 of 24) and both `answers` links,
+   extraction unchanged. Not settled: one model is no comparison,
    and the sets hold 18 labelled items. Measure a smaller model (`qwen3:1.7b`) and a larger one
    with the same prompt, and grow the sets, before choosing.
 6. Settled on 2026-11-18: the license is Apache-2.0.

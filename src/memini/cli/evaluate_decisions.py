@@ -11,6 +11,11 @@ provider from the service's settings, which every operator command loads, and a 
 on the server of ``MEMINI_DATABASE_URL`` (the role needs ``CREATEDB``) for the policies the LLM
 gate reads (:mod:`memini.evaluation.decisions.llm`).
 
+``--candidates`` shows each supersession check the top ``--candidate-limit`` active items as the
+``extract`` job ranks them (``lexical``, ``dense``, ``hybrid``) instead of every active item
+(``all``, the default): :mod:`memini.evaluation.decisions.candidates`. ``lexical`` takes a scratch
+database of its own; ``dense`` and ``hybrid`` the embedding provider of the settings.
+
 Exit codes (besides those of every command): 0 when nothing fell; 1 when the extractor or the
 classifier failed; 2 for a set or baseline file that is not valid; :data:`EXIT_REGRESSION` when
 a tracked metric fell below the baseline by more than the margin.
@@ -40,6 +45,7 @@ from memini.evaluation.decisions import (
     run_decision_eval,
     write_report,
 )
+from memini.evaluation.decisions.candidates import SELECTIONS, Selection, create_candidates
 
 __all__ = [
     "DEFAULT_BASELINE",
@@ -65,6 +71,16 @@ DESCRIPTION: Final = (
 )
 
 
+def _limit(value: str) -> int:
+    try:
+        limit = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not an integer: {value!r}") from None
+    if not 1 <= limit <= 1000:
+        raise argparse.ArgumentTypeError("a candidate limit is from 1 to 1000")
+    return limit
+
+
 def configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--set",
@@ -82,6 +98,21 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         help="what extracts and classifies: "
         + "; ".join(f"{name}: {v.description}" for name, v in sorted(EXTRACTORS.items()))
         + f" (default: {DEFAULT_EXTRACTOR})",
+    )
+    parser.add_argument(
+        "--candidates",
+        choices=SELECTIONS,
+        default="all",
+        help="what each supersession check is shown: all, every active item (default); lexical,"
+        " dense or hybrid, the top --candidate-limit items as the extract job ranks them"
+        " (dense and hybrid need an embedding provider)",
+    )
+    parser.add_argument(
+        "--candidate-limit",
+        metavar="K",
+        type=_limit,
+        help="how many active items of other records --candidates shows (default: the"
+        " extraction_candidates setting)",
     )
     parser.add_argument(
         "--baseline",
@@ -128,22 +159,36 @@ async def decisions_command(args: argparse.Namespace, settings: Settings) -> int
         except DecisionReportError as error:
             raise CommandError(f"invalid baseline: {error}", EXIT_USAGE) from None
 
+    selection: Selection = args.candidates
+    limit: int = args.candidate_limit or settings.extraction_candidates
     variant = EXTRACTORS[args.extractor]
     message(
         f"decision eval of {len(sets)} sets ({sum(len(s.records) for s in sets)} threads and"
         f" meetings, {sum(len(s.items) for s in sets)} labelled items) with {variant.name}"
     )
     try:
-        pipeline = variant.create(VariantContext(sets, settings))
+        candidates = create_candidates(selection, limit, settings)
     except DecisionEvalError as error:
         raise CommandError(str(error)) from None
     try:
-        report = await run_decision_eval(sets, pipeline, variant=variant.name, say=message)
+        pipeline = variant.create(VariantContext(sets, settings))
+    except DecisionEvalError as error:
+        if candidates is not None:
+            await candidates.aclose()
+        raise CommandError(str(error)) from None
+    try:
+        report = await run_decision_eval(
+            sets, pipeline, variant=variant.name, say=message, candidates=candidates
+        )
     except DecisionEvalError as error:
         raise CommandError(str(error)) from None
     finally:
-        if pipeline.aclose is not None:
-            await pipeline.aclose()
+        try:
+            if pipeline.aclose is not None:
+                await pipeline.aclose()
+        finally:
+            if candidates is not None:
+                await candidates.aclose()
     if pipeline.summary is not None:
         message(pipeline.summary())
 

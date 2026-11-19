@@ -169,6 +169,11 @@ against the schema in every case."""
 RerankerProvider = Literal["local", "none"]
 """Where reranking runs: ``local``, a cross-encoder in the process (ONNX); ``none``, nowhere."""
 
+CandidateRetriever = Literal["lexical", "hybrid"]
+"""How the candidates of a supersession check are found: by the words of the statements, or by
+their words and their vectors fused (``hybrid``, which needs an embedding provider and is
+``lexical`` without one)."""
+
 EMBEDDING_MAX_DIMENSION: Final = 16000
 """The largest dimension a pgvector ``vector`` column holds."""
 
@@ -782,13 +787,19 @@ class Settings(BaseModel):
     # --- Decision extraction (memini.extraction.job). Runs only with an LLM provider. -----------
     # Each new or changed thread or meeting gets an extract job: one LLM call extracts its
     # decisions and open questions, and one call per item checks it against the most similar
-    # active items of the workspace.
+    # active items of the workspace, found by the words of the statements and, with `hybrid` and
+    # an embedding provider, by their vectors too (memini.extraction.candidates).
     extraction_candidates: int = Field(
         default=8,
         ge=1,
         le=50,
         description="active items, 1 to 50, that a new item is checked against for duplicates,"
         " replacements and answers",
+    )
+    extraction_candidate_retriever: CandidateRetriever = Field(
+        default="hybrid",
+        description="lexical or hybrid: how those items are found, by the words of the statements"
+        " or by their words and their vectors",
     )
 
     # --- Observability (memini.metrics, memini.api.metrics, memini.db.statements) ----------------

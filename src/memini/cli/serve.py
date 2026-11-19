@@ -123,7 +123,9 @@ async def job_handlers(
     source whose credential needs ``credential_key`` fails its runs with a message naming it,
     while sources without a credential sync. ``extract`` (:mod:`memini.extraction.job`) is there
     when an LLM provider is configured, with an LLM gate of its own that is closed at the end;
-    ingest enqueues its jobs only then. ``git_sync`` (:mod:`memini.gitsync`) is
+    ingest enqueues its jobs only then. It finds candidates by statement vectors too when an
+    embedding provider is configured and ``extraction_candidate_retriever`` is ``hybrid``.
+    ``git_sync`` (:mod:`memini.gitsync`) is
     there when an embedding provider is configured and
     mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
     and written. Code is synced only into an index: without embeddings there is none to write, and
@@ -148,8 +150,12 @@ async def job_handlers(
         handlers[MCP_SYNC] = _mcp_handler(settings, pool, embedder)
         if extraction_enabled(settings):
             gate = create_llm_gate(settings)
+            hybrid = settings.extraction_candidate_retriever == "hybrid"
             handlers[EXTRACT_KIND] = extract_handler(
-                pool, gate, candidates=settings.extraction_candidates
+                pool,
+                gate,
+                candidates=settings.extraction_candidates,
+                embedder=embedder if hybrid else None,
             )
         else:
             log.info("decisions are not extracted: no LLM provider is configured")

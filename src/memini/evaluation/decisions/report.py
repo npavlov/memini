@@ -382,7 +382,12 @@ def compare(current: DecisionReport, baseline: DecisionReport, *, margin: float)
     """Every tracked metric of ``baseline`` that ``current`` lowers, or raises, by more than
     ``margin`` (absolute), as the JSON holds them (rounded)."""
     notes: list[str] = []
-    for key, label in (("sets", "sets"), ("extractor", "extractor"), ("matching", "matching")):
+    for key, label in (
+        ("sets", "sets"),
+        ("extractor", "extractor"),
+        ("matching", "matching"),
+        ("candidates", "candidates"),
+    ):
         if current.setup.get(key) != baseline.setup.get(key):
             notes.append(f"the baseline was measured with other {label}")
     now = _tracked(current)
@@ -435,6 +440,17 @@ def _sets_line(setup: Mapping[str, Any]) -> list[str]:
     return lines
 
 
+def _candidates_line(setup: Mapping[str, Any]) -> list[str]:
+    found = setup.get("candidates")
+    if not isinstance(found, Mapping):
+        return []
+    found = cast(Mapping[str, Any], found)
+    line = f"candidates: {found.get('retriever')}, top {found.get('limit')} of other records"
+    if found.get("embedding"):
+        line += f", {found['embedding']}"
+    return [line]
+
+
 def format_report(report: DecisionReport) -> str:
     """The setup, the three metrics, then a row per group of extraction and of supersession."""
     setup = report.setup
@@ -445,6 +461,7 @@ def format_report(report: DecisionReport) -> str:
         *_sets_line(setup),
         f"extractor {setup.get('extractor')} ({setup.get('variant')}); matching by evidence,"
         f" then statements alike at {matching.get('threshold')} ({matching.get('similarity')})",
+        *_candidates_line(setup),
         *(f"note: {note}" for note in report.notes),
         "",
         f"extraction precision     {every.precision:.2f}  ({every.found} items found,"

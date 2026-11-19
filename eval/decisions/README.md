@@ -12,6 +12,8 @@ implements: `src/memini/extraction`.
     memini eval decisions --baseline eval/decisions/baseline-keyword.json --write-baseline
     MEMINI_LLM_LOCAL_URL=http://127.0.0.1:11434/v1 MEMINI_LLM_LOCAL_MODEL=qwen3:4b-instruct \
         memini eval decisions --extractor llm --baseline eval/decisions/baseline-keyword.json
+    MEMINI_EMBEDDING_PROVIDER=openai_compatible ... memini eval decisions --extractor llm \
+        --candidates hybrid --candidate-limit 4    # the top 4 as the extract job finds them
 
 It is an operator command: it loads the service's settings as every operator command does
 (`MEMINI_DATABASE_URL` must be set), though the stubs read the sets' files only and connect to
@@ -21,6 +23,14 @@ LLM provider of the settings; it creates a scratch database on the server of
 it at the end, and prints its calls, tokens and the items it rejected. Exit codes: 0 no
 regression; 1 the extractor or the classifier failed; 2 a set or baseline file that is not valid;
 4 a tracked metric fell below the baseline by more than the margin (0.02).
+
+`--candidates` decides what each supersession check is shown. `all`, the default, is every
+active item of the set, so the classifier is measured on its own. `lexical`, `dense` and `hybrid`
+show the items already taken from the same record and the top `--candidate-limit` (default: the
+`extraction_candidates` setting, 8) of the others, ranked as the `extract` job ranks them
+(`src/memini/extraction/candidates.py`): by the words of the statements (Postgres `ts_rank`, in a
+scratch database of its own), by their vectors under the embedding provider of the settings, or
+both fused. Then a case's `reached` also says whether the retrieval found the items it needs.
 
 ## Layout
 
@@ -89,6 +99,8 @@ Write it again when the sets or the stub change on purpose.
 No baseline of the `llm` extractor is committed: at temperature 0 Ollama still words an
 extraction differently from run to run, and the supersession accuracy moves by a case or two
 with it. `qwen3:4b-instruct` with the prompt `decisions-v1` measured precision 0.75, recall 1.00
-and supersession accuracy 0.75 to 0.79 over three runs (docs/requirements.md, section 10, with
-the rounds the prompt took). Compare a run of a new model or prompt with the keyword floor, and
-read the groups that fall below it.
+and supersession accuracy 0.75 to 0.79 over three runs; `decisions-v2`, which changes the check
+only, measured supersession accuracy 0.96 in two runs with hybrid candidates, extraction
+unchanged (docs/requirements.md, section 10, with the rounds the prompt took and the candidates
+measured). Compare a run of a new model or prompt with the keyword floor, and read the
+groups that fall below it.

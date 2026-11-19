@@ -98,7 +98,7 @@ class FakeLlm:
         verdict = self.verdicts.pop(0) if self.verdicts else {}
         shown = {line["statement"]: line["n"] for line in data_lines(body)[1:]}
         matches = [
-            {"item": shown[statement], "its_value": "-", "says": says}
+            {"item": shown[statement], "its_value": "-", "verdict": says}
             for statement, says in verdict.items()
             if statement in shown
         ]
@@ -430,8 +430,8 @@ async def test_supersession_is_applied_from_the_classifiers_verdict(db: Conn, wo
         verdicts=[
             {},
             {
-                "Picking starts on Monday.": "changed",
-                "Which colour are the crates?": "settled",
+                "Picking starts on Monday.": "replaced",
+                "Which colour are the crates?": "answered",
             },
         ],
     )
@@ -466,7 +466,7 @@ async def test_manual_items_are_never_superseded_by_extraction(db: Conn, world: 
     await push(db, world, "chat", thread("t2", "Wednesday.", start=T0 + timedelta(days=1)))
     fake = FakeLlm(
         extractions=[[decided(["m1"], "Picking starts on Wednesday.")]],
-        verdicts=[{"Picking starts on Monday.": "changed"}],
+        verdicts=[{"Picking starts on Monday.": "replaced"}],
     )
     async with fake.gate() as gate:
         outcome = await extract(db, world, gate, "t2")

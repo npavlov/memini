@@ -208,7 +208,8 @@ With an LLM provider, each thread or meeting that ingest stores new or changed g
 
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
-| `extraction_candidates`<br>`MEMINI_EXTRACTION_CANDIDATES` | integer, 1 to 50 | `8` | restart | Active items, 1 to 50, that a new item is checked against for duplicates, replacements and answers. Found by the words of the statements; items whose evidence the provider may not read are left out. A larger number costs more input tokens per check. |
+| `extraction_candidates`<br>`MEMINI_EXTRACTION_CANDIDATES` | integer, 1 to 50 | `8` | restart | Active items, 1 to 50, that a new item is checked against for duplicates, replacements and answers. Items whose evidence the provider may not read are left out. A larger number costs more input tokens per check. |
+| `extraction_candidate_retriever`<br>`MEMINI_EXTRACTION_CANDIDATE_RETRIEVER` | one of `lexical`, `hybrid` | `hybrid` | restart | lexical or hybrid: how those items are found, by the words of the statements or by their words and their vectors. `hybrid` needs an embedding provider and is `lexical` without one; it embeds each statement once, with the configured model, and keeps the vector with its item. |
 
 ### Other settings
 

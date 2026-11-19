@@ -38,31 +38,43 @@ runs:
 Every count goes to the run report of the job (:func:`memini.runs.current_run`), with the LLM
 tokens, which the gate's endpoint records.
 
-**Candidates.** Knowledge items are not in the search index, and a supersession check must not
-depend on an embedding provider being configured: the similar items are found lexically, as
-search's lexical leg finds chunks. Each statement is parsed with the ``russian`` text search
-configuration after :func:`memini.search.retrieval.split_identifiers` (English and Russian
-stemming), and ranked with ``ts_rank`` against any word of the new statement. Items with
-evidence in the same record come first (an earlier extraction of a changed record), then by rank,
-then the most recent. A workspace with at most ``candidates`` eligible items shows them all, so a
-duplicate in another language is found there; in a larger one it is found only when the two
+**Candidates** (:mod:`memini.extraction.candidates`). Knowledge items are not in the search
+index. The similar items are found by the words of the statements, as search's lexical leg finds
+chunks, and, when the job has :class:`~memini.extraction.candidates.StatementVectors` (an
+embedding provider is configured and ``extraction_candidate_retriever`` is ``hybrid``), also by
+the vectors of the statements, the two rankings fused. Items with evidence in the same record come
+first (an earlier extraction of a changed record). Before the checks of a record, the statements
+of its new items are embedded in one batch (a statement stored before is reused), and so are the
+active items of the workspace that have no vector yet; the vectors of the items stored are kept
+with them. Without vectors a workspace with at most ``candidates`` eligible items shows them all,
+so a duplicate in another language is found there; in a larger one it is found only when the two
 statements share a word. Only items every source of whose evidence the granted provider may read
-are candidates: the supersession call is then granted the same provider as the extraction.
+are candidates: the supersession call is then granted the same provider as the extraction. An
+embedding provider that fails fails the job, which is retried, as an LLM that fails does: a check
+on fewer candidates could store a duplicate for good.
 """
 
 import json
 import logging
-from collections.abc import AsyncGenerator, Collection, Sequence
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 from uuid import UUID
 
-from psycopg import AsyncConnection, sql
+from psycopg import AsyncConnection
 
 from memini.auth import WriteAccess
 from memini.config import Settings
 from memini.db import Pool
+from memini.embeddings import Embedder
+from memini.embeddings.reuse import EmbeddedTexts
+from memini.extraction.candidates import (
+    DEFAULT_CANDIDATES,
+    StatementVectors,
+    StoredCandidate,
+    similar_active_items,
+)
 from memini.extraction.inputs import record_input
 from memini.extraction.llm import LlmDecisions, extractor_name
 from memini.extraction.model import (
@@ -84,8 +96,6 @@ from memini.knowledge import (
 )
 from memini.llm import Grant, LlmGate, LlmRefused, configured_providers
 from memini.runs import current_run
-from memini.search.patterns import lexical_terms
-from memini.search.retrieval import LEXICAL_CONFIG
 
 __all__ = [
     "DEFAULT_CANDIDATES",
@@ -101,8 +111,6 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-DEFAULT_CANDIDATES: Final = 8
-"""Similar active items shown to a supersession check, unless the settings say otherwise."""
 STORE_ATTEMPTS: Final = 3
 """Times step 4 and 5 run when other jobs keep retiring the candidates in between."""
 
@@ -133,6 +141,9 @@ class ExtractionOutcome:
     replaces: int = 0
     answers: int = 0
     dropped: int = 0
+    embedded: int = 0
+    """Statements that went to the embedding model for the candidates: the new items', and those
+    of active items without a vector."""
 
     def report(self) -> None:
         """Add the counts to the run being recorded, if any."""
@@ -154,6 +165,7 @@ class ExtractionOutcome:
             ("links_replaces", self.replaces),
             ("links_answers", self.answers),
             ("links_dropped", self.dropped),
+            ("statements_embedded", self.embedded),
         ):
             run.count(name, value)
         if self.extractor is not None:
@@ -237,91 +249,6 @@ async def _participants(
 # --- Candidates ----------------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
-class StoredCandidate:
-    """An active item a new one is checked against."""
-
-    candidate: Candidate
-    """``id`` is the item's id as text."""
-    manual: bool
-    source_ids: frozenset[UUID]
-    """The sources of its evidence: their content is in the supersession request."""
-
-    @property
-    def item_id(self) -> UUID:
-        return UUID(self.candidate.id)
-
-
-_SIMILAR: Final = sql.SQL("""
-SELECT i.id, i.kind, i.statement, i.decided_at, i.extractor = 'manual',
-       array(SELECT DISTINCT e.source_id FROM knowledge_evidence e WHERE e.item_id = i.id),
-       EXISTS (
-           SELECT 1 FROM knowledge_evidence e WHERE e.item_id = i.id AND e.record_id = {record}
-       ) AS same_record,
-       {rank} AS rank
-FROM knowledge_item i
-WHERE i.workspace_id = {workspace} AND i.status = 'active'
-  AND NOT EXISTS (
-      SELECT 1 FROM knowledge_evidence e LEFT JOIN source s ON s.id = e.source_id
-      WHERE e.item_id = i.id AND (s.id IS NULL OR s.llm_policy <> ALL({policies}::text[]))
-  )
-ORDER BY same_record DESC, rank DESC, i.decided_at DESC, i.id
-LIMIT {limit}
-""")
-
-
-def _rank(statement: str, params: list[Any]) -> sql.Composable:
-    """``ts_rank`` of an item's statement against any word of ``statement``, as search's lexical
-    leg ranks chunks; 0 for a statement without words."""
-    terms = lexical_terms(statement)
-    if not terms:
-        return sql.SQL("0::real")
-    config = sql.Literal(LEXICAL_CONFIG)
-    queries: list[sql.Composable] = []
-    for term in terms:
-        params.append(term)
-        queries.append(sql.SQL("plainto_tsquery({}::regconfig, lexical_text(%s))").format(config))
-    return sql.SQL("ts_rank(to_tsvector({}::regconfig, lexical_text(i.statement)), {})").format(
-        config, sql.SQL(" || ").join(queries)
-    )
-
-
-async def similar_active_items(
-    conn: AsyncConnection[Any],
-    *,
-    workspace_id: UUID,
-    record_id: str,
-    statement: str,
-    policies: Collection[str],
-    limit: int = DEFAULT_CANDIDATES,
-) -> list[StoredCandidate]:
-    """The ``limit`` active items of the workspace most like ``statement`` (see the module):
-    those with evidence in ``record_id`` first, then by lexical rank, then the latest. Only items
-    whose every evidence source has a policy in ``policies``: what the provider may read."""
-    rank_params: list[Any] = []
-    rank = _rank(statement, rank_params)
-    query = _SIMILAR.format(
-        record=sql.Placeholder(),
-        rank=rank,
-        workspace=sql.Placeholder(),
-        policies=sql.Placeholder(),
-        limit=sql.Literal(limit),
-    )
-    # In the order of the placeholders: the record, the words of the rank, the workspace.
-    params = [record_id, *rank_params, workspace_id, sorted(policies)]
-    cur = await conn.execute(query, params)
-    found: list[StoredCandidate] = []
-    for item_id, kind, text, decided, manual, sources, _, _ in await cur.fetchall():
-        found.append(
-            StoredCandidate(
-                candidate=Candidate(id=str(item_id), kind=kind, statement=text, decided_at=decided),
-                manual=bool(manual),
-                source_ids=frozenset(sources),
-            )
-        )
-    return found
-
-
 def _readable_by(grant: Grant) -> tuple[str, ...]:
     """The source policies whose content the granted provider may read: a cloud provider only
     ``cloud``; the local one ``local`` and ``cloud``."""
@@ -340,6 +267,17 @@ class _Plan:
     dropped: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class _Vectors:
+    """The statement vectors of a run: the store, and the vectors of the record's new items."""
+
+    store: StatementVectors
+    embedded: EmbeddedTexts
+
+    def of(self, statement: str) -> tuple[str, list[float]]:
+        return self.store.key, self.embedded.vector(statement)
+
+
 async def _supersession(
     conn: AsyncConnection[Any],
     decisions: LlmDecisions,
@@ -348,6 +286,7 @@ async def _supersession(
     items: Sequence[ProposedItem],
     grant: Grant,
     limit: int,
+    vectors: _Vectors | None,
 ) -> _Plan:
     """Step 4 of the module: the items to store, with their links."""
     plan = _Plan()
@@ -367,6 +306,7 @@ async def _supersession(
             statement=item.statement,
             policies=policies,
             limit=limit,
+            vector=None if vectors is None else vectors.of(item.statement),
         )
         by_id = {each.candidate.id: each for each in stored}
         sources = {record.source_id}
@@ -430,9 +370,11 @@ async def run_extraction(
     workspace_id: UUID,
     record_id: str,
     candidates: int = DEFAULT_CANDIDATES,
+    vectors: StatementVectors | None = None,
 ) -> ExtractionOutcome:
     """Extract, check and store the items of the record ``record_id`` (see the module), and
-    report the counts to the run being recorded.
+    report the counts to the run being recorded. With ``vectors``, candidates are found by the
+    statement vectors too.
 
     ``conn`` is in autocommit mode: the LLM calls are made outside any transaction, and
     :func:`~memini.knowledge.record_extraction` commits its own.
@@ -441,8 +383,9 @@ async def run_extraction(
         LlmError: a provider failed, or answered with something that does not match the schema;
             the job is retried.
         LlmRefused: a refusal other than ``policy_none`` and ``no_provider``.
+        EmbeddingError: the embedding provider of ``vectors`` failed; the job is retried.
     """
-    outcome = await _run(conn, decisions, access, workspace_id, record_id, candidates)
+    outcome = await _run(conn, decisions, access, workspace_id, record_id, candidates, vectors)
     outcome.report()
     return outcome
 
@@ -454,6 +397,7 @@ async def _run(
     workspace_id: UUID,
     record_id: str,
     candidates: int,
+    store: StatementVectors | None,
 ) -> ExtractionOutcome:
     record = await _load(conn, workspace_id, record_id)
     if record is None:
@@ -477,9 +421,14 @@ async def _run(
     outcome = ExtractionOutcome(
         "extracted", extractor=name, proposed=len(extracted.items), rejected=extracted.rejected
     )
+    vectors: _Vectors | None = None
+    if store is not None and extracted.items:
+        statements = [item.statement for item in extracted.items]
+        vectors = _Vectors(store, await store.vectors(conn, workspace_id, statements))
+        outcome.embedded = vectors.embedded.embedded + await store.fill(conn, workspace_id)
     for attempt in range(1, STORE_ATTEMPTS + 1):
         plan = await _supersession(
-            conn, decisions, record, workspace_id, extracted.items, grant, candidates
+            conn, decisions, record, workspace_id, extracted.items, grant, candidates, vectors
         )
         try:
             stored = await record_extraction(
@@ -499,6 +448,9 @@ async def _run(
             return ExtractionOutcome("gone", "the record was deleted during the extraction")
         outcome.status = "extracted" if stored.created else "unchanged"
         outcome.item_ids = stored.item_ids
+        if vectors is not None and stored.created:
+            kept = zip(stored.item_ids, (item.statement for item in plan.items), strict=True)
+            await vectors.store.store(conn, workspace_id, list(kept), vectors.embedded)
         outcome.duplicates = plan.duplicates
         outcome.replaces, outcome.answers = plan.replaces, plan.answers
         outcome.dropped = plan.dropped
@@ -521,10 +473,18 @@ async def _autocommit(pool: Pool) -> AsyncGenerator[AsyncConnection[Any]]:
                 await conn.set_autocommit(False)
 
 
-def extract_handler(pool: Pool, gate: LlmGate, *, candidates: int = DEFAULT_CANDIDATES) -> Handler:
+def extract_handler(
+    pool: Pool,
+    gate: LlmGate,
+    *,
+    candidates: int = DEFAULT_CANDIDATES,
+    embedder: Embedder | None = None,
+) -> Handler:
     """The handler of ``extract`` jobs: :func:`run_extraction` of the job's record, as the
-    principal that enqueued it. ``gate`` is the service's; the caller closes it."""
+    principal that enqueued it. ``gate`` is the service's, and so is ``embedder``, which finds
+    candidates by statement vectors too when given; the caller closes both."""
     decisions = LlmDecisions(gate)
+    vectors = None if embedder is None else StatementVectors(embedder)
 
     async def handle(job: Job) -> None:
         record_id = job.args.get("record_id")
@@ -538,6 +498,7 @@ def extract_handler(pool: Pool, gate: LlmGate, *, candidates: int = DEFAULT_CAND
                 workspace_id=job.workspace_id,
                 record_id=record_id,
                 candidates=candidates,
+                vectors=vectors,
             )
 
     return handle
