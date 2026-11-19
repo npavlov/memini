@@ -152,6 +152,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `memini bench` (`make bench`): indexing time, embedding throughput, sizes, HNSW recall and search
   latency by mode over a repository and a generated message set; numbers, targets and the smallest
   supported machine in `docs/operations/performance.md`.
+- Supersession candidates by statement vectors fused with words (`extraction_candidate_retriever`, default
+  `hybrid`); vectors kept per item (migration 0017). Check verdicts `same`/`replaced`/`answered`, and no
+  duplicate when the values differ: supersession accuracy 0.96 with `qwen3:4b-instruct` on the decision
+  eval. `memini eval decisions --candidates/--candidate-limit`.
 - CI on GitHub Actions: lint, type check, unit and integration tests on Python 3.12 and 3.13; a smoke job
   builds the image and runs the compose stack end to end; the retrieval eval
   gates pull requests (fake embeddings), and a nightly workflow runs it with qwen3 in Ollama.
