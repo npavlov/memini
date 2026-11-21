@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import runpy
 import shutil
 import subprocess
 import zipfile
@@ -36,7 +37,13 @@ def build(destination: Path) -> None:
         )
         for name in FILES
     }
-    contents["memini-server.py"] = (ROOT / "scripts/memini-server.py").read_text(encoding="utf-8").encode("utf-8")
+    pins: dict[str, str] = runpy.run_path(str(ROOT / "scripts/memini-server.py"))["COMPOSE_FILES"]
+    for name, expected in pins.items():
+        if hashlib.sha256(contents[name]).hexdigest() != expected:
+            raise ValueError(f"{TAG}:{name} does not match the server manager's pinned release")
+    contents["memini-server.py"] = (
+        (ROOT / "scripts/memini-server.py").read_text(encoding="utf-8").encode("utf-8")
+    )
     contents["memini-server.cmd"] = b'@echo off\r\npython "%~dp0memini-server.py" %*\r\n'
     archive = destination / ARCHIVE
     with zipfile.ZipFile(archive, "w") as bundle:

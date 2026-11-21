@@ -54,8 +54,8 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ScoopInstaller/Scoop
-          ref: e6aa3b366bdee8ed138c1e0f7b85192ebdd35d0f
+          repository: ScoopInstaller/Install
+          ref: 1e2f334083d609986d8c8bc9e31ae8e87c39fab4
           path: scoop-source
           persist-credentials: false
       - name: Exercise Scoop install
@@ -63,10 +63,9 @@ jobs:
         shell: pwsh
         run: |
           $env:SCOOP = "$env:RUNNER_TEMP/scoop"
-          $core = "$env:SCOOP/apps/scoop/current"
-          New-Item -ItemType Directory -Force $core | Out-Null
-          Copy-Item scoop-source/* $core -Recurse -Force
-          $scoop = "$core/bin/scoop.ps1"
+          & ./scoop-source/install.ps1 -ScoopDir $env:SCOOP -RunAsAdmin
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $scoop = "$env:SCOOP/apps/scoop/current/bin/scoop.ps1"
           $zip = (Get-ChildItem bundle/*.zip).Name
           $server = Start-Process python -ArgumentList '-m','http.server','8113','--bind','127.0.0.1','--directory','bundle' -PassThru
           try {
