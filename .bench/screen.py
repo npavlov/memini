@@ -17,9 +17,10 @@ for case in cases:
   feeds.append({'input_ids':np.array([ids],dtype=np.int64),'attention_mask':np.ones((1,len(ids)),dtype=np.int64)})
  case['feeds']=feeds
 for name in sys.argv[1:]:
- o=local.session_options(ort,4)
+ graph,_,threads=name.partition("@")
+ o=local.session_options(ort,int(threads or 4))
  o.add_session_config_entry('session.model_external_initializers_file_folder_path',str(model.files_dir/'onnx'))
- sess=ort.InferenceSession(gzip.decompress(Path('/bench',name+'.onnx.gz').read_bytes()),sess_options=o,providers=['CPUExecutionProvider'])
+ sess=ort.InferenceSession(gzip.decompress(Path('/bench',graph+'.onnx.gz').read_bytes()),sess_options=o,providers=['CPUExecutionProvider'])
  for case in cases:
   t=time.monotonic(); scores=[]
   for feed in case['feeds']:

@@ -24,4 +24,4 @@ jobs:
           lscpu
           if grep -qw avx512_vnni /proc/cpuinfo; then echo "Legacy hardware required for this comparison"; exit 0; fi
           docker pull "$image"
-          docker run --rm --network none --cpus 4 --cpuset-cpus 0-3 -v "$PWD/.bench:/bench:ro" --entrypoint python "$image" /bench/screen.py per-token channel7 split4b7
+          docker run --rm --network none --cpus 4 --cpuset-cpus 0-3 -v "$PWD/.bench:/bench:ro" --entrypoint python "$image" /bench/screen.py per-token channel7 split4b7 risk6 risk12 blockwise@2 blockwise@4
