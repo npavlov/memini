@@ -94,8 +94,8 @@ _ERROR_LIMIT: Final = 300
 _BLOCKWISE_FILES_DIGEST: Final = (
     "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
 )
-_BLOCKWISE_GRAPH: Final = "qwen3-blockwise-int8.onnx.gz"
-_BLOCKWISE_GRAPH_SHA256: Final = "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13"
+_BLOCKWISE_GRAPH: Final = "qwen3-per-token-int8.onnx.gz"
+_BLOCKWISE_GRAPH_SHA256: Final = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
 
 
 class RerankError(Exception):
@@ -178,7 +178,7 @@ class LocalReranker:
 
     def describe(self) -> str:
         """The model, file, digest, token limit and optional Linux graph, in one line."""
-        graph = f", blockwise INT8 {_BLOCKWISE_GRAPH_SHA256[:12]}" if self._blockwise else ""
+        graph = f", per-token INT8 {_BLOCKWISE_GRAPH_SHA256[:12]}" if self._blockwise else ""
         return (
             f"{self._model} {self._model_file} {self._digest[:19]}, at most"
             f" {self._max_tokens} tokens{graph}"
