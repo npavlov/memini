@@ -293,7 +293,7 @@ exits 0 when everything is current and 6 when not, for scripts and health checks
 
 Back up the database with `scripts/backup.sh`: [operations/backup.md](operations/backup.md). Every
 setting, and what a change of it needs: [configuration.md](configuration.md). Every command:
-`memini --help`, and [README.md](../README.md), "Commands".
+`memini --help` and the [CLI reference](cli.md).
 
 ## Machine size
 

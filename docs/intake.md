@@ -20,12 +20,85 @@ A push source to push into, and a token that may push (scope `ingest`). An admin
 ```sh
 memini source add demo chat --kind push
 mkdir -p ~/.config/memini
-(umask 077; memini token create --scope ingest --workspace demo --name push > ~/.config/memini/ingest.token)
+(umask 077; set -C; memini token create --scope ingest --workspace demo --name push > ~/.config/memini/ingest.token)
 ```
 
 A token limited to one workspace (`--workspace`) cannot write anywhere else. Give the pushing
 client or agent this token only, never an admin one. A source may filter what it stores (channels,
 domains, authors, automated mail): `memini source add --help`.
+
+## Without an agent
+
+Start with [one searchable email conversation](first-search.md). For your own exports, map
+each complete conversation to a `thread`, each set of meeting notes to a `meeting` and each
+wiki page to a `document`. The [payload examples](#records) show what Memini reads. Raw
+mailbox archives such as MBOX need conversion to these records before import.
+
+For example, use two push sources in the same workspace for work and personal accounts. The
+source is part of each record's identity, so the same Message-ID can occur in both accounts.
+Use separate workspaces and workspace-scoped tokens when the accounts need separate access.
+With the admin token selected, add each source once:
+
+```sh
+memini source add demo mail-work --kind push
+memini source add demo mail-personal --kind push
+```
+
+Reuse `mail-work` if you created it in the first search walkthrough. Export a folder to your
+own UTF-8 JSON Lines file (one complete thread per line). In the following example
+`work-inbox.jsonl` is that file. Use the ingest token from [Before the first push](#before-the-first-push).
+
+```sh
+MEMINI_TOKEN_FILE="$HOME/.config/memini/ingest.token" memini push --workspace demo --source mail-work --stream inbox --dry-run - < work-inbox.jsonl
+MEMINI_TOKEN_FILE="$HOME/.config/memini/ingest.token" memini push --workspace demo --source mail-work --stream inbox - < work-inbox.jsonl
+```
+
+Use `mail-personal` for the other account's file. Inspect the stored, unchanged and rejected
+counts. On a rejection, fix the reported field using the source export, then resend.
+The [HTTP walkthrough](#the-same-with-curl) sends a complete batch and shows the response.
+
+## With an agent
+
+For a mailbox or notes app already connected to Claude Code, create the push source and ingest
+token as above. From the checkout, start the session with the plugin and token:
+
+```sh
+export PATH="$PWD/bin:$PATH"
+MEMINI_TOKEN_FILE="$HOME/.config/memini/ingest.token" claude --plugin-dir integrations/claude-code
+```
+
+Ask, for example, “Use memini-push to import complete conversations from my work mailbox's
+Inbox for November 2–4, 2026 into workspace demo, source mail-work, stream inbox. Show the
+stored, unchanged and rejected counts.” The agent needs read access to that mailbox.
+It reads every page, maps the source fields, dry-runs the records, then pushes them. If a
+required timestamp or message is missing, inspect the rejected or skipped records before
+expanding the date range. Search with a read token afterwards.
+
+If the MCP server has a Memini recipe and is available only inside a Claude Code session,
+use the [agent executor](recipes.md#how-the-executors-use-a-recipe). Set up its capture
+hook, server allowlist and token file, then ask `memini-intake` to take one stream. The
+hook forwards raw responses and the service checks the pages and expected replies. If a
+window is incomplete, its run report identifies which calls are missing.
+
+## Scheduled MCP intake
+
+Use this path when the service can reach the MCP endpoint, the recipe matches its tool
+schema, and the recipe's parser is registered in the service build. An operator first allows
+the endpoint under [MCP service executor settings](configuration.md#mcp-service-executor).
+From a checkout with the host CLI and an admin token, supply the real URL, recipe file and
+stream key in the environment variables below. The host CLI can read the local TOML file.
+
+```sh
+uv run memini recipe validate "$MCP_RECIPE"
+uv run memini source add demo team-chat --kind mcp --url "$MCP_ENDPOINT" --recipe "$MCP_RECIPE" --stream "$MCP_STREAM" --schedule 1h
+uv run memini sync demo team-chat --wait
+uv run memini streams demo team-chat
+```
+
+Check for a successful run and an advancing checkpoint. For a refused endpoint, check the
+exact operator allowlist. For a short listing or missing replies, read the run report before
+changing the schedule. The [recipe guide](recipes.md#author-a-recipe-and-parser) walks
+through a working parser and its completeness checks.
 
 ## `memini push`
 
@@ -259,6 +332,20 @@ of the API batches, retries and reads refusals itself; the codes are in
 [`src/memini/api/ingest.py`](../src/memini/api/ingest.py) and `/openapi.json`. A client that syncs
 a stream window by window sends `window` claims, which move the stream's checkpoint; `memini push`
 claims none.
+
+For the mailbox from [your first search](first-search.md), the example file is one record.
+To send it over HTTP, wrap it in the batch object below. Use a header file containing the
+workspace's ingest token, as above:
+
+```sh
+{ printf '{"stream":"inbox","records":['; cat docs/examples/mail-thread.json; printf ']}'; } |
+  curl -sS -H @"$HOME/.config/memini/ingest.header" -H 'Content-Type: application/json' \
+    --data-binary @- http://127.0.0.1:6364/v1/workspaces/demo/sources/mail-work/records
+```
+
+The reply counts one insertion on an empty source or one unchanged record after the CLI
+walkthrough. HTTP 422 means the batch or a record failed validation. Check the named field,
+including timestamps and the `records` array, before retrying.
 
 ## Limits
 

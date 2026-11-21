@@ -152,6 +152,24 @@ server rejects a push containing a supported, inert test secret on a disposable 
 remote rejection without bypassing it. Run **Nightly eval** once from the Actions tab to seed its
 model cache.
 
+## Preview the user knowledge base
+
+Edit the versioned Markdown under `docs/`. To preview the same content as a static site,
+install Pandoc 3 and run from the checkout:
+
+```sh
+preview_dir=$(mktemp -d)
+python3 scripts/build-user-guide.py "$preview_dir"
+python3 -m http.server 8080 --bind 127.0.0.1 --directory "$preview_dir"
+```
+
+Open `http://127.0.0.1:8080/`. The output includes an index, static HTML, downloadable
+JSON examples and a `.nojekyll` marker. Links to source or tests point to the checkout's
+commit on GitHub. The Pages workflow builds and publishes the guide from `main`. Changes
+to the Markdown reach the [hosted knowledge base](https://npavlov.github.io/memini/) after
+the deployment succeeds. The local build requires no change to the service image.
+[GitHub Pages publishing options](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+
 ## Changelog
 
 [CHANGELOG.md](CHANGELOG.md) follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and
