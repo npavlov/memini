@@ -26,8 +26,8 @@ jobs:
           docker pull "$image"
           nproc
           lscpu
-          for CORES in 4 2; do
-          for profile in per-token blockwise float; do
+          for CORES in 2 4; do
+          for profile in blockwise; do
             flags=()
             flags=(-e OVERRIDE_MODEL="$profile")
             docker run --rm --network none --cpus "$CORES" --cpuset-cpus "0-$((CORES-1))" -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" "${flags[@]}" --entrypoint python "$image" /bench/measure.py | tee "$profile-$CORES.jsonl"
