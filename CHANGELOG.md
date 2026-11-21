@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Restore multilingual search ranking with the default local reranker on Linux x86-64 and arm64. Existing installations can reuse their verified model cache and search index.
+
 ## [0.1.0-rc.1] - 2026-11-21
 
 ### Added

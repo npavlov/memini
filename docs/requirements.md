@@ -1698,6 +1698,22 @@ cannot load, a warning says why and search goes on without it. `memini eval --mo
 hybrid,dense,lexical --reranker local` measures it (`--reranker none`, the fused order), at the
 depth of `MEMINI_SEARCH_RERANK_DEPTH`.
 
+**Linux reranker execution (2026-11-21).** On the hosted x86-64 CPU, the original ONNX
+graph ranked an English glossary above a Russian recipe that answered the query. Across three
+nightly runs, dense document R@1 fell from the reference 0.768 to 0.518. With identical token
+IDs, Linux and macOS disagreed on the top hit. Replacing the whole-input quantization scale
+with one activation scale per token restored the ordering in the focused cases. The Linux
+graph also applies the final positionwise MLP only to the token used for scoring.
+[Failing nightly run](https://github.com/npavlov/memini/actions/runs/44891980762) ·
+[Reproduce the execution graph](../packaging/reranker/README.md)
+
+The latency check used the same 89 warm searches, depth three, default token limit and 5 s
+timeout. On four CPUs the new graph added 0.956, 0.954 and 0.981 s at p95 in three runs.
+The two intervening control runs with the original graph measured 0.980 and 0.986 s.
+On two CPUs the new graph measured 1.623 s against 1.636 s for the original. All windows
+finished without a timeout. An earlier blockwise candidate took 1.206 s on four CPUs and
+2.151 s on two, exceeding both limits.
+
 **Redaction** (decided 2026-11-18; principle 11). One library, `memini.redaction`, finds secrets
 and card numbers by pattern and check, without a model, and replaces each with a marker that names
 its kind, `[REDACTED:card]`. No digit of a card is kept, the last four included: nothing needs

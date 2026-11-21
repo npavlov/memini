@@ -119,6 +119,8 @@ A value that is set wins. Another model gets no dimension, digest or query prefi
 
 The limits of one search, and how a hybrid search fuses its retrievers: each contributes `search_candidates` results, merged by reciprocal rank fusion with k `search_rrf_k`, each retriever's ranks weighted. The reranker (what it gains and costs: docs/requirements.md, section 9, Reranker) is `none` by default and `local` in the image, which carries its runtime and its files, about 610 MB; they are verified against `search_reranker_digest` each time the service starts, before they are loaded. Outside the image, `local` needs the optional dependencies `memini[local-embeddings]`, and its files are fetched at the pinned revision when the service first starts with it. A `search_reranker_*` setting while `search_reranker` is `none` is an error, but for `search_reranker_model_dir`. Another model or model file needs its own digest, and another model its own revision; in the image it also needs a writable `search_reranker_model_dir`, such as a volume, as the image's own is read-only.
 
+On Linux x86-64 and arm64 the pinned default uses a packaged ONNX graph with per-token activation scales. It reads verified weights directly from the cache. Other model digests use their supplied graph. [Graph provenance](../packaging/reranker/README.md)
+
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
 | `search_timeout`<br>`MEMINI_SEARCH_TIMEOUT` | number, more than 0, at most 600 | `5` | restart | Seconds one search statement may run, more than 0, at most 600. |
@@ -136,8 +138,6 @@ The limits of one search, and how a hybrid search fuses its retrievers: each con
 | `search_reranker_max_tokens`<br>`MEMINI_SEARCH_RERANKER_MAX_TOKENS` | integer, 64 to 8192 | `1024` | restart | The most tokens of one query and hit put to the model, 64 to 8192. A longer prompt is cut at the end of the hit. Each token costs time: about 0.5 ms on an Apple M4 Max. |
 | `search_reranker_timeout`<br>`MEMINI_SEARCH_RERANKER_TIMEOUT` | number, more than 0, at most 600 | `5` | restart | Seconds the reranking of one search may take, more than 0, at most 600. Past it, the search answers in the fused order and logs a warning. |
 | `search_reranker_threads`<br>`MEMINI_SEARCH_RERANKER_THREADS` | integer, 0 to 256 | `0` | restart | Threads of one model run, 0 to 256; 0: as many as the CPUs or a CPU limit of the container allow, at most 4. onnxruntime would take one per core, and each step of a run waits for the slowest thread: on a machine shared with other work, fewer threads answer sooner. The log line `reranking with ...` says how many. |
-
-The pinned default reranker on Linux x86-64 and arm64 uses a packaged ONNX graph that quantizes activations per token. It reads the verified weights from the model cache. The service reports the graph variant when it loads the reranker. Other model digests use their supplied graph. [Graph provenance and regeneration](../packaging/reranker/README.md)
 
 ### Git connector
 

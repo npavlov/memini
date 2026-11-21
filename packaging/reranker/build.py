@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import mmap
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import onnx
@@ -143,6 +144,8 @@ def externalize(model, source):
 
 
 def build(source, output):
+    if output.exists() and source.samefile(output):
+        raise ValueError("the output must be separate from the upstream ONNX model")
     with source.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as raw:
         if hashlib.sha256(raw).hexdigest() != SOURCE_SHA256:
             raise ValueError("input SHA-256 differs from the pinned upstream ONNX model")
@@ -153,11 +156,16 @@ def build(source, output):
     digest = hashlib.sha256(graph).hexdigest()
     if digest != GRAPH_SHA256:
         raise ValueError(f"generated graph SHA-256 differs from its pin: {digest}")
-    with (
-        output.open("wb") as stream,
-        gzip.GzipFile(filename="", mode="wb", fileobj=stream, compresslevel=9, mtime=0) as archive,
-    ):
-        archive.write(graph)
+    with TemporaryDirectory(dir=output.parent) as directory:
+        temporary = Path(directory) / "graph.gz"
+        with (
+            temporary.open("wb") as stream,
+            gzip.GzipFile(
+                filename="", mode="wb", fileobj=stream, compresslevel=9, mtime=0
+            ) as archive,
+        ):
+            archive.write(graph)
+        temporary.replace(output)
     print(f"{digest}  uncompressed graph ({len(graph)} bytes)")
 
 
