@@ -1,215 +1,31 @@
-name: Nightly eval
-
-# The full retrieval eval: every search mode, dense and hybrid included, with the default embedding
-# model (qwen3-embedding:0.6b) served by Ollama on the runner and the reranker on, as the image
-# searches (Qwen3-Reranker 0.6B in the process), compared with eval/code/baseline-qwen3.json
-# (make eval-qwen3, margin 0.05: docs/requirements.md, section 10). The small eval, with the
-# FakeEmbedder and no reranker, runs on every pull request (ci.yml).
-#
-# TODO(memini-f9a): the decision eval (docs/requirements.md, section 10: labelled synthetic
-# threads; precision and recall of extraction, accuracy of supersession) does not exist yet. It
-# comes with M4 as a second job of this workflow, its local model cached and verified the way the
-# embedding model is here. Nothing in this workflow stands in for it.
-
-on:
-  schedule:
-    # Every day at 03:17 UTC. A schedule runs on the default branch only.
-    - cron: "17 3 * * *"
-  workflow_dispatch:
-
-# Read-only token. No job needs to write to the repository.
+name: Isolated ARM latency
+on: workflow_dispatch
 permissions:
   contents: read
-
-# One eval at a time per branch: a run started while another runs waits for it.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  UV_LOCKED: "1"
-  # The Ollama release that measured eval/code/baseline-qwen3.json, and the SHA-256 of its Linux
-  # amd64 archive as the release's sha256sum.txt lists it. Change both together, then run this
-  # workflow and write the baseline again if the numbers move.
-  OLLAMA_VERSION: "0.34.2"
-  OLLAMA_SHA256: e155b83589986d2c581fdbf1381ea3ebdb16549883679cd5a0627f7cdc05b12b
-  # The default embedding model and the digest of the build the baseline was measured with: the
-  # SHA-256 of its manifest, as `ollama list` (first 12 digits) and /api/tags show it. The same
-  # digest as DEFAULT_MODEL_SETTINGS in src/memini/config.py; change them together.
-  EMBEDDING_MODEL: "qwen3-embedding:0.6b"
-  EMBEDDING_DIGEST: ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d
-  # The digest of the reranker's model files, DEFAULT_RERANKER_DIGEST in src/memini/config.py
-  # (tests/test_rerank.py checks that they agree); it keys their cache.
-  RERANKER_DIGEST: sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea
-
-defaults:
-  run:
-    shell: bash
-
 jobs:
-  retrieval:
-    name: Retrieval eval (qwen3-embedding:0.6b, every mode, reranker on)
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-
-    services:
-      postgres:
-        # The image of compose.yaml, pinned by the same index digest; update both together.
-        image: pgvector/pgvector:0.8.7-pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
-        env:
-          POSTGRES_USER: memini
-          POSTGRES_PASSWORD: memini
-          POSTGRES_DB: memini
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U memini -d memini"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
-
+  latency:
+    strategy:
+      fail-fast: false
+      matrix:
+        cores: [2, 4]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-
-      # No python-version: the interpreter comes from .python-version, as it does locally.
-      - name: Set up uv
-        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
-        with:
-          version: "0.13.9"
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-          cache-suffix: eval-nightly
-
-      # With the extra local-embeddings: the runtime of the reranker.
-      - name: Install dependencies
-        run: uv sync --locked --extra local-embeddings
-
-      # The release archive at the pinned version, checked against the pinned SHA-256 before it is
-      # unpacked; not the install script, which needs root and installs a system service. The GPU
-      # libraries (CUDA, ROCm, Vulkan) are left out: the runner has no GPU, and Ollama runs on the
-      # CPU without them.
-      - name: Install Ollama
-        timeout-minutes: 10
-        run: |
-          archive="${RUNNER_TEMP}/ollama-linux-amd64.tar.zst"
-          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "${archive}" \
-            "https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"
-          echo "${OLLAMA_SHA256}  ${archive}" | sha256sum --check --strict -
-          mkdir -p "${RUNNER_TEMP}/ollama"
-          tar --zstd -xf "${archive}" -C "${RUNNER_TEMP}/ollama" \
-            --exclude='lib/ollama/cuda_*' --exclude='lib/ollama/rocm*' \
-            --exclude='lib/ollama/vulkan*'
-          rm -f "${archive}"
-
-      # The model directory, keyed on the model and its digest. Restored before the server starts,
-      # so that the server finds the model; saved below only once it is verified.
-      - name: Restore the embedding model
-        id: model-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.ollama/models
-          key: ollama-models-${{ env.EMBEDDING_MODEL }}-${{ env.EMBEDDING_DIGEST }}
-
-      # Models live in ~/.ollama/models, Ollama's default; the server listens on 127.0.0.1:11434,
-      # the default URL of the openai_compatible provider.
-      - name: Start Ollama
-        run: |
-          nohup "${RUNNER_TEMP}/ollama/bin/ollama" serve > "${RUNNER_TEMP}/ollama.log" 2>&1 &
-          for _ in $(seq 1 60); do
-            if served="$(curl -fsS http://127.0.0.1:11434/api/version 2>/dev/null)"; then
-              version="$(printf '%s' "${served}" | jq -r .version)"
-              if [ "${version}" != "${OLLAMA_VERSION}" ]; then
-                echo "::error::Ollama ${version} answers, expected ${OLLAMA_VERSION}"
-                exit 1
-              fi
-              echo "Ollama ${version} is up"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "::error::Ollama did not answer within 60 s"
-          cat "${RUNNER_TEMP}/ollama.log"
-          exit 1
-
-      - name: Pull the embedding model
-        if: steps.model-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 15
-        run: |
-          "${RUNNER_TEMP}/ollama/bin/ollama" pull "${EMBEDDING_MODEL}"
-
-      # Pulled or restored, the model must be the build the baseline was measured with: its
-      # manifest hashes to the pinned digest, the server reports that digest, and every blob the
-      # manifest names is present and hashes to its own digest, so a restored cache is checked as
-      # a download is. A new build under the same tag fails here: measure it, then change
-      # EMBEDDING_DIGEST, DEFAULT_MODEL_SETTINGS and the baseline together.
-      - name: Verify the embedding model
-        run: |
-          models="${HOME}/.ollama/models"
-          manifest="${models}/manifests/registry.ollama.ai/library/${EMBEDDING_MODEL%%:*}/${EMBEDDING_MODEL#*:}"
-          if ! echo "${EMBEDDING_DIGEST}  ${manifest}" | sha256sum --check --strict -; then
-            echo "::error::${EMBEDDING_MODEL} is not the build with digest ${EMBEDDING_DIGEST}"
-            exit 1
-          fi
-          served="$(curl -fsS http://127.0.0.1:11434/api/tags \
-            | jq -r --arg model "${EMBEDDING_MODEL}" '.models[] | select(.name == $model) | .digest')"
-          if [ "${served}" != "${EMBEDDING_DIGEST}" ]; then
-            echo "::error::Ollama serves ${EMBEDDING_MODEL} as '${served}', expected ${EMBEDDING_DIGEST}"
-            exit 1
-          fi
-          jq -r '.config.digest, .layers[].digest' "${manifest}" | while IFS= read -r digest; do
-            echo "${digest#sha256:}  ${models}/blobs/${digest/:/-}"
-          done | sha256sum --check --strict -
-
-      - name: Save the embedding model
-        if: steps.model-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.ollama/models
-          key: ${{ steps.model-cache.outputs.cache-primary-key }}
-
-      # The reranker's files, where the eval reads them when MEMINI_SEARCH_RERANKER_MODEL_DIR is not
-      # set (~/.cache/memini/models). On a miss the eval fetches them at the pinned revision;
-      # restored or fetched, it verifies them against the digest before it loads them, and stops if
-      # they differ. Saved below: files are only ever put in place once they matched.
-      - name: Restore the reranker's model files
-        id: reranker-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/memini/models
-          key: memini-reranker-${{ env.RERANKER_DIGEST }}
-
-      # The margin of eval-qwen3 is 0.05 (QWEN3_MARGIN in the Makefile): hybrid results move by up
-      # to about 0.03 from run to run. On the runner's CPU a batch of chunks takes longer than on
-      # a GPU, hence the longer timeout per embedding request; it is not part of the report's setup.
-      # The reranker runs on the runner's CPU too, a few seconds a search for 267 searches; the
-      # eval gives it 600 s a search rather than the service's search_reranker_timeout, so a slow
-      # runner takes longer but measures the same.
-      - name: Retrieval eval against the baseline (make eval-qwen3)
-        timeout-minutes: 45
+      - name: Benchmark original and quality-passing candidate
         env:
-          MEMINI_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
-          MEMINI_EMBEDDING_TIMEOUT: "600"
-        run: make eval-qwen3 EVAL_ARGS="--json ${RUNNER_TEMP}/eval-qwen3.json"
-
-      - name: Save the reranker's model files
-        if: ${{ !cancelled() && steps.reranker-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/memini/models
-          key: ${{ steps.reranker-cache.outputs.cache-primary-key }}
-
-      - name: Upload the report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: eval-qwen3-report
-          path: ${{ runner.temp }}/eval-qwen3.json
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Show the Ollama log after a failure
-        if: failure()
-        run: cat "${RUNNER_TEMP}/ollama.log" || true
+          CORES: ${{ matrix.cores }}
+        run: |
+          set -eu
+          image=ghcr.io/npavlov/memini@sha256:b31d29cd401776ab262c307f5da368122062fff6d464a0ebe9aef5504a8649da
+          docker pull "$image"
+          nproc
+          lscpu
+          for profile in control candidate; do
+            flags=()
+            if [[ $profile == candidate ]]; then flags=(-e OVERRIDE_MODEL=1); fi
+            docker run --rm --network none --cpus "$CORES" --cpuset-cpus "0-$((CORES-1))" -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" "${flags[@]}" --entrypoint python "$image" /bench/measure.py | tee "$profile.jsonl"
+            echo "$profile $(tail -1 "$profile.jsonl")" >> "$GITHUB_STEP_SUMMARY"
+          done
