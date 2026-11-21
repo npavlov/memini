@@ -10,6 +10,7 @@ default model). Search with a reranker against a database is in test_search_db.p
 import importlib.util
 import logging
 import os
+import platform
 import re
 import sys
 import time
@@ -19,6 +20,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, Mock
 
 import httpx2
 import pytest
@@ -44,6 +46,7 @@ from memini.rerank import (
     RerankError,
     create_reranker,
     default_model_dir,
+    local,
     local_reranker,
     relevance,
 )
@@ -168,6 +171,55 @@ def reranker(tmp_path: Path, **changes: Any) -> LocalReranker:
         **changes,
     }
     return LocalReranker(**values)
+
+
+@pytest.mark.parametrize(
+    ("system", "machine", "digest", "blockwise"),
+    [
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True),
+        ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, True),
+        ("linux", "x86_64", DIGEST, False),
+        ("linux", "s390x", DEFAULT_RERANKER_DIGEST, False),
+        ("darwin", "arm64", DEFAULT_RERANKER_DIGEST, False),
+        ("win32", "AMD64", DEFAULT_RERANKER_DIGEST, False),
+    ],
+)
+async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    system: str,
+    machine: str,
+    digest: str,
+    blockwise: bool,
+) -> None:
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    verify = AsyncMock()
+    runtime = Mock()
+    ort = runtime.onnxruntime
+    ort.InferenceSession.side_effect = RuntimeError("test CPU kernel unavailable")
+    monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
+    monkeypatch.setattr(local, "ensure_model_files", verify)
+    model = reranker(tmp_path, model_file=DEFAULT_RERANKER_MODEL_FILE, digest=digest, threads=2)
+    assert ("blockwise INT8" in model.describe()) == blockwise
+    with pytest.raises(RerankError, match="test CPU kernel unavailable"):
+        await model.load()
+    verify.assert_awaited_once()
+    session = ort.InferenceSession
+    session.assert_called_once()
+    source = session.call_args.args[0]
+    assert session.call_args.kwargs["providers"] == ["CPUExecutionProvider"]
+    folder_option = ort.SessionOptions.return_value.add_session_config_entry
+    if blockwise:
+        assert isinstance(source, bytes)
+        folder_option.assert_called_once_with(
+            "session.model_external_initializers_file_folder_path",
+            str((tmp_path / DEFAULT_RERANKER_MODEL_FILE).parent),
+        )
+    else:
+        assert source == str(tmp_path / DEFAULT_RERANKER_MODEL_FILE)
+        folder_option.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_relevance_is_the_probability_of_yes() -> None:

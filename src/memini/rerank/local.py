@@ -38,11 +38,16 @@ pinned revision when missing (:func:`memini.embeddings.model_files.ensure_model_
 do not match are never loaded.
 """
 
+import gzip
+import hashlib
 import importlib
 import math
+import platform
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from functools import partial
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Final
 
@@ -83,6 +88,14 @@ _PREFIX: Final = (
 _SUFFIX: Final = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 _INPUTS: Final = frozenset({"input_ids", "attention_mask"})
 _ERROR_LIMIT: Final = 300
+
+# The graph references byte offsets in this specific verified model. Keep this pin independent
+# of the configurable service default, so updating that default cannot select incompatible weights.
+_BLOCKWISE_FILES_DIGEST: Final = (
+    "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
+)
+_BLOCKWISE_GRAPH: Final = "qwen3-blockwise-int8.onnx.gz"
+_BLOCKWISE_GRAPH_SHA256: Final = "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13"
 
 
 class RerankError(Exception):
@@ -134,6 +147,11 @@ class LocalReranker:
         self._files_dir = files_dir
         self._model_file = model_file
         self._digest = digest
+        self._blockwise = (
+            digest == _BLOCKWISE_FILES_DIGEST
+            and sys.platform == "linux"
+            and platform.machine() in {"aarch64", "x86_64"}
+        )
         self._revision = revision
         self._max_tokens = max_tokens
         self._timeout = timeout
@@ -159,10 +177,11 @@ class LocalReranker:
         return self._threads
 
     def describe(self) -> str:
-        """The model, its file and digest, and the token limit, in one line; no path."""
+        """The model, file, digest, token limit and optional Linux graph, in one line."""
+        graph = f", blockwise INT8 {_BLOCKWISE_GRAPH_SHA256[:12]}" if self._blockwise else ""
         return (
             f"{self._model} {self._model_file} {self._digest[:19]}, at most"
-            f" {self._max_tokens} tokens"
+            f" {self._max_tokens} tokens{graph}"
         )
 
     async def load(self) -> None:
@@ -201,6 +220,7 @@ class LocalReranker:
                 instruction=self._instruction,
                 max_tokens=self._max_tokens,
                 threads=threads,
+                blockwise=self._blockwise,
             )
             try:
                 self._score = (await anyio.to_thread.run_sync(load)).score
@@ -309,11 +329,21 @@ class _Runtime:
         instruction: str,
         max_tokens: int,
         threads: int,
+        blockwise: bool,
     ) -> "_Runtime":
         ort = modules.onnxruntime
         options = session_options(ort, threads)
+        source: bytes | str = str(model_path)
+        if blockwise:
+            graph = gzip.decompress(files("memini.rerank").joinpath(_BLOCKWISE_GRAPH).read_bytes())
+            if hashlib.sha256(graph).hexdigest() != _BLOCKWISE_GRAPH_SHA256:
+                raise RerankError(f"packaged reranker graph {_BLOCKWISE_GRAPH} failed SHA-256")
+            options.add_session_config_entry(
+                "session.model_external_initializers_file_folder_path", str(model_path.parent)
+            )
+            source = graph
         session = ort.InferenceSession(
-            str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
+            source, sess_options=options, providers=["CPUExecutionProvider"]
         )
         inputs = frozenset(str(item.name) for item in session.get_inputs())
         outputs = session.get_outputs()
