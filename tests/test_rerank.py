@@ -7,7 +7,10 @@ model files are on disk (``MEMINI_TEST_RERANKER_MODEL_DIR``, or the default cach
 default model). Search with a reranker against a database is in test_search_db.py.
 """
 
+import gzip
+import hashlib
 import importlib.util
+import json
 import logging
 import os
 import platform
@@ -175,14 +178,32 @@ def reranker(tmp_path: Path, **changes: Any) -> LocalReranker:
 
 
 @pytest.mark.parametrize(
-    ("system", "machine", "digest", "per_token"),
+    ("contents", "expected"),
     [
-        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True),
-        ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, True),
-        ("linux", "x86_64", DIGEST, False),
-        ("linux", "s390x", DEFAULT_RERANKER_DIGEST, False),
-        ("darwin", "arm64", DEFAULT_RERANKER_DIGEST, False),
-        ("win32", "AMD64", DEFAULT_RERANKER_DIGEST, False),
+        ("flags : avx2 avx512_vnni\nflags : avx512_vnni avx2", True),
+        ("flags : avx512_vnni\nflags : avx2", False),
+        ("flags : avx2 avx512_vnni_extra", False),
+        ("processor : 0", False),
+        (None, False),
+    ],
+)
+def test_x86_vnni_detection(tmp_path: Path, contents: str | None, expected: bool) -> None:
+    cpuinfo = tmp_path / "cpuinfo"
+    if contents is not None:
+        cpuinfo.write_text(contents)
+    assert local.has_avx512_vnni(cpuinfo) is expected
+
+
+@pytest.mark.parametrize(
+    ("system", "machine", "digest", "vnni", "label"),
+    [
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, False, "per-channel Q7 64a83156c2b6"),
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True, "per-token INT8 7f8cf431d2c1"),
+        ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, False, "per-token INT8 7f8cf431d2c1"),
+        ("linux", "x86_64", DIGEST, False, None),
+        ("linux", "s390x", DEFAULT_RERANKER_DIGEST, False, None),
+        ("darwin", "arm64", DEFAULT_RERANKER_DIGEST, False, None),
+        ("win32", "AMD64", DEFAULT_RERANKER_DIGEST, False, None),
     ],
 )
 async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failures(
@@ -191,10 +212,14 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     system: str,
     machine: str,
     digest: str,
-    per_token: bool,
+    vnni: bool,
+    label: str | None,
 ) -> None:
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
+    monkeypatch.setattr(local, "has_avx512_vnni", lambda: vnni)
+    prepare = Mock(return_value=(["one"], ["weight"]))
+    monkeypatch.setattr(local, "q7_initializers", prepare)
     verify = AsyncMock()
     runtime = Mock()
     ort = runtime.onnxruntime
@@ -202,7 +227,7 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
     monkeypatch.setattr(local, "ensure_model_files", verify)
     model = reranker(tmp_path, model_file=DEFAULT_RERANKER_MODEL_FILE, digest=digest, threads=2)
-    assert ("per-token INT8" in model.describe()) == per_token
+    assert model.describe().partition(" tokens")[2] == (f", {label}" if label else "")
     with pytest.raises(RerankError, match="test CPU kernel unavailable"):
         await model.load()
     verify.assert_awaited_once()
@@ -210,25 +235,37 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     session.assert_called_once()
     source = session.call_args.args[0]
     assert session.call_args.kwargs["providers"] == ["CPUExecutionProvider"]
-    folder_option = ort.SessionOptions.return_value.add_session_config_entry
-    if per_token:
+    options = ort.SessionOptions.return_value.add_session_config_entry
+    if label:
         assert isinstance(source, bytes)
-        folder_option.assert_called_once_with(
+        assert hashlib.sha256(source).hexdigest().startswith(label.split()[-1])
+        options.assert_called_once_with(
             "session.model_external_initializers_file_folder_path",
             str((tmp_path / DEFAULT_RERANKER_MODEL_FILE).parent),
         )
     else:
         assert source == str(tmp_path / DEFAULT_RERANKER_MODEL_FILE)
-        folder_option.assert_not_called()
+        options.assert_not_called()
+    overrides = ort.SessionOptions.return_value.add_external_initializers
+    if label and label.startswith("per-channel Q7"):
+        prepare.assert_called_once_with(runtime, tmp_path / DEFAULT_RERANKER_MODEL_FILE)
+        overrides.assert_called_once_with(["one"], ["weight"])
+    else:
+        prepare.assert_not_called()
+        overrides.assert_not_called()
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("vnni", [False, True])
 async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, vnni: bool
 ) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(local, "_LINUX_GRAPH_SHA256", "0" * 64)
+    monkeypatch.setattr(local, "has_avx512_vnni", lambda: vnni)
+    name = "per-token" if vnni else "channel7"
+    (tmp_path / f"qwen3-{name}-int8.onnx.gz").write_bytes(gzip.compress(b"incompatible"))
+    monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
     monkeypatch.setattr(local, "ensure_model_files", AsyncMock())
     runtime = Mock()
     monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
@@ -238,6 +275,37 @@ async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
     with pytest.raises(RerankError, match=r"packaged reranker graph .* failed SHA-256"):
         await model.load()
     runtime.onnxruntime.InferenceSession.assert_not_called()
+
+
+def test_q7_metadata_corruption_is_rejected_before_opening_weights(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "qwen3-channel7.json").write_text("[]")
+    monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
+    with pytest.raises(RerankError, match=r"metadata .* failed SHA-256"):
+        local.q7_initializers(Mock(), tmp_path / "missing.onnx")
+
+
+def test_q7_projection_subset_preserves_offsets_columns_and_nearest_even_rounding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    np = pytest.importorskip("numpy")
+    ort = pytest.importorskip("onnxruntime")
+    modules = Mock(numpy=np, onnxruntime=ort)
+    metadata = json.dumps([["first", 1, 4, 3], ["second", 15, 2, 1]]).encode()
+    (tmp_path / "qwen3-channel7.json").write_bytes(metadata)
+    monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
+    monkeypatch.setattr(local, "_Q7_METADATA_SHA256", hashlib.sha256(metadata).hexdigest())
+    first = np.array([[-128, 126, 0], [64, 3, 0], [-64, 5, 0], [0, -1, 0]], dtype=np.int8)
+    source = tmp_path / "weights"
+    source.write_bytes(b"x" + first.tobytes() + b"xx" + bytes([127, 129]))
+    names, values = local.q7_initializers(modules, source)
+    assert names == ["first", "second"]
+    assert values[0].numpy().tolist() == [[-63, 63, 0], [31, 2, 0], [-31, 2, 0], [0, 0, 0]]
+    assert values[1].numpy().tolist() == [[63], [-63]]
+    source.write_bytes(source.read_bytes()[:-1])
+    with pytest.raises(RerankError, match="second is truncated"):
+        local.q7_initializers(modules, source)
 
 
 def test_relevance_is_the_probability_of_yes() -> None:

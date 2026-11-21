@@ -161,9 +161,11 @@ GROUPS: Final[tuple[Group, ...]] = (
         " `search_reranker_model_dir`. Another model or model file needs its own digest, and"
         " another model its own revision; in the image it also needs a writable"
         " `search_reranker_model_dir`, such as a volume, as the image's own is read-only."
-        "\n\nOn Linux x86-64 and arm64 the pinned default uses a packaged ONNX graph with per-token"
-        " activation scales. It reads verified weights directly from the cache. Other model"
-        " digests use their supplied graph. [Graph provenance](../packaging/reranker/README.md)",
+        "\n\nThe pinned default uses per-token INT8 on Linux arm64 and on Linux x86-64 where"
+        " every CPU reports AVX-512 VNNI. Other Linux x86-64 CPUs use per-channel Q7 weights,"
+        " including when CPU flags are unavailable. Both graphs read the same verified weights"
+        " from the cache. Other platforms and model digests use the supplied model graph."
+        " [Graph provenance](../packaging/reranker/README.md)",
     ),
     Group(
         "Git connector",

@@ -5,23 +5,29 @@
 #   "ml-dtypes==0.7.0", "typing-extensions==4.16.0",
 # ]
 # ///
-"""Build the compact per-token INT8 graph from the pinned Qwen3 reranker export."""
+"""Build the compact Linux execution graphs from the pinned Qwen3 reranker export."""
 
 import argparse
 import gzip
 import hashlib
+import json
 import mmap
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
 import onnx
-from onnx import helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper
 from onnx.external_data_helper import set_external_data
 
 SOURCE_SHA256 = "2bc0a77812a15ff6ead003370f36149139ae2c1bb1faf779b00c00886cd919ef"
 SOURCE_NAME = "model_yesno_quantized.onnx"
-GRAPH_SHA256 = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+ACTIVATION_GRAPH_SHA256 = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+GRAPH_SHA256 = {
+    "per-token": ACTIVATION_GRAPH_SHA256,
+    "channel7": "64a83156c2b65a655d523d2fe54001da822325298ad42b5197ee736f41d0e849",
+}
+METADATA_SHA256 = "725464f6c5ff41460c60dad4cf192d9d3cddb0b773355c3c48f284be6d35bdc4"
 
 
 def per_token_quantization(graph):
@@ -90,9 +96,58 @@ def per_token_quantization(graph):
     graph.node.extend(nodes)
 
 
-def convert(model):
-    per_token_quantization(model.graph)
-    onnx.checker.check_model(model)
+def channel7_quantization(graph, source):
+    tensors = {tensor.name: tensor for tensor in graph.initializer}
+    replacements = {}
+    scales = []
+    placeholders = []
+    metadata = []
+    offset = 0
+    for node in graph.node:
+        if node.op_type != "MatMulInteger":
+            continue
+        _, weight, _, zero = node.input
+        tensor = tensors[weight]
+        if tensor.data_type != TensorProto.INT8 or numpy_helper.to_array(tensors[zero]).item() != 0:
+            raise ValueError(f"expected a symmetric INT8 projection for {weight}")
+        k, n = tensor.dims
+        external = {entry.key: entry.value for entry in tensor.external_data}
+        if external["location"] != SOURCE_NAME or int(external["length"]) != k * n:
+            raise ValueError(f"invalid source offsets for {weight}")
+        upstream_offset = int(external["offset"])
+        upstream = np.ndarray((k, n), np.int8, buffer=source, offset=upstream_offset)
+        peak = np.maximum(upstream.max(0).astype(np.int16), -upstream.min(0).astype(np.int16))
+        factor = np.maximum(peak, 1).astype(np.float32) / np.float32(63)
+        scale = weight.removesuffix("_quantized") + "_scale"
+        name = scale + "_channel7"
+        scales.append(numpy_helper.from_array(numpy_helper.to_array(tensors[scale]) * factor, name))
+        replacements[scale] = name
+
+        name = weight + "_7"
+        projection = TensorProto(name=name, data_type=TensorProto.INT8, dims=(k, n))
+        projection.data_location = TensorProto.EXTERNAL
+        for key, value in (
+            ("location", "memory-channel7.weights"),
+            ("offset", offset),
+            ("length", k * n),
+        ):
+            projection.external_data.add(key=key, value=str(value))
+        placeholders.append(projection)
+        metadata.append([name, upstream_offset, k, n])
+        offset += k * n
+        node.input[1] = name
+
+    if len(metadata) != 197:
+        raise ValueError(f"expected 197 projections, found {len(metadata)}")
+    for node in graph.node:
+        for i, name in enumerate(node.input):
+            if name in replacements:
+                node.input[i] = replacements[name]
+    used = {name for node in graph.node for name in node.input}
+    retained = [t for t in graph.initializer if t.name in used]
+    graph.ClearField("initializer")
+    graph.initializer.extend(retained + scales + placeholders)
+    return json.dumps(metadata, separators=(",", ":")).encode()
 
 
 def externalize(model, source):
@@ -118,18 +173,31 @@ def externalize(model, source):
     model.graph.ClearField("metadata_props")
 
 
-def build(source, output):
+def build(source, output, variant, metadata_output=None):
+    if variant == "channel7":
+        if metadata_output is None or metadata_output.resolve() in (
+            source.resolve(),
+            output.resolve(),
+        ):
+            raise ValueError("channel7 requires a separate metadata output")
+        if metadata_output.exists() and source.samefile(metadata_output):
+            raise ValueError("the metadata output must be separate from the upstream ONNX model")
     if output.exists() and source.samefile(output):
         raise ValueError("the output must be separate from the upstream ONNX model")
     with source.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as raw:
         if hashlib.sha256(raw).hexdigest() != SOURCE_SHA256:
             raise ValueError("input SHA-256 differs from the pinned upstream ONNX model")
         model = onnx.load_model_from_string(raw[:])
-        convert(model)
+        per_token_quantization(model.graph)
+        onnx.checker.check_model(model)
         externalize(model, raw)
+        if variant == "channel7":
+            metadata = channel7_quantization(model.graph, raw)
+            if hashlib.sha256(metadata).hexdigest() != METADATA_SHA256:
+                raise ValueError("generated metadata differs from its SHA-256 pin")
     graph = model.SerializeToString(deterministic=True)
     digest = hashlib.sha256(graph).hexdigest()
-    if digest != GRAPH_SHA256:
+    if digest != GRAPH_SHA256[variant]:
         raise ValueError(f"generated graph SHA-256 differs from its pin: {digest}")
     with TemporaryDirectory(dir=output.parent) as directory:
         temporary = Path(directory) / "graph.gz"
@@ -141,6 +209,11 @@ def build(source, output):
         ):
             archive.write(graph)
         temporary.replace(output)
+    if variant == "channel7":
+        with TemporaryDirectory(dir=metadata_output.parent) as directory:
+            temporary = Path(directory) / "metadata.json"
+            temporary.write_bytes(metadata)
+            temporary.replace(metadata_output)
     print(f"{digest}  uncompressed graph ({len(graph)} bytes)")
 
 
@@ -148,5 +221,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="upstream model_yesno_quantized.onnx")
     parser.add_argument("output", type=Path, help="path for the .onnx.gz companion graph")
+    parser.add_argument("--variant", choices=GRAPH_SHA256, default="per-token")
+    parser.add_argument("--metadata", type=Path, help="channel7 initializer metadata output")
     args = parser.parse_args()
-    build(args.source, args.output)
+    build(args.source, args.output, args.variant, args.metadata)

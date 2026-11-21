@@ -26,8 +26,8 @@ The query and the hit are data (principle 11): they are tokenized with special t
 One pair per model run, never a padded batch. The model gives every sequence positions from 0, so
 in a left-padded batch a pair's positions, and its score, would depend on the longest pair beside
 it. The upstream graph also scales int8 activations over the whole batch: a "yes" logit of
-20.42 alone and 21.24 beside one other pair. The Linux graph scales activations per token and
-computes the final feed-forward block only at the last position. Each run hops to a worker
+20.42 alone and 21.24 beside one other pair. The Linux graphs scale activations per token,
+using seven-bit weights where the CPU can saturate integer projections. Each run hops to a worker
 thread, so the event loop stays free and the timeout is checked between pairs. One search reranks
 at a time: onnxruntime uses every core it may for one run already.
 
@@ -42,6 +42,7 @@ do not match are never loaded.
 import gzip
 import hashlib
 import importlib
+import json
 import math
 import platform
 import sys
@@ -95,13 +96,53 @@ _ERROR_LIMIT: Final = 300
 _LINUX_FILES_DIGEST: Final = (
     "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
 )
-_LINUX_GRAPH: Final = "qwen3-per-token-int8.onnx.gz"
-_LINUX_GRAPH_SHA256: Final = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+
+
+@dataclass(frozen=True, slots=True)
+class _Graph:
+    label: str
+    file: str
+    sha256: str
+
+
+_PER_TOKEN: Final = _Graph(
+    "per-token INT8",
+    "qwen3-per-token-int8.onnx.gz",
+    "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111",
+)
+_LEGACY_X86: Final = _Graph(
+    "per-channel Q7",
+    "qwen3-channel7-int8.onnx.gz",
+    "64a83156c2b65a655d523d2fe54001da822325298ad42b5197ee736f41d0e849",
+)
+
+_Q7_METADATA: Final = "qwen3-channel7.json"
+_Q7_METADATA_SHA256: Final = "725464f6c5ff41460c60dad4cf192d9d3cddb0b773355c3c48f284be6d35bdc4"
 
 
 class RerankError(Exception):
     """The reranker could not rerank: its runtime or files are missing or do not match, the model
     failed, or it took too long. The message never quotes a query or a hit."""
+
+
+def has_avx512_vnni(cpuinfo: Path = Path("/proc/cpuinfo")) -> bool:
+    """Prefer the native INT8 kernel when every listed CPU supports AVX-512 VNNI."""
+    try:
+        lines = cpuinfo.read_text(encoding="ascii", errors="replace").splitlines()
+    except OSError:
+        return False
+    fields = (line.partition(":") for line in lines)
+    flags = [value.split() for key, _, value in fields if key.strip() == "flags"]
+    return bool(flags) and all("avx512_vnni" in features for features in flags)
+
+
+def _execution_graph(digest: str) -> _Graph | None:
+    if digest != _LINUX_FILES_DIGEST or sys.platform != "linux":
+        return None
+    machine = platform.machine()
+    if machine == "x86_64":
+        return _PER_TOKEN if has_avx512_vnni() else _LEGACY_X86
+    return _PER_TOKEN if machine == "aarch64" else None
 
 
 def relevance(no: float, yes: float) -> float:
@@ -148,11 +189,7 @@ class LocalReranker:
         self._files_dir = files_dir
         self._model_file = model_file
         self._digest = digest
-        self._per_token = (
-            digest == _LINUX_FILES_DIGEST
-            and sys.platform == "linux"
-            and platform.machine() in {"aarch64", "x86_64"}
-        )
+        self._graph = _execution_graph(digest)
         self._revision = revision
         self._max_tokens = max_tokens
         self._timeout = timeout
@@ -179,7 +216,7 @@ class LocalReranker:
 
     def describe(self) -> str:
         """The model, file, digest, token limit and optional Linux graph, in one line."""
-        graph = f", per-token INT8 {_LINUX_GRAPH_SHA256[:12]}" if self._per_token else ""
+        graph = f", {self._graph.label} {self._graph.sha256[:12]}" if self._graph else ""
         return (
             f"{self._model} {self._model_file} {self._digest[:19]}, at most"
             f" {self._max_tokens} tokens{graph}"
@@ -221,7 +258,7 @@ class LocalReranker:
                 instruction=self._instruction,
                 max_tokens=self._max_tokens,
                 threads=threads,
-                per_token=self._per_token,
+                graph=self._graph,
             )
             try:
                 self._score = (await anyio.to_thread.run_sync(load)).score
@@ -298,6 +335,34 @@ def _import_runtime() -> _Modules:
     return _Modules(**loaded)
 
 
+def q7_initializers(modules: _Modules, model_path: Path) -> tuple[list[str], list[Any]]:
+    """Requantize verified weight slices one projection at a time for legacy x86 GEMM."""
+    metadata = files("memini.rerank").joinpath(_Q7_METADATA).read_bytes()
+    if hashlib.sha256(metadata).hexdigest() != _Q7_METADATA_SHA256:
+        raise RerankError(f"packaged reranker metadata {_Q7_METADATA} failed SHA-256")
+
+    np = modules.numpy
+    names: list[str] = []
+    values: list[Any] = []
+    with model_path.open("rb") as stream:
+        for name, offset, rows, columns in json.loads(metadata):
+            stream.seek(offset)
+            data = stream.read(rows * columns)
+            if len(data) != rows * columns:
+                raise RerankError(f"verified reranker weight {name} is truncated")
+            weight = np.frombuffer(data, dtype=np.int8).reshape(rows, columns)
+            positive = weight.max(axis=0).astype(np.int16)
+            negative = -weight.min(axis=0).astype(np.int16)
+            peak = np.maximum(np.maximum(positive, negative), 1)
+            scale = peak.astype(np.float32) / np.float32(63)
+            scratch = weight.astype(np.float32)
+            np.divide(scratch, scale, out=scratch)
+            np.rint(scratch, out=scratch)
+            values.append(modules.onnxruntime.OrtValue.ortvalue_from_numpy(scratch.astype(np.int8)))
+            names.append(name)
+    return names, values
+
+
 class _Runtime:
     """A loaded model and tokenizer. Its methods block; call them in a worker thread."""
 
@@ -330,19 +395,22 @@ class _Runtime:
         instruction: str,
         max_tokens: int,
         threads: int,
-        per_token: bool,
+        graph: _Graph | None,
     ) -> "_Runtime":
         ort = modules.onnxruntime
         options = session_options(ort, threads)
         source: bytes | str = str(model_path)
-        if per_token:
-            graph = gzip.decompress(files("memini.rerank").joinpath(_LINUX_GRAPH).read_bytes())
-            if hashlib.sha256(graph).hexdigest() != _LINUX_GRAPH_SHA256:
-                raise RerankError(f"packaged reranker graph {_LINUX_GRAPH} failed SHA-256")
+        if graph is not None:
+            source = gzip.decompress(files("memini.rerank").joinpath(graph.file).read_bytes())
+            if hashlib.sha256(source).hexdigest() != graph.sha256:
+                raise RerankError(f"packaged reranker graph {graph.file} failed SHA-256")
             options.add_session_config_entry(
                 "session.model_external_initializers_file_folder_path", str(model_path.parent)
             )
-            source = graph
+        if graph is _LEGACY_X86:
+            # The NumPy buffers must survive until ORT copies them during session creation.
+            names, values = q7_initializers(modules, model_path)
+            options.add_external_initializers(names, values)
         session = ort.InferenceSession(
             source, sess_options=options, providers=["CPUExecutionProvider"]
         )
