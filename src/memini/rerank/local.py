@@ -104,6 +104,17 @@ class RerankError(Exception):
     failed, or it took too long. The message never quotes a query or a hit."""
 
 
+def has_avx512_vnni(cpuinfo: Path = Path("/proc/cpuinfo")) -> bool:
+    """Prefer the native INT8 kernel when every listed CPU supports AVX-512 VNNI."""
+    try:
+        lines = cpuinfo.read_text(encoding="ascii", errors="replace").splitlines()
+    except OSError:
+        return False
+    fields = (line.partition(":") for line in lines)
+    flags = [value.split() for key, _, value in fields if key.strip() == "flags"]
+    return bool(flags) and all("avx512_vnni" in features for features in flags)
+
+
 def relevance(no: float, yes: float) -> float:
     """The probability of "yes" against "no" from their logits: ``1 / (1 + e^(no - yes))``."""
     difference = yes - no
@@ -337,7 +348,7 @@ class _Runtime:
         source: bytes | str = str(model_path)
         if per_token:
             # Avoid saturating U8 x S8 partial sums on x86 CPUs without VNNI.
-            if platform.machine() == "x86_64":
+            if platform.machine() == "x86_64" and not has_avx512_vnni():
                 options.add_session_config_entry("session.x64quantprecision", "1")
             graph = gzip.decompress(files("memini.rerank").joinpath(_LINUX_GRAPH).read_bytes())
             if hashlib.sha256(graph).hexdigest() != _LINUX_GRAPH_SHA256:

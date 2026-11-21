@@ -175,6 +175,24 @@ def reranker(tmp_path: Path, **changes: Any) -> LocalReranker:
 
 
 @pytest.mark.parametrize(
+    ("contents", "expected"),
+    [
+        ("flags : avx2 avx512_vnni\nflags : avx512_vnni avx2", True),
+        ("flags : avx512_vnni\nflags : avx2", False),
+        ("flags : avx2 avx512_vnni_extra", False),
+        ("processor : 0", False),
+        (None, False),
+    ],
+)
+def test_x86_vnni_detection(tmp_path: Path, contents: str | None, expected: bool) -> None:
+    cpuinfo = tmp_path / "cpuinfo"
+    if contents is not None:
+        cpuinfo.write_text(contents)
+    assert local.has_avx512_vnni(cpuinfo) is expected
+
+
+@pytest.mark.parametrize("vnni", [False, True])
+@pytest.mark.parametrize(
     ("system", "machine", "digest", "per_token"),
     [
         ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True),
@@ -192,9 +210,11 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     machine: str,
     digest: str,
     per_token: bool,
+    vnni: bool,
 ) -> None:
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
+    monkeypatch.setattr(local, "has_avx512_vnni", lambda: vnni)
     verify = AsyncMock()
     runtime = Mock()
     ort = runtime.onnxruntime
@@ -213,8 +233,9 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     options = ort.SessionOptions.return_value.add_session_config_entry
     if per_token:
         assert isinstance(source, bytes)
-        assert options.call_count == (2 if machine == "x86_64" else 1)
-        if machine == "x86_64":
+        precise = machine == "x86_64" and not vnni
+        assert options.call_count == (2 if precise else 1)
+        if precise:
             options.assert_any_call("session.x64quantprecision", "1")
         options.assert_any_call(
             "session.model_external_initializers_file_folder_path",
