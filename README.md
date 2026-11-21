@@ -11,8 +11,8 @@ Memini is a self-hosted search and decision journal for code repositories, work 
 Start with **4 CPU cores, 8 GB RAM and 20 GB of free SSD** on x86-64 or arm64. You need Docker with Compose 2.24 or later. Ollama runs the embedding model locally. A GPU is optional and speeds up the first index.
 
 - **Build from source** with Git, Docker and Ollama. Follow the [installation guide](docs/install.md#what-you-need) through step 5 to start the service and save the first admin token.
-- **Use a published image** when a matching release tag and GHCR image are available. This [Docker-only installation](docs/install.md#install-a-published-image-with-docker-only) runs Ollama inside Compose too.
-- **Connect to an existing server** with just the CLI. After the RC is published to PyPI, use Python 3.12+ and `pipx install memini==0.1.0rc1`. Set `MEMINI_URL` to the server address and `MEMINI_TOKEN_FILE` to the token file supplied by its operator. Check access with `memini workspace list`.
+- **Run the [published release candidate](https://github.com/npavlov/memini/releases/tag/v0.1.0-rc.1)** with Docker. This [Docker-only installation](docs/install.md#install-a-published-image-with-docker-only) runs Ollama inside Compose too.
+- **Connect to an existing server** with just the CLI. With Python 3.12+ and pipx installed, run `pipx install memini==0.1.0rc1`. Set `MEMINI_URL` to the server address and `MEMINI_TOKEN_FILE` to the token file supplied by its operator. Check access with `memini workspace list`.
 
 From the checkout, `docker compose ps` should show healthy services, and `bin/memini workspace list` should list the workspaces your token can read. For a failed health check or an unreachable model, see [installation troubleshooting](docs/install.md#troubleshooting).
 

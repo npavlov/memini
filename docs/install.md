@@ -10,13 +10,10 @@ searches them with a read-only token.
 
 ## Install a published image with Docker only
 
-Use the source archive from the release tag that matches the image. In its directory, set
-`MEMINI_RELEASE_IMAGE` to the published GHCR image including its tag (for example
-`ghcr.io/npavlov/memini:0.1.0-rc.1` once that candidate is published).
+Download and unpack the [source archive for v0.1.0-rc.1](https://github.com/npavlov/memini/archive/refs/tags/v0.1.0-rc.1.tar.gz). Open a terminal in the extracted directory. It contains the Compose files and CLI wrapper for this image.
 
 ```sh
-# Replace VERSION with the version from the release tag, without its leading v.
-export MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:VERSION
+export MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:0.1.0-rc.1
 export COMPOSE_FILE=compose.yaml:compose.release.yaml
 docker compose up -d --wait ollama
 docker compose exec -T ollama ollama pull qwen3-embedding:0.6b
