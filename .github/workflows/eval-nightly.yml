@@ -1,4 +1,4 @@
-name: Isolated ARM latency
+name: Isolated x86 kernel comparison
 on: workflow_dispatch
 permissions:
   contents: read
@@ -8,8 +8,8 @@ jobs:
       fail-fast: false
       matrix:
         cores: [2, 4]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -23,9 +23,9 @@ jobs:
           docker pull "$image"
           nproc
           lscpu
-          for profile in control candidate; do
+          for profile in per-token unsigned blockwise; do
             flags=()
-            if [[ $profile == candidate ]]; then flags=(-e OVERRIDE_MODEL=1); fi
+            flags=(-e OVERRIDE_MODEL="$profile")
             docker run --rm --network none --cpus "$CORES" --cpuset-cpus "0-$((CORES-1))" -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" "${flags[@]}" --entrypoint python "$image" /bench/measure.py | tee "$profile.jsonl"
             echo "$profile $(tail -1 "$profile.jsonl")" >> "$GITHUB_STEP_SUMMARY"
           done

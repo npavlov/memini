@@ -18,8 +18,9 @@ async def main():
         original=ort.InferenceSession
         def from_file(path, *, sess_options, providers):
             import gzip, hashlib
-            graph=gzip.decompress(Path('/bench/per-token.onnx.gz').read_bytes())
-            assert hashlib.sha256(graph).hexdigest()=='7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111'
+            variant = os.environ['OVERRIDE_MODEL']
+            graph=gzip.decompress(Path('/bench', variant + '.onnx.gz').read_bytes())
+            assert hashlib.sha256(graph).hexdigest() == Path('/bench',variant+'.sha256').read_text().strip()
             sess_options.add_session_config_entry('session.model_external_initializers_file_folder_path',str(Path(path).parent))
             return original(graph,sess_options=sess_options,providers=providers)
         ort.InferenceSession=from_file
