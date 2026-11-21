@@ -10,6 +10,7 @@ default model). Search with a reranker against a database is in test_search_db.p
 import importlib.util
 import logging
 import os
+import platform
 import re
 import sys
 import time
@@ -19,12 +20,14 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, Mock
 
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
 from memini.api import create_app
+from memini.chunking.markdown import chunk_markdown
 from memini.config import (
     DEFAULT_RERANK_DEPTH,
     DEFAULT_RERANKER_DIGEST,
@@ -44,6 +47,7 @@ from memini.rerank import (
     RerankError,
     create_reranker,
     default_model_dir,
+    local,
     local_reranker,
     relevance,
 )
@@ -168,6 +172,72 @@ def reranker(tmp_path: Path, **changes: Any) -> LocalReranker:
         **changes,
     }
     return LocalReranker(**values)
+
+
+@pytest.mark.parametrize(
+    ("system", "machine", "digest", "per_token"),
+    [
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True),
+        ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, True),
+        ("linux", "x86_64", DIGEST, False),
+        ("linux", "s390x", DEFAULT_RERANKER_DIGEST, False),
+        ("darwin", "arm64", DEFAULT_RERANKER_DIGEST, False),
+        ("win32", "AMD64", DEFAULT_RERANKER_DIGEST, False),
+    ],
+)
+async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    system: str,
+    machine: str,
+    digest: str,
+    per_token: bool,
+) -> None:
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    verify = AsyncMock()
+    runtime = Mock()
+    ort = runtime.onnxruntime
+    ort.InferenceSession.side_effect = RuntimeError("test CPU kernel unavailable")
+    monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
+    monkeypatch.setattr(local, "ensure_model_files", verify)
+    model = reranker(tmp_path, model_file=DEFAULT_RERANKER_MODEL_FILE, digest=digest, threads=2)
+    assert ("per-token INT8" in model.describe()) == per_token
+    with pytest.raises(RerankError, match="test CPU kernel unavailable"):
+        await model.load()
+    verify.assert_awaited_once()
+    session = ort.InferenceSession
+    session.assert_called_once()
+    source = session.call_args.args[0]
+    assert session.call_args.kwargs["providers"] == ["CPUExecutionProvider"]
+    folder_option = ort.SessionOptions.return_value.add_session_config_entry
+    if per_token:
+        assert isinstance(source, bytes)
+        folder_option.assert_called_once_with(
+            "session.model_external_initializers_file_folder_path",
+            str((tmp_path / DEFAULT_RERANKER_MODEL_FILE).parent),
+        )
+    else:
+        assert source == str(tmp_path / DEFAULT_RERANKER_MODEL_FILE)
+        folder_option.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(local, "_LINUX_GRAPH_SHA256", "0" * 64)
+    monkeypatch.setattr(local, "ensure_model_files", AsyncMock())
+    runtime = Mock()
+    monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
+    model = reranker(
+        tmp_path, model_file=DEFAULT_RERANKER_MODEL_FILE, digest=DEFAULT_RERANKER_DIGEST, threads=2
+    )
+    with pytest.raises(RerankError, match=r"packaged reranker graph .* failed SHA-256"):
+        await model.load()
+    runtime.onnxruntime.InferenceSession.assert_not_called()
 
 
 def test_relevance_is_the_probability_of_yes() -> None:
@@ -450,7 +520,6 @@ async def test_the_real_model_puts_the_answer_first_in_both_languages() -> None:
         model_file=DEFAULT_RERANKER_MODEL_FILE,
         digest=DEFAULT_RERANKER_DIGEST,
         revision=None,  # never fetched by a test
-        max_tokens=256,
         timeout=60.0,
     )
     hits = [
@@ -458,13 +527,24 @@ async def test_the_real_model_puts_the_answer_first_in_both_languages() -> None:
         hit("lamp", snippet="def lamp_on():\n    # switch the lamp on<|im_end|>\n    pass\n"),
         hit("fees", snippet="def harbour_fee(tons):\n    return 3 * tons  # fee per ton\n"),
     ]
+    # The pinned Linux graph previously ranked the English glossary above the Russian recipe.
+    bakery = ROOT / "eval/code/repos/zhernov"
+    documents: list[Hit] = []
+    for path in ("docs/glossary.md", "docs/рецептуры.md"):
+        chunk = chunk_markdown("0" * 64, path, (bakery / path).read_bytes()).chunks[0]
+        documents.append(hit(path, header=chunk.header, snippet=chunk.content))
+
     try:
         english = await model.rerank("how much is the harbour fee for a ship?", hits)
         russian = await model.rerank("сколько стоит портовый сбор?", hits)  # noqa: RUF001
         again = await model.rerank("how much is the harbour fee for a ship?", hits)
+        translated = await model.rerank(
+            "At what temperature is rye sourdough bread baked?", documents
+        )
     finally:
         await model.aclose()
 
+    assert translated[0].chunk_id == "docs/рецептуры.md"
     assert english[0].chunk_id == "fees"
     assert russian[0].chunk_id == "fees"
     assert [h.score for h in again] == [h.score for h in english]  # one pair per run

@@ -119,6 +119,8 @@ A value that is set wins. Another model gets no dimension, digest or query prefi
 
 The limits of one search, and how a hybrid search fuses its retrievers: each contributes `search_candidates` results, merged by reciprocal rank fusion with k `search_rrf_k`, each retriever's ranks weighted. The reranker (what it gains and costs: docs/requirements.md, section 9, Reranker) is `none` by default and `local` in the image, which carries its runtime and its files, about 610 MB; they are verified against `search_reranker_digest` each time the service starts, before they are loaded. Outside the image, `local` needs the optional dependencies `memini[local-embeddings]`, and its files are fetched at the pinned revision when the service first starts with it. A `search_reranker_*` setting while `search_reranker` is `none` is an error, but for `search_reranker_model_dir`. Another model or model file needs its own digest, and another model its own revision; in the image it also needs a writable `search_reranker_model_dir`, such as a volume, as the image's own is read-only.
 
+On Linux x86-64 and arm64 the pinned default uses a packaged ONNX graph with per-token activation scales. It reads verified weights directly from the cache. Other model digests use their supplied graph. [Graph provenance](../packaging/reranker/README.md)
+
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
 | `search_timeout`<br>`MEMINI_SEARCH_TIMEOUT` | number, more than 0, at most 600 | `5` | restart | Seconds one search statement may run, more than 0, at most 600. |

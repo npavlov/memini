@@ -25,10 +25,11 @@ The query and the hit are data (principle 11): they are tokenized with special t
 
 One pair per model run, never a padded batch. The model gives every sequence positions from 0, so
 in a left-padded batch a pair's positions, and its score, would depend on the longest pair beside
-it; and the int8 quantization is dynamic, scaled over the whole batch. Measured: a "yes" logit of
-20.42 alone and 21.24 beside one other pair. Each run hops to a worker thread, so the event loop
-stays free and the timeout is checked between pairs. One search reranks at a time: onnxruntime
-uses every core it may for one run already.
+it. The upstream graph also scales int8 activations over the whole batch: a "yes" logit of
+20.42 alone and 21.24 beside one other pair. The Linux graph scales activations per token and
+computes the final feed-forward block only at the last position. Each run hops to a worker
+thread, so the event loop stays free and the timeout is checked between pairs. One search reranks
+at a time: onnxruntime uses every core it may for one run already.
 
 It needs the optional dependencies ``memini[local-embeddings]`` (onnxruntime, tokenizers, numpy),
 imported on first use: onnxruntime with its telemetry off, with no more threads than a CPU limit
@@ -38,11 +39,16 @@ pinned revision when missing (:func:`memini.embeddings.model_files.ensure_model_
 do not match are never loaded.
 """
 
+import gzip
+import hashlib
 import importlib
 import math
+import platform
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from functools import partial
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Final
 
@@ -83,6 +89,14 @@ _PREFIX: Final = (
 _SUFFIX: Final = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 _INPUTS: Final = frozenset({"input_ids", "attention_mask"})
 _ERROR_LIMIT: Final = 300
+
+# The graph references byte offsets in this specific verified model. Keep this pin independent
+# of the configurable service default, so updating that default cannot select incompatible weights.
+_LINUX_FILES_DIGEST: Final = (
+    "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
+)
+_LINUX_GRAPH: Final = "qwen3-per-token-int8.onnx.gz"
+_LINUX_GRAPH_SHA256: Final = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
 
 
 class RerankError(Exception):
@@ -134,6 +148,11 @@ class LocalReranker:
         self._files_dir = files_dir
         self._model_file = model_file
         self._digest = digest
+        self._per_token = (
+            digest == _LINUX_FILES_DIGEST
+            and sys.platform == "linux"
+            and platform.machine() in {"aarch64", "x86_64"}
+        )
         self._revision = revision
         self._max_tokens = max_tokens
         self._timeout = timeout
@@ -159,10 +178,11 @@ class LocalReranker:
         return self._threads
 
     def describe(self) -> str:
-        """The model, its file and digest, and the token limit, in one line; no path."""
+        """The model, file, digest, token limit and optional Linux graph, in one line."""
+        graph = f", per-token INT8 {_LINUX_GRAPH_SHA256[:12]}" if self._per_token else ""
         return (
             f"{self._model} {self._model_file} {self._digest[:19]}, at most"
-            f" {self._max_tokens} tokens"
+            f" {self._max_tokens} tokens{graph}"
         )
 
     async def load(self) -> None:
@@ -201,6 +221,7 @@ class LocalReranker:
                 instruction=self._instruction,
                 max_tokens=self._max_tokens,
                 threads=threads,
+                per_token=self._per_token,
             )
             try:
                 self._score = (await anyio.to_thread.run_sync(load)).score
@@ -309,11 +330,21 @@ class _Runtime:
         instruction: str,
         max_tokens: int,
         threads: int,
+        per_token: bool,
     ) -> "_Runtime":
         ort = modules.onnxruntime
         options = session_options(ort, threads)
+        source: bytes | str = str(model_path)
+        if per_token:
+            graph = gzip.decompress(files("memini.rerank").joinpath(_LINUX_GRAPH).read_bytes())
+            if hashlib.sha256(graph).hexdigest() != _LINUX_GRAPH_SHA256:
+                raise RerankError(f"packaged reranker graph {_LINUX_GRAPH} failed SHA-256")
+            options.add_session_config_entry(
+                "session.model_external_initializers_file_folder_path", str(model_path.parent)
+            )
+            source = graph
         session = ort.InferenceSession(
-            str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
+            source, sess_options=options, providers=["CPUExecutionProvider"]
         )
         inputs = frozenset(str(item.name) for item in session.get_inputs())
         outputs = session.get_outputs()
