@@ -28,8 +28,10 @@ jobs:
       - name: Verify package recipe and manifest
         shell: bash
         run: |
-          python packaging/server/build.py bundle
-          python - <<'PY'
+          python=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
+          "$python" packaging/server/build.py bundle
+          "$python" - <<'PY'
           from pathlib import Path
           for recipe in [Path("Formula/memini-server.rb"), Path("bucket/memini-server.json")]:
               assert recipe.read_text() == (Path("bundle") / recipe.name).read_text(), recipe
@@ -72,6 +74,16 @@ jobs:
             $manifest = Get-Content bucket/memini-server.json -Raw | ConvertFrom-Json
             $manifest.url = "http://127.0.0.1:8113/$zip"
             $manifest | ConvertTo-Json | Set-Content bundle/memini-server.json
+            $ready = $false
+            foreach ($attempt in 1..20) {
+              if ($server.HasExited) { throw 'Local package server stopped' }
+              try {
+                $null = Invoke-WebRequest $manifest.url -Method Head -TimeoutSec 2
+                $ready = $true
+                break
+              } catch { Start-Sleep -Milliseconds 250 }
+            }
+            if (-not $ready) { throw 'Local package server failed to serve the archive' }
             & $scoop install "$PWD/bundle/memini-server.json"
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
             $env:PATH = "$env:SCOOP/shims;$env:PATH"
@@ -79,6 +91,11 @@ jobs:
             if (-not (Test-Path "$resources/docs/examples/mail-thread.json")) { throw "Missing example" }
             memini-server --help
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $state = Join-Path $env:RUNNER_TEMP 'state with spaces'
+            $message = memini-server --state-dir "$state" status
+            if ($LASTEXITCODE -ne 0 -or $message -notlike "*$state") { throw 'State path was lost' }
+            memini-server --state-dir "$state" cli --version
+            if ($LASTEXITCODE -ne 1) { throw 'Launcher lost the CLI failure exit code' }
             & $scoop uninstall memini-server
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           } finally {

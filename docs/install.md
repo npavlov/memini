@@ -91,7 +91,9 @@ function Save-MeminiToken($Path, [scriptblock]$Issue) {
         $bytes = [Text.Encoding]::ASCII.GetBytes($token.Trim())
         $file.Write($bytes, 0, $bytes.Length)
     } finally {
+        $empty = $file.Length -eq 0
         $file.Dispose()
+        if ($empty) { [IO.File]::Delete($Path) }
     }
 }
 $tokenDir = Join-Path $HOME '.config/memini'

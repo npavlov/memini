@@ -33,11 +33,11 @@ MEMINI_TOKEN_FILE="$mail_token" memini push --workspace demo --source mail-work 
 
 **PowerShell**
 
-Use the `Save-MeminiToken` helper from [the token setup](install.md#5-the-first-admin-token).
+In a new PowerShell window, copy the `Save-MeminiToken` function definition from [the token setup](install.md#5-the-first-admin-token).
 The pipeline reads the sample as UTF-8. The final block restores the admin token for the search.
 
 ```powershell
-$mailToken = Join-Path $tokenDir 'demo-mail.token'
+$mailToken = Join-Path $HOME '.config/memini/demo-mail.token'
 Save-MeminiToken $mailToken { memini-server cli token create --scope ingest --workspace demo --name demo-mail }
 $sample = Join-Path $MeminiResources 'docs/examples/mail-thread.json'
 $previousToken = $env:MEMINI_TOKEN_FILE
@@ -48,6 +48,7 @@ try {
     Get-Content -Raw -Encoding UTF8 $sample | memini-server cli push --workspace demo --source mail-work --stream inbox --dry-run -
     if ($LASTEXITCODE -ne 0) { throw 'The sample failed validation.' }
     Get-Content -Raw -Encoding UTF8 $sample | memini-server cli push --workspace demo --source mail-work --stream inbox -
+    if ($LASTEXITCODE -ne 0) { throw 'The sample import failed.' }
 } finally {
     $env:MEMINI_TOKEN_FILE = $previousToken
     $OutputEncoding = $previousEncoding
