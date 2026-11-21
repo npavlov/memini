@@ -25,9 +25,41 @@ SOURCE_NAME = "model_yesno_quantized.onnx"
 ACTIVATION_GRAPH_SHA256 = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
 GRAPH_SHA256 = {
     "per-token": ACTIVATION_GRAPH_SHA256,
-    "blockwise": "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13",
+    "mixed": "3b40891c54cdea991c94856c7030e9769be55e0fd7ad53c2567fb5c0e3767a21",
 }
 BLOCK = 128
+
+
+# Zero-based MatMulInteger ordinals in SOURCE_SHA256, in upstream graph order.
+# The selection procedure and its input suite are documented in the adjacent README.
+BLOCKWISE_PROJECTIONS = frozenset(
+    {
+        0,
+        15,
+        21,
+        30,
+        41,
+        42,
+        48,
+        55,
+        62,
+        66,
+        73,
+        77,
+        80,
+        87,
+        101,
+        122,
+        143,
+        150,
+        164,
+        186,
+        187,
+        189,
+        192,
+        196,
+    }
+)
 
 
 def per_token_quantization(graph):
@@ -126,7 +158,34 @@ def blockwise_nodes(activation, weight, scale, outputs, shape):
     return nodes, (dimensions, scales)
 
 
-def blockwise_quantization(model):
+def retain_outputs(graph, producers, tensors):
+    """Keep only nodes reachable from graph outputs, in deterministic dependency order."""
+    nodes = []
+    constants = []
+    seen = {value.name for value in graph.input}
+    pending = [(value.name, False) for value in reversed(graph.output)]
+    while pending:
+        name, ready = pending.pop()
+        if not name or name in seen:
+            continue
+        if name in tensors:
+            constants.append(tensors[name])
+            seen.add(name)
+            continue
+        node = producers[name]
+        if ready:
+            nodes.append(node)
+            seen.update(node.output)
+        else:
+            pending.append((name, True))
+            pending.extend((value, False) for value in reversed(node.input))
+    graph.ClearField("node")
+    graph.node.extend(nodes)
+    graph.ClearField("initializer")
+    graph.initializer.extend(constants)
+
+
+def mixed_quantization(model):
     graph = model.graph
     tensors = {tensor.name: tensor for tensor in graph.initializer}
     producers = {output: node for node in graph.node for output in node.output}
@@ -135,12 +194,11 @@ def blockwise_quantization(model):
         for name in node.input:
             consumers[name].append(node)
 
-    replacements = {}
-    remove = set()
+    replacements = []
     constants = [numpy_helper.from_array(np.uint8(128), "xor_mask")]
-    for node in graph.node:
-        if node.op_type != "MatMulInteger":
-            continue
+    projections = [node for node in graph.node if node.op_type == "MatMulInteger"]
+    for index in sorted(BLOCKWISE_PROJECTIONS):
+        node = projections[index]
         activation, weight, _, zero = node.input
         quant = producers[activation]
         (cast,) = consumers[node.output[0]]
@@ -155,27 +213,26 @@ def blockwise_quantization(model):
         nodes, shapes = blockwise_nodes(
             quant.input[0], weight, weight_scale, rescale.output, tensors[weight].dims
         )
-        replacements[node.output[0]] = nodes
+        replacements.extend(nodes)
         constants.extend(shapes)
-        remove.update(item.output[0] for item in (quant, cast, rescale, combined))
 
-    if len(replacements) != 197:
-        raise ValueError(f"expected 197 projections, found {len(replacements)}")
-    nodes = []
-    for node in graph.node:
-        if node.output[0] not in remove:
-            nodes.extend(replacements.get(node.output[0], (node,)))
-    graph.ClearField("node")
-    graph.node.extend(nodes)
-    graph.initializer.extend(constants)
+    per_token_quantization(graph)
+    producers = {output: node for node in graph.node for output in node.output}
+    producers.update((output, node) for node in replacements for output in node.output)
+    tensors = {tensor.name: tensor for tensor in graph.initializer}
+    tensors.update((tensor.name, tensor) for tensor in constants)
+    retain_outputs(graph, producers, tensors)
     if not any(version.domain == "com.microsoft" for version in model.opset_import):
         model.opset_import.append(helper.make_opsetid("com.microsoft", 1))
 
 
-def externalize(model, source):
+def externalize(model, source, source_order):
     """Point each large initializer at its exact bytes in the verified upstream protobuf."""
     offset = 0
-    for tensor in model.graph.initializer:
+    # Mixed graph initializers are in traversal order; source offsets follow the upstream order.
+    for tensor in sorted(
+        model.graph.initializer, key=lambda t: source_order.get(t.name, len(source_order))
+    ):
         data = tensor.raw_data
         if len(data) < 1024:
             continue
@@ -202,12 +259,13 @@ def build(source, output, variant):
         if hashlib.sha256(raw).hexdigest() != SOURCE_SHA256:
             raise ValueError("input SHA-256 differs from the pinned upstream ONNX model")
         model = onnx.load_model_from_string(raw[:])
+        source_order = {t.name: i for i, t in enumerate(model.graph.initializer)}
         if variant == "per-token":
             per_token_quantization(model.graph)
         else:
-            blockwise_quantization(model)
+            mixed_quantization(model)
         onnx.checker.check_model(model)
-        externalize(model, raw)
+        externalize(model, raw, source_order)
     graph = model.SerializeToString(deterministic=True)
     digest = hashlib.sha256(graph).hexdigest()
     if digest != GRAPH_SHA256[variant]:

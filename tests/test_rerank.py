@@ -196,7 +196,7 @@ def test_x86_vnni_detection(tmp_path: Path, contents: str | None, expected: bool
 @pytest.mark.parametrize(
     ("system", "machine", "digest", "vnni", "label"),
     [
-        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, False, "blockwise INT8 5eb524d5d293"),
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, False, "mixed INT8 3b40891c54cd"),
         ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True, "per-token INT8 7f8cf431d2c1"),
         ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, False, "per-token INT8 7f8cf431d2c1"),
         ("linux", "x86_64", DIGEST, False, None),
@@ -253,7 +253,7 @@ async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(local, "has_avx512_vnni", lambda: vnni)
-    name = "per-token" if vnni else "blockwise"
+    name = "per-token" if vnni else "mixed"
     (tmp_path / f"qwen3-{name}-int8.onnx.gz").write_bytes(gzip.compress(b"incompatible"))
     monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
     monkeypatch.setattr(local, "ensure_model_files", AsyncMock())

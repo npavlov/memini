@@ -26,8 +26,8 @@ The query and the hit are data (principle 11): they are tokenized with special t
 One pair per model run, never a padded batch. The model gives every sequence positions from 0, so
 in a left-padded batch a pair's positions, and its score, would depend on the longest pair beside
 it. The upstream graph also scales int8 activations over the whole batch: a "yes" logit of
-20.42 alone and 21.24 beside one other pair. The Linux graphs use either per-token activation
-scales or blockwise integer projections, depending on the CPU. Each run hops to a worker
+20.42 alone and 21.24 beside one other pair. The Linux graphs use per-token activation
+scales and, on legacy x86 CPUs, blockwise INT8 for selected projections. Each run hops to a worker
 thread, so the event loop stays free and the timeout is checked between pairs. One search reranks
 at a time: onnxruntime uses every core it may for one run already.
 
@@ -110,9 +110,9 @@ _PER_TOKEN: Final = _Graph(
     "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111",
 )
 _LEGACY_X86: Final = _Graph(
-    "blockwise INT8",
-    "qwen3-blockwise-int8.onnx.gz",
-    "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13",
+    "mixed INT8",
+    "qwen3-mixed-int8.onnx.gz",
+    "3b40891c54cdea991c94856c7030e9769be55e0fd7ad53c2567fb5c0e3767a21",
 )
 
 
