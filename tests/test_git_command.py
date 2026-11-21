@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from memini.git import (
     Remote,
     RemoteNotAllowed,
     SizeLimit,
+    parse_remote,
 )
 from memini.git.command import MIN_GIT_VERSION, PASSWORD_VAR, USERNAME_VAR
 
@@ -325,3 +327,64 @@ async def _gone(pid: int, wait: float = 10.0) -> bool:
             return True
         await asyncio.sleep(0.05)
     return False
+
+
+@pytest.mark.anyio
+async def test_restricted_git_uses_the_operator_proxy(options: GitOptions) -> None:
+    requests: list[bytes] = []
+
+    async def proxy(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            headers = await reader.readuntil(b"\r\n\r\n")
+            requests.append(headers.split(b"\r\n", 1)[0])
+            writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    async with await asyncio.start_server(proxy, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        options = replace(
+            options,
+            egress_proxy=f"http://127.0.0.1:{port}",
+            allowed_origins=frozenset({"https://git.example.test:8443"}),
+        )
+        remote = parse_remote("https://git.example.test:8443/team.git", options)
+        git = Git(
+            options,
+            environ={"PATH": os.defpath, "NO_PROXY": "*", "https_proxy": "http://unused.invalid"},
+        )
+        command = git.command(["ls-remote", remote.url], git_dir=None, remote=remote)
+        assert "NO_PROXY" not in command.env
+        assert "http.followRedirects=false" in config_of(command.argv)
+        result = await git.run(["ls-remote", remote.url], git_dir=None, remote=remote, check=False)
+        assert result.returncode != 0
+        assert requests == [b"CONNECT git.example.test:8443 HTTP/1.1"]
+
+
+def test_restricted_git_allows_only_approved_https_origins_and_local_roots(
+    options: GitOptions, tmp_path: Path
+) -> None:
+    restricted = replace(
+        options,
+        egress_proxy="http://127.0.0.1:3128",
+        allowed_origins=frozenset({"https://git.example.test:443"}),
+        local_roots=(tmp_path / "local",),
+    )
+    for location in (
+        "ssh://git.example.test/repo",
+        "git@git.example.test:repo",
+        "http://git.example.test/repo",
+        "https://git.example.test:8443/x",
+        "https://other.example.test/repo",
+        str(tmp_path / "other"),
+    ):
+        with pytest.raises(RemoteNotAllowed):
+            parse_remote(location, restricted)
+    approved = parse_remote("https://git.example.test/repo", restricted)
+    cmd = Git(restricted).command(["ls-remote", approved.url], git_dir=None, remote=approved)
+    assert cmd.env[PASSWORD_VAR] == TOKEN
+    assert parse_remote(str(tmp_path / "local/repo"), restricted).transport == "file"
+    with pytest.raises(RemoteNotAllowed):
+        parse_remote(approved.url, replace(restricted, allowed_origins=frozenset()))

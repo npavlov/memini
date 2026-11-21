@@ -23,6 +23,7 @@ from memini.cli import sources as source_commands
 from memini.cli.client import (
     CLIENT_VARIABLES,
     DEFAULT_URL,
+    Api,
     ClientConfigError,
     load_client_settings,
 )
@@ -143,6 +144,25 @@ def test_settings_default_to_the_local_service() -> None:
 )
 def test_settings_take_the_url_from_the_environment(given: str, url: str) -> None:
     assert load_client_settings({"MEMINI_URL": given, "MEMINI_TOKEN": TOKEN}).url == url
+
+
+@pytest.mark.parametrize(("value", "expected"), [("", 60.0), ("360", 360.0), ("0.5", 0.5)])
+def test_client_timeout_is_applied_to_requests(value: str, expected: float) -> None:
+    settings = load_client_settings({"MEMINI_TOKEN": TOKEN, "MEMINI_CLIENT_TIMEOUT": value})
+
+    def check(request: httpx2.Request) -> httpx2.Response:
+        assert request.extensions["timeout"]["read"] == expected
+        assert request.extensions["timeout"]["connect"] == min(expected, 10.0)
+        return httpx2.Response(200, json={})
+
+    with Api(settings, transport=httpx2.MockTransport(check)) as api:
+        api.get("v1/status")
+
+
+@pytest.mark.parametrize("value", ["bad", "0", "-1", "nan", "inf", "1e999"])
+def test_invalid_client_timeout_is_refused(value: str) -> None:
+    with pytest.raises(ClientConfigError, match="MEMINI_CLIENT_TIMEOUT"):
+        load_client_settings({"MEMINI_TOKEN": TOKEN, "MEMINI_CLIENT_TIMEOUT": value})
 
 
 def test_the_url_option_wins_over_the_environment() -> None:

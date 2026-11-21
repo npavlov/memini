@@ -41,20 +41,25 @@ mirror and needs none.
 import logging
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from uuid import UUID
 
-from psycopg import AsyncConnection
+from psycopg import AsyncConnection, errors
 from psycopg.rows import TupleRow
 
+from memini import knowledge
 from memini.auth import ReadFilter
 from memini.config import Settings
+from memini.decisions.model import DecisionItem
 from memini.embeddings import Embedder, EmbeddingError, EmbeddingsNotConfiguredError
 from memini.git import GitOptions, MirrorManager
+from memini.ids import RecordKind
 from memini.ingest import DEFAULT_LIMITS, IngestLimits
-from memini.persons import parse_person_ref
+from memini.persons import parse_person_ref, resolve_persons
 from memini.query.model import (
     CodeSearchArguments,
     Definition,
+    GeneralSearchResult,
     ReadSourceArguments,
     SearchArguments,
     SearchHit,
@@ -84,7 +89,8 @@ from memini.search import (
     UnsupportedFilterError,
     search,
 )
-from memini.workspaces import NotFoundError
+from memini.search.engine import search_transaction
+from memini.workspaces import NotFoundError, list_workspaces
 
 __all__ = [
     "QueryError",
@@ -208,8 +214,15 @@ async def _search(
 
 async def run_search(
     conn: Conn, services: QueryServices, access: ReadFilter, arguments: SearchArguments
-) -> SearchResult:
+) -> GeneralSearchResult:
     """``search``: ranked search over every kind of record the caller may read."""
+    record_kinds: list[RecordKind] = []
+    item_kinds: list[knowledge.ItemKind] = []
+    for kind in arguments.kinds or ():
+        if kind == "decision" or kind == "open_question":
+            item_kinds.append(kind)
+        else:
+            record_kinds.append(kind)
     with query_errors():
         query = SearchQuery(
             text=arguments.query,
@@ -219,7 +232,7 @@ async def run_search(
                 workspaces=_names(arguments.workspaces),
                 sources=_names(arguments.sources),
                 repositories=_names(arguments.repositories),
-                kinds=None if arguments.kinds is None else tuple(arguments.kinds),
+                kinds=tuple(record_kinds) or None,
                 since=arguments.since,
                 until=arguments.until,
                 persons=None
@@ -229,7 +242,54 @@ async def run_search(
             ),
         )
         hits = await _search(conn, services, access, query)
-    return SearchResult(hits=[SearchHit.of(hit) for hit in hits])
+        decisions = []
+        if item_kinds or not arguments.kinds:
+            filters = knowledge.ItemFilters(
+                workspaces=query.filters.workspaces,
+                kinds=tuple(item_kinds) or None,
+                sources=tuple(arguments.sources) if arguments.sources else None,
+                repositories=tuple(arguments.repositories) if arguments.repositories else None,
+                decided_from=arguments.since,
+                decided_until=arguments.until,
+                limit=arguments.limit,
+            )
+            try:
+                async with search_transaction(conn, services.search_options, ef_search=None):
+                    decisions = await _decision_matches(conn, access, query, filters, hits)
+            except errors.QueryCanceled as error:
+                raise SearchTimeoutError(services.search_options.timeout) from error
+    return GeneralSearchResult(
+        hits=[SearchHit.of(hit) for hit in hits] if record_kinds or not arguments.kinds else [],
+        decisions=[DecisionItem.of(item) for item in decisions],
+    )
+
+
+async def _decision_matches(
+    conn: Conn,
+    access: ReadFilter,
+    query: SearchQuery,
+    filters: knowledge.ItemFilters,
+    hits: list[Hit],
+) -> list[knowledge.Item]:
+    matches: dict[UUID, knowledge.Item] = {}
+    if query.mode != "dense" and query.filters.roles is None:
+        statements = filters
+        if query.filters.persons is not None:
+            spaces = await list_workspaces(conn, access)
+            people = await resolve_persons(
+                conn, access, [space.id for space in spaces], query.filters.persons
+            )
+            statements = replace(
+                filters, person_ids=tuple(person for group in people.values() for person in group)
+            )
+        for item in await knowledge.list_items(conn, access, replace(statements, query=query.text)):
+            matches[item.id] = item
+    if hits and len(matches) < filters.limit:
+        records = tuple(dict.fromkeys(hit.record_id for hit in hits))
+        cited = await knowledge.list_items(conn, access, replace(filters, record_ids=records))
+        for item in cited:
+            matches.setdefault(item.id, item)
+    return list(matches.values())[: filters.limit]
 
 
 _CODE_MODES: dict[str, Mode] = {

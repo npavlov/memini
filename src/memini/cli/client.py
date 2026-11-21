@@ -1,12 +1,13 @@
 """The client side of the CLI: where the service is, the token, and HTTP calls to the API.
 
-Client commands are HTTP clients of the running service (requirements, section 7). They read two
+Client commands are HTTP clients of the running service (requirements, section 7). They read their
 settings, from the environment only; they need no database URL and do not read the service's
 settings or its TOML file:
 
 - ``MEMINI_URL``: the service, e.g. ``http://127.0.0.1:6364`` (the default) or
   ``https://memini.example.com/prefix``. ``http://`` or ``https://``, and TLS is whatever the URL
   says. A URL with a user name or password is refused: the token is the credential.
+- ``MEMINI_CLIENT_TIMEOUT``: seconds to wait for HTTP activity (default 60).
 - The token, a secret, in one of two forms: ``MEMINI_TOKEN``, the value itself, or
   ``MEMINI_TOKEN_FILE``, the path of a file that holds it (trailing line breaks are dropped).
   Setting both is an error. There is no option that takes the token on the command line, where
@@ -24,7 +25,7 @@ that failed and ``Retry-After``, for a command that retries or splits its reques
 - 401 and 403: :data:`~memini.cli.common.EXIT_DENIED`, the token was refused;
 - 503 ``unavailable``, and a 502, 503 or 504 without the API's error body (a proxy in front):
   :data:`~memini.cli.common.EXIT_UNAVAILABLE`, as for a service that cannot be reached or does not
-  answer within :data:`TIMEOUT` seconds;
+  answer within the configured client timeout;
 - anything else: :data:`~memini.cli.common.EXIT_FAILURE`.
 
 Redirects are not followed: the token goes to the URL given and nowhere else. The HTTP library logs
@@ -34,6 +35,7 @@ private text, such as a search query.
 
 import json
 import logging
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,6 +62,7 @@ __all__ = [
     "CONNECT_TIMEOUT",
     "DEFAULT_URL",
     "TIMEOUT",
+    "TIMEOUT_VAR",
     "TOKEN_FILE_VAR",
     "TOKEN_VAR",
     "URL_VAR",
@@ -77,11 +80,12 @@ URL_VAR: Final = "MEMINI_URL"
 TOKEN_VAR: Final = "MEMINI_TOKEN"  # noqa: S105 - the name of a variable, not a token
 TOKEN_FILE_VAR: Final = "MEMINI_TOKEN_FILE"  # noqa: S105 - the name of a variable
 DEFAULT_URL: Final = "http://127.0.0.1:6364"
-CLIENT_VARIABLES: Final = (URL_VAR, TOKEN_VAR, TOKEN_FILE_VAR)
+TIMEOUT_VAR: Final = "MEMINI_CLIENT_TIMEOUT"
+CLIENT_VARIABLES: Final = (URL_VAR, TOKEN_VAR, TOKEN_FILE_VAR, TIMEOUT_VAR)
 """Every environment variable :func:`load_client_settings` reads."""
 
 TIMEOUT: Final = 60.0
-"""Seconds a request may take, from sending it to the end of the answer."""
+"""Default seconds to wait for HTTP activity."""
 CONNECT_TIMEOUT: Final = 10.0
 """Seconds to connect to the service."""
 
@@ -140,6 +144,8 @@ class ClientSettings:
     origin: str
     """Where the token came from, e.g. ``MEMINI_TOKEN_FILE``: for messages."""
 
+    timeout: float = TIMEOUT
+
     def redact(self, text: str) -> str:
         """``text`` without the token, and without anything :func:`memini.logs.redact` masks."""
         return logs.redact(text.replace(self.token.get_secret_value(), logs.REDACTED))
@@ -183,7 +189,15 @@ def load_client_settings(
             f"{origin}: not a Memini token (memini_ and 43 letters, digits, '-' or '_')"
         )
     logs.register_secret(token)
-    return ClientSettings(url=base, token=SecretStr(token), origin=origin)
+    try:
+        timeout = float(environ.get(TIMEOUT_VAR) or TIMEOUT)
+    except ValueError:
+        raise ClientConfigError(
+            f"{TIMEOUT_VAR}: expected a positive finite number of seconds"
+        ) from None
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ClientConfigError(f"{TIMEOUT_VAR}: expected a positive finite number of seconds")
+    return ClientSettings(url=base, token=SecretStr(token), origin=origin, timeout=timeout)
 
 
 def _check_url(value: str, origin: str) -> str:
@@ -246,10 +260,10 @@ class Api:
         settings: ClientSettings,
         *,
         transport: httpx2.BaseTransport | None = None,
-        timeout: float = TIMEOUT,
+        timeout: float | None = None,
     ) -> None:
         self.settings = settings
-        self._timeout = timeout
+        self._timeout = settings.timeout if timeout is None else timeout
         self._http = httpx2.Client(
             base_url=settings.url + "/",
             headers={
@@ -257,7 +271,7 @@ class Api:
                 "Accept": "application/json",
                 "User-Agent": f"memini-cli/{__version__}",
             },
-            timeout=httpx2.Timeout(timeout, connect=min(CONNECT_TIMEOUT, timeout)),
+            timeout=httpx2.Timeout(self._timeout, connect=min(CONNECT_TIMEOUT, self._timeout)),
             follow_redirects=False,
             transport=transport,
         )

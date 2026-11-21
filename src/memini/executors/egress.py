@@ -30,10 +30,10 @@ every request, a redirect included.
 and port, or http to https on the same host), so none crosses to another host; each one is a new
 request, checked again against the allowlist, the path prefix included.
 
-**Commands** (``mcp_allowed_commands``). A stdio server is an executable named by its absolute
-path, which must be one of the paths listed, exactly (no symlink is resolved: the path configured is
-the path allowed). Its arguments are free; its environment is the SDK's short default list plus the
-credential, if the source names a variable for it.
+**Commands.** A stdio source must match an entry in ``mcp_allowed_invocations`` (executable,
+argument vector and credential variable) or an executable in ``mcp_allowed_commands``. Profiles
+take precedence when both settings list a path. Unprofiled commands accept source-supplied
+arguments. The process receives the SDK's default environment plus the configured credential.
 
 Every refusal is an :class:`EgressRefused` whose message names the rule and the setting, never the
 URL, host or address: a message goes into run reports and logs.
@@ -48,7 +48,7 @@ from typing import TYPE_CHECKING, Final, Literal, Self
 from urllib.parse import urlsplit, urlunsplit
 
 if TYPE_CHECKING:  # memini.config checks its endpoint rules with this module
-    from memini.config import Settings
+    from memini.config import Settings, StdioInvocation
 
 __all__ = [
     "DEFAULT_PORTS",
@@ -286,6 +286,8 @@ class EgressPolicy:
     commands: tuple[str, ...] = ()
     """Absolute paths of the executables a stdio source may run."""
 
+    invocations: tuple["StdioInvocation", ...] = ()
+
     def __post_init__(self) -> None:
         if any(not os.path.isabs(command) for command in self.commands):
             raise ValueError("an allowed command is an absolute path")
@@ -298,6 +300,7 @@ class EgressPolicy:
             networks=_networks(settings.mcp_allowed_networks),
             allow_http=settings.mcp_allow_http,
             commands=tuple(os.path.normpath(str(path)) for path in settings.mcp_allowed_commands),
+            invocations=settings.mcp_allowed_invocations,
         )
 
     @classmethod
@@ -356,12 +359,19 @@ class EgressPolicy:
             self.check_address(literal)
         return target
 
-    def check_command(self, command: str) -> str:
+    def check_command(
+        self, command: str, args: tuple[str, ...] = (), credential_env: str | None = None
+    ) -> str:
         """``command``, normalized, if it is one of the allowed executables; otherwise
         :class:`EgressRefused`."""
         if not command or not os.path.isabs(command) or "\0" in command:
             raise EgressRefused("a stdio command is the absolute path of an executable")
         normalized = os.path.normpath(command)
+        profiles = [p for p in self.invocations if os.path.normpath(p.command) == normalized]
+        if profiles:
+            if any(p.args == args and p.credential_env == credential_env for p in profiles):
+                return normalized
+            raise EgressRefused("the stdio invocation must match MEMINI_MCP_ALLOWED_INVOCATIONS")
         if normalized not in self.commands:
             raise EgressRefused(
                 "the command is not allowed; list its absolute path in MEMINI_MCP_ALLOWED_COMMANDS"

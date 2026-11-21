@@ -1,0 +1,133 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
+        env:
+          POSTGRES_USER: memini
+          POSTGRES_PASSWORD: memini
+          POSTGRES_DB: memini
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: false
+      - name: Test upgrade from the preceding release tag
+        env:
+          MEMINI_TEST_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
+        run: |
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
+          if [[ -n "$previous" ]]; then
+            scripts/test-upgrade.sh "$previous"
+          else
+            echo 'First release tag; no previous release schema exists.'
+          fi
+      - name: Verify tag and build distributions
+        run: |
+          python3 scripts/release-notes.py "$GITHUB_REF_NAME" > release-notes.md
+          uv lock --check
+          uv build --out-dir dist
+          uv venv "$RUNNER_TEMP/install"
+          uv pip install --python "$RUNNER_TEMP/install/bin/python" dist/*.whl
+          "$RUNNER_TEMP/install/bin/memini" --help
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release
+          path: |
+            release-notes.md
+            dist/
+
+  image:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Publish multi-platform image with attestations
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME#v}"
+          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx build --platform linux/amd64,linux/arm64 --sbom=true \
+            --provenance=mode=max --tag "$image" --push .
+          for platform in linux/amd64 linux/arm64; do
+            docker pull --platform "$platform" "$image"
+            docker run --rm --platform "$platform" --entrypoint memini "$image" --version
+            docker run --rm --platform "$platform" --entrypoint python "$image" \
+              -c 'import onnxruntime, psycopg, tokenizers, tree_sitter'
+          done
+
+  quickstart:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the published image and search the quickstart fixtures
+        run: scripts/test-release-install.sh "ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME#v}" "$GITHUB_REF"
+
+  package:
+    needs: quickstart
+    environment: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: false
+      - run: uv publish --trusted-publishing always dist/*
+
+  notes:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release
+      - name: Draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          flags=(--draft --verify-tag)
+          if [[ "$GITHUB_REF_NAME" == *-rc.* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            "${flags[@]}" --notes-file release-notes.md --title "$GITHUB_REF_NAME"

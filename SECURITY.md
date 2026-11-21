@@ -36,6 +36,8 @@ Memini has one maintainer, so these are best-effort targets, not guarantees.
 
 ## Scope
 
+The [security model](docs/security.md) describes trust boundaries, review evidence and open findings.
+
 Areas of most interest, from [docs/requirements.md](docs/requirements.md):
 
 - **Tokens and authorization.** Bearer tokens, their scopes (`read`, `ingest`, `admin`) and the single

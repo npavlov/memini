@@ -47,6 +47,7 @@ from memini.query import (
     run_search,
     run_search_code,
 )
+from memini.query.model import GeneralSearchResult
 
 __all__ = ["Services", "build_query_router", "query_services"]
 
@@ -73,7 +74,7 @@ def build_query_router() -> APIRouter:
         access: ReadAccess,
         services: Services,
         conn: Connection,
-    ) -> SearchResult:
+    ) -> GeneralSearchResult:
         """Ranked search over code, threads, meetings and documents the token may read: the MCP
         ``search`` tool. Each hit carries its source kind, locator, time and snippet; a hit of a
         thread, a meeting or a document also its ``anchor`` in the record, a ``link`` to that

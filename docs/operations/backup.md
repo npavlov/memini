@@ -177,3 +177,17 @@ of the server's version: from the container `MEMINI_TEST_PG_CONTAINER` names; el
 if they are recent enough; else, with `docker exec`, from the container that publishes the test
 server's port (the compose database of `make db`, the service container of CI). Run it alone with
 `make backup-test`.
+
+
+## Export one workspace as JSONL
+
+Run `memini export --workspace NAME > workspace.jsonl` inside the service container, or use
+`docker compose exec -T memini memini export --workspace NAME > workspace.jsonl` from its host.
+The operator command writes one JSON object per line from a single database snapshot. Record rows
+have `type: record`, source identity, external ID, timestamps, content hash and stored content.
+Git file records identify the ref, path and blob in the repository mirror. Journal rows have
+`type: knowledge_item` and include status, evidence, participants and visible supersession links.
+
+The default includes records from sources with `workspace` visibility. A decision enters the
+export only when every evidence source has that visibility. Add `--include-private` to include
+private sources and decisions, including evidence whose source has since been removed.

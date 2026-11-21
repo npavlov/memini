@@ -22,6 +22,7 @@ from psycopg.rows import TupleRow
 from pydantic import BaseModel
 
 from memini.auth import ReadFilter, authorization
+from memini.mcp.decisions import summarize_item
 from memini.mcp.text import TEXT_NOTICE, fenced, inline
 from memini.mcp.tools import Tool, ToolCall, ToolError
 from memini.query import (
@@ -40,6 +41,7 @@ from memini.query import (
     run_search,
     run_search_code,
 )
+from memini.query.model import GeneralSearchResult
 from memini.query.reader import DEFAULT_READ_LIMITS
 
 __all__ = [
@@ -125,6 +127,9 @@ def summarize_search(result: SearchResult) -> str:
     """The text content of a ``search`` or ``search_code`` result: every hit with its snippet."""
     lines = [_head(len(result.hits), "hit", "hits")]
     lines += [_hit(number, hit) for number, hit in enumerate(result.hits, start=1)]
+    if isinstance(result, GeneralSearchResult) and result.decisions:
+        lines.append(f"{len(result.decisions)} matching journal items.")
+        lines.extend(summarize_item(item) for item in result.decisions)
     return "\n\n".join(lines)
 
 
@@ -214,16 +219,17 @@ SEARCH_TOOL = Tool(
         "Search everything the token may read: code, message threads, meetings and documents. "
         "Ranks chunks by meaning and by words (mode hybrid, the default; dense: meaning only; "
         "lexical: words only). Filters: workspaces, sources, repositories, kinds (code_file, "
-        "thread, meeting, document), since and until on occurred_at (ISO 8601 with a time zone), "
+        "thread, meeting, document, decision, open_question), since and until (ISO 8601), "
         "persons (records that name them: 'me', a person id, or an alias such as a mail address, "
         "a chat user id or a display name; merged persons count as one) and roles (with persons: "
-        "author, recipient, mention, participant). "
+        "author, recipient, mention, participant). Active items matching statement words or "
+        "citing retrieved records are in decisions. Use get_decision for their full history. "
         f"{_RESULT_NOTE} {_ANCHOR_NOTE} For exact, regex or symbol search in code use search_code."
         " For the meetings or the messages of a person, one result per meeting or message, use"
         " list_meetings and list_messages."
     ),
     arguments=SearchArguments,
-    result=SearchResult,
+    result=GeneralSearchResult,
     run=_tool_run(run_search),
     summarize=summarize_search,
 )

@@ -362,6 +362,10 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
             "supersede_decision",
             {"item_id": items[1], "supersedes": [{"item_id": items[0], "relation": "replaces"}]},
         )
+        _, blocks = await call("get_decision", {"item_id": items[1]})
+        assert set(attempts()[:2]) <= set(blocks)
+        _, blocks = await call("list_decisions", {"workspaces": [WORKSPACE], "history": True})
+        assert set(attempts()[:4]) <= set(blocks)
         await call("close_decision", {"item_id": items[2]})
         await call("retract_decision", {"item_id": items[3]})
 
@@ -376,6 +380,8 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
             ("/v1/search/code", {"query": "ignore", "mode": "exact"}),
             (f"/v1/meetings/{meeting}", {"include_transcript": "true"}),
             (f"/v1/threads/{thread}", {}),
+            ("/v1/decisions", {"history": "true"}),
+            (f"/v1/decisions/{items[1]}", {}),
             ("/v1/messages", {"person": "U0GUEST77", "roles": "author"}),
         ):
             response = await http.get(path, params=params)
@@ -585,3 +591,40 @@ async def test_a_model_that_obeys_every_attempt_reaches_no_further_than_items(
     extracted = [row for row in rows if row[3] != "manual"]
     assert extracted
     assert {row[3] for row in extracted} == {extractor_name(LOCAL_MODEL)}
+
+
+async def test_documented_mcp_examples(world: World) -> None:
+    pages = Path(__file__).resolve().parents[1] / "docs" / "mcp"
+    examples: dict[str, Json] = {}
+    for page in pages.glob("*.md"):
+        if page.name == "README.md":
+            continue
+        block = re.search(r"```json\n(.*?)\n```", page.read_text(), re.DOTALL)
+        assert block is not None, page
+        example = json.loads(block[1])
+        assert example["name"] == page.stem
+        examples[page.stem] = example["arguments"]
+    assert examples.keys() == {tool.name for tool in TOOLS}
+
+    token = await world.token("read", "ingest")
+    async with mcp_client(world.app(), token) as client:
+
+        async def run_example(name: str, args: Json) -> Json:
+            result = await client.call_tool(name, args)
+            assert not result.is_error, (name, result.content)
+            return result.structured_content
+
+        ids: list[str] = []
+        for n in range(4):
+            args = dict(examples["record_decision"])
+            if n:
+                args["statement"] = f"Harbour schedule revision {n}."
+            ids.append((await run_example("record_decision", args))["id"])
+        targets = {"close_decision": ids[2], "retract_decision": ids[3]}
+        for name, args in examples.items():
+            if name == "record_decision":
+                continue
+            text = json.dumps(args).replace("<earlier_id>", ids[0])
+            await run_example(
+                name, json.loads(text.replace("<item_id>", targets.get(name, ids[1])))
+            )

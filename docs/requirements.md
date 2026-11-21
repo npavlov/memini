@@ -444,7 +444,9 @@ and at every connection, on the address the connection then uses (the transport 
 address it checked, so a DNS answer that changes in between cannot slip through), and the guard
 checks every request again; the SDK follows a redirect only within the endpoint's origin, and the
 guard refuses one that leaves the allowed path. A stdio server is an executable whose absolute
-path is in `mcp_allowed_commands`, exactly; its stderr is discarded, as it is not redacted.
+path is authorized by the operator. An entry in `mcp_allowed_invocations` pins its arguments and
+credential variable at registration and before startup. A path listed only in `mcp_allowed_commands`
+accepts source-supplied arguments. The executor discards stdio stderr.
 Refusals name the rule and the setting, never the URL or an address.
 
 **Agent executor** (decided 2026-11-18). One library, `memini.executors.agent`, behind the routes
@@ -610,7 +612,7 @@ own. Git sources write code and documents, which are not extracted. The job read
 is when it runs. A record no LLM may read is skipped and counted, not failed: the gate refuses
 with `policy_none` (the workspace or the source has `llm_policy` `none`) or `no_provider`, and
 nothing is sent. The extractor is the granted model and the prompt version
-(`qwen3:4b-instruct@decisions-v3`); if it has read this content before, nothing is called, so a
+(`qwen3:4b-instruct@decisions-v4`); if it has read this content before, nothing is called, so a
 rerun creates nothing. One call extracts. Record text is data (principle 11): the system message
 holds every instruction and no content; the user message names the task, then the record between
 two marker lines, `<<<BEGIN DATA n>>>` and `<<<END DATA n>>>`, where `n` is taken from the
@@ -813,7 +815,11 @@ the append-only journal is a 409 whose message names the database constraint: `n
 item already superseded, closed or retracted), `supersession_refused` (a cycle, the relation, the
 order, or an extracted item over a manual one) or `journal_refused` (any other trigger); evidence
 or a person that is not found is a 404, a field the journal refuses a 422. Reads
-(`list_decisions`, `get_decision`) are separate tools. From the CLI, `memini decision record`,
+use `GET /v1/decisions` (`list_decisions`) and `GET /v1/decisions/{item_id}` (`get_decision`).
+The list accepts `workspaces`, `person_ids`, `since` (inclusive), `until` (exclusive),
+`query` (statement words), and `limit`. It returns active items by default and every status
+with `history=true`. A single item includes its full linked chain, oldest first. Each evidence
+reference retains its locator and `record_state`, including `expired` after retention. From the CLI, `memini decision record`,
 `supersede`, `close` and `retract` are clients of the four routes; evidence there is
 `SOURCE:EXTERNAL_ID[#ANCHOR]` or `RECORD_ID[#ANCHOR]`.
 
@@ -913,7 +919,10 @@ results: `GET /v1/search`, `GET /v1/search/code`, `GET /v1/symbols` and
 (modes `hybrid`, `dense`, `lexical`); its `persons` filter keeps the records that name one of the
 persons (`record_person`, read through merges as the comms tools read it, below) and `roles`
 narrows it to `author`, `recipient`, `mention` or `participant`; a name that matches no one gives
-no hits. A hit carries its workspace, source and source kind, record kind, a locator (`repo@sha:path#L12-L30` for a file of a repository,
+no hits. In addition to record `hits`, general search returns up to `limit` active journal items in
+`decisions`. In lexical and hybrid modes, matching statements come first, followed by items
+citing a retrieved record. Dense mode and role-filtered searches match through retrieved evidence.
+The `kinds` filter accepts `decision` and `open_question`. A hit carries its workspace, source and source kind, record kind, a locator (`repo@sha:path#L12-L30` for a file of a repository,
 code or Markdown; `source:external_id#anchor` for anything else), `occurred_at` (the record's
 time, which `since` and `until` compare), for such a file the repository, ref and commit, and the
 chunk's text. A chunk of a thread, a meeting or a pushed document adds its place in the record
@@ -1837,7 +1846,7 @@ a hybrid regression of that size is noise, so `make eval-qwen3` and the nightly 
 margin of 0.05 (`QWEN3_MARGIN` in the Makefile).
 
 **Decision eval** (decided 2026-11-18). M4 starts with it (plan.md): the pipeline is built against
-it, and open question 5 is settled by its numbers. Extraction and supersession are two protocols
+it, and its scores determine the recommended local model. Extraction and supersession are two protocols
 (`memini.extraction`): an `Extractor` reads one thread or meeting (its normalized text as ingest
 stores it, and its parts: each message, segment, summary and action items with its anchor, rows,
 author or speaker and time) and returns proposed items (kind, statement, `decided_at`, the anchors
@@ -1871,6 +1880,26 @@ default; `--candidates lexical`, `dense` or `hybrid` shows each check what the `
 lexical leg in a scratch database and the dense one with the embedding provider of the settings.
 A case then counts as reached only when the items it needs were shown. Not scored yet:
 participants and `decided_at`.
+
+**Local model choice (2026-11-21).** For local decision extraction, use
+`MEMINI_LLM_LOCAL_MODEL=qwen3:4b-instruct`. Configure the local provider URL to enable it.
+This was the smallest tested model to pass the committed keyword baseline. Each candidate ran
+once on the same 41 English and Russian threads and meetings (18 labelled items, 24 supersession
+cases), using Ollama 0.34.2, Q4_K_M, `decisions-v3` at commit `0d45da9`, temperature zero,
+`json_schema` and the default `all` candidates. The gate allows a 0.02 drop per tracked group.
+
+| Extractor | Precision | Recall | Supersession | Baseline comparison |
+|---|---:|---:|---:|---|
+| Keyword stub | 0.64 | 0.89 | 0.54 | Reference |
+| `qwen3:1.7b` | 0.42 | 1.00 | 0.75 | Failed precision in all seven groups |
+| `qwen3:4b-instruct` | 0.72 | 1.00 | 0.96 | Passed every group |
+| `qwen3:8b` | 0.65 | 0.94 | 0.79 | Failed Russian precision, comms precision and recall, and `answers` accuracy |
+
+The two smaller models found all 18 items. The 1.7B tag added 25 false items and returned two replies
+without structured content. The 4B model added seven false items and reproduced 23 of 24
+supersession cases using 71 calls, 96,355 input tokens and 8,177 output tokens. The 8B tag
+found 17 items, added nine false items and returned three replies without structured content.
+A cloud reference measurement remains pending.
 
 Measured on 2026-11-18 with `qwen3:4b-instruct` (Q4_K_M, Ollama 0.34, `json_schema`, temperature
 0), prompt `decisions-v1`, against the `keyword` floor:
@@ -2025,6 +2054,24 @@ most of it in `eval/comms` (0.62 to 0.47), where status messages are taken for d
 an attempt. Left open (memini-z3e): drop the parts the model labels `instruction` and extract
 again, and measure it against this table.
 
+**`decisions-v4`** repeats extraction once when the model labels a cited part
+`instruction`. The second request contains only the remaining parts and goes through the same
+workspace and source policy check. An entirely excluded record yields no items. Anchors on
+excluded parts cannot become evidence. The stored record and its anchors remain available
+for provenance; the job accounts for the tokens of both calls.
+
+Measured on 2026-11-21 with the same 4B model, hybrid top 8, three sets and 52 records:
+
+| Records | Precision | Recall | Supersession | Proposed items citing an inserted part |
+|---|---|---|---|---|
+| Original | 0.667 (24 true, 12 false) | 1.00 | 0.90 (27/30) | — |
+| With an attempt added | 0.615 (24 true, 15 false) | 1.00 | 0.90 (27/30) | 0 |
+
+The precision difference of 0.051 exceeds the tolerance of 0.02. English supersession improved
+from 16/19 to 17/19 and Russian supersession fell from 11/11 to 10/11. The comparison ran
+95 calls on the original records and 110 on the modified records. The remaining quality
+regression is tracked in `memini-z3e`.
+
 ## 11. Later
 
 | Version | What |
@@ -2077,16 +2124,8 @@ again, and measure it against this table.
    and backs up on its own, and the service image stays one process.
 4. Settled on 2026-11-18: source configuration lives in the database, managed through the HTTP API and
    the CLI; an apply-from-file command is optional and not built (section 6).
-5. Smallest local model that extracts decisions well enough. Decided by the decision eval. First
-   data, 2026-11-18 (section 10, Decision eval): `qwen3:4b-instruct` (4B, Q4_K_M, through Ollama)
-   reaches precision 0.75, recall 1.00 and supersession accuracy 0.75 to 0.79 over three runs,
-   against 0.64, 0.89 and 0.54 of the `keyword` stub, at about 89k input and 9k output tokens for
-   the 41 threads and meetings (71 calls); it misses both `answers` links, and its numbers moved by
-   up to 0.2 with the wording of the prompt's examples. With the check of `decisions-v2` and
-   hybrid candidates (2026-11-19) supersession reached 0.96 (23 of 24) and both `answers` links,
-   extraction unchanged. Not settled: one model is no comparison,
-   and the sets hold 18 labelled items. Measure a smaller model (`qwen3:1.7b`) and a larger one
-   with the same prompt, and grow the sets, before choosing.
+5. Settled on 2026-11-21 by the decision eval. The recommended local extractor is
+   `qwen3:4b-instruct` (section 10, Local model choice).
 6. Settled on 2026-11-18: the license is Apache-2.0.
 7. Default retention for messages and meetings.
 8. Name collision. On 2026-11-18 `memini` was free on PyPI, while npm `memini` and the GitHub repository

@@ -57,7 +57,7 @@ from memini.git.errors import (
     RemoteNotAllowed,
 )
 from memini.git.options import GitOptions
-from memini.git.remote import Remote
+from memini.git.remote import Remote, check_destination
 from memini.logs import REDACTED, redact, register_secret
 
 __all__ = [
@@ -260,6 +260,19 @@ class Git:
         return Command(_subcommand(args), tuple(argv), env, cwd)
 
     def _add_transport(self, remote: Remote, config: list[str], env: dict[str, str]) -> None:
+        check_destination(remote, self._options)
+        proxy = self._options.egress_proxy
+        if proxy is not None and remote.transport == "https":
+            for key in list(env):
+                if key.lower().endswith("_proxy"):
+                    del env[key]
+            config.extend(
+                (
+                    f"http.proxy={proxy}",
+                    f"remote.origin.proxy={proxy}",
+                    "http.followRedirects=false",
+                )
+            )
         config.append(f"protocol.{remote.transport}.allow=always")
         if remote.transport == "file":
             # The operator vouched for this directory by listing its root in git_local_roots.

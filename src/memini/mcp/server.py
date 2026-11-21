@@ -32,7 +32,7 @@ from memini import __version__
 from memini.auth import Principal
 from memini.db import Pool
 from memini.mcp.comms import COMMS_READ_TOOLS, COMMS_WRITE_TOOLS
-from memini.mcp.decisions import DECISION_WRITE_TOOLS
+from memini.mcp.decisions import DECISION_READ_TOOLS, DECISION_WRITE_TOOLS
 from memini.mcp.query import QUERY_TOOLS
 from memini.mcp.status import STATUS_TOOL
 from memini.mcp.tools import Tool, ToolCall
@@ -68,6 +68,7 @@ requirements, section 9, **Prompt injection**)."""
 TOOLS: Final[Sequence[Tool[Any, Any]]] = (
     *QUERY_TOOLS,
     *COMMS_READ_TOOLS,
+    *DECISION_READ_TOOLS,
     STATUS_TOOL,
     *COMMS_WRITE_TOOLS,
     *DECISION_WRITE_TOOLS,

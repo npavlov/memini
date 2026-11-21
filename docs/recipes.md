@@ -5,8 +5,8 @@ items in a time window, how its pages follow each other, which tool fetches each
 where the id, the time and the reply count are in a response, which checks prove a window
 complete, how fast the server may be called, and which parser turns the raw responses into
 records. Why recipes exist, and the two executors that run them, are in
-[requirements.md](requirements.md), section 4. This page is the reference of the format; a guide
-to writing a recipe and its parser comes later.
+[requirements.md](requirements.md), section 4. To add a server, follow
+[Author a recipe and parser](#author-a-recipe-and-parser).
 
 A recipe holds no endpoint, credential or stream list: those belong to the source that uses the
 recipe. It holds no model prompt either: every value the executors read is found by a selector,
@@ -114,6 +114,50 @@ with the window inside a search query and offset paging.
 An editor with a TOML language server (Taplo, Even Better TOML) completes and checks keys when
 the file names the schema in its first line: `#:schema ../schemas/recipe.schema.json`, relative
 to the recipe, or the schema's URL.
+
+## Author a recipe and parser
+
+1. **Capture a small window.** Use synthetic responses shaped like the server's
+   `initialize`, `tools/list` and tool results. Include a second list page,
+   a root without replies, and a root with replies. Record whether the tool returns JSON in
+   a text block or an object in `structuredContent`. The Hearth example has two tools,
+   `channel_history` and `thread_replies`. Its fake server and parser are in
+   [hearth_helpers.py](../tests/hearth_helpers.py).
+2. **Map the calls.** Start from [hearth.toml](../tests/fixtures/recipes/hearth.toml).
+   Replace the server identity, stream key pattern, window arguments and selectors with
+   those of the new server. Hearth selects each `$.messages[*]`, reads its id from `@.ts`
+   and passes it back unchanged as the detail tool's `thread` argument. Trace a second
+   page by hand. The cursor belongs to the response as a whole, and disappears on the last
+   page. Set an overlap long enough to revisit edits and late replies.
+3. **Map the payload.** Write a function taking `Item` and `WindowInput`. Hearth's
+   `hearth_parser` uses the listed root or recovers it by id from stored detail pages
+   when the list page is gone. It emits a `RecordIn(kind="thread", ...)` with the stable
+   external id `<channel>/<root ts>`, each message's author, text and timestamp, and
+   `occurred_at` equal to the latest message time. Keep the root exactly once.
+   Return `IncompleteItem` when more data is needed, optionally with a partial record.
+   Keep the parser deterministic so replay yields the same records.
+4. **Register the parser in the service build.** Wrap the function with `item_parser`
+   and register it under the exact TOML `parser.name` during initialization. For Hearth,
+   `hearth_parser()` already returns the wrapped function, so the registration is
+   `register_parser("hearth.thread", hearth_parser())`. This example parser lives in
+   the tests. A service that accepts a custom recipe needs its parser installed and
+   registered in the running process. Uploading TOML supplies only the recipe.
+5. **Prove the window is complete.** Call `parse_window` on the recorded responses.
+   In the Hearth test, two list pages and three detail calls produce four threads.
+   Check their external ids and the response positions associated with each one. Then
+   remove a reply while keeping the advertised count. The partial thread survives,
+   `complete` is false, and the missing call identifies the precise thread to fetch again
+   with `check="reply_counts"`. Drop the next cursor while `has_more` is true and verify
+   the listing page is requested again. These cases keep the checkpoint in place.
+   For page or offset APIs, add the corresponding [count checks](#checks-completeness)
+   when the server exposes totals. See [the executable cases](../tests/test_reading.py).
+
+Run the worked example from the repository root:
+
+```sh
+uv run memini recipe validate tests/fixtures/recipes/hearth.toml
+uv run pytest -q tests/test_recipes.py tests/test_reading.py tests/test_parsing.py
+```
 
 ## Top level
 

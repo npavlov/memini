@@ -8,6 +8,28 @@ The result: the service and its database run on this machine, published on `127.
 workspace holds a public repository and a pushed chat thread; Claude Code (or another MCP client)
 searches them with a read-only token.
 
+## Install a published image with Docker only
+
+Use the source archive from the release tag that matches the image. In its directory, set
+`MEMINI_RELEASE_IMAGE` to the published GHCR image including its tag (for example
+`ghcr.io/npavlov/memini:0.1.0-rc.1` once that candidate is published).
+
+```sh
+# Replace VERSION with the version from the release tag, without its leading v.
+export MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:VERSION
+export COMPOSE_FILE=compose.yaml:compose.release.yaml
+docker compose up -d --wait ollama
+docker compose exec -T ollama ollama pull qwen3-embedding:0.6b
+docker compose up -d --no-build --wait
+```
+
+This runs Ollama inside the Compose network with a persistent model volume. For a permanent
+installation, first set the database password in step 2. Continue at [step 4](#4-the-memini-command).
+To verify an image in a separate disposable stack, run
+`scripts/test-release-install.sh "$MEMINI_RELEASE_IMAGE"`. It starts with empty volumes,
+syncs the quickstart repository at the matching tag (limited to its admin CLI file), pushes the example thread,
+checks both search results and removes the test stack.
+
 ## What you need
 
 - **Docker with Compose 2.24.0 or later.** Docker Desktop or OrbStack on macOS, Docker Engine with
@@ -128,19 +150,21 @@ no workspaces yet.
 
 A workspace holds sources; a token can be limited to one. Create one, then add a repository by its
 https URL, the tracked branch and how often to sync it. Any public repository works; this one is
-Memini itself, its documentation and its CLI only (`--include`), about 30 files:
+Memini itself, limited to its bootstrap CLI file so the first sync is small on CPU-only machines:
 
 ```sh
 memini workspace create demo
-memini source add demo memini --location https://github.com/npavlov/memini.git --ref main \
-  --include 'docs/**' --include 'src/memini/cli/**' --schedule 1h
-memini sync demo memini --wait
+quickstart_ref=refs/heads/main
+if [ -n "${MEMINI_RELEASE_IMAGE:-}" ]; then quickstart_ref="refs/tags/v${MEMINI_RELEASE_IMAGE##*:}"; fi
+memini source add demo memini --location https://github.com/npavlov/memini.git --ref "$quickstart_ref" \
+  --include 'src/memini/cli/admin.py' --schedule 1h
+memini sync demo memini --wait --wait-timeout 45m
 ```
 
 The service clones the repository into its own mirror, chunks the files and embeds them with
-Ollama. `sync --wait` ends with `refs/heads/main: run … succeeded` after half a minute or so; a
+Ollama. `sync --wait` ends with `run … succeeded` for the selected ref; a
 larger repository takes longer. Leave out `--include` to index every file. `sync --wait` waits 10
-minutes at most; a sync that takes longer goes on in the service: wait longer with
+minutes by default (the quickstart allows 45); a sync that takes longer goes on in the service: wait longer with
 `--wait-timeout 1h`, or follow it with `memini streams demo memini`. Then search it:
 
 ```sh
@@ -243,7 +267,7 @@ Another MCP client takes the same URL and header, e.g. in its JSON configuration
                            "headers": {"Authorization": "Bearer <token>"}}}}
 ```
 
-The tools and their arguments: [README.md](../README.md), "Tools".
+See [MCP client setup and tool reference](mcp/README.md) for Codex setup and a callable example for each tool.
 
 ## 9. Status
 
@@ -279,9 +303,9 @@ machine. The reasons and the measured numbers (indexing, search latency by mode,
 
 Rough figures from following this guide on a laptop (Apple M4 Max, Ollama on its GPU):
 
-- **Disk:** the images, about 1.6 GB (the service 1.1 GB, of which 0.61 GB is the reranker's model;
+- **Disk:** the service and database images, about 1.6 GB (the service 1.1 GB, of which 0.61 GB is the reranker's model;
   Postgres with pgvector 0.49 GB), and the embedding model, 0.64 GB. The database grows with what
-  is indexed: about 110 MB after steps 6 and 7, most of it Postgres's own files; about 400 MB with
+  is indexed. On arm64, the Docker-only path also uses about 4.2 GB for the Ollama image. Allow about 110 MB after steps 6 and 7, most of it Postgres's own files; about 400 MB with
   the whole Memini repository indexed as well.
 - **Memory:** the service about 1.1 GB, nearly all of it the reranker's model (about 100 MB with
   `MEMINI_SEARCH_RERANKER=none` in `.env.memini`); the database under 200 MB while indexing and
@@ -289,7 +313,7 @@ Rough figures from following this guide on a laptop (Apple M4 Max, Ollama on its
   gives it on a machine with much memory.
 - **CPU:** reranking adds 0.5 to 0.7 s to a search with 4 CPUs, 1.2 s with 2 and 2.2 s with 1
   (requirements.md, section 9, Reranker).
-- **Time:** indexing is the model's work. The sync of step 6, 28 files and 460 chunks, took 28 s;
+- **Time:** indexing is the model's work. A larger sync of 28 files and 460 chunks took 28 s;
   the whole Memini repository, 518 files and about 7,300 chunks, 4.5 minutes. On a CPU only, expect
   several times longer.
 

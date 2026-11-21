@@ -356,7 +356,7 @@ async def _open(
             )
             transport = streamable_http_client(endpoint.url, http_client=http)
         else:
-            command = policy.check_command(endpoint.command)
+            command = policy.check_command(endpoint.command, endpoint.args, endpoint.credential_env)
             env: dict[str, str] = {}
             if endpoint.credential_env is not None and token is not None:
                 env[endpoint.credential_env] = token.get_secret_value()

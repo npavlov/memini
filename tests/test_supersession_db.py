@@ -292,6 +292,15 @@ async def test_thread_b_supersedes_thread_a_and_the_restatement_is_a_duplicate(
     cur = await db.execute("SELECT item_id, supersedes_id FROM knowledge_supersession")
     assert await cur.fetchall() == [(b.id, a.id)]
 
+    listed = ok(await client.get("/v1/decisions", headers=harbor.headers))["items"]
+    assert [item["statement"] for item in listed] == [gzip]
+    history = ok(await client.get("/v1/decisions?history=true", headers=harbor.headers))["items"]
+    assert [item["statement"] for item in history] == [gzip, cbor]
+    result = ok(await client.get(f"/v1/decisions/{a.id}", headers=harbor.headers))
+    assert result["item"]["id"] == str(a.id)
+    assert [item["id"] for item in result["chain"]] == [str(a.id), str(b.id)]
+    assert result["chain"][1]["evidence"][0]["external_id"] == THREAD_B.external_id
+
     # The history: the chain from either end, each with the evidence of its thread.
     for start in (a.id, b.id):
         chain = (await get_item(db, harbor.reader, start)).chain

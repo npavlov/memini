@@ -69,6 +69,8 @@ TOOL_NAMES = [
     "get_meeting",
     "list_messages",
     "get_thread",
+    "list_decisions",
+    "get_decision",
     "status",
 ]
 WRITE_TOOL_NAMES = [

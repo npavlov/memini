@@ -51,6 +51,7 @@ below the API::
     memini migrate
     memini bootstrap [--name LABEL] [--expires-in DURATION] [--force]
     memini workspace llm <name> [none|local|cloud]
+    memini export --workspace <name> [--include-private]
     memini reindex --workspace <name>
     memini replay --workspace <name> --source <name> --recipe PATH [--stream KEY] [--run ID]
     memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--margin M] [--k 1,5,10]
@@ -159,6 +160,7 @@ from memini.cli import (
     decisions,
     evaluate,
     evaluate_decisions,
+    export,
     extract,
     forget,
     index,
@@ -449,6 +451,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="create the token even though an active admin token exists",
     )
     bootstrap.set_defaults(command=admin.bootstrap_command)
+
+    export_parser = commands.add_parser(
+        "export",
+        help="export workspace records and decision history as JSONL",
+        description="Write one JSON object per line to stdout. By default every record and "
+        "every cited source of a decision must have workspace visibility.",
+    )
+    export_parser.add_argument("--workspace", type=parse_workspace_name, required=True)
+    export_parser.add_argument(
+        "--include-private",
+        action="store_true",
+        help="include private records and their derived journal items",
+    )
+    export_parser.set_defaults(command=export.export_command)
 
     reindex = commands.add_parser(
         "reindex",

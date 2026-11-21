@@ -30,6 +30,7 @@ from memini.auth import Principal, Scope, WriteAccess, authorize_read, create_to
 from memini.config import Settings
 from memini.db import Pool, connect, open_pool
 from memini.decisions import DecisionError, decision_errors
+from memini.embeddings import FakeEmbedder
 from memini.ids import record_id
 from memini.knowledge import (
     ALL_STATUSES,
@@ -46,6 +47,8 @@ from memini.knowledge import (
     supersede,
 )
 from memini.mcp import MCP_PATH
+from memini.query import QueryServices
+from memini.removal import expire_source
 from memini.workspaces import ensure_principal
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
@@ -735,3 +738,62 @@ async def test_a_token_limited_to_one_workspace_writes_only_there(
     async with http_client(app, world.tokens["writer"]) as http:
         refused(await http.post(f"{beta}/{alpha_item}/retract"), 404, "not_found")
     assert (await item(db, world, alpha_item)).status == "active"
+
+
+async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) -> None:
+    first = await extract(db, world, EXTRACTOR_V1, extracted("Water at six.", world.thread))
+    (old,) = first.item_ids
+    async with http_client(app, world.tokens["writer"]) as http:
+        new = ok(
+            await http.post(
+                DECISIONS,
+                json=correction(
+                    statement="Distribute marigolds.",
+                    participants=[str(world.person)],
+                    supersedes=[{"item_id": str(old)}],
+                ),
+            ),
+            201,
+        )["id"]
+    async with mcp_client(app, world.tokens["reader"]) as client:
+        active = await client.call_tool("list_decisions", {"query": "marigolds"})
+        assert not active.is_error
+        assert [i["id"] for i in active.structured_content["items"]] == [new]
+        result = await client.call_tool("get_decision", {"item_id": str(old)})
+        assert not result.is_error
+        assert [i["id"] for i in result.structured_content["chain"]] == [str(old), new]
+        chat = await scalar(
+            db,
+            "UPDATE source SET retention_days = 1 WHERE workspace_id = %s"
+            " AND name = 'chat' RETURNING id",
+            world.alpha,
+        )
+        await expire_source(db, chat, as_of=SAID + timedelta(days=4))
+        expired = await client.call_tool("get_decision", {"item_id": new})
+        assert expired.structured_content["item"]["evidence"][0]["record_state"] == "expired"
+        assert expired.structured_content["item"]["evidence"][0]["anchor"] == "m2"
+
+    services: QueryServices = app.state.services
+    services.embedder = FakeEmbedder()
+    params = {"query": "marigolds", "mode": "lexical", "kinds": "decision"}
+    async with http_client(app, world.tokens["reader"]) as http:
+        found = ok(await http.get("/v1/search", params=params))
+        assert found["hits"] == []
+        assert [i["id"] for i in found["decisions"]] == [new]
+        assert found["decisions"][0]["evidence"][0]["anchor"] == "m2"
+        for exclusions in (
+            {"persons": str(world.beta_person)},
+            {"sources": "other"},
+            {"repositories": "chat"},
+        ):
+            assert ok(await http.get("/v1/search", params=params | exclusions))["decisions"] == []
+        assert (
+            ok(await http.get("/v1/decisions", params={"person_ids": str(world.beta_person)}))[
+                "items"
+            ]
+            == []
+        )
+    async with http_client(app, world.tokens["beta_writer"]) as http:
+        refused(await http.get(f"/v1/decisions/{new}"), 404, "not_found")
+        assert ok(await http.get("/v1/decisions?history=true"))["items"] == []
+        assert ok(await http.get("/v1/search", params=params))["decisions"] == []

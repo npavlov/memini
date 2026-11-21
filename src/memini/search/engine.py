@@ -83,7 +83,7 @@ from memini.search.retrieval import (
     symbol_statement,
 )
 
-__all__ = ["HNSW_MAX_EF_SEARCH", "HNSW_MIN_EF_SEARCH", "search"]
+__all__ = ["HNSW_MAX_EF_SEARCH", "HNSW_MIN_EF_SEARCH", "search", "search_transaction"]
 
 type Conn = AsyncConnection[TupleRow]
 
@@ -134,12 +134,12 @@ async def search(
     vector: Vector | None = None
     try:
         if query.mode in ("hybrid", "dense"):
-            async with _transaction(conn, options, ef_search=None):
+            async with search_transaction(conn, options, ef_search=None):
                 if await _scope(conn, access, query.filters, expected, index) is None:
                     return []
             (vector,) = await embedder.embed([query.text], kind="query")
         ef_search = None if vector is None else max(options.candidates, depth)
-        async with _transaction(conn, options, ef_search=ef_search):
+        async with search_transaction(conn, options, ef_search=ef_search):
             scope = await _scope(conn, access, query.filters, expected, index)
             if scope is None:
                 return []
@@ -172,7 +172,7 @@ async def _rerank(reranker: Reranker, text: str, hits: list[Hit], depth: int) ->
 
 
 @asynccontextmanager
-async def _transaction(
+async def search_transaction(
     conn: Conn, options: SearchOptions, *, ef_search: int | None
 ) -> AsyncGenerator[None]:
     """A read-only transaction at ``REPEATABLE READ`` with the search's limits."""

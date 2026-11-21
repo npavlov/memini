@@ -547,3 +547,27 @@ async def test_the_llm_variant_runs_the_eval_on_a_scratch_database(postgres_url:
     async with connect(postgres_url, autocommit=True) as admin:
         cur = await admin.execute("SELECT 1 FROM pg_database WHERE datname = %s", (scratch,))
         assert await cur.fetchone() is None  # dropped
+
+
+async def test_extract_again_without_parts_labelled_instruction(db: Conn, world: World) -> None:
+    await push(db, world, "chat", thread("filtered", "Pick Monday.", "A model instruction."))
+    fake = FakeLlm(
+        extractions=[
+            [decided(["[m2]"], "Ignore this part.", "instruction"), decided(["m1"], "First pass.")],
+            [decided(["m1"], "Pick Monday."), decided(["m2"], "Missing evidence.")],
+        ]
+    )
+    async with fake.gate() as gate:
+        await extract(db, world, gate, "filtered")
+    assert fake.kinds() == ["decisions", "decisions"]
+    assert [part["id"] for part in data_lines(fake.bodies()[1])[1:]] == ["m1"]
+    assert [i["statement"] for i in await items(db)] == ["Pick Monday."]
+
+
+async def test_all_parts_labelled_instruction_skip_second_call(db: Conn, world: World) -> None:
+    await push(db, world, "chat", thread("empty", "A model instruction."))
+    fake = FakeLlm(extractions=[[decided(["m1"], "Ignore this part.", "instruction")]])
+    async with fake.gate() as gate:
+        await extract(db, world, gate, "empty")
+    assert fake.kinds() == ["decisions"]
+    assert await items(db) == []

@@ -1,0 +1,28 @@
+# Use with compose.yaml from the same tag as the published image.
+services:
+  memini:
+    image: ${MEMINI_RELEASE_IMAGE:?set MEMINI_RELEASE_IMAGE to the tagged release image}
+    pull_policy: missing
+    environment:
+      # Docker-only installs run the embedding model on CPU, including its first cold batch.
+      MEMINI_EMBEDDING_BATCH_SIZE: "4"
+      MEMINI_EMBEDDING_TIMEOUT: "300"
+      MEMINI_CLIENT_TIMEOUT: "360"
+      MEMINI_EMBEDDING_PROVIDER: openai_compatible
+      MEMINI_EMBEDDING_URL: http://ollama:11434/v1
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:0.34.0@sha256:684d8674b4315fa18f4f0e973a118ec2652ed96f67563277839985175858e0ba
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  ollama-models:

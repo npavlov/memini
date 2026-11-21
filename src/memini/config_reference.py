@@ -43,6 +43,7 @@ from memini.cli.client import (
     CONNECT_TIMEOUT,
     DEFAULT_URL,
     TIMEOUT,
+    TIMEOUT_VAR,
     TOKEN_FILE_VAR,
     TOKEN_VAR,
     URL_VAR,
@@ -191,7 +192,7 @@ GROUPS: Final[tuple[Group, ...]] = (
         " `mcp_allow_http`), whose host resolves to no internal address (loopback, private,"
         " link-local, the cloud metadata address) unless its network is in"
         " `mcp_allowed_networks`, checked again at every connection and redirect; a stdio server"
-        " only from an executable in `mcp_allowed_commands`. Every list is empty by default, so"
+        " only from an approved command or invocation. Every list is empty by default, so"
         " no mcp source reaches anything until it is listed. A source's OAuth token endpoint is"
         " an endpoint too.",
     ),
@@ -298,6 +299,9 @@ NOTES: Final[Mapping[str, str]] = {
     "mcp_allowed_endpoints": "Checked when an mcp source is added or changed, and before every"
     " connection; a change applies to the next sync. With compose, a server on the host is"
     " `host.docker.internal`, whose address is internal: list its network as well.",
+    "mcp_allowed_invocations": "For a listed command, the ordered arguments and credential variable"
+    " must match one entry exactly, even when mcp_allowed_commands also lists the command."
+    ' Example: `[{"command":"/opt/mcp","args":["--ro"],"credential_env":"HEARTH_TOKEN"}]`.',
     "mcp_allowed_commands": "The path given is the path allowed; a symlink is not resolved. With"
     " compose the executable must exist in the container.",
     "mcp_call_attempts": "Each try is a call of the recipe's `[rate]` budget. A call that times"
@@ -421,6 +425,11 @@ _CLIENT_NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "The service's base URL, `http://` or `https://`, and TLS is whatever the URL says. A URL"
         " with a user name or password is refused: the token is the credential. `--url`"
         " overrides it.",
+    ),
+    TIMEOUT_VAR: (
+        f"{TIMEOUT:g} seconds",
+        f"Positive, finite seconds to wait for HTTP activity. Connection attempts use at most"
+        f" {CONNECT_TIMEOUT:g} seconds.",
     ),
     TOKEN_VAR: (
         f"**required**, or `{TOKEN_FILE_VAR}`",
@@ -805,9 +814,7 @@ def _client_section() -> list[str]:
         "Client commands (`memini workspace create`, `source`, `sync`, `runs`, `token`, `search`"
         " and the others that are not operator commands) are HTTP clients of the running service."
         " They read these variables from the environment, and nothing else: not the service's"
-        " settings, nor its config file. A request may take"
-        f" {_number(TIMEOUT, False)} seconds to answer, and {_number(CONNECT_TIMEOUT, False)} to"
-        " connect; these are not settings.",
+        " settings, nor its config file.",
         "",
         *_table(["Variable", "Default", "Description"], rows),
         "",

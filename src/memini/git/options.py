@@ -42,6 +42,8 @@ class GitOptions:
     max_mirror_size: int = 5 * 1024**3
     max_blob_size: int = 1024**2
     allow_http: bool = False
+    egress_proxy: str | None = None
+    allowed_origins: frozenset[str] = frozenset()
     local_roots: tuple[Path, ...] = ()
     https_token: SecretStr | None = field(default=None, repr=False)
     https_username: str = "x-access-token"
@@ -58,6 +60,8 @@ class GitOptions:
             raise ValueError("the mirror directory must be an absolute path")
         if any(not root.is_absolute() for root in self.local_roots):
             raise ValueError("local roots must be absolute paths")
+        if self.allowed_origins and not self.egress_proxy:
+            raise ValueError("Git allowed origins require an egress proxy")
         if self.https_token is not None and not self.https_token_hosts:
             raise ValueError("an https token needs the hosts it may be sent to")
 
@@ -70,6 +74,8 @@ class GitOptions:
             max_mirror_size=settings.git_max_mirror_size,
             max_blob_size=settings.git_max_blob_size,
             allow_http=settings.git_allow_http,
+            egress_proxy=settings.git_egress_proxy,
+            allowed_origins=frozenset(settings.git_allowed_origins),
             local_roots=settings.git_local_roots,
             https_token=settings.git_https_token,
             https_username=settings.git_https_username,

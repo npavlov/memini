@@ -149,7 +149,7 @@ def check_endpoint(endpoint: Endpoint, policy: EgressPolicy) -> Endpoint:
         except EgressRefused as error:
             raise McpConfigError("endpoint.url", str(error)) from None
     try:
-        command = policy.check_command(endpoint.command)
+        command = policy.check_command(endpoint.command, endpoint.args, endpoint.credential_env)
     except EgressRefused as error:
         raise McpConfigError("endpoint.command", str(error)) from None
     if isinstance(endpoint.args, str):

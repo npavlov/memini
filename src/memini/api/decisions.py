@@ -21,11 +21,12 @@ Errors are those of :mod:`memini.decisions.service` in the API's error shape: 42
 message names the database constraint.
 """
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
-from memini.api.auth import IngestAccess
+from memini.api.auth import IngestAccess, ReadAccess
 from memini.api.database import Connection
 from memini.api.errors import ApiError
 from memini.decisions import (
@@ -38,6 +39,14 @@ from memini.decisions import (
     run_retract,
     run_supersede,
 )
+from memini.decisions.reads import (
+    DecisionChain,
+    DecisionList,
+    GetDecisionArguments,
+    ListDecisionsArguments,
+    run_get_decision,
+    run_list_decisions,
+)
 
 __all__ = ["build_decisions_router"]
 
@@ -48,9 +57,29 @@ def _api_error(error: DecisionError) -> ApiError:
 
 def build_decisions_router() -> APIRouter:
     """The decision routes; see the module."""
-    router = APIRouter(prefix="/workspaces/{workspace}/decisions", tags=["decisions"])
+    router = APIRouter(tags=["decisions"])
 
-    @router.post("", status_code=201, summary="Record a decision or an open question")
+    @router.get("/decisions", summary="List decisions and open questions")
+    async def list_decisions(
+        arguments: Annotated[ListDecisionsArguments, Query()], access: ReadAccess, conn: Connection
+    ) -> DecisionList:
+        try:
+            return await run_list_decisions(conn, access, arguments)
+        except DecisionError as error:
+            raise _api_error(error) from None
+
+    @router.get("/decisions/{item_id}", summary="Get a decision and its supersession chain")
+    async def get_decision(item_id: UUID, access: ReadAccess, conn: Connection) -> DecisionChain:
+        try:
+            return await run_get_decision(conn, access, GetDecisionArguments(item_id=item_id))
+        except DecisionError as error:
+            raise _api_error(error) from None
+
+    @router.post(
+        "/workspaces/{workspace}/decisions",
+        status_code=201,
+        summary="Record a decision or an open question",
+    )
     async def record_decision(
         workspace: str, body: NewDecision, access: IngestAccess, conn: Connection
     ) -> DecisionItem:
@@ -63,7 +92,10 @@ def build_decisions_router() -> APIRouter:
         except DecisionError as error:
             raise _api_error(error) from None
 
-    @router.post("/{item_id}/supersede", summary="Link an item to earlier items it supersedes")
+    @router.post(
+        "/workspaces/{workspace}/decisions/{item_id}/supersede",
+        summary="Link an item to earlier items it supersedes",
+    )
     async def supersede_decision(
         workspace: str, item_id: UUID, body: SupersedeBody, access: IngestAccess, conn: Connection
     ) -> DecisionItem:
@@ -77,7 +109,10 @@ def build_decisions_router() -> APIRouter:
         except DecisionError as error:
             raise _api_error(error) from None
 
-    @router.post("/{item_id}/close", summary="Close an item without a replacement")
+    @router.post(
+        "/workspaces/{workspace}/decisions/{item_id}/close",
+        summary="Close an item without a replacement",
+    )
     async def close_decision(
         workspace: str, item_id: UUID, access: IngestAccess, conn: Connection
     ) -> DecisionItem:
@@ -88,7 +123,9 @@ def build_decisions_router() -> APIRouter:
         except DecisionError as error:
             raise _api_error(error) from None
 
-    @router.post("/{item_id}/retract", summary="Retract a wrong item")
+    @router.post(
+        "/workspaces/{workspace}/decisions/{item_id}/retract", summary="Retract a wrong item"
+    )
     async def retract_decision(
         workspace: str, item_id: UUID, access: IngestAccess, conn: Connection
     ) -> DecisionItem:

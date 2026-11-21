@@ -16,8 +16,10 @@ from typing import Annotated, Final, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from memini.chunking import Language
+from memini.decisions.model import DecisionItem
 from memini.gitsync import split_code_external_id
 from memini.ids import RecordKind
+from memini.knowledge import ItemKind
 from memini.persons import MAX_VALUE_LENGTH, Role
 from memini.provenance import Labelled
 from memini.query.reader import MAX_REF_CHARS, code_locator
@@ -95,9 +97,9 @@ class SearchArguments(BaseModel):
     workspaces: Names | None = Field(default=None, description=_WORKSPACES)
     sources: Names | None = Field(default=None, description="Only these sources, by name.")
     repositories: Names | None = Field(default=None, description=_REPOSITORIES)
-    kinds: list[RecordKind] | None = Field(
+    kinds: list[RecordKind | ItemKind] | None = Field(
         default=None,
-        description="Only these kinds of record: code_file, thread, meeting, document.",
+        description="Filter record and journal results by kind.",
     )
     since: AwareDatetime | None = Field(
         default=None,
@@ -346,6 +348,12 @@ class SearchResult(Labelled):
     regex and symbol)."""
 
     hits: list[SearchHit]
+
+
+class GeneralSearchResult(SearchResult):
+    """Record hits and active decisions matching the statement or citing a retrieved record."""
+
+    decisions: list[DecisionItem]
 
 
 class Definition(BaseModel):

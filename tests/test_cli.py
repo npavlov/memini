@@ -226,6 +226,7 @@ def test_help_lists_client_and_operator_commands_apart(
         "serve",
         "migrate",
         "bootstrap",
+        "export",
         "reindex",
         "replay",
         "eval",

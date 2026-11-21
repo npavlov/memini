@@ -376,6 +376,8 @@ async def test_a_repository_leaves_no_secret_in_any_table_nor_in_read_source(
         git_local_roots=(repos,),
     )
     repo = SourceRepo(repos / "service")
+    (repo.path / "link").symlink_to(f"keys/{GITHUB}")
+    repo.git("add", "--", "link")
     repo.commit({"app/settings.py": SETTINGS_PY, "docs/setup.md": SETUP_MD}, "first")
     embedder = FakeEmbedder()
     mirrors = MirrorManager(GitOptions.from_settings(settings))
@@ -435,6 +437,15 @@ async def test_a_repository_leaves_no_secret_in_any_table_nor_in_read_source(
             repository="service",
             path="app/settings.py",
         )
+
+        link = await read_source(
+            db,
+            ReadFilter(principal=caller, workspace_ids=None),
+            mirrors,
+            repository="service",
+            path="link",
+        )
+        assert link.target == "keys/[REDACTED:github_token]"
 
     assert read.content is not None
     assert [needle for needle in NEEDLES if needle in read.content] == []

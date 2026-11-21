@@ -26,7 +26,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 from pydantic import BaseModel
 
-from memini.auth import WriteAccess, authorization
+from memini.auth import ReadFilter, WriteAccess, authorization
 from memini.decisions import (
     DecisionError,
     DecisionItem,
@@ -38,11 +38,20 @@ from memini.decisions import (
     run_retract,
     run_supersede,
 )
+from memini.decisions.reads import (
+    DecisionChain,
+    DecisionList,
+    GetDecisionArguments,
+    ListDecisionsArguments,
+    run_get_decision,
+    run_list_decisions,
+)
 from memini.mcp.text import TEXT_NOTICE, fenced, inline
 from memini.mcp.tools import Tool, ToolCall, ToolError
 
 __all__ = [
     "CLOSE_DECISION_TOOL",
+    "DECISION_READ_TOOLS",
     "DECISION_WRITE_TOOLS",
     "RECORD_DECISION_TOOL",
     "RETRACT_DECISION_TOOL",
@@ -106,12 +115,13 @@ _KINDS = {"decision": "Decision", "open_question": "Open question"}
 def summarize_item(item: DecisionItem) -> str:
     """The text content of a written item: what it is, where it stands, its links and evidence,
     and the statement in a fenced block."""
-    by = "by hand" if item.manual else f"by extractor {item.extractor}"
+    by = "by hand" if item.manual else f"by extractor {inline(item.extractor)}"
     status = item.status
     if item.invalidated_at is not None:
         status += f" since {_time(item.invalidated_at)}"
     lines = [
-        f"{_KINDS[item.kind]} {item.id} in workspace {item.workspace}: {status}. {TEXT_NOTICE}",
+        f"{_KINDS[item.kind]} {item.id} in workspace {inline(item.workspace)}: {status}. "
+        f"{TEXT_NOTICE}",
         f"Said {_time(item.decided_at)}; recorded {_time(item.recorded_at)} {by}.",
     ]
     lines += [f"It {link.relation} {link.supersedes_id}." for link in item.supersedes]
@@ -125,8 +135,10 @@ def summarize_item(item: DecisionItem) -> str:
         source = evidence.source or f"source {evidence.source_id}"
         anchor = "" if evidence.anchor is None else f" at {evidence.anchor}"
         lines.append(
-            f"- {source}: {evidence.record_kind} {inline(evidence.external_id)}{inline(anchor)}"
+            f"- {inline(source)}: {evidence.record_kind} {inline(evidence.external_id)}"
+            f"{inline(anchor)}"
             f" (record {evidence.record_id}, {evidence.record_state})"
+            + (f" {inline(evidence.external_url)}" if evidence.external_url else "")
         )
     lines.append(f"Statement:\n{fenced(item.statement)}")
     return "\n".join(lines)
@@ -224,3 +236,49 @@ DECISION_WRITE_TOOLS: Sequence[Tool[Any, Any]] = (
     RETRACT_DECISION_TOOL,
 )
 """The decision write tools, in the order ``tools/list`` shows them."""
+
+
+def _read_run[A: BaseModel, R: BaseModel](
+    run: Callable[[Conn, ReadFilter, A], Awaitable[R]],
+) -> Callable[[ToolCall, A], Awaitable[R]]:
+    async def tool_run(call: ToolCall, arguments: A) -> R:
+        access = authorization.authorize_read(call.principal)
+        if call.pool is None:
+            raise ToolError("The database is not available.")
+        try:
+            async with call.pool.connection() as conn:
+                return await run(conn, access, arguments)
+        except DecisionError as error:
+            raise ToolError(error.message) from None
+
+    return tool_run
+
+
+DECISION_READ_TOOLS: Sequence[Tool[Any, Any]] = (
+    Tool(
+        name="list_decisions",
+        title="List decisions",
+        description=(
+            "Read active decisions and open questions. Set history to include earlier states. "
+            "Filter by workspace, statement words, participant ids and decision time."
+        ),
+        arguments=ListDecisionsArguments,
+        result=DecisionList,
+        run=_read_run(run_list_decisions),
+        summarize=lambda result: "\n\n".join(map(summarize_item, result.items)) or "No decisions.",
+    ),
+    Tool(
+        name="get_decision",
+        title="Get a decision",
+        description=(
+            "Read an item and its supersession chain with evidence links and raw record states."
+        ),
+        arguments=GetDecisionArguments,
+        result=DecisionChain,
+        run=_read_run(run_get_decision),
+        summarize=lambda result: (
+            f"Supersession chain for {result.item.id}. {TEXT_NOTICE}\n\n"
+            + "\n\n".join(map(summarize_item, result.chain))
+        ),
+    ),
+)

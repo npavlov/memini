@@ -10,6 +10,7 @@ import logging
 import os
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
@@ -18,7 +19,7 @@ from psycopg import sql
 from pydantic import SecretStr
 
 from memini.config import Settings
-from memini.db import migrate
+from memini.db import load_migrations, migrate
 from memini.logs import (
     ROUTED_LOGGERS,
     JsonFormatter,
@@ -105,6 +106,11 @@ def empty_database_url(postgres_url: str) -> Iterator[str]:
 @pytest.fixture
 async def migrated_database_url(empty_database_url: str) -> str:
     """URL of a new database with every migration applied. Needs an async (anyio) test."""
+    if previous := os.environ.get("MEMINI_TEST_PREVIOUS_MIGRATIONS"):
+        migrations = load_migrations(Path(previous))
+        if not migrations:
+            pytest.fail(f"no previous migrations in {previous}")
+        await migrate(empty_database_url, migrations=migrations)
     await migrate(empty_database_url)
     return empty_database_url
 

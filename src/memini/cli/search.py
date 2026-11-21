@@ -14,8 +14,10 @@ from memini.chunking import Language
 from memini.cli.arguments import Commands, parse_source_name, parse_workspace_name
 from memini.cli.client import Api
 from memini.cli.common import EXIT_OK, EXIT_USAGE, CommandError, message, printable
+from memini.cli.decisions import print_item
 from memini.cli.output import as_list, as_mapping, print_json, text, when
 from memini.ids import RecordKind
+from memini.knowledge import ITEM_KINDS
 from memini.query.model import CodeMode, SearchMode
 from memini.search.model import DEFAULT_LIMIT, MAX_LIMIT
 
@@ -64,7 +66,8 @@ def search_command(args: argparse.Namespace, api: Api) -> int:
         print_json(body)
         return EXIT_OK
     hits = [as_mapping(hit) for hit in as_list(body.get("hits"))]
-    if not hits:
+    decisions = as_list(body.get("decisions"))
+    if not hits and not decisions:
         message("no hits")
         return EXIT_OK
     for number, hit in enumerate(hits, start=1):
@@ -84,6 +87,8 @@ def search_command(args: argparse.Namespace, api: Api) -> int:
             print(f"    {printable(line.expandtabs(4))}".rstrip())
         if len(lines) > SNIPPET_LINES or hit.get("truncated") is True:
             print("    …")
+    for item in decisions:
+        print_item(as_mapping(item))
     return EXIT_OK
 
 
@@ -125,7 +130,7 @@ def add_commands(commands: Commands) -> None:
     search.add_argument(
         "--kind",
         action="append",
-        choices=get_args(RecordKind),
+        choices=(*get_args(RecordKind), *ITEM_KINDS),
         help="only this kind of record; repeat for more (not with --code)",
     )
     search.add_argument(

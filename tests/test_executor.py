@@ -486,6 +486,45 @@ async def test_a_session_on_the_network_checks_its_host_before_connecting() -> N
     assert calls == [HOST]
 
 
+@pytest.mark.parametrize("also_unrestricted", [False, True])
+async def test_stdio_invocation_is_checked_at_registration_and_start(
+    also_unrestricted: bool,
+) -> None:
+    command = "/opt/servers/hearth"
+    settings = load_settings(
+        {
+            "MEMINI_DATABASE_URL": "postgresql://fake@db.invalid/test",
+            "MEMINI_MCP_ALLOWED_COMMANDS": command if also_unrestricted else "",
+            "MEMINI_MCP_ALLOWED_INVOCATIONS": json.dumps(
+                [
+                    {
+                        "command": command,
+                        "args": ["--profile", "team"],
+                        "credential_env": "HEARTH_TOKEN",
+                    },
+                    {"command": command, "args": []},
+                ]
+            ),
+        }
+    )
+    policy = EgressPolicy.from_settings(settings)
+    for allowed in (
+        StdioEndpoint(command),
+        StdioEndpoint(command, ("--profile", "team"), "HEARTH_TOKEN"),
+    ):
+        assert check_endpoint(allowed, policy) == allowed
+    for denied in (
+        StdioEndpoint(command, ("--profile", "other"), "HEARTH_TOKEN"),
+        StdioEndpoint(command, ("team", "--profile"), "HEARTH_TOKEN"),
+        StdioEndpoint(command, credential_env="OTHER_TOKEN"),
+    ):
+        with pytest.raises(McpConfigError, match="invocation"):
+            check_endpoint(denied, policy)
+        with pytest.raises(EgressRefused, match="invocation"):
+            async with open_session(denied, policy=policy, timeout=1):
+                pytest.fail("unapproved process started")
+
+
 async def test_a_stdio_command_outside_the_allowlist_is_not_started() -> None:
     with pytest.raises(EgressRefused, match="MEMINI_MCP_ALLOWED_COMMANDS"):
         async with open_session(

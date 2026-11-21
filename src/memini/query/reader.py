@@ -347,7 +347,11 @@ async def read_source(
 
     content = await _blob(mirrors, mirror, entry)
     if entry.mode == _SYMLINK_MODE:
-        return result("symlink", size=len(content), target=content.decode("utf-8", "replace"))
+        return result(
+            "symlink",
+            size=len(content),
+            target=redact_text(content.decode("utf-8", "replace")).value,
+        )
     language = detect_language(path)
     if is_binary(content):
         return result("file", size=len(content), language=language, binary=True)

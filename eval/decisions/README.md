@@ -2,8 +2,8 @@
 
 Measures decision extraction and the supersession check (docs/requirements.md, sections 5 and 10)
 on labelled synthetic threads and meetings: precision and recall of extraction, accuracy of
-supersession. Open question 5 (the smallest local model that extracts decisions well enough) is
-settled by its numbers. Code: `src/memini/evaluation/decisions`; the protocols an extractor
+supersession. The recommended local extractor is `qwen3:4b-instruct`. The model comparison is
+in [requirements, section 10](../../docs/requirements.md#10-quality). Code: `src/memini/evaluation/decisions`; the protocols an extractor
 implements: `src/memini/extraction`.
 
     memini eval decisions                                    # keyword stub, both sets
@@ -118,7 +118,9 @@ unchanged (docs/requirements.md, section 10, with the rounds the prompt took and
 measured). Compare a run of a new model or prompt with the keyword floor, and read the
 groups that fall below it.
 
-The prompt is `decisions-v3` since 2026-11-19: the check of `decisions-v2`, and a prompt that escapes the data block and has the model label
+The previous extractor, `decisions-v3`, combined the check of `decisions-v2`, and a prompt that escapes the data block and has the model label
 attempts to instruct it (docs/requirements.md, section 9, **Prompt injection**). Its numbers on the
 three sets, with and without `--inject`, are in docs/requirements.md, section 10 (**Injected
 runs**), beside `decisions-v1`, and `decisions-v3` as a whole; the figures above are `decisions-v1` on the two default sets.
+
+The current extractor (`decisions-v4`) drops parts labelled `instruction` and repeats extraction once on the remaining evidence.

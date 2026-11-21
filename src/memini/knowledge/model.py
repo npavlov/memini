@@ -322,6 +322,10 @@ class ItemFilters:
     decided_until: datetime | None = None
     """Only items said before this time."""
     limit: int = 50
+    query: str | None = None
+    """Rank statements matching query words before applying the limit."""
+    sources: tuple[str, ...] | None = None
+    repositories: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.limit <= MAX_LIST_LIMIT:

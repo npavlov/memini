@@ -148,6 +148,8 @@ The service keeps a bare mirror of every git source and reads code from it. Remo
 | `git_max_mirror_size`<br>`MEMINI_GIT_MAX_MIRROR_SIZE` | size, at least 1 | `5G` | restart | The largest size of one mirror on disk: bytes, or a number with K, M, G or T. |
 | `git_max_blob_size`<br>`MEMINI_GIT_MAX_BLOB_SIZE` | size, at least 1 | `1M` | restart | The largest file read from a mirror: bytes, or a number with K, M, G or T. |
 | `git_allow_http`<br>`MEMINI_GIT_ALLOW_HTTP` | boolean | `false` | restart | True or false: allow plain http:// remotes (no TLS). |
+| `git_egress_proxy`<br>`MEMINI_GIT_EGRESS_PROXY` | string | unset | restart | HTTP(S) CONNECT proxy origin for restricted Git egress; the proxy must enforce destination address and port ACLs; unset: legacy transports. |
+| `git_allowed_origins`<br>`MEMINI_GIT_ALLOWED_ORIGINS` | list of strings | empty | restart | Exact HTTPS origins permitted through `git_egress_proxy`, comma-separated; empty with a proxy: deny network Git; requires `git_egress_proxy`. |
 | `git_local_roots`<br>`MEMINI_GIT_LOCAL_ROOTS` | list of paths | empty | restart | Absolute directory paths, comma-separated, under which local repositories may be sources; empty: no local sources. With compose, mount the directory into the container as well; compose.yaml has an example. |
 | `git_https_token`<br>`MEMINI_GIT_HTTPS_TOKEN`<br>`MEMINI_GIT_HTTPS_TOKEN_FILE`<br>*secret* | string | unset | restart | A token for https remotes, without whitespace. |
 | `git_https_username`<br>`MEMINI_GIT_HTTPS_USERNAME` | string | `x-access-token` | restart | The user name sent with `git_https_token`: printable ASCII, no spaces. |
@@ -176,7 +178,7 @@ The API keys and OAuth tokens of sources are stored encrypted (AES-256-GCM) with
 
 ### MCP service executor
 
-The service syncs mcp sources on its own with the built-in MCP client, and connects only where these settings allow: an endpoint inside `mcp_allowed_endpoints` (https, unless `mcp_allow_http`), whose host resolves to no internal address (loopback, private, link-local, the cloud metadata address) unless its network is in `mcp_allowed_networks`, checked again at every connection and redirect; a stdio server only from an executable in `mcp_allowed_commands`. Every list is empty by default, so no mcp source reaches anything until it is listed. A source's OAuth token endpoint is an endpoint too.
+The service syncs mcp sources on its own with the built-in MCP client, and connects only where these settings allow: an endpoint inside `mcp_allowed_endpoints` (https, unless `mcp_allow_http`), whose host resolves to no internal address (loopback, private, link-local, the cloud metadata address) unless its network is in `mcp_allowed_networks`, checked again at every connection and redirect; a stdio server only from an approved command or invocation. Every list is empty by default, so no mcp source reaches anything until it is listed. A source's OAuth token endpoint is an endpoint too.
 
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
@@ -184,6 +186,7 @@ The service syncs mcp sources on its own with the built-in MCP client, and conne
 | `mcp_allowed_networks`<br>`MEMINI_MCP_ALLOWED_NETWORKS` | list of strings | empty | restart | Networks in CIDR notation, comma-separated, of internal addresses (loopback, private, link-local) that MCP endpoints may resolve to all the same; empty: none. |
 | `mcp_allow_http`<br>`MEMINI_MCP_ALLOW_HTTP` | boolean | `false` | restart | True or false: allow plain http:// MCP endpoints (no TLS). |
 | `mcp_allowed_commands`<br>`MEMINI_MCP_ALLOWED_COMMANDS` | list of paths | empty | restart | Absolute paths, comma-separated, of the executables mcp sources may run as stdio servers; empty: none. The path given is the path allowed; a symlink is not resolved. With compose the executable must exist in the container. |
+| `mcp_allowed_invocations`<br>`MEMINI_MCP_ALLOWED_INVOCATIONS` | list of StdioInvocations | empty | restart | Approved stdio invocations with command, args and optional credential_env; a JSON array in the environment or an array of tables in TOML. For a listed command, the ordered arguments and credential variable must match one entry exactly, even when mcp_allowed_commands also lists the command. Example: `[{"command":"/opt/mcp","args":["--ro"],"credential_env":"HEARTH_TOKEN"}]`. |
 | `mcp_call_attempts`<br>`MEMINI_MCP_CALL_ATTEMPTS` | integer, 1 to 10 | `3` | restart | Attempts of one call of an mcp sync, the first included, 1 to 10. Each try is a call of the recipe's `[rate]` budget. A call that times out, fails on the network, gets HTTP 429 or a server error, or answers `isError`, is tried again after a backoff; one out of tries leaves its window incomplete. |
 
 ### LLM providers
@@ -222,13 +225,14 @@ Settings that no group above takes yet.
 
 ## Client commands
 
-Client commands (`memini workspace create`, `source`, `sync`, `runs`, `token`, `search` and the others that are not operator commands) are HTTP clients of the running service. They read these variables from the environment, and nothing else: not the service's settings, nor its config file. A request may take 60 seconds to answer, and 10 to connect; these are not settings.
+Client commands (`memini workspace create`, `source`, `sync`, `runs`, `token`, `search` and the others that are not operator commands) are HTTP clients of the running service. They read these variables from the environment, and nothing else: not the service's settings, nor its config file.
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MEMINI_URL` | `http://127.0.0.1:6364` | The service's base URL, `http://` or `https://`, and TLS is whatever the URL says. A URL with a user name or password is refused: the token is the credential. `--url` overrides it. |
 | `MEMINI_TOKEN` | **required**, or `MEMINI_TOKEN_FILE` | The token, a secret: sent as `Authorization: Bearer …`, never printed. No option takes the token itself, which shell history and the process list would keep. An admin creates one with `memini token create`; the first comes from `memini bootstrap`. |
 | `MEMINI_TOKEN_FILE` | unset | The path of a file that holds the token; trailing line breaks are dropped. Setting both it and `MEMINI_TOKEN` is an error. `--token-file` overrides both. |
+| `MEMINI_CLIENT_TIMEOUT` | 60 seconds | Positive, finite seconds to wait for HTTP activity. Connection attempts use at most 10 seconds. |
 
 ## Docker compose
 

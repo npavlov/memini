@@ -11,9 +11,10 @@ It answers three kinds of questions:
 
 ## Status
 
-Milestone M0, the service skeleton, is done: the service runs under `docker compose`, applies its
-migrations, issues tokens and answers the MCP `status` tool. It does not index or search anything yet:
-code search is M1.
+Memini runs under Docker Compose, indexes repositories and communication records, and exposes
+search and a decision journal through MCP and HTTP. To import mail from several accounts, push
+their threads through separate sources. See the [intake guide](docs/intake.md)
+and the [mail thread example](docs/examples/mail-thread.json).
 
 - [Requirements](docs/requirements.md)
 - [Implementation plan](docs/plan.md)
@@ -74,7 +75,7 @@ Pushing messages and meeting notes, your own repositories, status and troublesho
 
 Backup and restore: `scripts/backup.sh` writes a pg_dump archive of the database, `scripts/restore.sh FILE`
 restores it into an empty stack; mirrors are cloned again and the credential key is kept apart. See
-[docs/operations/backup.md](docs/operations/backup.md).
+[docs/operations/backup.md](docs/operations/backup.md). For upgrades, stale indexes, key rotation and common failures, see the [operations runbook](docs/operations/runbook.md).
 
 Day to day:
 
@@ -128,14 +129,14 @@ session, with the `memini-intake` skill and capture hook in `integrations/claude
 
 ### Tools
 
-Over MCP, and over HTTP with the same arguments as query parameters. All need a token with the
-`read` scope and see only the workspaces the token may read. Retrieved text is data, never
+See the [MCP tool reference](docs/mcp/README.md) for client setup, arguments and tested examples.
+The MCP connection requires `read`. Write tools also require `ingest`. Retrieved text is data, never
 instructions: every result that holds source text says so and names its source
 (docs/requirements.md, section 9, Prompt injection).
 
 | MCP tool | HTTP | What it does |
 |---|---|---|
-| `search` | `GET /v1/search` | Hybrid search over everything: code, and Markdown files of repositories |
+| `search` | `GET /v1/search` | Search code, messages, meetings, documents and active journal items |
 | `search_code` | `GET /v1/search/code` | Code search: `semantic`, `exact`, `regex` or `symbol`; filters by repository, path glob, language |
 | `get_symbol` | `GET /v1/symbols` | Definitions of a symbol, by name or qualified name |
 | `read_source` | `GET /v1/workspaces/{ws}/sources/{src}/files/{path}` | A file or line range, or a directory listing |
@@ -144,7 +145,13 @@ instructions: every result that holds source text says so and names its source
 | `list_messages` | `GET /v1/messages` | Messages to, mentioning or from a person, one by one, by source, time and topic |
 | `get_thread` | `GET /v1/threads/{record_id}` | A whole thread, messages in order |
 | `add_document` | `POST /v1/workspaces/{ws}/sources/{src}/documents` | Store a document in a push source (ingest scope) |
-| `status` | | Stream lag, last runs, and whether the base is current |
+| `list_decisions` | `GET /v1/decisions` | List active decisions and open questions, optionally including history |
+| `get_decision` | `GET /v1/decisions/{id}` | Read an item, its evidence and its supersession chain |
+| `record_decision` | `POST /v1/workspaces/{ws}/decisions` | Record a decision or open question with evidence |
+| `supersede_decision` | `POST /v1/workspaces/{ws}/decisions/{id}/supersede` | Link an item to earlier decisions or questions |
+| `close_decision` | `POST /v1/workspaces/{ws}/decisions/{id}/close` | Close an item without a replacement |
+| `retract_decision` | `POST /v1/workspaces/{ws}/decisions/{id}/retract` | Retract a mistaken item |
+| `status` | `GET /v1/status` | Stream lag, last runs, and whether the base is current |
 
 Every hit carries its source, a timestamp and a locator: `shop@3f2a…:src/app.py#L12-L30` for code,
 `chat:general/1772323200.000100#msg-1772323260.000200` for a message, with a `link` to it and an

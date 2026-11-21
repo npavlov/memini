@@ -1,6 +1,6 @@
 [project]
 name = "memini"
-version = "0.0.0"
+version = "0.1.0rc1"
 description = "Self-hosted knowledge service: code, messages and meeting notes in; MCP and HTTP out."
 readme = "README.md"
 requires-python = ">=3.12"

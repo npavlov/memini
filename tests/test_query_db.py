@@ -294,6 +294,8 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
         "get_meeting",
         "list_messages",
         "get_thread",
+        "list_decisions",
+        "get_decision",
         "status",
     ]
     expected = {

@@ -34,7 +34,7 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 from memini.git.errors import RemoteNotAllowed
 from memini.git.options import GitOptions
 
-__all__ = ["Remote", "Transport", "parse_remote"]
+__all__ = ["Remote", "Transport", "check_destination", "parse_remote"]
 
 type Transport = Literal["https", "http", "ssh", "file"]
 
@@ -71,6 +71,22 @@ class Remote:
 
 def parse_remote(location: str, options: GitOptions) -> Remote:
     """``location`` as a :class:`Remote`, or :class:`RemoteNotAllowed` naming the reason."""
+    remote = _parse_remote(location, options)
+    check_destination(remote, options)
+    return remote
+
+
+def check_destination(remote: Remote, options: GitOptions) -> None:
+    if options.egress_proxy is None or remote.transport == "file":
+        return
+    if remote.transport != "https" or remote.host is None:
+        raise RemoteNotAllowed("restricted network Git requires an HTTPS remote")
+    host = f"[{remote.host}]" if ":" in remote.host else remote.host
+    if f"https://{host}:{remote.port or 443}" not in options.allowed_origins:
+        raise RemoteNotAllowed("the Git origin is not in MEMINI_GIT_ALLOWED_ORIGINS")
+
+
+def _parse_remote(location: str, options: GitOptions) -> Remote:
     if not location or location != location.strip() or not location.isprintable():
         raise RemoteNotAllowed(
             "a source location is a URL or an absolute path, without whitespace at the ends or"

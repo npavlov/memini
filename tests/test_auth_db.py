@@ -412,3 +412,155 @@ async def test_the_token_never_reaches_logs_or_error_bodies(
         assert secret[15:] not in logged  # not even past the display prefix
         for body in bodies:
             assert secret not in body
+
+
+async def test_all_http_and_mcp_reads_apply_the_callers_filter(
+    settings: Settings, pool: Pool, db: Conn, world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise the registered reads and observe the caller's filter reaching SQL construction."""
+    from fastapi.routing import iter_route_contexts
+    from psycopg import sql
+    from pydantic import SecretStr
+
+    from memini.auth import WriteAccess
+    from memini.embeddings import FakeEmbedder
+    from memini.mcp.server import TOOLS
+    from memini.mcp.tools import ToolCall
+
+    token = await new_token(db, world, "read", "admin", "ingest", workspace_id=world.alpha)
+    principal = await pool_authenticator(pool)(token.secret.get_secret_value())
+    observed: list[str] = []
+
+    class WatchedRead(ReadFilter):
+        def where(self, **columns: Any) -> sql.Composable:
+            observed.append("read")
+            return super().where(**columns)
+
+    class WatchedWrite(WriteAccess):
+        def where(self, **columns: Any) -> sql.Composable:
+            observed.append("write")
+            return super().where(**columns)
+
+    read = authorization.authorize_read
+    write = authorization.authorize_write
+
+    def watch_read(caller: Principal, **kwargs: Any) -> ReadFilter:
+        assert caller == principal
+        access = read(caller, **kwargs)
+        return WatchedRead(caller, access.workspace_ids)
+
+    def watch_write(caller: Principal, scope: Scope) -> WriteAccess:
+        assert caller == principal
+        access = write(caller, scope)
+        return WatchedWrite(access.owner_id, access.workspace_ids)
+
+    monkeypatch.setattr(authorization, "authorize_read", watch_read)
+    monkeypatch.setattr(authorization, "authorize_write", watch_write)
+    app = create_app(
+        settings.model_copy(update={"metrics_token": SecretStr(generate_token())}),
+        pool=pool,
+        embedder=FakeEmbedder(),
+    )
+    scoped_metadata = {
+        "/v1/tokens",
+        "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{run_id}",
+        "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{run_id}/next",
+    }
+    path_values = {
+        "workspace": "alpha",
+        "source": "source",
+        "record_id": "0" * 64,
+        "path": "file.py",
+        "external_id": "external",
+        **dict.fromkeys(("run_id", "person_id", "item_id"), str(SOME_TOKEN_ID)),
+    }
+    query_values = {
+        "/v1/search": {"query": "sample", "mode": "lexical"},
+        "/v1/search/code": {"query": "sample", "mode": "exact"},
+        "/v1/symbols": {"name": "sample"},
+        "/v1/workspaces/{workspace}/persons/lookup": {"kind": "display_name", "value": "Sample"},
+    }
+    mutations = {
+        "create_workspace",
+        "create_source",
+        "update_source",
+        "delete_source",
+        "sync_source",
+        "prune_source",
+        "ingest_records",
+        "start_agent_run",
+        "store_agent_response",
+        "finish_agent_run",
+        "create_token",
+        "revoke_token",
+        "create_person",
+        "set_me",
+        "unset_me",
+        "rename_person",
+        "add_alias",
+        "remove_alias",
+        "merge_person",
+        "split_person",
+        "add_document",
+        "record_decision",
+        "supersede_decision",
+        "close_decision",
+        "retract_decision",
+        "extract",
+        "forget",
+    }
+    public_or_service = {"/healthz", "/readyz", "/version", "/metrics", "/openapi.json", "/mcp"}
+    async with httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=app),
+        base_url="http://memini.test",
+        headers=bearer(token),
+    ) as http:
+        for route in iter_route_contexts(app.routes):
+            path = route.path_format
+            assert path is not None
+            if path in public_or_service:
+                continue
+            if "GET" not in (route.methods or set()):
+                assert route.name in mutations, (
+                    f"Classify {route.methods} {path} as a read or write"
+                )
+                continue
+            observed.clear()
+            response = await http.get(path.format_map(path_values), params=query_values.get(path))
+            assert response.status_code in {200, 404}, (path, response.text)
+            assert ("write" if path in scoped_metadata else "read") in observed, path
+            assert str(world.beta) not in response.text, path
+
+    arguments: dict[str, dict[str, Any]] = {
+        "status": {},
+        "search": query_values["/v1/search"],
+        "search_code": query_values["/v1/search/code"],
+        "read_source": {"workspace": "alpha", "repository": "source"},
+        "get_symbol": {"name": "sample"},
+        "list_meetings": {},
+        "list_messages": {},
+        "get_meeting": {"record_id": "0" * 64},
+        "get_thread": {"record_id": "0" * 64},
+        "list_decisions": {},
+        "get_decision": {"item_id": str(SOME_TOKEN_ID)},
+    }
+    writes = {
+        "record_decision",
+        "close_decision",
+        "retract_decision",
+        "supersede_decision",
+        "add_document",
+    }
+    assert {tool.name for tool in TOOLS if not tool.read_only} == writes
+    assert {tool.name for tool in TOOLS if tool.read_only} == set(arguments)
+    for tool in TOOLS:
+        if tool.name in writes:
+            continue
+        assert tool.scope == "read"
+        observed.clear()
+        result = await tool.call(
+            ToolCall(principal=principal, pool=pool, services=app.state.services),
+            arguments[tool.name],
+        )
+        assert "read" in observed, (tool.name, result.content)
+        assert str(world.beta) not in result.model_dump_json(), tool.name

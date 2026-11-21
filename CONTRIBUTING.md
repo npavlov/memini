@@ -134,6 +134,24 @@ with `git commit --no-verify` does not get past CI.
 5. Write commit messages in English, with a short subject in the imperative: "Add ...", "Fix ...".
 6. Open a pull request against `main`. Say what changes and why, and link the issue.
 
+## Repository settings for maintainers
+
+After the workflows land on `main`, enable the dependency graph, Dependabot alerts and security
+updates, secret scanning with push protection, and private vulnerability reporting in the repository
+security settings. Select advanced CodeQL setup for the checked-in workflow. The Security tab shows
+CodeQL and the locked dependency audit under code scanning.
+
+Import [the main branch ruleset](.github/rulesets/main.json) under **Settings → Rules → Rulesets →
+New ruleset → Import a ruleset**. Review the checks against a pull request run and activate the rule.
+It requires a pull request and passing checks from GitHub Actions. The single maintainer can merge
+without a second reviewer.
+
+Verify enforcement with a disposable pull request containing a deliberately failing test. Check that
+GitHub blocks merging after the test fails, then close the pull request. Separately, verify the
+server rejects a push containing a supported, inert test secret on a disposable branch. Record the
+remote rejection without bypassing it. Run **Nightly eval** once from the Actions tab to seed its
+model cache.
+
 ## Changelog
 
 [CHANGELOG.md](CHANGELOG.md) follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and
@@ -144,6 +162,19 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `### Security`.
 - One line per change, written for a user of Memini, not as a commit log.
 - At a release, `[Unreleased]` becomes the version and date, and a new empty `[Unreleased]` starts above it.
+
+## Release workflow
+
+Register a PyPI trusted publisher for the project `memini`, repository `npavlov/memini`,
+workflow `release.yml` and GitHub environment `pypi`. Configure release approvals in that
+environment. The workflow uses GitHub OIDC and the repository token for GHCR.
+
+For `v0.1.0-rc.1`, set `project.version` to `0.1.0rc1`, refresh `uv.lock`, and add a
+`## [0.1.0-rc.1] - YYYY-MM-DD` changelog section. A stable tag such as `v0.1.0` uses
+`0.1.0` in both files. Run `python3 scripts/release-notes.py TAG` to preview the notes.
+Pushing the tag builds the distributions, checks a wheel install, publishes
+`ghcr.io/npavlov/memini:VERSION` for linux/amd64 and linux/arm64 with SBOM and provenance,
+publishes both distributions to PyPI, and creates a draft GitHub release for review.
 
 ## License
 

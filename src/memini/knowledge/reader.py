@@ -26,6 +26,8 @@ from memini.knowledge.model import (
     Link,
     Participant,
 )
+from memini.search.patterns import lexical_terms
+from memini.search.retrieval import Params, lexical_statement
 from memini.workspaces import NotFoundError
 
 __all__ = ["get_item", "list_items"]
@@ -262,6 +264,16 @@ async def list_items(
     chosen = ItemFilters() if filters is None else filters
     conditions: list[sql.Composable] = [sql.SQL("i.status = ANY(%(statuses)s)")]
     params: dict[str, Any] = {"statuses": list(chosen.statuses)}
+    order = _NEWEST_FIRST
+    if chosen.query is not None:
+        if not lexical_terms(chosen.query):
+            return []
+        terms = Params()
+        document = lexical_statement.document(sql.SQL("i.statement"))
+        query = lexical_statement.tsquery(chosen.query, terms)
+        conditions.append(sql.SQL("{} @@ {}").format(document, query))
+        order = sql.SQL("ts_rank({}, {}) DESC, {}").format(document, query, order)
+        params.update(terms.values)
     if chosen.workspaces is not None:
         conditions.append(sql.SQL("(w.name = ANY(%(names)s) OR w.id = ANY(%(ids)s))"))
         params["names"] = [each for each in chosen.workspaces if isinstance(each, str)]
@@ -269,6 +281,23 @@ async def list_items(
     if chosen.kinds is not None:
         conditions.append(sql.SQL("i.kind = ANY(%(kinds)s)"))
         params["kinds"] = list(chosen.kinds)
+    if chosen.sources is not None or chosen.repositories is not None:
+        source_conditions = [
+            _scope(access, "s", source="id"),
+            _scope(access, "e", source="source_id"),
+        ]
+        if chosen.sources is not None:
+            source_conditions.append(sql.SQL("s.name = ANY(%(sources)s)"))
+            params["sources"] = list(chosen.sources)
+        if chosen.repositories is not None:
+            source_conditions.append(sql.SQL("s.kind = 'git' AND s.name = ANY(%(repositories)s)"))
+            params["repositories"] = list(chosen.repositories)
+        conditions.append(
+            sql.SQL(
+                "EXISTS (SELECT 1 FROM knowledge_evidence e JOIN source s ON s.id = e.source_id "
+                "WHERE e.item_id = i.id AND {})"
+            ).format(sql.SQL(" AND ").join(source_conditions))
+        )
     if chosen.person_ids is not None:
         # A person stands for everyone merged with it (memini.persons): its participations and
         # theirs.
@@ -301,6 +330,6 @@ async def list_items(
             access,
             sql.SQL(" AND ").join(conditions),
             params,
-            order=_NEWEST_FIRST,
+            order=order,
             limit=chosen.limit,
         )

@@ -625,11 +625,27 @@ def test_git_settings_default_to_the_safe_choice() -> None:
     assert settings.git_max_mirror_size == 5 * 1024**3
     assert settings.git_max_blob_size == 1024**2
     assert settings.git_allow_http is False
+    assert settings.git_egress_proxy is None
+    assert settings.git_allowed_origins == ()
     assert settings.git_local_roots == ()
     assert settings.git_https_token is None
     assert settings.git_https_token_hosts == ()
     assert settings.git_ssh_key_path is None
     assert settings.git_ssh_known_hosts_path is None
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"MEMINI_GIT_ALLOWED_ORIGINS": "https://git.example.test"},
+        {"MEMINI_GIT_EGRESS_PROXY": "http://user@proxy"},
+        {"MEMINI_GIT_EGRESS_PROXY": "http://proxy/path"},
+        {"MEMINI_GIT_EGRESS_PROXY": "http://proxy", "MEMINI_GIT_ALLOWED_ORIGINS": "http://git"},
+    ],
+)
+def test_restricted_git_rejects_incomplete_or_ambiguous_settings(values: dict[str, str]) -> None:
+    with pytest.raises(ConfigError):
+        load_settings({"MEMINI_DATABASE_URL": FAKE_URL} | values)
 
 
 def test_git_settings_from_the_environment(tmp_path: Path) -> None:
@@ -643,6 +659,8 @@ def test_git_settings_from_the_environment(tmp_path: Path) -> None:
             "MEMINI_GIT_MAX_MIRROR_SIZE": "2G",
             "MEMINI_GIT_MAX_BLOB_SIZE": "512 KiB",
             "MEMINI_GIT_ALLOW_HTTP": "true",
+            "MEMINI_GIT_EGRESS_PROXY": "http://git-proxy:3128",
+            "MEMINI_GIT_ALLOWED_ORIGINS": "https://Git.Example.test,https://other.test:8443",
             "MEMINI_GIT_LOCAL_ROOTS": "/srv/repos, /home/someone/src,",
             "MEMINI_GIT_HTTPS_TOKEN_FILE": str(token_file),
             "MEMINI_GIT_HTTPS_TOKEN_HOSTS": "Git.Example.test,code.example.test",
@@ -651,6 +669,11 @@ def test_git_settings_from_the_environment(tmp_path: Path) -> None:
         }
     )
 
+    assert settings.git_egress_proxy == "http://git-proxy:3128"
+    assert settings.git_allowed_origins == (
+        "https://git.example.test:443",
+        "https://other.test:8443",
+    )
     assert settings.git_mirror_dir == Path("/var/lib/memini/mirrors")
     assert settings.git_fetch_timeout == 120
     assert settings.git_max_mirror_size == 2 * 1024**3

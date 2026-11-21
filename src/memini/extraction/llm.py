@@ -51,7 +51,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Collection, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Final, Literal
 from uuid import UUID
@@ -103,7 +103,7 @@ __all__ = [
     "verdict_of",
 ]
 
-PROMPT_VERSION: Final = "decisions-v3"
+PROMPT_VERSION: Final = "decisions-v4"
 """The version of the extraction and supersession prompts and of the checks of their output.
 Change it with any of them: stored items name it, and a new version extracts every record again."""
 
@@ -119,7 +119,7 @@ _ANCHOR_WRAP: Final = "[]()<>{}#\"'` "
 
 def extractor_name(model: str) -> str:
     """The extractor stored with each item: ``{model}@{PROMPT_VERSION}``, e.g.
-    ``qwen3:4b-instruct@decisions-v3``, in the characters an extractor name allows."""
+    ``qwen3:4b-instruct@decisions-v4``, in the characters an extractor name allows."""
     cleaned = _EXTRACTOR_CHARS.sub("-", model).lstrip("._:@/+=-") or "model"
     suffix = f"@{PROMPT_VERSION}"
     return cleaned[: 200 - len(suffix)] + suffix
@@ -620,15 +620,39 @@ class LlmDecisions:
         :class:`~memini.llm.LlmRefused` before anything is sent, :class:`~memini.llm.LlmError`,
         :class:`~memini.llm.LlmOutputError`.
         """
-        completion = await self.gate.complete(
-            conn,
-            workspace_id=workspace_id,
-            source_ids=source_ids,
-            request=extraction_request(record, max_tokens=self.extraction_tokens),
-        )
-        self.totals.add(completion.usage)
-        items, rejected = proposed_items(completion.output, record)
-        return Extracted(tuple(items), rejected, completion.grant, completion.usage)
+        usage = Usage(0, 0)
+        retried = False
+        while True:
+            completion = await self.gate.complete(
+                conn,
+                workspace_id=workspace_id,
+                source_ids=source_ids,
+                request=extraction_request(record, max_tokens=self.extraction_tokens),
+            )
+            self.totals.add(completion.usage)
+            usage = Usage(
+                usage.input_tokens + completion.usage.input_tokens,
+                usage.output_tokens + completion.usage.output_tokens,
+            )
+            anchors = record.anchors
+            excluded = {
+                anchor
+                for item in completion.output.items
+                if item.basis == "instruction"
+                for value in item.anchors
+                if (anchor := _anchor(value, anchors)) is not None
+            }
+            if excluded:
+                record = replace(
+                    record, parts=tuple(p for p in record.parts if p.anchor not in excluded)
+                )
+                if not record.parts:
+                    return Extracted((), 0, completion.grant, usage)
+                if not retried:
+                    retried = True
+                    continue
+            items, rejected = proposed_items(completion.output, record)
+            return Extracted(tuple(items), rejected, completion.grant, usage)
 
     async def classify(
         self,

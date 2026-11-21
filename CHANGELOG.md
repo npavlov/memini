@@ -7,7 +7,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0-rc.1] - 2026-11-21
+
 ### Added
+
+- Export workspace records and decisions as JSONL with `memini export --workspace NAME`.
+  Use `--include-private` to include records from private sources.
+- Install a tagged GHCR image with a containerized embedding provider using the
+  [Docker-only quickstart](docs/install.md#install-a-published-image-with-docker-only).
+
+- Read the decision journal over MCP and HTTP, search active decisions alongside records, and
+  follow an item's evidence and supersession history. [MCP tool reference](docs/mcp/README.md).
+- Follow the [operations runbook](docs/operations/runbook.md) for status, recovery, upgrades,
+  index rebuilds, forgetting a record and rotating the credential encryption key.
 
 - Requirements, implementation plan and prior art documents.
 - Apache-2.0 license.
@@ -175,9 +187,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reranking 11 times slower in a 2-CPU container.
 - The HTTP API answers 503 `unavailable`, not 500, while the database is down or restarting.
 - A stalled MCP server's handshake is reported as `ConnectError`, not an exception group.
+
 ### Security
+
+- Restrict Git network egress through an operator-managed proxy and constrain stdio MCP server
+  invocations to exact arguments. [Deployment controls](docs/security.md).
 
 - A secret scan before each commit (`make hooks`) and over the whole history in CI (gitleaks, pinned and
   checksum-verified); fixture directories must carry a `SYNTHETIC.md` marker.
 
-[Unreleased]: https://github.com/npavlov/memini/commits/main
+### Known limits
+
+- Mail import takes normalized threads from an exporter or an agent connected to the mailbox.
+  Native mail connectors are planned for a later release. [Mail thread example](docs/examples/mail-thread.json).
+- On 52 synthetic records the 4B decision extractor's precision fell from 0.667 to 0.615 when
+  an instruction was added to each record, beyond the target tolerance of 0.02. Recall was
+  1.00 in both runs. Review decision evidence before relying on extracted items.
+- Local decision extraction quality depends on the model and prompt. The synthetic decision
+  suite reports precision, recall and supersession accuracy. [Decision eval](eval/decisions/README.md).
+- A database backup retains records forgotten after the backup. Restoring it requires the
+  encryption keys from the time of the backup. [Restore procedure](docs/operations/backup.md).
+
+[Unreleased]: https://github.com/npavlov/memini/compare/v0.1.0-rc.1...main
+[0.1.0-rc.1]: https://github.com/npavlov/memini/releases/tag/v0.1.0-rc.1

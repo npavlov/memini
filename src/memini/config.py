@@ -102,6 +102,7 @@ statement of the service is logged as slow (:mod:`memini.db.statements`).
 import base64
 import binascii
 import ipaddress
+import json
 import os
 import re
 import tomllib
@@ -264,6 +265,25 @@ def _hostname(value: str) -> str:
     return host
 
 
+def _git_origin(value: str, *, proxy: bool = False) -> str:
+    from memini.executors.egress import EgressRefused, parse_endpoint_url
+
+    try:
+        target = parse_endpoint_url(value, allow_http=proxy)
+    except EgressRefused:
+        raise ValueError(
+            "expected a Git origin without credentials, path, query or fragment"
+        ) from None
+    if target.path != "/":
+        raise ValueError("a Git origin has no path")
+    host = f"[{target.host}]" if ":" in target.host else target.host
+    return f"{target.scheme}://{host}:{target.port}"
+
+
+def _git_proxy(value: str) -> str:
+    return _git_origin(value, proxy=True)
+
+
 def _single_line(secret: SecretStr | None) -> SecretStr | None:
     if secret is not None and any(
         c.isspace() or not c.isprintable() for c in secret.get_secret_value()
@@ -331,6 +351,20 @@ def _network(value: str) -> str:
         return str(ipaddress.ip_network(value, strict=False))
     except ValueError:
         raise ValueError("not a network in CIDR notation, such as 10.0.0.0/8") from None
+
+
+class StdioInvocation(BaseModel):
+    """One operator-approved executable, argument vector and credential destination."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command: _AbsolutePath
+    args: tuple[str, ...] = ()
+    credential_env: str | None = None
+
+
+def _invocation_list(value: object) -> object:
+    return json.loads(value) if isinstance(value, str) else value
 
 
 class Settings(BaseModel):
@@ -450,6 +484,18 @@ class Settings(BaseModel):
         default=False,
         description="true or false: allow plain http:// remotes (no TLS)",
     )
+    git_egress_proxy: Annotated[str, AfterValidator(_git_proxy)] | None = Field(
+        default=None,
+        description="HTTP(S) CONNECT proxy origin for restricted Git egress; "
+        "the proxy must enforce destination address and port ACLs; unset: legacy transports",
+    )
+    git_allowed_origins: Annotated[
+        tuple[Annotated[str, AfterValidator(_git_origin)], ...], BeforeValidator(_comma_list)
+    ] = Field(
+        default=(),
+        description="exact HTTPS origins permitted through git_egress_proxy, "
+        "comma-separated; empty with a proxy: deny network Git; requires git_egress_proxy",
+    )
     git_local_roots: Annotated[tuple[_AbsolutePath, ...], BeforeValidator(_comma_list)] = Field(
         default=(),
         description="absolute directory paths, comma-separated, under which local repositories"
@@ -528,6 +574,13 @@ class Settings(BaseModel):
             description="absolute paths, comma-separated, of the executables mcp sources may run as"
             " stdio servers; empty: none",
         )
+    )
+    mcp_allowed_invocations: Annotated[
+        tuple[StdioInvocation, ...], BeforeValidator(_invocation_list)
+    ] = Field(
+        default=(),
+        description="approved stdio invocations with command, args and optional credential_env;"
+        " a JSON array in the environment or an array of tables in TOML",
     )
     mcp_call_attempts: int = Field(
         default=3,
@@ -844,6 +897,13 @@ class Settings(BaseModel):
                 if values.get(name) is None:
                     values[name] = value
         return values
+
+    @field_validator("git_allowed_origins")
+    @classmethod
+    def _origins_need_proxy(cls, origins: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:
+        if origins and info.data.get("git_egress_proxy") is None:
+            raise ValueError("git_allowed_origins requires git_egress_proxy")
+        return origins
 
     @field_validator("git_https_token_hosts")
     @classmethod
