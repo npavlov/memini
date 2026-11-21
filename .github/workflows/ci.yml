@@ -36,7 +36,7 @@ jobs:
 
       # No python-version: the interpreter comes from .python-version, as it does locally.
       - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.9"
           enable-cache: true
@@ -76,7 +76,7 @@ jobs:
 
       # No python-version: the interpreter comes from .python-version, as it does locally.
       - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.9"
           enable-cache: true
@@ -128,7 +128,7 @@ jobs:
       # python-version exports UV_PYTHON, which uv treats as an explicit request (like --python);
       # it overrides the 3.12 pin in .python-version.
       - name: Set up uv and Python ${{ matrix.python-version }}
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.9"
           python-version: ${{ matrix.python-version }}
@@ -193,7 +193,7 @@ jobs:
 
       # No python-version: the interpreter comes from .python-version, as it does locally.
       - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.9"
           enable-cache: true
@@ -233,7 +233,7 @@ jobs:
 
       # For the MCP client that the smoke test runs on the host; Python from .python-version.
       - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.9"
           enable-cache: true
