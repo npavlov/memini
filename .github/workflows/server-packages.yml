@@ -1,0 +1,87 @@
+name: Server packages
+on:
+  pull_request:
+    paths:
+      - "scripts/memini-server.py"
+      - "packaging/server/**"
+      - "Formula/memini-server.rb"
+      - "bucket/memini-server.json"
+      - ".github/workflows/server-packages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify package recipe and manifest
+        shell: bash
+        run: |
+          python packaging/server/build.py bundle
+          python - <<'PY'
+          from pathlib import Path
+          for recipe in [Path("Formula/memini-server.rb"), Path("bucket/memini-server.json")]:
+              assert recipe.read_text() == (Path("bundle") / recipe.name).read_text(), recipe
+          PY
+      - name: Exercise Homebrew install
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"; fi
+          brew tap-new --no-git memini-test/server
+          formula="$(brew --repo memini-test/server)/Formula/memini-server.rb"
+          mkdir -p "$(dirname "$formula")"
+          python3 -c 'import pathlib,re,sys; archive,=pathlib.Path("bundle").glob("*.zip"); pathlib.Path(sys.argv[1]).write_text(re.sub(r"url \"[^\"]+\"", "url \""+archive.resolve().as_uri()+"\"", pathlib.Path("Formula/memini-server.rb").read_text(), count=1))' "$formula"
+          brew install --build-from-source memini-test/server/memini-server
+          brew test memini-test/server/memini-server
+          memini-server --help
+          brew uninstall memini-test/server/memini-server
+      - name: Check out Scoop
+        if: runner.os == 'Windows'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ScoopInstaller/Scoop
+          ref: e6aa3b366bdee8ed138c1e0f7b85192ebdd35d0f
+          path: scoop-source
+          persist-credentials: false
+      - name: Exercise Scoop install
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:SCOOP = "$env:RUNNER_TEMP/scoop"
+          $core = "$env:SCOOP/apps/scoop/current"
+          New-Item -ItemType Directory -Force $core | Out-Null
+          Copy-Item scoop-source/* $core -Recurse -Force
+          $scoop = "$core/bin/scoop.ps1"
+          $zip = (Get-ChildItem bundle/*.zip).Name
+          $server = Start-Process python -ArgumentList '-m','http.server','8113','--bind','127.0.0.1','--directory','bundle' -PassThru
+          try {
+            $manifest = Get-Content bucket/memini-server.json -Raw | ConvertFrom-Json
+            $manifest.url = "http://127.0.0.1:8113/$zip"
+            $manifest | ConvertTo-Json | Set-Content bundle/memini-server.json
+            & $scoop install "$PWD/bundle/memini-server.json"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $env:PATH = "$env:SCOOP/shims;$env:PATH"
+            $resources = memini-server path
+            if (-not (Test-Path "$resources/docs/examples/mail-thread.json")) { throw "Missing example" }
+            memini-server --help
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            & $scoop uninstall memini-server
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } finally {
+            Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          }
