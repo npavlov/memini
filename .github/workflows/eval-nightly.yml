@@ -7,25 +7,50 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cores: [2, 4]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+        host: [ubuntu-22.04, ubuntu-24.04]
+        attempt: [1, 2, 3]
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Benchmark original and quality-passing candidate
-        env:
-          CORES: ${{ matrix.cores }}
+      - name: Detect target CPU
+        id: cpu
+        run: |
+          lscpu
+          if grep -q 'EPYC 7763' /proc/cpuinfo; then echo "matched=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Measure 4 CPUs
+        if: steps.cpu.outputs.matched == 'true'
         run: |
           set -eu
           image=ghcr.io/npavlov/memini@sha256:b31d29cd401776ab262c307f5da368122062fff6d464a0ebe9aef5504a8649da
           docker pull "$image"
-          nproc
-          lscpu
-          for profile in control candidate; do
-            flags=()
-            if [[ $profile == candidate ]]; then flags=(-e OVERRIDE_MODEL=1); fi
-            docker run --rm --network none --cpus "$CORES" --cpuset-cpus "0-$((CORES-1))" -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" "${flags[@]}" --entrypoint python "$image" /bench/measure.py | tee "$profile.jsonl"
-            echo "$profile $(tail -1 "$profile.jsonl")" >> "$GITHUB_STEP_SUMMARY"
+          lib=/opt/memini/venv/lib/python3.12/site-packages/memini/rerank
+          for profile in main q7 mixed; do
+            docker run --rm --network none --cpus 4 --cpuset-cpus 0-3 -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/$profile:$lib:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" --entrypoint python "$image" /bench/measure.py | tee "$profile-4.jsonl"
+            echo "$profile 4 $(tail -1 "$profile-4.jsonl")" >> "$GITHUB_STEP_SUMMARY"
           done
+      - name: Retain 4-CPU measurements
+        if: steps.cpu.outputs.matched == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: results-4-${{ matrix.host }}-${{ matrix.attempt }}
+          path: '*-4.jsonl'
+      - name: Measure 2 CPUs
+        if: steps.cpu.outputs.matched == 'true'
+        run: |
+          set -eu
+          image=ghcr.io/npavlov/memini@sha256:b31d29cd401776ab262c307f5da368122062fff6d464a0ebe9aef5504a8649da
+          docker pull "$image"
+          lib=/opt/memini/venv/lib/python3.12/site-packages/memini/rerank
+          for profile in main q7 mixed; do
+            docker run --rm --network none --cpus 2 --cpuset-cpus 0-1 -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/$profile:$lib:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" --entrypoint python "$image" /bench/measure.py | tee "$profile-2.jsonl"
+            echo "$profile 2 $(tail -1 "$profile-2.jsonl")" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Retain 2-CPU measurements
+        if: steps.cpu.outputs.matched == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: results-2-${{ matrix.host }}-${{ matrix.attempt }}
+          path: '*-2.jsonl'
