@@ -26,8 +26,8 @@ The query and the hit are data (principle 11): they are tokenized with special t
 One pair per model run, never a padded batch. The model gives every sequence positions from 0, so
 in a left-padded batch a pair's positions, and its score, would depend on the longest pair beside
 it. The upstream graph also scales int8 activations over the whole batch: a "yes" logit of
-20.42 alone and 21.24 beside one other pair. The Linux graphs use either per-token activation
-scales or blockwise integer projections, depending on the CPU. Each run hops to a worker
+20.42 alone and 21.24 beside one other pair. The Linux graphs scale activations per token,
+using seven-bit weights where the CPU can saturate integer projections. Each run hops to a worker
 thread, so the event loop stays free and the timeout is checked between pairs. One search reranks
 at a time: onnxruntime uses every core it may for one run already.
 
@@ -42,6 +42,7 @@ do not match are never loaded.
 import gzip
 import hashlib
 import importlib
+import json
 import math
 import platform
 import sys
@@ -110,10 +111,13 @@ _PER_TOKEN: Final = _Graph(
     "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111",
 )
 _LEGACY_X86: Final = _Graph(
-    "blockwise INT8",
-    "qwen3-blockwise-int8.onnx.gz",
-    "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13",
+    "per-channel Q7",
+    "qwen3-channel7-int8.onnx.gz",
+    "64a83156c2b65a655d523d2fe54001da822325298ad42b5197ee736f41d0e849",
 )
+
+_Q7_METADATA: Final = "qwen3-channel7.json"
+_Q7_METADATA_SHA256: Final = "725464f6c5ff41460c60dad4cf192d9d3cddb0b773355c3c48f284be6d35bdc4"
 
 
 class RerankError(Exception):
@@ -331,6 +335,34 @@ def _import_runtime() -> _Modules:
     return _Modules(**loaded)
 
 
+def q7_initializers(modules: _Modules, model_path: Path) -> tuple[list[str], list[Any]]:
+    """Requantize verified weight slices one projection at a time for legacy x86 GEMM."""
+    metadata = files("memini.rerank").joinpath(_Q7_METADATA).read_bytes()
+    if hashlib.sha256(metadata).hexdigest() != _Q7_METADATA_SHA256:
+        raise RerankError(f"packaged reranker metadata {_Q7_METADATA} failed SHA-256")
+
+    np = modules.numpy
+    names: list[str] = []
+    values: list[Any] = []
+    with model_path.open("rb") as stream:
+        for name, offset, rows, columns in json.loads(metadata):
+            stream.seek(offset)
+            data = stream.read(rows * columns)
+            if len(data) != rows * columns:
+                raise RerankError(f"verified reranker weight {name} is truncated")
+            weight = np.frombuffer(data, dtype=np.int8).reshape(rows, columns)
+            positive = weight.max(axis=0).astype(np.int16)
+            negative = -weight.min(axis=0).astype(np.int16)
+            peak = np.maximum(np.maximum(positive, negative), 1)
+            scale = peak.astype(np.float32) / np.float32(63)
+            scratch = weight.astype(np.float32)
+            np.divide(scratch, scale, out=scratch)
+            np.rint(scratch, out=scratch)
+            values.append(modules.onnxruntime.OrtValue.ortvalue_from_numpy(scratch.astype(np.int8)))
+            names.append(name)
+    return names, values
+
+
 class _Runtime:
     """A loaded model and tokenizer. Its methods block; call them in a worker thread."""
 
@@ -375,6 +407,10 @@ class _Runtime:
             options.add_session_config_entry(
                 "session.model_external_initializers_file_folder_path", str(model_path.parent)
             )
+        if graph is _LEGACY_X86:
+            # The NumPy buffers must survive until ORT copies them during session creation.
+            names, values = q7_initializers(modules, model_path)
+            options.add_external_initializers(names, values)
         session = ort.InferenceSession(
             source, sess_options=options, providers=["CPUExecutionProvider"]
         )

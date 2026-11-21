@@ -162,9 +162,9 @@ GROUPS: Final[tuple[Group, ...]] = (
         " another model its own revision; in the image it also needs a writable"
         " `search_reranker_model_dir`, such as a volume, as the image's own is read-only."
         "\n\nThe pinned default uses per-token INT8 on Linux arm64 and on Linux x86-64 where"
-        " every CPU reports AVX-512 VNNI. Other Linux x86-64 CPUs use blockwise INT8, including"
-        " when CPU flags are unavailable. Both graphs read the same verified weights from the"
-        " cache. Other platforms and model digests use the supplied model graph."
+        " every CPU reports AVX-512 VNNI. Other Linux x86-64 CPUs use per-channel Q7 weights,"
+        " including when CPU flags are unavailable. Both graphs read the same verified weights"
+        " from the cache. Other platforms and model digests use the supplied model graph."
         " [Graph provenance](../packaging/reranker/README.md)",
     ),
     Group(

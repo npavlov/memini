@@ -10,8 +10,8 @@
 import argparse
 import gzip
 import hashlib
+import json
 import mmap
-from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -25,9 +25,9 @@ SOURCE_NAME = "model_yesno_quantized.onnx"
 ACTIVATION_GRAPH_SHA256 = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
 GRAPH_SHA256 = {
     "per-token": ACTIVATION_GRAPH_SHA256,
-    "blockwise": "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13",
+    "channel7": "64a83156c2b65a655d523d2fe54001da822325298ad42b5197ee736f41d0e849",
 }
-BLOCK = 128
+METADATA_SHA256 = "725464f6c5ff41460c60dad4cf192d9d3cddb0b773355c3c48f284be6d35bdc4"
 
 
 def per_token_quantization(graph):
@@ -96,80 +96,58 @@ def per_token_quantization(graph):
     graph.node.extend(nodes)
 
 
-def blockwise_nodes(activation, weight, scale, outputs, shape):
-    k, n = shape
-    if k % BLOCK:
-        raise ValueError(f"weight {weight} has an incomplete block")
-    packed = weight + "_packed"
-    dimensions = numpy_helper.from_array(
-        np.array([n, k // BLOCK, BLOCK], np.int64), packed + "_dims"
-    )
-    scales = numpy_helper.from_array(np.array([n, k // BLOCK], np.int64), packed + "_scdims")
-    nodes = [
-        helper.make_node("Cast", [weight], [packed + "_u8"], to=TensorProto.UINT8),
-        helper.make_node("BitwiseXor", [packed + "_u8", "xor_mask"], [packed + "_shifted"]),
-        helper.make_node("Transpose", [packed + "_shifted"], [packed + "_trans"], perm=[1, 0]),
-        helper.make_node("Reshape", [packed + "_trans", packed + "_dims"], [packed]),
-        helper.make_node("Expand", [scale, packed + "_scdims"], [packed + "_scales"]),
-        helper.make_node(
-            "MatMulNBits",
-            [activation, packed, packed + "_scales"],
-            outputs,
-            domain="com.microsoft",
-            K=k,
-            N=n,
-            bits=8,
-            block_size=BLOCK,
-            accuracy_level=4,
-        ),
-    ]
-    return nodes, (dimensions, scales)
-
-
-def blockwise_quantization(model):
-    graph = model.graph
+def channel7_quantization(graph, source):
     tensors = {tensor.name: tensor for tensor in graph.initializer}
-    producers = {output: node for node in graph.node for output in node.output}
-    consumers = defaultdict(list)
-    for node in graph.node:
-        for name in node.input:
-            consumers[name].append(node)
-
     replacements = {}
-    remove = set()
-    constants = [numpy_helper.from_array(np.uint8(128), "xor_mask")]
+    scales = []
+    placeholders = []
+    metadata = []
+    offset = 0
     for node in graph.node:
         if node.op_type != "MatMulInteger":
             continue
-        activation, weight, _, zero = node.input
-        quant = producers[activation]
-        (cast,) = consumers[node.output[0]]
-        (rescale,) = consumers[cast.output[0]]
-        combined = producers[next(name for name in rescale.input if name != cast.output[0])]
-        operators = (quant.op_type, cast.op_type, rescale.op_type, combined.op_type)
-        if operators != ("DynamicQuantizeLinear", "Cast", "Mul", "Mul"):
-            raise ValueError(f"unexpected projection in {node.name}")
-        if numpy_helper.to_array(tensors[zero]).item() != 0:
-            raise ValueError(f"expected symmetric INT8 weights in {node.name}")
-        weight_scale = next(name for name in combined.input if name != quant.output[1])
-        nodes, shapes = blockwise_nodes(
-            quant.input[0], weight, weight_scale, rescale.output, tensors[weight].dims
-        )
-        replacements[node.output[0]] = nodes
-        constants.extend(shapes)
-        remove.update(item.output[0] for item in (quant, cast, rescale, combined))
+        _, weight, _, zero = node.input
+        tensor = tensors[weight]
+        if tensor.data_type != TensorProto.INT8 or numpy_helper.to_array(tensors[zero]).item() != 0:
+            raise ValueError(f"expected a symmetric INT8 projection for {weight}")
+        k, n = tensor.dims
+        external = {entry.key: entry.value for entry in tensor.external_data}
+        if external["location"] != SOURCE_NAME or int(external["length"]) != k * n:
+            raise ValueError(f"invalid source offsets for {weight}")
+        upstream_offset = int(external["offset"])
+        upstream = np.ndarray((k, n), np.int8, buffer=source, offset=upstream_offset)
+        peak = np.maximum(upstream.max(0).astype(np.int16), -upstream.min(0).astype(np.int16))
+        factor = np.maximum(peak, 1).astype(np.float32) / np.float32(63)
+        scale = weight.removesuffix("_quantized") + "_scale"
+        name = scale + "_channel7"
+        scales.append(numpy_helper.from_array(numpy_helper.to_array(tensors[scale]) * factor, name))
+        replacements[scale] = name
 
-    if len(replacements) != 197:
-        raise ValueError(f"expected 197 projections, found {len(replacements)}")
-    nodes = []
+        name = weight + "_7"
+        projection = TensorProto(name=name, data_type=TensorProto.INT8, dims=(k, n))
+        projection.data_location = TensorProto.EXTERNAL
+        for key, value in (
+            ("location", "memory-channel7.weights"),
+            ("offset", offset),
+            ("length", k * n),
+        ):
+            projection.external_data.add(key=key, value=str(value))
+        placeholders.append(projection)
+        metadata.append([name, upstream_offset, k, n])
+        offset += k * n
+        node.input[1] = name
+
+    if len(metadata) != 197:
+        raise ValueError(f"expected 197 projections, found {len(metadata)}")
     for node in graph.node:
-        if node.output[0] not in remove:
-            nodes.extend(replacements.get(node.output[0], (node,)))
-    graph.ClearField("node")
-    graph.node.extend(nodes)
-    graph.initializer.extend(constants)
-    if not any(version.domain == "com.microsoft" for version in model.opset_import):
-        model.opset_import.append(helper.make_opsetid("com.microsoft", 1))
+        for i, name in enumerate(node.input):
+            if name in replacements:
+                node.input[i] = replacements[name]
+    used = {name for node in graph.node for name in node.input}
+    retained = [t for t in graph.initializer if t.name in used]
+    graph.ClearField("initializer")
+    graph.initializer.extend(retained + scales + placeholders)
+    return json.dumps(metadata, separators=(",", ":")).encode()
 
 
 def externalize(model, source):
@@ -195,19 +173,28 @@ def externalize(model, source):
     model.graph.ClearField("metadata_props")
 
 
-def build(source, output, variant):
+def build(source, output, variant, metadata_output=None):
+    if variant == "channel7":
+        if metadata_output is None or metadata_output.resolve() in (
+            source.resolve(),
+            output.resolve(),
+        ):
+            raise ValueError("channel7 requires a separate metadata output")
+        if metadata_output.exists() and source.samefile(metadata_output):
+            raise ValueError("the metadata output must be separate from the upstream ONNX model")
     if output.exists() and source.samefile(output):
         raise ValueError("the output must be separate from the upstream ONNX model")
     with source.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as raw:
         if hashlib.sha256(raw).hexdigest() != SOURCE_SHA256:
             raise ValueError("input SHA-256 differs from the pinned upstream ONNX model")
         model = onnx.load_model_from_string(raw[:])
-        if variant == "per-token":
-            per_token_quantization(model.graph)
-        else:
-            blockwise_quantization(model)
+        per_token_quantization(model.graph)
         onnx.checker.check_model(model)
         externalize(model, raw)
+        if variant == "channel7":
+            metadata = channel7_quantization(model.graph, raw)
+            if hashlib.sha256(metadata).hexdigest() != METADATA_SHA256:
+                raise ValueError("generated metadata differs from its SHA-256 pin")
     graph = model.SerializeToString(deterministic=True)
     digest = hashlib.sha256(graph).hexdigest()
     if digest != GRAPH_SHA256[variant]:
@@ -222,6 +209,11 @@ def build(source, output, variant):
         ):
             archive.write(graph)
         temporary.replace(output)
+    if variant == "channel7":
+        with TemporaryDirectory(dir=metadata_output.parent) as directory:
+            temporary = Path(directory) / "metadata.json"
+            temporary.write_bytes(metadata)
+            temporary.replace(metadata_output)
     print(f"{digest}  uncompressed graph ({len(graph)} bytes)")
 
 
@@ -230,5 +222,6 @@ if __name__ == "__main__":
     parser.add_argument("source", type=Path, help="upstream model_yesno_quantized.onnx")
     parser.add_argument("output", type=Path, help="path for the .onnx.gz companion graph")
     parser.add_argument("--variant", choices=GRAPH_SHA256, default="per-token")
+    parser.add_argument("--metadata", type=Path, help="channel7 initializer metadata output")
     args = parser.parse_args()
-    build(args.source, args.output, args.variant)
+    build(args.source, args.output, args.variant, args.metadata)

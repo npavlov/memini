@@ -1708,8 +1708,8 @@ with one activation scale per token restored the ordering in the focused cases. 
 [Reproduce the execution graph](../packaging/reranker/README.md)
 
 The pinned model uses the per-token graph on Linux arm64 and on Linux x86-64 where every
-CPU reports AVX-512 VNNI. Other Linux x86-64 CPUs use a blockwise INT8 graph that runs the
-197 weight projections through ONNX Runtime’s `MatMulNBits` kernel. Both graphs reference the
+CPU reports AVX-512 VNNI. Other Linux x86-64 CPUs use a per-channel Q7 graph that keeps
+all 197 weight projections within the signed 16-bit intermediate range on AVX2. Both graphs reference the
 same cached upstream weights. The reranker description includes the selected graph and digest.
 
 On an EPYC 7763, saturating intermediate integer sums changed the order of two passages for

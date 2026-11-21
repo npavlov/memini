@@ -10,6 +10,7 @@ default model). Search with a reranker against a database is in test_search_db.p
 import gzip
 import hashlib
 import importlib.util
+import json
 import logging
 import os
 import platform
@@ -196,7 +197,7 @@ def test_x86_vnni_detection(tmp_path: Path, contents: str | None, expected: bool
 @pytest.mark.parametrize(
     ("system", "machine", "digest", "vnni", "label"),
     [
-        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, False, "blockwise INT8 5eb524d5d293"),
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, False, "per-channel Q7 64a83156c2b6"),
         ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True, "per-token INT8 7f8cf431d2c1"),
         ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, False, "per-token INT8 7f8cf431d2c1"),
         ("linux", "x86_64", DIGEST, False, None),
@@ -217,6 +218,8 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
     monkeypatch.setattr(local, "has_avx512_vnni", lambda: vnni)
+    prepare = Mock(return_value=(["one"], ["weight"]))
+    monkeypatch.setattr(local, "q7_initializers", prepare)
     verify = AsyncMock()
     runtime = Mock()
     ort = runtime.onnxruntime
@@ -243,6 +246,13 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     else:
         assert source == str(tmp_path / DEFAULT_RERANKER_MODEL_FILE)
         options.assert_not_called()
+    overrides = ort.SessionOptions.return_value.add_external_initializers
+    if label and label.startswith("per-channel Q7"):
+        prepare.assert_called_once_with(runtime, tmp_path / DEFAULT_RERANKER_MODEL_FILE)
+        overrides.assert_called_once_with(["one"], ["weight"])
+    else:
+        prepare.assert_not_called()
+        overrides.assert_not_called()
     assert list(tmp_path.iterdir()) == []
 
 
@@ -253,7 +263,7 @@ async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(local, "has_avx512_vnni", lambda: vnni)
-    name = "per-token" if vnni else "blockwise"
+    name = "per-token" if vnni else "channel7"
     (tmp_path / f"qwen3-{name}-int8.onnx.gz").write_bytes(gzip.compress(b"incompatible"))
     monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
     monkeypatch.setattr(local, "ensure_model_files", AsyncMock())
@@ -265,6 +275,37 @@ async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
     with pytest.raises(RerankError, match=r"packaged reranker graph .* failed SHA-256"):
         await model.load()
     runtime.onnxruntime.InferenceSession.assert_not_called()
+
+
+def test_q7_metadata_corruption_is_rejected_before_opening_weights(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "qwen3-channel7.json").write_text("[]")
+    monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
+    with pytest.raises(RerankError, match=r"metadata .* failed SHA-256"):
+        local.q7_initializers(Mock(), tmp_path / "missing.onnx")
+
+
+def test_q7_projection_subset_preserves_offsets_columns_and_nearest_even_rounding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    np = pytest.importorskip("numpy")
+    ort = pytest.importorskip("onnxruntime")
+    modules = Mock(numpy=np, onnxruntime=ort)
+    metadata = json.dumps([["first", 1, 4, 3], ["second", 15, 2, 1]]).encode()
+    (tmp_path / "qwen3-channel7.json").write_bytes(metadata)
+    monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
+    monkeypatch.setattr(local, "_Q7_METADATA_SHA256", hashlib.sha256(metadata).hexdigest())
+    first = np.array([[-128, 126, 0], [64, 3, 0], [-64, 5, 0], [0, -1, 0]], dtype=np.int8)
+    source = tmp_path / "weights"
+    source.write_bytes(b"x" + first.tobytes() + b"xx" + bytes([127, 129]))
+    names, values = local.q7_initializers(modules, source)
+    assert names == ["first", "second"]
+    assert values[0].numpy().tolist() == [[-63, 63, 0], [31, 2, 0], [-31, 2, 0], [0, 0, 0]]
+    assert values[1].numpy().tolist() == [[63], [-63]]
+    source.write_bytes(source.read_bytes()[:-1])
+    with pytest.raises(RerankError, match="second is truncated"):
+        local.q7_initializers(modules, source)
 
 
 def test_relevance_is_the_probability_of_yes() -> None:
