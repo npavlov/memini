@@ -8,7 +8,25 @@ Memini is a self-hosted search and decision journal for code repositories, work 
 
 ## Install
 
-**Run your own server.** [Download the v0.1.0-rc.1 server setup (.zip)](https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-v0.1.0-rc.1-server.zip) and follow the [illustrated Docker install guide](https://npavlov.github.io/memini/install.html). Allow 4 CPU cores, 8 GB RAM and 20 GB of free SSD space. Docker Compose 2.24+ starts Memini, PostgreSQL and the local embedding model.
+**Run your own server.** Start Docker with Compose 2.24+ and install the server launcher for your platform.
+
+**macOS or Linux (Homebrew)**
+
+```sh
+brew tap npavlov/memini https://github.com/npavlov/memini.git
+brew install npavlov/memini/memini-server
+memini-server start
+```
+
+**Windows (PowerShell and Scoop)**
+
+```powershell
+scoop bucket add memini https://github.com/npavlov/memini.git
+scoop install memini/memini-server
+memini-server start
+```
+
+The first start creates private settings and downloads the application, database and search model. Allow 4 CPU cores, 8 GB RAM and 20 GB of free SSD space. [Get your first token](docs/install.md#5-the-first-admin-token) · [Illustrated installation guide](https://npavlov.github.io/memini/install.html) · [Manual Docker setup](docs/install.md#install-a-published-image-with-docker-only)
 
 **Connect to an existing server.** Install the CLI with the [Windows x64 installer](docs/install-cli.md#windows-x64) or [Homebrew on Apple Silicon macOS and x86_64 Linux](docs/install-cli.md#homebrew-on-macos-and-linux). You’ll need the server address and a read token from its operator.
 

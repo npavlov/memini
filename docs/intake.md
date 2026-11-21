@@ -15,6 +15,8 @@ documents. The contract itself (batches, streams, windows, limits) is in
 
 ## Before the first push
 
+On a package-manager server, use the [shell shortcut](install.md#4-the-memini-command) for `memini-server cli`. The Bash HTTP examples below read bundled fixtures from `$MEMINI_RESOURCES`. Set it with `MEMINI_RESOURCES="$(memini-server path)"`, or `MEMINI_RESOURCES="$PWD"` in an extracted release or source checkout.
+
 A push source to push into, and a token that may push (scope `ingest`). An admin makes both:
 
 ```sh
@@ -321,9 +323,9 @@ whose body is a batch: `{"stream": …, "records": […]}`. Any client can send 
 header with the token from a file, so the token is on no command line:
 
 ```sh
-(umask 077; printf 'Authorization: Bearer %s\n' "$(cat ~/.config/memini/ingest.token)" > ~/.config/memini/ingest.header)
+(set -C; umask 077; printf 'Authorization: Bearer %s\n' "$(cat ~/.config/memini/ingest.token)" > ~/.config/memini/ingest.header)
 curl -sS -X POST -H @"$HOME/.config/memini/ingest.header" -H 'Content-Type: application/json' \
-  --data-binary @docs/examples/thread.json \
+  --data-binary @"$MEMINI_RESOURCES/docs/examples/thread.json" \
   http://127.0.0.1:6364/v1/workspaces/demo/sources/chat/records
 ```
 
@@ -338,7 +340,7 @@ To send it over HTTP, wrap it in the batch object below. Use a header file conta
 workspace's ingest token, as above:
 
 ```sh
-{ printf '{"stream":"inbox","records":['; cat docs/examples/mail-thread.json; printf ']}'; } |
+{ printf '{"stream":"inbox","records":['; cat "$MEMINI_RESOURCES/docs/examples/mail-thread.json"; printf ']}'; } |
   curl -sS -H @"$HOME/.config/memini/ingest.header" -H 'Content-Type: application/json' \
     --data-binary @- http://127.0.0.1:6364/v1/workspaces/demo/sources/mail-work/records
 ```

@@ -1,71 +1,108 @@
 # Install Memini
 
-Choose where Memini will run. If this is your first installation and you’re working on your own computer, start with **Run a local server**.
-
 <nav class="install-paths" aria-label="Installation options">
-<a href="#what-you-need"><strong>Run a local server</strong><span>Start Memini, its database and its search model with Docker.</span></a>
-<a href="install-cli.md"><strong>Connect to a server</strong><span>Install the CLI and sign in with the token your team gave you.</span></a>
+<a href="#what-you-need"><strong>Run a local server</strong><span>Install the launcher, then start Memini with Docker.</span></a>
+<a href="install-cli.md"><strong>Connect to a server</strong><span>Use an existing server address and a read token.</span></a>
 </nav>
 
 ## What you need
 
-- **macOS or Windows:** start [Docker Desktop](https://docs.docker.com/desktop/). On Windows, run these commands in a [WSL 2 terminal with Docker integration enabled](https://docs.docker.com/desktop/features/wsl/).
-- **Linux:** install [Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/).
-- **Hardware:** 4 CPU cores, 8 GB RAM and 20 GB free SSD space. A GPU is optional. The first run downloads the application and its local search model.
+- **macOS or Linux:** [Homebrew](https://brew.sh/) and a running Docker engine.
+- **Windows x64:** PowerShell, [Scoop](https://scoop.sh/) and Docker Desktop running Linux containers.
+- **Hardware:** 4 CPU cores, 8 GB RAM and 20 GB free SSD. A GPU is optional.
 
-Open your terminal and run `docker compose version`. Look for version **2.24 or newer**. Docker runs Memini, PostgreSQL and Ollama together. The steps use a Bash-compatible shell and OpenSSL for generating a password.
+Run `docker compose version` to check for Compose **2.24 or newer**, then `docker info` to check that the engine is running.
 
-<a id="install-a-published-image-with-docker-only"></a>
+## Install the server launcher
 
-## 1. Download the release
-
-[Download the server setup files (.zip)](https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-v0.1.0-rc.1-server.zip). Extract the ZIP, then open a terminal in the extracted folder containing `compose.yaml`. Keep this folder for future starts. It provides the Docker settings, the CLI shortcut and sample data. Docker downloads the prebuilt application.
-
-## 2. Set the database password
-
-Run this once in the extracted folder. It creates a private settings file for this installation. If you already have a `.env`, keep your password and update the two release settings in that file.
+### macOS and Linux
 
 ```sh
-( set -C; umask 077
-  password=$(openssl rand -hex 16) && printf '%s\n' \
-    'COMPOSE_FILE=compose.yaml:compose.release.yaml' \
-    'MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:0.1.0-rc.1' \
-    "MEMINI_DB_PASSWORD=$password" > .env )
+brew tap npavlov/memini https://github.com/npavlov/memini.git
+brew install npavlov/memini/memini-server
 ```
+
+### Windows
+
+In PowerShell:
+
+```powershell
+scoop bucket add memini https://github.com/npavlov/memini.git
+scoop install memini/memini-server
+```
+
+Add the tap or bucket once. The launcher includes the release settings and sample records. For a Compose installation without a package manager, use the [manual ZIP instructions](#install-a-published-image-with-docker-only).
 
 ## 3. Start the server
 
 ```sh
-docker compose up -d --wait ollama
-docker compose exec -T ollama ollama pull qwen3-embedding:0.6b
-docker compose up -d --no-build --wait
-docker compose ps --format '{{.Service}}  {{.Health}}'
+memini-server start
+memini-server status
 ```
 
-Wait for `db`, `memini` and `ollama` to show `healthy`. Memini listens on this computer at `http://127.0.0.1:6364`.
+The first start generates a database password and waits for Memini, PostgreSQL and Ollama. When the three services are healthy, use the address printed by the launcher, normally `http://127.0.0.1:6364`. A later start reuses the same settings and data.
 
 ![Terminal showing healthy checks for db, memini and ollama](assets/install-health.png)
 
 ## 4. The `memini` command
 
+`memini-server cli` runs the installed server's CLI inside its container. These shortcuts apply to the current shell. They let you use `memini` in the examples below and locate the bundled sample files.
+
+**Bash or Zsh**
+
 ```sh
-chmod +x bin/memini
-export PATH="$PWD/bin:$PATH"
+memini() { memini-server cli "$@"; }
+MEMINI_RESOURCES="$(memini-server path)"
 memini --version
 ```
 
-The shortcut runs the CLI inside Docker. Repeat the `export` from this folder when you open a new terminal.
+**PowerShell**
+
+```powershell
+function memini { memini-server cli @args }
+$MeminiResources = memini-server path
+memini --version
+```
 
 ## 5. The first admin token
 
+Save the first token to a private file. If you already bootstrapped this server, reuse its token file and skip creating a new one.
+
+**Bash or Zsh**
+
 ```sh
-mkdir -p ~/.config/memini
-( set -C; umask 077; memini bootstrap > ~/.config/memini/admin.token )
-export MEMINI_TOKEN_FILE=~/.config/memini/admin.token
+mkdir -p "$HOME/.config/memini"
+( set -C; umask 077; memini bootstrap > "$HOME/.config/memini/admin.token" )
+export MEMINI_TOKEN_FILE="$HOME/.config/memini/admin.token"
 memini workspace list
 ```
 
-On a fresh installation the list is empty. Your token is saved in the private file. **Next, [import a sample email and run your first search](first-search.md)**, or follow the code example below.
+**PowerShell**
+
+This helper reserves a new file before issuing a token and saves it as ASCII, which works in both Windows PowerShell and PowerShell 7. It refuses an existing file. Keep the helper in this shell for the first search example.
+
+```powershell
+function Save-MeminiToken($Path, [scriptblock]$Issue) {
+    $ErrorActionPreference = 'Stop'
+    $file = [IO.File]::Open($Path, 'CreateNew', 'Write', 'None')
+    try {
+        $token = & $Issue
+        if ($LASTEXITCODE -ne 0 -or -not $token) { throw 'Token creation failed.' }
+        $bytes = [Text.Encoding]::ASCII.GetBytes($token.Trim())
+        $file.Write($bytes, 0, $bytes.Length)
+    } finally {
+        $file.Dispose()
+    }
+}
+$tokenDir = Join-Path $HOME '.config/memini'
+[IO.Directory]::CreateDirectory($tokenDir) | Out-Null
+$adminFile = Join-Path $tokenDir 'admin.token'
+Save-MeminiToken $adminFile { memini-server cli bootstrap }
+$env:MEMINI_TOKEN_FILE = $adminFile
+memini workspace list
+```
+
+A new server reports an empty workspace list. **[Import a sample email and run your first search](first-search.md)** from Bash or PowerShell. The remaining shell examples on this page use Bash.
 
 ## Connect to an existing server
 
@@ -99,28 +136,7 @@ The first hits are in `src/memini/cli/admin.py`, each with its locator
 
 ### Your own repositories
 
-A repository on this machine is a source once the service can see it: mount the directory that
-holds your repositories into the container, read-only, and allow that path. Say your repositories
-are under `~/src`; `compose.override.yaml` (ignored by git) adds the mount to `compose.yaml`:
-
-```sh
-cat > compose.override.yaml <<'EOF'
-services:
-  memini:
-    volumes:
-      - ${HOME}/src:/srv/repos:ro
-EOF
-echo 'COMPOSE_FILE=compose.yaml:compose.release.yaml:compose.override.yaml' >> .env
-echo 'MEMINI_GIT_LOCAL_ROOTS=/srv/repos' >> .env.memini
-docker compose up -d --wait
-memini source add demo myapp --location /srv/repos/myapp --ref main
-memini sync demo myapp --wait
-```
-
-`/srv/repos/myapp` is `~/src/myapp` as the container sees it. On Linux the files must be readable by
-the service's user, uid 10001 (they are, with the usual modes 644 and 755). A private remote
-repository needs a token or an ssh key: [configuration.md](configuration.md), "Git connector" and
-"Secrets and other files".
+Use a repository's HTTPS URL or SSH remote for a managed server. For private remotes, see [Git connector settings and credentials](configuration.md#git-connector). To mount host repositories in a custom Compose setup, see [local repositories](configuration.md#local-repositories).
 
 ## 7. Push a chat thread
 
@@ -130,8 +146,8 @@ workspace (scope `ingest`), kept in a file only you can read. Then push the exam
 
 ```sh
 memini source add demo chat --kind push
-(umask 077; memini token create --scope ingest --workspace demo --name push > ~/.config/memini/ingest.token)
-MEMINI_TOKEN_FILE=~/.config/memini/ingest.token memini push --workspace demo --source chat - < docs/examples/thread.json
+(set -C; umask 077; memini token create --scope ingest --workspace demo --name push > ~/.config/memini/ingest.token)
+MEMINI_TOKEN_FILE=~/.config/memini/ingest.token memini push --workspace demo --source chat - < "$MEMINI_RESOURCES/docs/examples/thread.json"
 ```
 
 `memini push` reads the records from stdin (`-`): `bin/memini` runs the command inside the
@@ -152,9 +168,9 @@ The same batch with curl instead, which reads the header with the token from a f
 is on no command line:
 
 ```sh
-(umask 077; printf 'Authorization: Bearer %s\n' "$(cat ~/.config/memini/ingest.token)" > ~/.config/memini/ingest.header)
+(set -C; umask 077; printf 'Authorization: Bearer %s\n' "$(cat ~/.config/memini/ingest.token)" > ~/.config/memini/ingest.header)
 curl -sS -X POST -H @"$HOME/.config/memini/ingest.header" -H 'Content-Type: application/json' \
-  --data-binary @docs/examples/thread.json \
+  --data-binary @"$MEMINI_RESOURCES/docs/examples/thread.json" \
   http://127.0.0.1:6364/v1/workspaces/demo/sources/chat/records
 ```
 
@@ -173,7 +189,7 @@ Agents get a token with the `read` scope only. Make one, and add Memini to Claud
 projects:
 
 ```sh
-(umask 077; memini token create --scope read --name claude-code > ~/.config/memini/read.token)
+(set -C; umask 077; memini token create --scope read --name claude-code > ~/.config/memini/read.token)
 claude mcp add --scope user --transport http memini http://127.0.0.1:6364/mcp \
   --header "Authorization: Bearer $(cat ~/.config/memini/read.token)"
 claude mcp list
@@ -206,7 +222,15 @@ exits 0 when everything is current and 6 when not, for scripts and health checks
 
 ## Day to day
 
-Run `docker compose stop` in the release folder to stop Memini and keep your data. To restart, run `docker compose up -d --no-build --wait`. Before upgrading, [back up the database](operations/backup.md).
+`memini-server status` lists the Compose services. `memini-server stop` stops them and keeps their volumes. `memini-server start` starts the same installation again. Keep its state directory in place. If you use `--state-dir PATH`, supply it **before** the command on every invocation, including `cli`.
+
+| Platform | Default state directory |
+|---|---|
+| macOS | `~/Library/Application Support/Memini/Server` |
+| Linux | `$XDG_DATA_HOME/memini/server`, or `~/.local/share/memini/server` |
+| Windows | `%LOCALAPPDATA%\Memini\Server` |
+
+State holds the managed settings and generated database password. Docker volumes hold the database, mirrors and model. `memini-server path` prints the packaged **resources**, including sample records. [Backup and restore](operations/backup.md)
 
 ## Machine size
 
@@ -216,11 +240,56 @@ See [machine requirements and measured performance](operations/performance.md#th
 
 | What you see | What to check |
 |---|---|
-| Docker cannot connect | Start Docker and run `docker info`. On Windows, check WSL integration. |
-| Port already allocated | Set `MEMINI_HTTP_PORT` or `MEMINI_DB_PORT` to a free port in `.env`, then repeat step 3. |
-| Model download interrupted | Repeat the `ollama pull` command in step 3 and wait for it to finish. |
-| Service unhealthy | Run `docker compose logs --tail 50 memini db ollama`. |
-| No token in a new terminal | Repeat the two `export` commands from steps 4 and 5. |
-| Search reports `embeddings_not_configured` | Check both release settings in `.env`, repeat step 3, then run `memini reindex --workspace demo` for data imported earlier. |
+| Docker cannot connect | Start the engine, run `docker info`, and check that Docker Desktop uses Linux containers on Windows. |
+| Port already allocated | For an existing managed installation, edit only `MEMINI_HTTP_PORT` in its state directory's `.env`, then repeat `memini-server start`. |
+| An existing folder is refused | Choose a new, unused directory with `--state-dir`, or use the original managed state directory. |
+| Model download interrupted | Repeat `memini-server start`. The launcher checks whether the model has already been pulled. |
+| No token in a new shell | Restore `MEMINI_TOKEN_FILE` to the saved file and repeat the step 4 shell shortcut. |
+| Search reports `embeddings_not_configured` | Check the server started with the release Compose settings, then run `memini-server cli reindex --workspace demo` for earlier records. |
 
 For token recovery, private repositories and agent setup, see the [operations runbook](operations/runbook.md) and [configuration reference](configuration.md).
+
+<a id="install-a-published-image-with-docker-only"></a>
+<a id="1-download-the-release"></a>
+<a id="2-set-the-database-password"></a>
+
+## Manual Docker setup from a release ZIP
+
+Use this Bash and OpenSSL path if you prefer to manage Compose yourself. On Windows this fallback uses a WSL shell with Docker integration.
+
+[Download the server setup files (.zip)](https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-v0.1.0-rc.1-server.zip). Extract the ZIP, then open a terminal in the extracted folder containing `compose.yaml`. Keep this folder for future starts. It provides the Docker settings, the CLI shortcut and sample data. Docker downloads the prebuilt application.
+
+### Set the database password
+
+Run this once in the extracted folder. It creates a private settings file for this installation. If you already have a `.env`, keep your password and update the two release settings in that file.
+
+```sh
+( set -C; umask 077
+  password=$(openssl rand -hex 16) && printf '%s\n' \
+    'COMPOSE_FILE=compose.yaml:compose.release.yaml' \
+    'MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:0.1.0-rc.1' \
+    "MEMINI_DB_PASSWORD=$password" > .env )
+```
+
+### Start the Compose services
+
+```sh
+docker compose up -d --wait ollama
+docker compose exec -T ollama ollama pull qwen3-embedding:0.6b
+docker compose up -d --no-build --wait
+docker compose ps --format '{{.Service}}  {{.Health}}'
+```
+
+Wait for `db`, `memini` and `ollama` to show `healthy`. Memini listens on this computer at `http://127.0.0.1:6364`.
+
+### Run the CLI from the extracted folder
+
+```sh
+chmod +x bin/memini
+export PATH="$PWD/bin:$PATH"
+memini --version
+```
+
+The shortcut runs the CLI inside Docker. Repeat the `export` from this folder when you open a new terminal.
+
+For the remaining examples, set `MEMINI_RESOURCES="$PWD"` in this terminal and continue at [the first admin token](#5-the-first-admin-token) using the extracted `bin/memini` shortcut. Manage this stack with `docker compose ps`, `docker compose stop` and `docker compose up -d --no-build --wait` from this folder.
