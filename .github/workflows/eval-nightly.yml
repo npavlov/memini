@@ -1,4 +1,4 @@
-name: Isolated ARM latency
+name: Linux x86 precision latency
 on: workflow_dispatch
 permissions:
   contents: read
@@ -8,7 +8,7 @@ jobs:
       fail-fast: false
       matrix:
         cores: [2, 4]
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -23,9 +23,9 @@ jobs:
           docker pull "$image"
           nproc
           lscpu
-          for profile in control candidate; do
-            flags=()
-            if [[ $profile == candidate ]]; then flags=(-e OVERRIDE_MODEL=1); fi
+          lib=/opt/memini/venv/lib/python3.12/site-packages/memini/rerank
+          for profile in before after; do
+            flags=(-v "$PWD/.bench/$profile.py:$lib/local.py:ro" -v "$PWD/.bench/per-token.onnx.gz:$lib/qwen3-per-token-int8.onnx.gz:ro")
             docker run --rm --network none --cpus "$CORES" --cpuset-cpus "0-$((CORES-1))" -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" "${flags[@]}" --entrypoint python "$image" /bench/measure.py | tee "$profile.jsonl"
             echo "$profile $(tail -1 "$profile.jsonl")" >> "$GITHUB_STEP_SUMMARY"
           done
