@@ -336,7 +336,8 @@ class _Runtime:
         options = session_options(ort, threads)
         source: bytes | str = str(model_path)
         if per_token:
-            if platform.machine().lower() == "x86_64":
+            # Avoid saturating U8 x S8 partial sums on x86 CPUs without VNNI.
+            if platform.machine() == "x86_64":
                 options.add_session_config_entry("session.x64quantprecision", "1")
             graph = gzip.decompress(files("memini.rerank").joinpath(_LINUX_GRAPH).read_bytes())
             if hashlib.sha256(graph).hexdigest() != _LINUX_GRAPH_SHA256:

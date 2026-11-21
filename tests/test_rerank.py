@@ -210,16 +210,19 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     session.assert_called_once()
     source = session.call_args.args[0]
     assert session.call_args.kwargs["providers"] == ["CPUExecutionProvider"]
-    folder_option = ort.SessionOptions.return_value.add_session_config_entry
+    options = ort.SessionOptions.return_value.add_session_config_entry
     if per_token:
         assert isinstance(source, bytes)
-        folder_option.assert_called_once_with(
+        assert options.call_count == (2 if machine == "x86_64" else 1)
+        if machine == "x86_64":
+            options.assert_any_call("session.x64quantprecision", "1")
+        options.assert_any_call(
             "session.model_external_initializers_file_folder_path",
             str((tmp_path / DEFAULT_RERANKER_MODEL_FILE).parent),
         )
     else:
         assert source == str(tmp_path / DEFAULT_RERANKER_MODEL_FILE)
-        folder_option.assert_not_called()
+        options.assert_not_called()
     assert list(tmp_path.iterdir()) == []
 
 

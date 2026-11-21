@@ -23,7 +23,7 @@ permissions:
 
 # One eval at a time per branch: a run started while another runs waits for it.
 concurrency:
-  group: ${{ github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
