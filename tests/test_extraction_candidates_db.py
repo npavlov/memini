@@ -23,7 +23,7 @@ import pytest
 from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 
-from llm_helpers import chat_answer, llm_settings
+from llm_helpers import chat_answer, llm_settings, verified_answer
 from memini.auth import WriteAccess
 from memini.db import connect
 from memini.embeddings import BatchingEmbedder, EmbeddingSpec, FakeEmbedder
@@ -100,6 +100,8 @@ class FakeLlm:
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content)
+        if (verified := verified_answer(body)) is not None:
+            return verified
         if body["response_format"]["json_schema"]["name"] == "decisions":
             items = self.extractions.pop(0) if self.extractions else []
             return chat_answer(json.dumps({"items": items}))
