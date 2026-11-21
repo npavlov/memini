@@ -4,7 +4,7 @@ Start with [Install](install.md), then [run your first search](first-search.md).
 
 | Task | Guide |
 |---|---|
-| Check machine requirements and install | [Requirements and prerequisites](install.md#what-you-need) · [Machine sizing](operations/performance.md#the-smallest-supported-machine) · [Docker-only release installation](install.md#install-a-published-image-with-docker-only) |
+| Check machine requirements and install | [Requirements and prerequisites](install.md#what-you-need) · [Machine sizing](operations/performance.md#the-smallest-supported-machine) · [Homebrew and Scoop server setup](install.md#install-the-server-launcher) · [Remote CLI client](install-cli.md) · [Manual Docker installation](install.md#install-a-published-image-with-docker-only) |
 | Import one or several mailboxes, chat, meetings or wiki pages | [Intake without an agent](intake.md#without-an-agent) · [Intake with an agent](intake.md#with-an-agent) · [Record fields and payload examples](intake.md#records) · [HTTP API example](intake.md#the-same-with-curl) |
 | Index a Git repository or an MCP server | [Tracked Git refs and schedules](install.md#6-a-workspace-and-a-repository) · [Scheduled MCP intake](intake.md#scheduled-mcp-intake) · [Write and test a recipe](recipes.md#author-a-recipe-and-parser) |
 | Search code or open a source file | [Search modes and filters](mcp/search_code.md) · [Find a symbol](mcp/get_symbol.md) · [Read the indexed commit](mcp/read_source.md) |

@@ -1,7 +1,7 @@
 # Memini: requirements (draft v0)
 
 The name is Latin for "I remember". Background on comparable projects: [prior-art.md](prior-art.md).
-Build order: [plan.md](plan.md).
+Build order: [plan.md](plan.md). For the implemented paths and their tests, see the [developer guide](codebase.md).
 
 ## 1. Purpose
 

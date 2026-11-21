@@ -1,5 +1,7 @@
 # Agent Instructions
 
+Start with the [developer guide](docs/codebase.md) for feature paths, invariants and tests.
+
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
 > **Architecture in one line:** Issues live in a local Dolt database

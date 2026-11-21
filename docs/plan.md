@@ -1,7 +1,7 @@
 # Memini: implementation plan (draft v0)
 
-Milestones in build order. Each ends in something that runs and can be checked. Requirements:
-[requirements.md](requirements.md).
+Milestones in build order, with acceptance scenarios. For current implementation paths and tests,
+see the [developer guide](codebase.md). [Requirements](requirements.md) describe the contracts.
 
 ## Tracking
 
@@ -75,8 +75,8 @@ supersession accuracy for the chosen local model.
 - Freshness gate: one call that says whether every stream and index is current.
 - First tagged release.
 
-Done when: a clean machine goes from clone to a working search over one repository and one pushed thread by
-following the guide only.
+Done when: a clean machine goes from the release installation guide to a working search over one
+repository and one pushed thread.
 
 ## Order and risks
 
@@ -86,4 +86,5 @@ following the guide only.
   pipeline.
 - Second risk: MCP servers change their output shape. Raw responses are stored verbatim so parsers can be
   fixed and replayed.
-- Open questions 1–3 of the requirements are settled in M1 by measurement on the eval set.
+- The retrieval and embedding evaluations and the choice of PostgreSQL with pgvector are
+  recorded in [the requirements decision history](requirements.md#12-open-questions).
