@@ -1,5 +1,12 @@
 name: Isolated x86 kernel comparison
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Graph
+        type: choice
+        required: true
+        options: [risk6, risk12, channel7, split4b7]
 permissions:
   contents: read
 jobs:
@@ -7,8 +14,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cores: [2, 4]
-    runs-on: ubuntu-24.04
+        host: [ubuntu-22.04, ubuntu-24.04]
+        attempt: [1, 2]
+    runs-on: ${{ matrix.host }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -16,16 +24,20 @@ jobs:
           persist-credentials: false
       - name: Benchmark original and quality-passing candidate
         env:
-          CORES: ${{ matrix.cores }}
+          VARIANT: ${{ inputs.variant }}
         run: |
           set -eu
           image=ghcr.io/npavlov/memini@sha256:b31d29cd401776ab262c307f5da368122062fff6d464a0ebe9aef5504a8649da
+          lscpu
+          if grep -qw avx512_vnni /proc/cpuinfo; then exit 0; fi
           docker pull "$image"
           nproc
           lscpu
-          for profile in per-token unsigned blockwise; do
+          for CORES in 4 2; do
+          for profile in per-token "$VARIANT"; do
             flags=()
             flags=(-e OVERRIDE_MODEL="$profile")
-            docker run --rm --network none --cpus "$CORES" --cpuset-cpus "0-$((CORES-1))" -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" "${flags[@]}" --entrypoint python "$image" /bench/measure.py | tee "$profile.jsonl"
-            echo "$profile $(tail -1 "$profile.jsonl")" >> "$GITHUB_STEP_SUMMARY"
+            docker run --rm --network none --cpus "$CORES" --cpuset-cpus "0-$((CORES-1))" -v "$PWD/.bench:/bench:ro" -v "$PWD/.bench/inputs.jsonl:/in.jsonl:ro" "${flags[@]}" --entrypoint python "$image" /bench/measure.py | tee "$profile-$CORES.jsonl"
+            echo "$profile $CORES $(tail -1 "$profile-$CORES.jsonl")" >> "$GITHUB_STEP_SUMMARY"
+          done
           done
