@@ -18,16 +18,29 @@ Compression=lzma2
 SolidCompression=yes
 
 [InstallDelete]
-Type: filesandordirs; Name: "{app}\runtime"
+Type: filesandordirs; Name: "{app}\runtime"; Check: OwnsRuntime
 
 [Files]
+Source: "runtime-owner.txt"; DestDir: "{app}\runtime"; DestName: "memini-runtime-owner.txt"; Flags: ignoreversion
 Source: "{#Payload}\runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Payload}\bin\memini.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
 
-[UninstallDelete]
-Type: filesandordirs; Name: "{app}\runtime"
-
 [Code]
+function OwnsRuntime(): Boolean;
+var
+  Marker: AnsiString;
+begin
+  Result := LoadStringFromFile(ExpandConstant('{app}\runtime\memini-runtime-owner.txt'), Marker)
+    and (Trim(String(Marker)) = 'NikPavlov.Memini runtime v1');
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if DirExists(ExpandConstant('{app}\runtime')) and not OwnsRuntime() then
+    Result := 'The destination contains a runtime directory owned by another application.';
+end;
+
 function BinPath(): String;
 begin
   Result := ExpandConstant('{app}\bin');

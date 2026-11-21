@@ -53,6 +53,25 @@ def unpack(url: str, checksum: str, directory: Path, archive: Path) -> None:
         bundle.extractall(directory)
 
 
+def verify_wheels(report: dict, lock: dict) -> None:
+    def identity(name: str, version: str, url: str) -> tuple[str, str, str]:
+        filename = Path(urllib.parse.unquote(urllib.parse.urlsplit(url).path)).name
+        return re.sub(r"[-_.]+", "-", name).lower(), version, filename
+
+    approved = {
+        identity(pkg["name"], pkg["version"], wheel["url"]): wheel["hash"]
+        for pkg in lock["package"]
+        for wheel in pkg.get("wheels", [])
+    }
+    for entry in report["install"]:
+        metadata, source = entry["metadata"], entry["download_info"]
+        if metadata["name"].lower() == "memini":
+            continue
+        key = identity(metadata["name"], metadata["version"], source["url"])
+        if approved.get(key) != "sha256:" + source["archive_info"]["hashes"]["sha256"]:
+            raise ValueError(f"dependency wheel does not match uv.lock: {key[2]}")
+
+
 def payload(temp: Path, package: str, wheel: Path | None) -> Path:
     root = temp / "payload"
     runtime = root / "runtime"
@@ -89,6 +108,7 @@ def payload(temp: Path, package: str, wheel: Path | None) -> Path:
         check=True,
     )
     report = json.loads((temp / "pip-report.json").read_text(encoding="utf-8"))
+    verify_wheels(report, lock)
     selected = next(p for p in report["install"] if p["metadata"]["name"].lower() == "memini")
     if selected["metadata"]["version"] != package:
         raise ValueError("wheel version does not match the requested release")
@@ -234,6 +254,13 @@ def exercise(setup: Path, prior: Path, version: str, temp: Path) -> None:
         raise RuntimeError(
             "installer test requires a fresh user without an existing Memini installation"
         )
+    collision = temp / "existing" / "runtime"
+    collision.mkdir(parents=True)
+    note = collision / "unrelated.txt"
+    note.write_text("preserve")
+    collision_result = subprocess.run([setup, *SILENT, f"/DIR={collision.parent}"], check=False)
+    if not collision_result.returncode or note.read_text() != "preserve":
+        raise RuntimeError("installer did not preserve an unowned runtime")
     original = user_value("Environment", "Path") or ""
     try:
         subprocess.run([prior, *SILENT], check=True)

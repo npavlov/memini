@@ -31,10 +31,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Validate version
         shell: bash
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]
+          if [[ "$TAG" != v0.1.0-rc.1 ]]; then
+            test "$(git rev-parse HEAD)" = "$(git rev-list -1 "refs/tags/$TAG")"
+          fi
           release=${TAG#v}
           echo "VERSION=${release/-rc./rc}" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -77,11 +81,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: installer-*
           path: dist-platform
           merge-multiple: true
+      - name: Package Docker server settings and examples from the release tag
+        run: |
+          git archive --format=zip --prefix="memini-$TAG/" \
+            --output="dist-platform/memini-$TAG-server.zip" "refs/tags/$TAG" -- \
+            compose.yaml compose.release.yaml bin/memini secrets/unset docs/examples \
+            .env.example .env.memini.example scripts/backup.sh scripts/restore.sh LICENSE
+          unzip -tq "dist-platform/memini-$TAG-server.zip"
       - name: Generate formula and checksums
         run: |
           release=${TAG#v}

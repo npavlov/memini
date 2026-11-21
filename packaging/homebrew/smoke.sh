@@ -4,7 +4,7 @@ set -euo pipefail
 version=${1:?usage: smoke.sh VERSION ARTIFACT_DIR [PREVIOUS_VERSION PREVIOUS_ARTIFACT_DIR]}
 assets=${2:?missing artifact directory}
 script_dir=$(cd "$(dirname "$0")" && pwd)
-python=${PYTHON:-python3}
+python=${PYTHON:-$(uv python find 3.12)}
 tag_for() {
   "$python" -c 'import sys; sys.path.insert(0, sys.argv[1]); from formula import release_tag; print(release_tag(sys.argv[2]))' "$script_dir" "$1"
 }
@@ -29,13 +29,13 @@ old_version=${3:-$version}
 old_assets=${4:-$assets}
 "$python" "$script_dir/formula.py" "$old_version" "$(tag_for "$old_version")" "$old_assets" --local > "$formula"
 brew install --build-from-source "$name"
-test "$(memini --version)" = "memini $old_version"
+test "$("$(brew --prefix)/bin/memini" --version)" = "memini $old_version"
 # A first release has no older package; exercise Homebrew's upgrade path with a formula revision.
 options=()
 if [[ "$old_version" == "$version" ]]; then options=(--revision 1); fi
 "$python" "$script_dir/formula.py" "$version" "$(tag_for "$version")" "$assets" --local "${options[@]}" > "$formula"
 brew upgrade --build-from-source "$name"
-test "$(memini --version)" = "memini $version"
+test "$("$(brew --prefix)/bin/memini" --version)" = "memini $version"
 brew test "$name"
 brew uninstall "$name"
 test ! -e "$(brew --prefix)/bin/memini"

@@ -194,6 +194,8 @@ Pushing the tag builds the distributions, checks a wheel install, publishes
 `ghcr.io/npavlov/memini:VERSION` for linux/amd64 and linux/arm64 with SBOM and provenance,
 publishes both distributions to PyPI, and creates a draft GitHub release for review.
 
+The platform workflow tests install, upgrade and removal on Windows x64, macOS arm64 and Linux x86-64. It attaches the Windows installer, WinGet manifest, Homebrew archives, generated formula, Docker server setup ZIP and SHA-256 list to the draft. After review, publish the release and copy its `memini.rb` into `Formula/memini.rb` on the default branch to update the tap. The RC1 Windows installer includes the compatibility fix recorded in `windows-build.json`.
+
 ## License
 
 Memini is licensed under [Apache-2.0](LICENSE). Under section 5 of the license, a contribution you submit
