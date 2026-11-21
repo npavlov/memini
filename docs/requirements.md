@@ -1709,14 +1709,21 @@ with one activation scale per token restored the ordering in the focused cases. 
 
 The pinned model uses the per-token graph on Linux arm64 and on Linux x86-64 where every
 CPU reports AVX-512 VNNI. Other Linux x86-64 CPUs use a per-channel Q7 graph that keeps
-all 197 weight projections within the signed 16-bit intermediate range on AVX2. Both graphs reference the
-same cached upstream weights. The reranker description includes the selected graph and digest.
+all 197 weight projections within the signed 16-bit intermediate range on AVX2. Both graphs
+read the same cached upstream weights. The reranker description includes the selected graph and digest.
 
 On an EPYC 7763, saturating intermediate integer sums changed the order of two passages for
 the harbour dues query. A precision override corrected that example. On an EPYC 9V74 and a
 Xeon 6975P-C, the native VNNI kernel produced the same scores with and without the override.
 [Fixed-input comparison across CPUs](https://github.com/npavlov/memini/actions/runs/44906302309) ·
 [ONNX Runtime quantization guidance](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html)
+
+The [full EPYC 7763 evaluation with Q7](https://github.com/npavlov/memini/actions/runs/44909948271)
+passed every group. Cross-language Recall@1 reached 0.667 in hybrid search and 0.625 in dense
+search. On two EPYC runners with a four-vCPU limit, the previous and Q7 graphs both measured
+3.49–3.52 s at p95 across the same 89 searches. Every search returned reranked results.
+The benchmark processes peaked at 844 MiB and 1,396 MiB RSS respectively.
+[Service benchmark on EPYC](https://github.com/npavlov/memini/actions/runs/44910848950)
 
 The latency check used the same 89 warm searches, depth three, default token limit and 5 s
 timeout on the reference M4 Max running Linux arm64. The original and per-token graphs measured
