@@ -1,0 +1,152 @@
+# /// script
+# requires-python = ">=3.12,<3.13"
+# dependencies = [
+#   "onnx==1.23.2", "numpy==2.5.5", "protobuf==7.36.2",
+#   "ml-dtypes==0.7.0", "typing-extensions==4.16.0",
+# ]
+# ///
+"""Build the compact blockwise INT8 graph from the pinned Qwen3 reranker export."""
+
+import argparse
+import gzip
+import hashlib
+import mmap
+from collections import defaultdict
+from pathlib import Path
+
+import numpy as np
+import onnx
+from onnx import TensorProto, helper, numpy_helper
+from onnx.external_data_helper import set_external_data
+
+SOURCE_SHA256 = "2bc0a77812a15ff6ead003370f36149139ae2c1bb1faf779b00c00886cd919ef"
+SOURCE_NAME = "model_yesno_quantized.onnx"
+GRAPH_SHA256 = "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13"
+BLOCK = 128
+
+
+def blockwise_nodes(activation, weight, scale, outputs, shape):
+    k, n = shape
+    if k % BLOCK:
+        raise ValueError(f"weight {weight} has an incomplete block")
+    packed = weight + "_packed"
+    dimensions = numpy_helper.from_array(
+        np.array([n, k // BLOCK, BLOCK], np.int64), packed + "_dims"
+    )
+    scales = numpy_helper.from_array(np.array([n, k // BLOCK], np.int64), packed + "_scdims")
+    nodes = [
+        helper.make_node("Cast", [weight], [packed + "_u8"], to=TensorProto.UINT8),
+        helper.make_node("BitwiseXor", [packed + "_u8", "xor_mask"], [packed + "_shifted"]),
+        helper.make_node("Transpose", [packed + "_shifted"], [packed + "_trans"], perm=[1, 0]),
+        helper.make_node("Reshape", [packed + "_trans", packed + "_dims"], [packed]),
+        helper.make_node("Expand", [scale, packed + "_scdims"], [packed + "_scales"]),
+        helper.make_node(
+            "MatMulNBits",
+            [activation, packed, packed + "_scales"],
+            outputs,
+            domain="com.microsoft",
+            K=k,
+            N=n,
+            bits=8,
+            block_size=BLOCK,
+            accuracy_level=4,
+        ),
+    ]
+    return nodes, (dimensions, scales)
+
+
+def convert(model):
+    graph = model.graph
+    tensors = {tensor.name: tensor for tensor in graph.initializer}
+    producers = {output: node for node in graph.node for output in node.output}
+    consumers = defaultdict(list)
+    for node in graph.node:
+        for name in node.input:
+            consumers[name].append(node)
+
+    replacements = {}
+    remove = set()
+    constants = [numpy_helper.from_array(np.uint8(128), "xor_mask")]
+    for node in graph.node:
+        if node.op_type != "MatMulInteger":
+            continue
+        activation, weight, _, zero = node.input
+        quant = producers[activation]
+        (cast,) = consumers[node.output[0]]
+        (rescale,) = consumers[cast.output[0]]
+        combined = producers[next(name for name in rescale.input if name != cast.output[0])]
+        operators = (quant.op_type, cast.op_type, rescale.op_type, combined.op_type)
+        if operators != ("DynamicQuantizeLinear", "Cast", "Mul", "Mul"):
+            raise ValueError(f"unexpected projection in {node.name}")
+        if numpy_helper.to_array(tensors[zero]).item() != 0:
+            raise ValueError(f"expected symmetric INT8 weights in {node.name}")
+        weight_scale = next(name for name in combined.input if name != quant.output[1])
+        nodes, shapes = blockwise_nodes(
+            quant.input[0], weight, weight_scale, rescale.output, tensors[weight].dims
+        )
+        replacements[node.output[0]] = nodes
+        constants.extend(shapes)
+        remove.update(item.output[0] for item in (quant, cast, rescale, combined))
+
+    if len(replacements) != 197:
+        raise ValueError(f"expected 197 projections, found {len(replacements)}")
+    nodes = []
+    for node in graph.node:
+        if node.output[0] not in remove:
+            nodes.extend(replacements.get(node.output[0], (node,)))
+    graph.ClearField("node")
+    graph.node.extend(nodes)
+    graph.initializer.extend(constants)
+    if not any(version.domain == "com.microsoft" for version in model.opset_import):
+        model.opset_import.append(helper.make_opsetid("com.microsoft", 1))
+    onnx.checker.check_model(model)
+
+
+def externalize(model, source):
+    """Point each large initializer at its exact bytes in the verified upstream protobuf."""
+    offset = 0
+    for tensor in model.graph.initializer:
+        data = tensor.raw_data
+        if len(data) < 1024:
+            continue
+        index = source.find(data[:64], offset)
+        if index < 0 or source[index : index + len(data)] != data:
+            index = source.find(data, offset)
+        if index < 0:
+            raise ValueError(f"cannot locate original weights for {tensor.name}")
+        set_external_data(tensor, location=SOURCE_NAME, offset=index, length=len(data))
+        tensor.ClearField("raw_data")
+        offset = index + len(data)
+
+    for node in model.graph.node:
+        node.ClearField("doc_string")
+        node.ClearField("metadata_props")
+    model.graph.ClearField("value_info")
+    model.graph.ClearField("metadata_props")
+
+
+def build(source, output):
+    with source.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as raw:
+        if hashlib.sha256(raw).hexdigest() != SOURCE_SHA256:
+            raise ValueError("input SHA-256 differs from the pinned upstream ONNX model")
+        model = onnx.load_model_from_string(raw[:])
+        convert(model)
+        externalize(model, raw)
+    graph = model.SerializeToString(deterministic=True)
+    digest = hashlib.sha256(graph).hexdigest()
+    if digest != GRAPH_SHA256:
+        raise ValueError(f"generated graph SHA-256 differs from its pin: {digest}")
+    with (
+        output.open("wb") as stream,
+        gzip.GzipFile(filename="", mode="wb", fileobj=stream, compresslevel=9, mtime=0) as archive,
+    ):
+        archive.write(graph)
+    print(f"{digest}  uncompressed graph ({len(graph)} bytes)")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", type=Path, help="upstream model_yesno_quantized.onnx")
+    parser.add_argument("output", type=Path, help="path for the .onnx.gz companion graph")
+    args = parser.parse_args()
+    build(args.source, args.output)

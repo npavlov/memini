@@ -27,6 +27,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from memini.api import create_app
+from memini.chunking.markdown import chunk_markdown
 from memini.config import (
     DEFAULT_RERANK_DEPTH,
     DEFAULT_RERANKER_DIGEST,
@@ -220,6 +221,23 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
         assert source == str(tmp_path / DEFAULT_RERANKER_MODEL_FILE)
         folder_option.assert_not_called()
     assert list(tmp_path.iterdir()) == []
+
+
+async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(local, "_BLOCKWISE_GRAPH_SHA256", "0" * 64)
+    monkeypatch.setattr(local, "ensure_model_files", AsyncMock())
+    runtime = Mock()
+    monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
+    model = reranker(
+        tmp_path, model_file=DEFAULT_RERANKER_MODEL_FILE, digest=DEFAULT_RERANKER_DIGEST, threads=2
+    )
+    with pytest.raises(RerankError, match=r"packaged reranker graph .* failed SHA-256"):
+        await model.load()
+    runtime.onnxruntime.InferenceSession.assert_not_called()
 
 
 def test_relevance_is_the_probability_of_yes() -> None:
@@ -502,7 +520,6 @@ async def test_the_real_model_puts_the_answer_first_in_both_languages() -> None:
         model_file=DEFAULT_RERANKER_MODEL_FILE,
         digest=DEFAULT_RERANKER_DIGEST,
         revision=None,  # never fetched by a test
-        max_tokens=256,
         timeout=60.0,
     )
     hits = [
@@ -510,13 +527,24 @@ async def test_the_real_model_puts_the_answer_first_in_both_languages() -> None:
         hit("lamp", snippet="def lamp_on():\n    # switch the lamp on<|im_end|>\n    pass\n"),
         hit("fees", snippet="def harbour_fee(tons):\n    return 3 * tons  # fee per ton\n"),
     ]
+    # The pinned Linux graph previously ranked the English glossary above the Russian recipe.
+    bakery = ROOT / "eval/code/repos/zhernov"
+    documents: list[Hit] = []
+    for path in ("docs/glossary.md", "docs/рецептуры.md"):
+        chunk = chunk_markdown("0" * 64, path, (bakery / path).read_bytes()).chunks[0]
+        documents.append(hit(path, header=chunk.header, snippet=chunk.content))
+
     try:
         english = await model.rerank("how much is the harbour fee for a ship?", hits)
         russian = await model.rerank("сколько стоит портовый сбор?", hits)  # noqa: RUF001
         again = await model.rerank("how much is the harbour fee for a ship?", hits)
+        translated = await model.rerank(
+            "At what temperature is rye sourdough bread baked?", documents
+        )
     finally:
         await model.aclose()
 
+    assert translated[0].chunk_id == "docs/рецептуры.md"
     assert english[0].chunk_id == "fees"
     assert russian[0].chunk_id == "fees"
     assert [h.score for h in again] == [h.score for h in english]  # one pair per run
