@@ -96,7 +96,7 @@ _LINUX_FILES_DIGEST: Final = (
     "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
 )
 _LINUX_GRAPH: Final = "qwen3-per-token-int8.onnx.gz"
-_LINUX_GRAPH_SHA256: Final = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+_LINUX_GRAPH_SHA256: Final = "d0c98c579311207b519d0ca7d9c3dde90115530f1a705c3857d69b742b61059c"
 
 
 class RerankError(Exception):

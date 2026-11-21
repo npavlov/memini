@@ -23,7 +23,7 @@ permissions:
 
 # One eval at a time per branch: a run started while another runs waits for it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -69,6 +69,12 @@ jobs:
           --health-retries 30
 
     steps:
+      - name: Record CPU model and capabilities
+        id: cpu
+        run: |
+          lscpu
+          if ! grep -qw avx512_vnni /proc/cpuinfo; then echo "legacy=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -188,6 +194,7 @@ jobs:
       # eval gives it 600 s a search rather than the service's search_reranker_timeout, so a slow
       # runner takes longer but measures the same.
       - name: Retrieval eval against the baseline (make eval-qwen3)
+        if: steps.cpu.outputs.legacy == 'true'
         timeout-minutes: 45
         env:
           MEMINI_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
