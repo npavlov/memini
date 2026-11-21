@@ -1,6 +1,7 @@
 # Agent Instructions
 
 Start with the [developer guide](docs/codebase.md) for feature paths, invariants and tests.
+Follow the [repository workflow](.claude/rules/repository.md) for Beads, validation and merging into `main`.
 
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 

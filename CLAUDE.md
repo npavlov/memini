@@ -2,6 +2,7 @@
 
 Memini is a self-hosted knowledge service: code, messages and meeting notes in; MCP and HTTP out.
 Start with the [developer guide](docs/codebase.md) for feature paths, invariants and tests.
+Follow the [repository workflow](.claude/rules/repository.md) for Beads, validation and merging into `main`.
 
 ## Read first
 
