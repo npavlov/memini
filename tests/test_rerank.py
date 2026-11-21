@@ -7,6 +7,8 @@ model files are on disk (``MEMINI_TEST_RERANKER_MODEL_DIR``, or the default cach
 default model). Search with a reranker against a database is in test_search_db.py.
 """
 
+import gzip
+import hashlib
 import importlib.util
 import logging
 import os
@@ -191,16 +193,16 @@ def test_x86_vnni_detection(tmp_path: Path, contents: str | None, expected: bool
     assert local.has_avx512_vnni(cpuinfo) is expected
 
 
-@pytest.mark.parametrize("vnni", [False, True])
 @pytest.mark.parametrize(
-    ("system", "machine", "digest", "per_token"),
+    ("system", "machine", "digest", "vnni", "label"),
     [
-        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True),
-        ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, True),
-        ("linux", "x86_64", DIGEST, False),
-        ("linux", "s390x", DEFAULT_RERANKER_DIGEST, False),
-        ("darwin", "arm64", DEFAULT_RERANKER_DIGEST, False),
-        ("win32", "AMD64", DEFAULT_RERANKER_DIGEST, False),
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, False, "blockwise INT8 5eb524d5d293"),
+        ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True, "per-token INT8 7f8cf431d2c1"),
+        ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, False, "per-token INT8 7f8cf431d2c1"),
+        ("linux", "x86_64", DIGEST, False, None),
+        ("linux", "s390x", DEFAULT_RERANKER_DIGEST, False, None),
+        ("darwin", "arm64", DEFAULT_RERANKER_DIGEST, False, None),
+        ("win32", "AMD64", DEFAULT_RERANKER_DIGEST, False, None),
     ],
 )
 async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failures(
@@ -209,8 +211,8 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     system: str,
     machine: str,
     digest: str,
-    per_token: bool,
     vnni: bool,
+    label: str | None,
 ) -> None:
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
@@ -222,7 +224,7 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
     monkeypatch.setattr(local, "ensure_model_files", verify)
     model = reranker(tmp_path, model_file=DEFAULT_RERANKER_MODEL_FILE, digest=digest, threads=2)
-    assert ("per-token INT8" in model.describe()) == per_token
+    assert model.describe().partition(" tokens")[2] == (f", {label}" if label else "")
     with pytest.raises(RerankError, match="test CPU kernel unavailable"):
         await model.load()
     verify.assert_awaited_once()
@@ -231,13 +233,10 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     source = session.call_args.args[0]
     assert session.call_args.kwargs["providers"] == ["CPUExecutionProvider"]
     options = ort.SessionOptions.return_value.add_session_config_entry
-    if per_token:
+    if label:
         assert isinstance(source, bytes)
-        precise = machine == "x86_64" and not vnni
-        assert options.call_count == (2 if precise else 1)
-        if precise:
-            options.assert_any_call("session.x64quantprecision", "1")
-        options.assert_any_call(
+        assert hashlib.sha256(source).hexdigest().startswith(label.split()[-1])
+        options.assert_called_once_with(
             "session.model_external_initializers_file_folder_path",
             str((tmp_path / DEFAULT_RERANKER_MODEL_FILE).parent),
         )
@@ -247,12 +246,16 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("vnni", [False, True])
 async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, vnni: bool
 ) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(local, "_LINUX_GRAPH_SHA256", "0" * 64)
+    monkeypatch.setattr(local, "has_avx512_vnni", lambda: vnni)
+    name = "per-token" if vnni else "blockwise"
+    (tmp_path / f"qwen3-{name}-int8.onnx.gz").write_bytes(gzip.compress(b"incompatible"))
+    monkeypatch.setattr(local, "files", Mock(return_value=tmp_path))
     monkeypatch.setattr(local, "ensure_model_files", AsyncMock())
     runtime = Mock()
     monkeypatch.setattr(local, "_import_runtime", lambda: runtime)

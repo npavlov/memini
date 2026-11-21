@@ -1,28 +1,30 @@
-# CPU reranker graph
+# CPU reranker graphs
 
-`src/memini/rerank/qwen3-per-token-int8.onnx.gz` is a companion execution graph for the
-default Qwen3 reranker. Each token uses its own activation scale based on the largest absolute value
-along its feature axis. The 197 integer projections retain the original signed weights
-and use a fixed activation zero point of 128. Each projection applies the token scale
-after rescaling its integer output by the fixed activation and weight scales. Large
-tensors point to verified byte ranges in `model_yesno_quantized.onnx`, so the wheel carries
-64,581 bytes of compressed graph data.
-The original model and tokenizer retain their existing verification and download paths.
+The default Qwen3 reranker uses two packaged graphs on Linux. Both read the original
+`model_yesno_quantized.onnx` weights directly from the verified cache.
 
-To reproduce the graph from the pinned model, run from the repository root:
+| Graph | CPUs | Projection method | Uncompressed SHA-256 |
+|---|---|---|---|
+| `qwen3-per-token-int8.onnx.gz` | arm64, x86-64 with AVX-512 VNNI on all listed CPUs | 197 signed-weight projections with one activation scale per token | `7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111` |
+| `qwen3-blockwise-int8.onnx.gz` | x86-64 with missing or unconfirmed AVX-512 VNNI | 197 `MatMulNBits` projections with 8-bit weights, blocks of 128, accuracy level 4 | `5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13` |
+
+The blockwise graph repacks the verified weights in memory when ONNX Runtime loads the
+session. Both graphs ship inside the wheel. The source model SHA-256 is
+`2bc0a77812a15ff6ead003370f36149139ae2c1bb1faf779b00c00886cd919ef`.
+[Upstream Apache-2.0 model and tokenizer at the pinned revision](https://huggingface.co/n24q02m/Qwen3-Reranker-0.6B-ONNX/tree/342a8a54de23bba03eb8cce5f5bef503edf18315)
+
+To reproduce both files from the repository root, set `model` to the upstream file path.
 
 ```sh
-uv run --script packaging/reranker/build.py /path/to/model_yesno_quantized.onnx /tmp/qwen3-per-token-int8.onnx.gz
-cmp /tmp/qwen3-per-token-int8.onnx.gz src/memini/rerank/qwen3-per-token-int8.onnx.gz
+model=/path/to/model_yesno_quantized.onnx
+out=$(mktemp -d)
+for variant in per-token blockwise; do
+    file="qwen3-${variant}-int8.onnx.gz"
+    uv run --script packaging/reranker/build.py --variant "$variant" "$model" "$out/$file" &&
+        cmp "$out/$file" "src/memini/rerank/$file" || exit 1
+done
 ```
 
-The generator verifies the upstream SHA-256 before converting the projections and checks
-the resulting uncompressed graph's SHA-256. The gzip header has a fixed timestamp and
-contains no local filename. The generator's ONNX tooling is needed only for regeneration.
-
-| Artifact | SHA-256 |
-|---|---|
-| Upstream model | `2bc0a77812a15ff6ead003370f36149139ae2c1bb1faf779b00c00886cd919ef` |
-| Uncompressed graph | `7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111` |
-
-[Upstream Apache-2.0 model and tokenizer at the pinned revision](https://huggingface.co/n24q02m/Qwen3-Reranker-0.6B-ONNX/tree/342a8a54de23bba03eb8cce5f5bef503edf18315)
+The generator verifies the input and output digests and writes deterministic gzip archives.
+Omitting `--variant` builds the per-token graph. The generator dependencies are needed only
+when reproducing the graphs.

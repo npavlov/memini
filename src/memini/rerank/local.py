@@ -26,8 +26,8 @@ The query and the hit are data (principle 11): they are tokenized with special t
 One pair per model run, never a padded batch. The model gives every sequence positions from 0, so
 in a left-padded batch a pair's positions, and its score, would depend on the longest pair beside
 it. The upstream graph also scales int8 activations over the whole batch: a "yes" logit of
-20.42 alone and 21.24 beside one other pair. The Linux graph scales activations per token and
-computes the final feed-forward block only at the last position. Each run hops to a worker
+20.42 alone and 21.24 beside one other pair. The Linux graphs use either per-token activation
+scales or blockwise integer projections, depending on the CPU. Each run hops to a worker
 thread, so the event loop stays free and the timeout is checked between pairs. One search reranks
 at a time: onnxruntime uses every core it may for one run already.
 
@@ -95,8 +95,25 @@ _ERROR_LIMIT: Final = 300
 _LINUX_FILES_DIGEST: Final = (
     "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
 )
-_LINUX_GRAPH: Final = "qwen3-per-token-int8.onnx.gz"
-_LINUX_GRAPH_SHA256: Final = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+
+
+@dataclass(frozen=True, slots=True)
+class _Graph:
+    label: str
+    file: str
+    sha256: str
+
+
+_PER_TOKEN: Final = _Graph(
+    "per-token INT8",
+    "qwen3-per-token-int8.onnx.gz",
+    "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111",
+)
+_LEGACY_X86: Final = _Graph(
+    "blockwise INT8",
+    "qwen3-blockwise-int8.onnx.gz",
+    "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13",
+)
 
 
 class RerankError(Exception):
@@ -113,6 +130,15 @@ def has_avx512_vnni(cpuinfo: Path = Path("/proc/cpuinfo")) -> bool:
     fields = (line.partition(":") for line in lines)
     flags = [value.split() for key, _, value in fields if key.strip() == "flags"]
     return bool(flags) and all("avx512_vnni" in features for features in flags)
+
+
+def _execution_graph(digest: str) -> _Graph | None:
+    if digest != _LINUX_FILES_DIGEST or sys.platform != "linux":
+        return None
+    machine = platform.machine()
+    if machine == "x86_64":
+        return _PER_TOKEN if has_avx512_vnni() else _LEGACY_X86
+    return _PER_TOKEN if machine == "aarch64" else None
 
 
 def relevance(no: float, yes: float) -> float:
@@ -159,11 +185,7 @@ class LocalReranker:
         self._files_dir = files_dir
         self._model_file = model_file
         self._digest = digest
-        self._per_token = (
-            digest == _LINUX_FILES_DIGEST
-            and sys.platform == "linux"
-            and platform.machine() in {"aarch64", "x86_64"}
-        )
+        self._graph = _execution_graph(digest)
         self._revision = revision
         self._max_tokens = max_tokens
         self._timeout = timeout
@@ -190,7 +212,7 @@ class LocalReranker:
 
     def describe(self) -> str:
         """The model, file, digest, token limit and optional Linux graph, in one line."""
-        graph = f", per-token INT8 {_LINUX_GRAPH_SHA256[:12]}" if self._per_token else ""
+        graph = f", {self._graph.label} {self._graph.sha256[:12]}" if self._graph else ""
         return (
             f"{self._model} {self._model_file} {self._digest[:19]}, at most"
             f" {self._max_tokens} tokens{graph}"
@@ -232,7 +254,7 @@ class LocalReranker:
                 instruction=self._instruction,
                 max_tokens=self._max_tokens,
                 threads=threads,
-                per_token=self._per_token,
+                graph=self._graph,
             )
             try:
                 self._score = (await anyio.to_thread.run_sync(load)).score
@@ -341,22 +363,18 @@ class _Runtime:
         instruction: str,
         max_tokens: int,
         threads: int,
-        per_token: bool,
+        graph: _Graph | None,
     ) -> "_Runtime":
         ort = modules.onnxruntime
         options = session_options(ort, threads)
         source: bytes | str = str(model_path)
-        if per_token:
-            # Avoid saturating U8 x S8 partial sums on x86 CPUs without VNNI.
-            if platform.machine() == "x86_64" and not has_avx512_vnni():
-                options.add_session_config_entry("session.x64quantprecision", "1")
-            graph = gzip.decompress(files("memini.rerank").joinpath(_LINUX_GRAPH).read_bytes())
-            if hashlib.sha256(graph).hexdigest() != _LINUX_GRAPH_SHA256:
-                raise RerankError(f"packaged reranker graph {_LINUX_GRAPH} failed SHA-256")
+        if graph is not None:
+            source = gzip.decompress(files("memini.rerank").joinpath(graph.file).read_bytes())
+            if hashlib.sha256(source).hexdigest() != graph.sha256:
+                raise RerankError(f"packaged reranker graph {graph.file} failed SHA-256")
             options.add_session_config_entry(
                 "session.model_external_initializers_file_folder_path", str(model_path.parent)
             )
-            source = graph
         session = ort.InferenceSession(
             source, sess_options=options, providers=["CPUExecutionProvider"]
         )

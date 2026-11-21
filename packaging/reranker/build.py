@@ -5,23 +5,29 @@
 #   "ml-dtypes==0.7.0", "typing-extensions==4.16.0",
 # ]
 # ///
-"""Build the compact per-token INT8 graph from the pinned Qwen3 reranker export."""
+"""Build the compact Linux execution graphs from the pinned Qwen3 reranker export."""
 
 import argparse
 import gzip
 import hashlib
 import mmap
+from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
 import onnx
-from onnx import helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper
 from onnx.external_data_helper import set_external_data
 
 SOURCE_SHA256 = "2bc0a77812a15ff6ead003370f36149139ae2c1bb1faf779b00c00886cd919ef"
 SOURCE_NAME = "model_yesno_quantized.onnx"
-GRAPH_SHA256 = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+ACTIVATION_GRAPH_SHA256 = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+GRAPH_SHA256 = {
+    "per-token": ACTIVATION_GRAPH_SHA256,
+    "blockwise": "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13",
+}
+BLOCK = 128
 
 
 def per_token_quantization(graph):
@@ -90,9 +96,80 @@ def per_token_quantization(graph):
     graph.node.extend(nodes)
 
 
-def convert(model):
-    per_token_quantization(model.graph)
-    onnx.checker.check_model(model)
+def blockwise_nodes(activation, weight, scale, outputs, shape):
+    k, n = shape
+    if k % BLOCK:
+        raise ValueError(f"weight {weight} has an incomplete block")
+    packed = weight + "_packed"
+    dimensions = numpy_helper.from_array(
+        np.array([n, k // BLOCK, BLOCK], np.int64), packed + "_dims"
+    )
+    scales = numpy_helper.from_array(np.array([n, k // BLOCK], np.int64), packed + "_scdims")
+    nodes = [
+        helper.make_node("Cast", [weight], [packed + "_u8"], to=TensorProto.UINT8),
+        helper.make_node("BitwiseXor", [packed + "_u8", "xor_mask"], [packed + "_shifted"]),
+        helper.make_node("Transpose", [packed + "_shifted"], [packed + "_trans"], perm=[1, 0]),
+        helper.make_node("Reshape", [packed + "_trans", packed + "_dims"], [packed]),
+        helper.make_node("Expand", [scale, packed + "_scdims"], [packed + "_scales"]),
+        helper.make_node(
+            "MatMulNBits",
+            [activation, packed, packed + "_scales"],
+            outputs,
+            domain="com.microsoft",
+            K=k,
+            N=n,
+            bits=8,
+            block_size=BLOCK,
+            accuracy_level=4,
+        ),
+    ]
+    return nodes, (dimensions, scales)
+
+
+def blockwise_quantization(model):
+    graph = model.graph
+    tensors = {tensor.name: tensor for tensor in graph.initializer}
+    producers = {output: node for node in graph.node for output in node.output}
+    consumers = defaultdict(list)
+    for node in graph.node:
+        for name in node.input:
+            consumers[name].append(node)
+
+    replacements = {}
+    remove = set()
+    constants = [numpy_helper.from_array(np.uint8(128), "xor_mask")]
+    for node in graph.node:
+        if node.op_type != "MatMulInteger":
+            continue
+        activation, weight, _, zero = node.input
+        quant = producers[activation]
+        (cast,) = consumers[node.output[0]]
+        (rescale,) = consumers[cast.output[0]]
+        combined = producers[next(name for name in rescale.input if name != cast.output[0])]
+        operators = (quant.op_type, cast.op_type, rescale.op_type, combined.op_type)
+        if operators != ("DynamicQuantizeLinear", "Cast", "Mul", "Mul"):
+            raise ValueError(f"unexpected projection in {node.name}")
+        if numpy_helper.to_array(tensors[zero]).item() != 0:
+            raise ValueError(f"expected symmetric INT8 weights in {node.name}")
+        weight_scale = next(name for name in combined.input if name != quant.output[1])
+        nodes, shapes = blockwise_nodes(
+            quant.input[0], weight, weight_scale, rescale.output, tensors[weight].dims
+        )
+        replacements[node.output[0]] = nodes
+        constants.extend(shapes)
+        remove.update(item.output[0] for item in (quant, cast, rescale, combined))
+
+    if len(replacements) != 197:
+        raise ValueError(f"expected 197 projections, found {len(replacements)}")
+    nodes = []
+    for node in graph.node:
+        if node.output[0] not in remove:
+            nodes.extend(replacements.get(node.output[0], (node,)))
+    graph.ClearField("node")
+    graph.node.extend(nodes)
+    graph.initializer.extend(constants)
+    if not any(version.domain == "com.microsoft" for version in model.opset_import):
+        model.opset_import.append(helper.make_opsetid("com.microsoft", 1))
 
 
 def externalize(model, source):
@@ -118,18 +195,22 @@ def externalize(model, source):
     model.graph.ClearField("metadata_props")
 
 
-def build(source, output):
+def build(source, output, variant):
     if output.exists() and source.samefile(output):
         raise ValueError("the output must be separate from the upstream ONNX model")
     with source.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as raw:
         if hashlib.sha256(raw).hexdigest() != SOURCE_SHA256:
             raise ValueError("input SHA-256 differs from the pinned upstream ONNX model")
         model = onnx.load_model_from_string(raw[:])
-        convert(model)
+        if variant == "per-token":
+            per_token_quantization(model.graph)
+        else:
+            blockwise_quantization(model)
+        onnx.checker.check_model(model)
         externalize(model, raw)
     graph = model.SerializeToString(deterministic=True)
     digest = hashlib.sha256(graph).hexdigest()
-    if digest != GRAPH_SHA256:
+    if digest != GRAPH_SHA256[variant]:
         raise ValueError(f"generated graph SHA-256 differs from its pin: {digest}")
     with TemporaryDirectory(dir=output.parent) as directory:
         temporary = Path(directory) / "graph.gz"
@@ -148,5 +229,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="upstream model_yesno_quantized.onnx")
     parser.add_argument("output", type=Path, help="path for the .onnx.gz companion graph")
+    parser.add_argument("--variant", choices=GRAPH_SHA256, default="per-token")
     args = parser.parse_args()
-    build(args.source, args.output)
+    build(args.source, args.output, args.variant)

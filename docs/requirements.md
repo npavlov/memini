@@ -1707,12 +1707,14 @@ with one activation scale per token restored the ordering in the focused cases. 
 [Failing nightly run](https://github.com/npavlov/memini/actions/runs/44891980762) ·
 [Reproduce the execution graph](../packaging/reranker/README.md)
 
-On Linux x86-64 without confirmed AVX-512 VNNI support, the packaged graph enables ONNX Runtime’s `session.x64quantprecision` option.
-On an AMD EPYC 7763, saturating intermediate integer sums changed the order of two passages
-for the harbour dues query. With the same three inputs, the precision option and an explicit
-unsigned-weight graph produced identical scores and restored the relevant passage to rank two.
-On an EPYC 9V74 and a Xeon 6975P-C the native VNNI kernel produced the same scores with
-or without the option. These CPUs retain native dispatch for speed.
+The pinned model uses the per-token graph on Linux arm64 and on Linux x86-64 where every
+CPU reports AVX-512 VNNI. Other Linux x86-64 CPUs use a blockwise INT8 graph that runs the
+197 weight projections through ONNX Runtime’s `MatMulNBits` kernel. Both graphs reference the
+same cached upstream weights. The reranker description includes the selected graph and digest.
+
+On an EPYC 7763, saturating intermediate integer sums changed the order of two passages for
+the harbour dues query. A precision override corrected that example. On an EPYC 9V74 and a
+Xeon 6975P-C, the native VNNI kernel produced the same scores with and without the override.
 [Fixed-input comparison across CPUs](https://github.com/npavlov/memini/actions/runs/44906302309) ·
 [ONNX Runtime quantization guidance](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html)
 
