@@ -23,7 +23,7 @@ permissions:
 
 # One eval at a time per branch: a run started while another runs waits for it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -69,6 +69,9 @@ jobs:
           --health-retries 30
 
     steps:
+      - name: Record CPU model and capabilities
+        run: lscpu
+
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
