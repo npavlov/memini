@@ -1,7 +1,6 @@
 # Contributing to Memini
 
-Memini is at the design stage. The best contributions right now are questions and corrections to the
-design, and code that follows the milestones of the plan.
+The [developer guide](docs/codebase.md) traces running features from their HTTP, MCP and CLI entry points through storage to their tests.
 
 Read first:
 
@@ -55,8 +54,7 @@ uv run memini serve                       # http://127.0.0.1:6364, MCP at /mcp
 
 `migrate`, `bootstrap` and `serve` are operator commands: they work on the database. `bootstrap`
 refuses while the database has an active admin token for every workspace, for example one made for
-the compose stack, which uses the same database volume; `--force` makes another. Every other command
-is a client of the running service. In a second shell:
+the compose stack, which uses the same database volume; `--force` makes another. See the [CLI reference](docs/cli.md) for other operator commands. To use an HTTP client command, open a second shell:
 
 ```sh
 export MEMINI_TOKEN_FILE=~/.config/memini/dev-admin.token   # MEMINI_URL defaults to http://127.0.0.1:6364

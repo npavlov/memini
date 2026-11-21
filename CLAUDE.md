@@ -1,7 +1,7 @@
 # Memini: guide for agents
 
 Memini is a self-hosted knowledge service: code, messages and meeting notes in; MCP and HTTP out.
-The project is open source and at the design stage.
+Start with the [developer guide](docs/codebase.md) for feature paths, invariants and tests.
 
 ## Read first
 
@@ -16,7 +16,7 @@ The project is open source and at the design stage.
 - The twelve principles in section 2 of the requirements are constraints, not suggestions. If a task
   conflicts with one, stop and raise it.
 - A change of scope or of a principle goes into `docs/requirements.md` in the same change as the code.
-- Open questions 1–3 of the requirements are settled by measurement on the eval set in M1, not by opinion.
+- For retrieval and extraction changes, compare the relevant evaluation against its baseline.
 
 ## Never commit
 
