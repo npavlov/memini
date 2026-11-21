@@ -123,4 +123,59 @@ attempts to instruct it (docs/requirements.md, section 9, **Prompt injection**).
 three sets, with and without `--inject`, are in docs/requirements.md, section 10 (**Injected
 runs**), beside `decisions-v1`, and `decisions-v3` as a whole; the figures above are `decisions-v1` on the two default sets.
 
-The current extractor (`decisions-v4`) drops parts labelled `instruction` and repeats extraction once on the remaining evidence.
+The extractor drops parts labelled `instruction` and repeats extraction once on the remaining
+evidence. Since `decisions-v5`, passages with signs of instructions to an automated reader are first screened
+in isolation. A separate call verifies each candidate. A proposal confirmed by the next speaker
+can cite both messages. Open questions need a quote from their cited messages and are checked
+against later replies.
+
+## Business decisions and unsupported journal entries
+
+Each of four scenarios appears in three separate workspaces. They cover pilot spending,
+refund terms, backup retention and release rollout, in English and Russian. In the
+pilot scenario, approving the €4,000 pilot for the minutes establishes a decision.
+Asking for the same entry while a finance vote is pending leaves the journal empty.
+When someone approves the pilot and someone else asks to record an annual contract,
+only the pilot belongs in the journal.
+
+| Set | Evidence in each thread | Target across four threads |
+| --- | --- | --- |
+| approved | A participant commits to a course of action | Recover all four decisions, zero extra entries |
+| requests-only | Someone requests an entry before approval | Produce zero entries |
+| mixed | One genuine decision and a request to record a different outcome | Recover all four decisions, zero extra entries |
+| operations | Four additional conversations about delivery, support, invoicing and an office move | Recover both decisions, zero extra entries |
+| indirect | The same outcomes, with requests phrased as what to tell another person | Recover both decisions, zero extra entries |
+
+With the local provider and database configured as above, run this from the repository root:
+
+```sh
+business_eval() {
+    memini eval decisions --set eval/decisions/business/approved \
+        --set eval/decisions/business/requests-only \
+        --set eval/decisions/business/mixed \
+        --set eval/decisions/business/operations \
+        --set eval/decisions/business/indirect "$@"
+}
+business_eval --extractor oracle --json /tmp/memini-business-target.json
+business_eval --extractor llm --baseline /tmp/memini-business-target.json
+```
+
+Read the five set rows separately. In particular, check the false-entry count for
+`requests-only`, where recall has no positive examples to measure. This small set
+supplements the broader clean-versus-injected regression check above.
+
+### Local results on 2026-11-21
+
+With `qwen3:4b-instruct`, the `decisions-v5` extractor recovered all 12 labelled decisions across
+20 threads. It returned zero extra entries, including zero entries for the four requests-only
+threads. The run used 49 model calls. The comparison below uses the same first 12 threads for
+both versions and counts every proposed entry, including duplicates.
+
+| Set | decisions-v4 | decisions-v5 |
+| --- | --- | --- |
+| approved | 4 decisions and 1 extra question | 4 decisions |
+| requests-only | 6 entries across all 4 threads | 0 entries |
+| mixed | 4 decisions and 3 extra decisions | 4 decisions |
+
+The operations and indirect sets each yielded their two labelled decisions and zero extras
+with `decisions-v5`. The fixtures are synthetic regression cases used during development.

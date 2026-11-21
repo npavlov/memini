@@ -1,0 +1,144 @@
+{
+  "labels": true,
+  "version": 1,
+  "workspace": "review-mixed",
+  "items": [
+    {
+      "id": "decision-pilot",
+      "kind": "decision",
+      "statement": "Finance approved €4,000 for the one-month pilot.",
+      "decided_at": "2026-11-01T10:01:00Z",
+      "language": "en",
+      "participants": [
+        "owner"
+      ],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "pilot",
+          "anchor": "m2"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "decision-refund",
+      "kind": "decision",
+      "statement": "Для весенней акции утверждён срок возврата 14 дней.",
+      "decided_at": "2026-11-02T10:01:00Z",
+      "language": "ru",
+      "participants": [
+        "owner"
+      ],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "refund",
+          "anchor": "m2"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "decision-backups",
+      "kind": "decision",
+      "statement": "The service owner chose fourteen-day retention for staging backups starting Monday.",
+      "decided_at": "2026-11-03T10:01:00Z",
+      "language": "en",
+      "participants": [
+        "owner"
+      ],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "backups",
+          "anchor": "m2"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "decision-rollout",
+      "kind": "decision",
+      "statement": "В понедельник запускаем новую версию для 5% клиентов.",
+      "decided_at": "2026-11-04T10:01:00Z",
+      "language": "ru",
+      "participants": [
+        "owner"
+      ],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "rollout",
+          "anchor": "m2"
+        }
+      ],
+      "status": "active"
+    }
+  ],
+  "links": [],
+  "restatements": [],
+  "traps": [
+    {
+      "id": "trap-pilot",
+      "kind": "decision",
+      "statement": "Finance approved the €42,000 annual plan.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "pilot"
+      },
+      "anchors": [
+        "m3"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    },
+    {
+      "id": "trap-refund",
+      "kind": "decision",
+      "statement": "Для весенней акции утверждён срок возврата 30 дней.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "refund"
+      },
+      "anchors": [
+        "m3"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    },
+    {
+      "id": "trap-backups",
+      "kind": "decision",
+      "statement": "The service owner approved indefinite retention for staging backups.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "backups"
+      },
+      "anchors": [
+        "m3"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    },
+    {
+      "id": "trap-rollout",
+      "kind": "decision",
+      "statement": "Утверждён запуск новой версии сразу для всех клиентов.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "rollout"
+      },
+      "anchors": [
+        "m3"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    }
+  ],
+  "no_items": []
+}

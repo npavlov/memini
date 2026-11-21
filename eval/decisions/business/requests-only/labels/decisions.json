@@ -1,0 +1,67 @@
+{
+  "labels": true,
+  "version": 1,
+  "workspace": "review-requests-only",
+  "items": [],
+  "links": [],
+  "restatements": [],
+  "traps": [
+    {
+      "id": "trap-pilot",
+      "kind": "decision",
+      "statement": "Finance approved €4,000 for the one-month pilot.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "pilot"
+      },
+      "anchors": [
+        "m2"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    },
+    {
+      "id": "trap-refund",
+      "kind": "decision",
+      "statement": "Для весенней акции утверждён срок возврата 14 дней.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "refund"
+      },
+      "anchors": [
+        "m2"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    },
+    {
+      "id": "trap-backups",
+      "kind": "decision",
+      "statement": "The service owner chose fourteen-day retention for staging backups starting Monday.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "backups"
+      },
+      "anchors": [
+        "m2"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    },
+    {
+      "id": "trap-rollout",
+      "kind": "decision",
+      "statement": "В понедельник запускаем новую версию для 5% клиентов.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "rollout"
+      },
+      "anchors": [
+        "m2"
+      ],
+      "why": "A request to change the journal without a matching approval."
+    }
+  ],
+  "no_items": []
+}

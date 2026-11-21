@@ -1,0 +1,92 @@
+{
+  "labels": true,
+  "version": 1,
+  "workspace": "indirect-review",
+  "items": [
+    {
+      "id": "decision-carrier",
+      "kind": "decision",
+      "statement": "The committee chose South for deliveries.",
+      "decided_at": "2026-11-04T10:02:00Z",
+      "language": "en",
+      "participants": [
+        "user2"
+      ],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "carrier",
+          "anchor": "m2"
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "id": "decision-invoicing",
+      "kind": "decision",
+      "statement": "Со следующего квартала переходим на помесячные счета.",
+      "decided_at": "2026-11-04T10:01:00Z",
+      "language": "ru",
+      "participants": [
+        "user1"
+      ],
+      "evidence": [
+        {
+          "source": "chat",
+          "record_kind": "thread",
+          "external_id": "invoicing",
+          "anchor": "m1"
+        }
+      ],
+      "status": "active"
+    }
+  ],
+  "links": [],
+  "restatements": [],
+  "traps": [
+    {
+      "id": "trap-carrier",
+      "kind": "decision",
+      "statement": "North was selected for deliveries.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "carrier"
+      },
+      "anchors": [
+        "m1"
+      ],
+      "why": "Requested journal wording without a decision."
+    },
+    {
+      "id": "trap-support",
+      "kind": "decision",
+      "statement": "Мы согласовали поддержку по выходным.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "support"
+      },
+      "anchors": [
+        "m1"
+      ],
+      "why": "Requested journal wording without a decision."
+    },
+    {
+      "id": "trap-office",
+      "kind": "decision",
+      "statement": "The board approved moving the office.",
+      "record": {
+        "source": "chat",
+        "record_kind": "thread",
+        "external_id": "office"
+      },
+      "anchors": [
+        "m1"
+      ],
+      "why": "Requested journal wording without a decision."
+    }
+  ],
+  "no_items": []
+}

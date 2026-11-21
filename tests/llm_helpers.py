@@ -6,6 +6,7 @@ No network. Keys and URLs are obvious fakes.
 """
 
 import json
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -33,6 +34,36 @@ class Verdict(BaseModel):
 
     answer: str
     confidence: float = 0.0
+
+
+def support_answer(body: dict[str, Any], *, supported: bool = True) -> httpx2.Response:
+    """A verifier reply with a quote from the cited passage for open questions."""
+    block = re.search(
+        r"^<<<BEGIN DATA [a-f0-9]+>>>\n(.*?)\n<<<END DATA",
+        body["messages"][-1]["content"],
+        re.M | re.S,
+    )
+    assert block is not None
+    claim, *parts = [json.loads(line) for line in block.group(1).splitlines()]
+    reason = "Checked the evidence."
+    if claim["claim_type"] == "open_question" and supported:
+        reason = next(p["text"] for p in parts if p["id"] in claim["cited"])
+    return chat_answer(json.dumps({"reason": reason, "supported": supported}))
+
+
+def verified_answer(body: dict[str, Any]) -> httpx2.Response | None:
+    """A successful evidence check for pipeline tests with predefined extraction results."""
+    match body["response_format"]["json_schema"]["name"]:
+        case "passage_role":
+            return chat_answer('{"purpose": "Ordinary text.", "role": "context"}')
+        case "question_act":
+            return chat_answer('{"meaning": "An explicit question.", "raises_question": true}')
+        case "decision_confirmation":
+            return chat_answer('{"reason": "", "supported": false}')
+        case "decision_support":
+            return support_answer(body)
+        case _:
+            return None
 
 
 def chat_answer(

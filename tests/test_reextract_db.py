@@ -24,7 +24,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow, dict_row
 from pydantic import SecretStr
 
-from llm_helpers import LOCAL_MODEL, chat_answer, llm_settings
+from llm_helpers import LOCAL_MODEL, chat_answer, llm_settings, verified_answer
 from memini.api import create_app
 from memini.auth import Scope, WriteAccess, create_token
 from memini.config import Settings
@@ -92,6 +92,8 @@ class FakeLlm:
         body = json.loads(request.content)
         self.bodies.append(body)
         lines = data_lines(body)
+        if (verified := verified_answer(body)) is not None:
+            return verified
         if body["response_format"]["json_schema"]["name"] == "decisions":
             return chat_answer(json.dumps({"items": self.readings.get(lines[1]["text"], [])}))
         shown = {line["statement"]: line["n"] for line in lines[1:]}

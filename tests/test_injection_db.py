@@ -53,7 +53,7 @@ from injection_corpus import (
     records,
     texts_of,
 )
-from llm_helpers import LOCAL_MODEL, chat_answer, llm_settings
+from llm_helpers import LOCAL_MODEL, chat_answer, llm_settings, verified_answer
 from memini.api import create_app
 from memini.auth import WriteAccess, create_token
 from memini.config import Settings
@@ -416,6 +416,8 @@ class FakeModel:
         body = cast(Json, json.loads(request.content))
         self.bodies.append(body)
         name = body["response_format"]["json_schema"]["name"]
+        if (verified := verified_answer(body)) is not None:
+            return verified
         answer = self.extract if name == "decisions" else self.classify
         return chat_answer(json.dumps(answer(name, data_lines(body))))
 

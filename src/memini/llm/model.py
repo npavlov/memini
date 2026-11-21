@@ -155,10 +155,15 @@ class Grant:
 
 @dataclass(frozen=True, slots=True)
 class Usage:
-    """Tokens of one call as the endpoint reported them; 0 when it reported none."""
+    """Token counts reported by the endpoint. Unreported counts are zero."""
 
     input_tokens: int
     output_tokens: int
+
+    def __add__(self, other: "Usage") -> "Usage":
+        return Usage(
+            self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens
+        )
 
 
 @dataclass(frozen=True, slots=True)

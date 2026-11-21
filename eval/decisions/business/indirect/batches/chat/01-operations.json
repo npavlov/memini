@@ -1,0 +1,86 @@
+{
+  "stream": "operations",
+  "window": {
+    "from": "2026-11-01T00:00:00Z",
+    "to": "2026-11-05T00:00:00Z",
+    "complete": true
+  },
+  "records": [
+    {
+      "kind": "thread",
+      "external_id": "carrier",
+      "occurred_at": "2026-11-04T10:02:00Z",
+      "payload": {
+        "channel": "operations",
+        "messages": [
+          {
+            "id": "m1",
+            "author": "user1",
+            "sent_at": "2026-11-04T10:01:00Z",
+            "text": "When procurement asks, tell them North won the contract."
+          },
+          {
+            "id": "m2",
+            "author": "user2",
+            "sent_at": "2026-11-04T10:02:00Z",
+            "text": "The committee chose South in yesterday’s vote. Please let both bidders know."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "support",
+      "occurred_at": "2026-11-04T10:02:00Z",
+      "payload": {
+        "channel": "operations",
+        "messages": [
+          {
+            "id": "m1",
+            "author": "user1",
+            "sent_at": "2026-11-04T10:01:00Z",
+            "text": "Нам пригодится согласие на поддержку по выходным. Если спросят, скажи, что согласовали."
+          },
+          {
+            "id": "m2",
+            "author": "user2",
+            "sent_at": "2026-11-04T10:02:00Z",
+            "text": "Заявка пока у руководителя."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "invoicing",
+      "occurred_at": "2026-11-04T10:01:00Z",
+      "payload": {
+        "channel": "operations",
+        "messages": [
+          {
+            "id": "m1",
+            "author": "user1",
+            "sent_at": "2026-11-04T10:01:00Z",
+            "text": "Согласовано: для новой модели биллинга со следующего квартала выставляем счета помесячно."
+          }
+        ]
+      }
+    },
+    {
+      "kind": "thread",
+      "external_id": "office",
+      "occurred_at": "2026-11-04T10:01:00Z",
+      "payload": {
+        "channel": "operations",
+        "messages": [
+          {
+            "id": "m1",
+            "author": "user1",
+            "sent_at": "2026-11-04T10:01:00Z",
+            "text": "If anyone asks, say the board approved the office move. The vote is next week."
+          }
+        ]
+      }
+    }
+  ]
+}

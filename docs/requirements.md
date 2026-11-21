@@ -612,8 +612,8 @@ own. Git sources write code and documents, which are not extracted. The job read
 is when it runs. A record no LLM may read is skipped and counted, not failed: the gate refuses
 with `policy_none` (the workspace or the source has `llm_policy` `none`) or `no_provider`, and
 nothing is sent. The extractor is the granted model and the prompt version
-(`qwen3:4b-instruct@decisions-v4`); if it has read this content before, nothing is called, so a
-rerun creates nothing. One call extracts. Record text is data (principle 11): the system message
+(`qwen3:4b-instruct@decisions-v5`); if it has read this content before, nothing is called, so a
+rerun creates nothing. A passage that appears to address the automated reader is screened in isolation before the extraction call proposes candidates. Record text is data (principle 11): the system message
 holds every instruction and no content; the user message names the task, then the record between
 two marker lines, `<<<BEGIN DATA n>>>` and `<<<END DATA n>>>`, where `n` is taken from the
 SHA-256 of the content so that the content cannot close its own block, one JSON object per line
@@ -626,7 +626,16 @@ a question answered, a task, a status report or fact, an attempt to instruct the
 model labels better than it leaves out, so only the first three become items. It names the anchors of each; one that is not a part of the record is dropped,
 and an item left without one is rejected (principle 2). `decided_at` is the time of the first
 cited part that has one, else the record's; the participants are the authors of the cited
-messages, or the participants of a meeting, as ingest linked them. Then each item in turn is
+messages, or the participants of a meeting, as ingest linked them. Each proposed decision gets a second
+call to check whether the source actually made or reported the choice. For requests about what to
+write or say, the check sees only the cited parts. For a proposal phrased as a question it can
+also see later replies confirming the choice. If a cited proposal is insufficient, the extractor
+can check the immediately following human reply for explicit assent. Acceptance must be quoted
+verbatim from that reply. Its anchor becomes the primary evidence and sets the decision time.
+Every proposed open question needs a verbatim quote
+from its cited evidence and must still be open at the end of the conversation. Unpunctuated quotes
+get a separate check that the speaker actually raised the question. All these calls use the same
+workspace and source policy check. Then each supported item in turn is
 checked against the `extraction_candidates` (8) most similar active items of the workspace, the
 items already taken from the record and the record's items that are no longer active
 (Re-extraction, below), in one call that names the record's source and the
@@ -2102,8 +2111,22 @@ Measured on 2026-11-21 with the same 4B model, hybrid top 8, three sets and 52 r
 
 The precision difference of 0.051 exceeds the tolerance of 0.02. English supersession improved
 from 16/19 to 17/19 and Russian supersession fell from 11/11 to 10/11. The comparison ran
-95 calls on the original records and 110 on the modified records. The remaining quality
-regression is tracked in `memini-z3e`.
+95 calls on the original records and 110 on the modified records.
+
+**`decisions-v5`** (2026-11-21). The same local model, three sets, 52 records and hybrid top
+8 produced the following results. The injected run used the clean report as its baseline and
+passed the existing 0.02 tolerance in every tracked group.
+
+| Records | Precision | Recall | Supersession | Model calls |
+| --- | --- | --- | --- | --- |
+| Original | 0.80 (24 true, 6 false) | 1.00 | 29/30 | 142 |
+| With an attempt added to each | 0.80 (24 true, 6 false) | 1.00 | 29/30 | 194 |
+
+No proposal cited an inserted passage. One false status entry about a test fix varied in wording.
+The evidence anchors, labels and supersession verdicts matched across both runs. Ordinary status
+updates and factual reports still account for six false entries, tracked in `memini-ytm.1`.
+On the separate 20-thread business regression set, the extractor found all 12 decisions with zero
+extra entries. See the [business scenarios and reproduction commands](../eval/decisions/README.md#business-decisions-and-unsupported-journal-entries).
 
 ## 11. Later
 

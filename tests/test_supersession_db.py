@@ -31,7 +31,7 @@ from psycopg.rows import TupleRow
 from pydantic import SecretStr
 
 from comms_fixtures import RecordRef, decision_labels, final_records
-from llm_helpers import chat_answer, llm_settings
+from llm_helpers import chat_answer, llm_settings, verified_answer
 from memini.api import create_app
 from memini.auth import Principal, ReadFilter, WriteAccess, authorize_read, create_token
 from memini.config import Settings
@@ -136,6 +136,8 @@ class LabelledLlm:
         body = json.loads(request.content)
         self.requests.append(body)
         lines = _lines(body)
+        if (verified := verified_answer(body)) is not None:
+            return verified
         if body["response_format"]["json_schema"]["name"] == "decisions":
             return chat_answer(json.dumps({"items": self.extraction(lines)}))
         new = lines[0]["statement"]
@@ -269,7 +271,16 @@ async def test_thread_b_supersedes_thread_a_and_the_restatement_is_a_duplicate(
         assert await run_jobs(db, pool, llm, embedder) == 1
 
     # The sync's restatement was checked against A's item and not stored; B's replaced it.
-    assert llm.kinds() == ["decisions", "decisions", "supersession", "decisions", "supersession"]
+    assert llm.kinds() == [
+        "decisions",
+        "decision_support",
+        "decisions",
+        "decision_support",
+        "supersession",
+        "decisions",
+        "decision_support",
+        "supersession",
+    ]
     assert await statuses(db) == {cbor: ("superseded", True), gzip: ("active", False)}
     cur = await db.execute("SELECT count(*) FROM knowledge_extraction")
     assert await cur.fetchone() == (3,)  # the sync was read, and nothing new found there
