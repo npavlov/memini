@@ -187,29 +187,7 @@ The first hit is the thread, `chat:platform/1793610720.000100#msg-…`, with its
 
 ## 8. Connect Claude Code
 
-Agents get a token with the `read` scope only. Make one, and add Memini to Claude Code for all your
-projects:
-
-```sh
-(set -C; umask 077; memini token create --scope read --name claude-code > ~/.config/memini/read.token)
-claude mcp add --scope user --transport http memini http://127.0.0.1:6364/mcp \
-  --header "Authorization: Bearer $(cat ~/.config/memini/read.token)"
-claude mcp list
-```
-
-`claude mcp list` shows `memini: http://127.0.0.1:6364/mcp (HTTP) - ✔ Connected`. Claude Code keeps
-the token in its own configuration file. Start Claude Code and ask, for example: *What did the
-platform channel decide about the nightly export? Use the memini search tool.* It calls `search` and
-answers from the thread: 04:30 UTC, a 45-minute timeout.
-
-Another MCP client takes the same URL and header, e.g. in its JSON configuration:
-
-```json
-{"mcpServers": {"memini": {"type": "http", "url": "http://127.0.0.1:6364/mcp",
-                           "headers": {"Authorization": "Bearer <token>"}}}}
-```
-
-See [MCP client setup and tool reference](mcp/README.md) for Codex setup and a callable example for each tool.
+Use the [MCP setup guide](mcp/README.md) to connect Claude Code, Codex, OpenCode, Pi or an editor. It shows how to issue a workspace-scoped read token and check the connection. Once connected, ask your agent to search for the nightly export decision from the example thread.
 
 ## 9. Status
 
