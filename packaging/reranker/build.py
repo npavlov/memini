@@ -16,12 +16,12 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import helper, numpy_helper
 from onnx.external_data_helper import set_external_data
 
 SOURCE_SHA256 = "2bc0a77812a15ff6ead003370f36149139ae2c1bb1faf779b00c00886cd919ef"
 SOURCE_NAME = "model_yesno_quantized.onnx"
-GRAPH_SHA256 = "54677185b94fc40db7ac1834c5e4b7fd7dc266501c233919cbd3fea96192bf77"
+GRAPH_SHA256 = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
 
 
 def per_token_quantization(graph):
@@ -34,6 +34,8 @@ def per_token_quantization(graph):
     graph.initializer.extend(numpy_helper.from_array(v, k) for k, v in constants.items())
     replacements = {}
     nodes = []
+    peaks = {}
+    projection_peaks = {}
     quantizers = 0
     projections = 0
     for node in graph.node:
@@ -50,73 +52,46 @@ def per_token_quantization(graph):
                         "ReduceMax", [x + "_abs", "token_axis"], [x + "_max"], keepdims=1
                     ),
                     helper.make_node("Max", [x + "_max", "token_epsilon"], [peak]),
-                    helper.make_node("Mul", [peak, "token_scale"], [x + "_per_scale"]),
                     helper.make_node("Div", [x, peak], [normalized]),
                     helper.make_node(
                         "QuantizeLinear", [normalized, "token_scale", "token_zero"], [quantized]
                     ),
                 ]
             )
-            replacements[scale] = x + "_per_scale"
+            peaks[scale] = peak
+            replacements[scale] = "token_scale"
             replacements[zero] = "token_zero"
             continue
         if node.op_type == "MatMulInteger":
             projections += 1
             if replacements.get(node.input[2]) != "token_zero":
                 raise ValueError(f"unexpected activation zero point in {node.name}")
+        if node.op_type == "Mul" and node.input[0] in peaks:
+            projection_peaks[node.output[0]] = peaks[node.input[0]]
         for index, name in enumerate(node.input):
             if name in replacements:
                 node.input[index] = replacements[name]
-        nodes.append(node)
+        if node.op_type == "Mul" and node.input[1] in projection_peaks:
+            (output,) = node.output
+            node.output[0] = output + "_scaled"
+            nodes.extend(
+                [
+                    node,
+                    helper.make_node(
+                        "Mul", [node.output[0], projection_peaks[node.input[1]]], [output]
+                    ),
+                ]
+            )
+        else:
+            nodes.append(node)
     if (quantizers, projections) != (113, 197):
         raise ValueError(f"unexpected number of quantizers/projections: {quantizers}/{projections}")
     graph.ClearField("node")
     graph.node.extend(nodes)
 
 
-def final_token_mlp(graph):
-    # The final attention layer needs all positions. Its MLP and the rest of the
-    # score head compute only position -1 for the two next-token logits.
-    (index,) = [i for i, node in enumerate(graph.node) if node.name == "node_add_9786"]
-    residual = graph.node[index]
-    if residual.op_type != "Add" or list(residual.input) != ["add_9488", "linear_192"]:
-        raise ValueError("unexpected final attention residual")
-    (source,) = residual.output
-    if source != "add_9786":
-        raise ValueError("unexpected final attention output")
-    consumers = [node for node in graph.node if source in node.input]
-    if {node.name for node in consumers} != {"node_pow_112", "node_mul_8794", "node_add_9836"}:
-        raise ValueError("unexpected consumers of the final attention residual")
-    (select,) = [node for node in graph.node if node.name == "node_select"]
-    (position,) = [tensor for tensor in graph.initializer if tensor.name == "val_5085"]
-    if (
-        select.op_type != "Gather"
-        or list(select.input) != ["mul_8834", position.name]
-        or {a.name: a.i for a in select.attribute} != {"axis": 1}
-        or numpy_helper.to_array(position).item() != -1
-    ):
-        raise ValueError("expected the upstream score head to select the last token")
-    final = source + "_final_token"
-    for node in consumers:
-        for i, name in enumerate(node.input):
-            if name == source:
-                node.input[i] = final
-    graph.initializer.append(helper.make_tensor("last_token_index", TensorProto.INT64, [1], [-1]))
-    graph.node.insert(
-        index + 1,
-        helper.make_node(
-            "Gather",
-            [source, "last_token_index"],
-            [final],
-            name="last_token_after_attention",
-            axis=1,
-        ),
-    )
-
-
 def convert(model):
     per_token_quantization(model.graph)
-    final_token_mlp(model.graph)
     onnx.checker.check_model(model)
 
 
