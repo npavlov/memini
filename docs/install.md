@@ -1,147 +1,75 @@
 # Install Memini
 
-From nothing to a search over one repository and one chat thread, with Docker Compose. It takes
-about a quarter of an hour, most of it the first build of the image and the download of the
-embedding model. Run the steps in order; each one says what you should see.
+Choose where Memini will run. If this is your first installation and you’re working on your own computer, start with **Run a local server**.
 
-The result: the service and its database run on this machine, published on `127.0.0.1` only; one
-workspace holds a public repository and a pushed chat thread; Claude Code (or another MCP client)
-searches them with a read-only token.
-
-## Install a published image with Docker only
-
-Download and unpack the [source archive for v0.1.0-rc.1](https://github.com/npavlov/memini/archive/refs/tags/v0.1.0-rc.1.tar.gz). Open a terminal in the extracted directory. It contains the Compose files and CLI wrapper for this image.
-
-```sh
-export MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:0.1.0-rc.1
-export COMPOSE_FILE=compose.yaml:compose.release.yaml
-docker compose up -d --wait ollama
-docker compose exec -T ollama ollama pull qwen3-embedding:0.6b
-docker compose up -d --no-build --wait
-```
-
-This runs Ollama inside the Compose network with a persistent model volume. For a permanent
-installation, first set the database password in step 2. Continue at [step 4](#4-the-memini-command).
-To verify an image in a separate disposable stack, run
-`scripts/test-release-install.sh "$MEMINI_RELEASE_IMAGE"`. It starts with empty volumes,
-syncs the quickstart repository at the matching tag (limited to its admin CLI file), pushes the example thread,
-checks both search results and removes the test stack.
+<nav class="install-paths" aria-label="Installation options">
+<a href="#what-you-need"><strong>Run a local server</strong><span>Start Memini, its database and its search model with Docker.</span></a>
+<a href="install-cli.md"><strong>Connect to a server</strong><span>Install the CLI and sign in with the token your team gave you.</span></a>
+</nav>
 
 ## What you need
 
-- **Docker with Compose 2.24.0 or later.** Docker Desktop or OrbStack on macOS, Docker Engine with
-  the compose plugin on Linux. Check: `docker compose version`.
-- **git**, to clone the repository. Optionally **curl** 7.55.0 or later (`curl --version`), for the
-  curl form of step 7.
-- **[Ollama](https://ollama.com)**, which runs the embedding model on this machine: no text leaves
-  it. Install it, then pull the model (about 640 MB):
+- **macOS or Windows:** start [Docker Desktop](https://docs.docker.com/desktop/). On Windows, run these commands in a [WSL 2 terminal with Docker integration enabled](https://docs.docker.com/desktop/features/wsl/).
+- **Linux:** install [Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/).
+- **Hardware:** 4 CPU cores, 8 GB RAM and 20 GB free SSD space. A GPU is optional. The first run downloads the application and its local search model.
 
-  ```sh
-  ollama pull qwen3-embedding:0.6b
-  ```
+Open your terminal and run `docker compose version`. Look for version **2.24 or newer**. Docker runs Memini, PostgreSQL and Ollama together. The steps use a Bash-compatible shell and OpenSSL for generating a password.
 
-  On Linux, Ollama listens on 127.0.0.1 only, which a container cannot reach. Let it listen on
-  every interface: set `OLLAMA_HOST=0.0.0.0:11434` in the environment of its service (with systemd:
-  `sudo systemctl edit ollama.service`, add `Environment="OLLAMA_HOST=0.0.0.0:11434"` under
-  `[Service]`, then `sudo systemctl restart ollama`), and keep port 11434 closed to other machines
-  with a firewall. Docker Desktop and OrbStack reach Ollama on the host's 127.0.0.1 without this.
-- **Disk and memory:** see [Machine size](#machine-size).
-- Optional: Claude Code or another MCP client, for step 8.
+<a id="install-a-published-image-with-docker-only"></a>
 
-You need no Python and no uv on the host: the `memini` command runs inside the service's container
-(step 4).
+## 1. Download the release
 
-## 1. Clone
+[Download the server setup files (.zip)](https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-v0.1.0-rc.1-server.zip). Extract the ZIP, then open a terminal in the extracted folder containing `compose.yaml`. Keep this folder for future starts. It provides the Docker settings, the CLI shortcut and sample data. Docker downloads the prebuilt application.
+
+## 2. Set the database password
+
+Run this once in the extracted folder. It creates a private settings file for this installation. If you already have a `.env`, keep your password and update the two release settings in that file.
 
 ```sh
-git clone https://github.com/npavlov/memini.git
-cd memini
+( set -C; umask 077
+  password=$(openssl rand -hex 16) && printf '%s\n' \
+    'COMPOSE_FILE=compose.yaml:compose.release.yaml' \
+    'MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:0.1.0-rc.1' \
+    "MEMINI_DB_PASSWORD=$password" > .env )
 ```
 
-Every command below runs in this directory, unless it says otherwise.
-
-## 2. Settings
-
-Two files, both ignored by git; [configuration.md](configuration.md), "Docker compose", describes
-them.
-
-`.env` is what compose itself reads: the ports on the host, the database password and the paths of
-secret files. Every line is optional; set a database password now, as the database keeps the one it
-is created with:
+## 3. Start the server
 
 ```sh
-cp .env.example .env
-printf 'MEMINI_DB_PASSWORD=%s\n' "$(openssl rand -hex 16)" >> .env
+docker compose up -d --wait ollama
+docker compose exec -T ollama ollama pull qwen3-embedding:0.6b
+docker compose up -d --no-build --wait
+docker compose ps --format '{{.Service}}  {{.Health}}'
 ```
 
-The service is published on `127.0.0.1:6364` and the database on `127.0.0.1:55432`. If either port
-is taken on this machine, add `MEMINI_HTTP_PORT=…` or `MEMINI_DB_PORT=…` to `.env`, and use your
-HTTP port wherever this guide says 6364.
+Wait for `db`, `memini` and `ollama` to show `healthy`. Memini listens on this computer at `http://127.0.0.1:6364`.
 
-`.env.memini` holds the settings of the service. Turn on embeddings with Ollama on this machine,
-which compose reaches as `host.docker.internal`:
-
-```sh
-cp .env.memini.example .env.memini
-cat >> .env.memini <<'EOF'
-
-# Embeddings: Ollama on this machine (docs/install.md)
-MEMINI_EMBEDDING_PROVIDER=openai_compatible
-MEMINI_EMBEDDING_URL=http://host.docker.internal:11434/v1
-EOF
-```
-
-That one provider implies the model (`qwen3-embedding:0.6b`), its dimension and its query
-instruction. Without it the service starts, but syncs no repository and answers every search with
-`embeddings_not_configured`.
-
-## 3. Start
-
-```sh
-docker compose up -d --wait
-```
-
-The first time, this builds the service's image from the checkout and pulls Postgres: a few
-minutes. The build fetches the reranker's model files from Hugging Face, about 610 MB, checks them
-against their pinned SHA-256 and keeps them in the image, so the service never fetches them; later
-builds take them from Docker's build cache. It returns when the database and the service are
-healthy and the migrations are applied.
-`docker compose ps` shows both containers `(healthy)`. They restart with Docker until you stop them.
+![Terminal showing healthy checks for db, memini and ollama](assets/install-health.png)
 
 ## 4. The `memini` command
 
-`bin/memini` runs the `memini` command inside the service's container, with Docker only. Put it on
-your `PATH` for this shell:
-
 ```sh
+chmod +x bin/memini
 export PATH="$PWD/bin:$PATH"
 memini --version
 ```
 
-It prints `memini` and a version. To keep the command in new shells, add that `export` line, with
-the full path of `bin`, to your shell's profile. `bin/memini` finds this checkout's stack from any
-directory.
-
-Most commands are clients of the service's HTTP API and need a token, read from the file
-`MEMINI_TOKEN_FILE` names (or from `MEMINI_TOKEN`); no option takes the token itself. A few
-operator commands, such as `bootstrap` and `reindex`, work on the database directly and need none.
-With [uv](https://docs.astral.sh/uv/) installed, the same CLI also runs on the host, as
-`uv run memini …` in the checkout (CONTRIBUTING.md); then set `MEMINI_URL` if the port is not 6364.
+The shortcut runs the CLI inside Docker. Repeat the `export` from this folder when you open a new terminal.
 
 ## 5. The first admin token
 
-`memini bootstrap` makes the first token with the `admin` and `read` scopes. It is printed once:
-keep it in a file only you can read, and point the CLI at it:
-
 ```sh
 mkdir -p ~/.config/memini
-(umask 077; memini bootstrap > ~/.config/memini/admin.token)
+( set -C; umask 077; memini bootstrap > ~/.config/memini/admin.token )
 export MEMINI_TOKEN_FILE=~/.config/memini/admin.token
 memini workspace list
 ```
 
-`bootstrap` says on stderr which token it created, with its prefix; `workspace list` says there are
-no workspaces yet.
+On a fresh installation the list is empty. Your token is saved in the private file. **Next, [import a sample email and run your first search](first-search.md)**, or follow the code example below.
+
+## Connect to an existing server
+
+Ask the operator for the server URL and a read token file. The [client installation guide](install-cli.md) covers the Windows x64 installer and Homebrew for Apple Silicon macOS and x86_64 Linux, with PowerShell and Bash examples. Run `memini workspace list` to check your connection. To develop Memini itself, use [Build from source](build-from-source.md).
 
 ## 6. A workspace and a repository
 
@@ -151,9 +79,7 @@ Memini itself, limited to its bootstrap CLI file so the first sync is small on C
 
 ```sh
 memini workspace create demo
-quickstart_ref=refs/heads/main
-if [ -n "${MEMINI_RELEASE_IMAGE:-}" ]; then quickstart_ref="refs/tags/v${MEMINI_RELEASE_IMAGE##*:}"; fi
-memini source add demo memini --location https://github.com/npavlov/memini.git --ref "$quickstart_ref" \
+memini source add demo memini --location https://github.com/npavlov/memini.git --ref refs/tags/v0.1.0-rc.1 \
   --include 'src/memini/cli/admin.py' --schedule 1h
 memini sync demo memini --wait --wait-timeout 45m
 ```
@@ -184,6 +110,7 @@ services:
     volumes:
       - ${HOME}/src:/srv/repos:ro
 EOF
+echo 'COMPOSE_FILE=compose.yaml:compose.release.yaml:compose.override.yaml' >> .env
 echo 'MEMINI_GIT_LOCAL_ROOTS=/srv/repos' >> .env.memini
 docker compose up -d --wait
 memini source add demo myapp --location /srv/repos/myapp --ref main
@@ -279,115 +206,21 @@ exits 0 when everything is current and 6 when not, for scripts and health checks
 
 ## Day to day
 
-| Task | Command |
-|---|---|
-| Logs (JSON lines; tokens and secrets masked) | `docker compose logs -f memini` |
-| Stop, keeping the data | `docker compose stop` |
-| Start again | `docker compose up -d --wait` |
-| Update to a new checkout | `git pull && docker compose up -d --wait` |
-| Tokens: list, revoke | `memini token list`, `memini token revoke <id-or-prefix>` |
-| Remove the stack **and every piece of data** | `docker compose down --volumes` |
-
-Back up the database with `scripts/backup.sh`: [operations/backup.md](operations/backup.md). Every
-setting, and what a change of it needs: [configuration.md](configuration.md). Every command:
-`memini --help` and the [CLI reference](cli.md).
+Run `docker compose stop` in the release folder to stop Memini and keep your data. To restart, run `docker compose up -d --no-build --wait`. Before upgrading, [back up the database](operations/backup.md).
 
 ## Machine size
 
-**Smallest supported machine:** 4 cores, 8 GB of memory and a 20 GB SSD, with Ollama on the same
-machine. The reasons and the measured numbers (indexing, search latency by mode, sizes) are in
-[operations/performance.md](operations/performance.md); `make bench` measures your own machine.
-
-Rough figures from following this guide on a laptop (Apple M4 Max, Ollama on its GPU):
-
-- **Disk:** the service and database images, about 1.6 GB (the service 1.1 GB, of which 0.61 GB is the reranker's model;
-  Postgres with pgvector 0.49 GB), and the embedding model, 0.64 GB. The database grows with what
-  is indexed. On arm64, the Docker-only path also uses about 4.2 GB for the Ollama image. Allow about 110 MB after steps 6 and 7, most of it Postgres's own files; about 400 MB with
-  the whole Memini repository indexed as well.
-- **Memory:** the service about 1.1 GB, nearly all of it the reranker's model (about 100 MB with
-  `MEMINI_SEARCH_RERANKER=none` in `.env.memini`); the database under 200 MB while indexing and
-  about 80 MB at rest. Ollama with the model loaded: about 1 GB, more with the longer context Ollama
-  gives it on a machine with much memory.
-- **CPU:** reranking adds 0.5 to 0.7 s to a search with 4 CPUs, 1.2 s with 2 and 2.2 s with 1
-  (requirements.md, section 9, Reranker).
-- **Time:** indexing is the model's work. A larger sync of 28 files and 460 chunks took 28 s;
-  the whole Memini repository, 518 files and about 7,300 chunks, 4.5 minutes. On a CPU only, expect
-  several times longer.
+See [machine requirements and measured performance](operations/performance.md#the-smallest-supported-machine).
 
 ## Troubleshooting
 
-**`reranking is off: …`** in the log (`docker compose logs memini`). Search works without the
-reranker, in the order of its retrievers; the line says why. `the files of model … are not in
-/opt/memini/models/…, and it cannot be created`: the image was built without them
-(`MEMINI_RERANKER_FILES=none` in `.env`): remove that line and `docker compose up -d --wait`, or set
-`MEMINI_SEARCH_RERANKER=none` in `.env.memini` to keep it off without the warning. Another model
-named in `.env.memini` needs a writable `MEMINI_SEARCH_RERANKER_MODEL_DIR`
-([configuration.md](configuration.md)). Once it works, the log says
-`reranking with n24q02m/Qwen3-Reranker-0.6B-ONNX …, 4 threads`.
+| What you see | What to check |
+|---|---|
+| Docker cannot connect | Start Docker and run `docker info`. On Windows, check WSL integration. |
+| Port already allocated | Set `MEMINI_HTTP_PORT` or `MEMINI_DB_PORT` to a free port in `.env`, then repeat step 3. |
+| Model download interrupted | Repeat the `ollama pull` command in step 3 and wait for it to finish. |
+| Service unhealthy | Run `docker compose logs --tail 50 memini db ollama`. |
+| No token in a new terminal | Repeat the two `export` commands from steps 4 and 5. |
+| Search reports `embeddings_not_configured` | Check both release settings in `.env`, repeat step 3, then run `memini reindex --workspace demo` for data imported earlier. |
 
-**`docker: 'compose' is not a docker command`, or `docker compose up` fails on `env_file` in
-`compose.yaml`.** Compose is missing or older than 2.24.0, which reads an optional `env_file`. Check
-`docker compose version`; update Docker Desktop, or install the current compose plugin on Linux.
-
-**`Bind for 127.0.0.1:55432 failed: port is already allocated`** (or `:6364`). Another program, or
-another Memini, holds the port. Set `MEMINI_DB_PORT` or `MEMINI_HTTP_PORT` in `.env` to a free port
-and run `docker compose up -d --wait` again; use your HTTP port in the URLs of steps 7 and 8.
-`memini` needs no change.
-
-**`service "memini" is not running`** from `memini`. The stack is stopped: `docker compose up -d
---wait` in the checkout.
-
-**`embeddings_not_configured`** from a search; `index off` in `memini status`; or `sync --wait` says
-`still queued after 30s, not started`. No embedding provider is set: add the two lines of step 2 to
-`.env.memini` and run `docker compose up -d --wait`. The queued sync then runs. A thread pushed
-meanwhile is stored without its index: `memini reindex --workspace demo` indexes it.
-
-**`embedding_failed`** from a search or a push, or a failed sync, and the log
-(`docker compose logs memini`) says `embedding request to http://host.docker.internal:11434 failed
-(ConnectError: …)`. The service cannot reach Ollama. Check that Ollama runs and has the model
-(`ollama list` on the host), then that the container reaches it:
-
-```sh
-docker compose exec memini python -c "import urllib.request; print(urllib.request.urlopen('http://host.docker.internal:11434/api/version').read().decode())"
-```
-
-It prints Ollama's version, or `Connection refused` when Ollama listens on 127.0.0.1 only: on Linux,
-set `OLLAMA_HOST` as in [What you need](#what-you-need).
-
-**`index_mismatch`**: `The index of workspace demo is out of date … run memini reindex --workspace
-demo`. The embedding model, its settings or the chunker changed since the workspace was indexed;
-search and indexing there are refused until you rebuild it:
-
-```sh
-memini reindex --workspace demo
-```
-
-**`memini: no token: set MEMINI_TOKEN or MEMINI_TOKEN_FILE`** in a new shell: export
-`MEMINI_TOKEN_FILE` again (step 5). Exit code 5 with `invalid_token, HTTP 401`: the token is unknown
-or revoked; with `insufficient_scope, HTTP 403`: it lacks the scope, e.g. a read token on
-`workspace create`.
-
-**`memini bootstrap`: `an active admin token exists`.** There is an admin token already, and
-bootstrap makes only the first. If you lost it, make another, then revoke the old one by the prefix
-`memini token list` shows for it:
-
-```sh
-(umask 077; memini bootstrap --force > ~/.config/memini/admin.token)
-memini token list
-memini token revoke <prefix>
-```
-
-**The service restarts, and `docker compose up --wait` says `container … is unhealthy`;** its log
-says `MEMINI_…_FILE: cannot read /run/secrets/…: Permission denied`. The service runs as uid 10001
-and must read every secret file named in `.env`. On Linux a file keeps its owner and mode in the
-container: `sudo chown 10001 secrets/FILE && sudo chmod 400 secrets/FILE`, then
-`docker compose up -d --wait`.
-
-**A local repository is refused:** `local repositories are not allowed as sources` or `outside the
-directories in MEMINI_GIT_LOCAL_ROOTS`. Set `MEMINI_GIT_LOCAL_ROOTS` in `.env.memini`, mount the
-directory as in [Your own repositories](#your-own-repositories), and give `--location` as the path
-inside the container.
-
-**`claude mcp list` does not show `Connected`.** Check the port in the URL and that the token in the
-header is the one in `read.token` and not revoked (`memini token list`); `claude mcp remove memini
---scope user` and add it again.
+For token recovery, private repositories and agent setup, see the [operations runbook](operations/runbook.md) and [configuration reference](configuration.md).

@@ -14,12 +14,16 @@ DOCS = ROOT / "docs"
 
 
 def render(page: Path, revision: str, pandoc: str) -> str:
+    stylesheet = os.path.relpath(DOCS / "assets" / "guide.css", page.parent)
     result = subprocess.run(  # noqa: S603 -- local executable, fixed options and docs input
         [
             pandoc,
             "--from=gfm",
             "--to=html5",
             "--standalone",
+            "--css",
+            stylesheet,
+            "--metadata=lang:en",
             "--metadata",
             f"pagetitle={page.read_text().splitlines()[0].removeprefix('# ')}",
             str(page),
@@ -46,9 +50,45 @@ def render(page: Path, revision: str, pandoc: str) -> str:
         return f'href="{html.escape(urlunsplit(("", "", href, url.query, url.fragment)))}"'
 
     rendered = re.sub(r'href="([^"]*)"', link, result.stdout)
+    head, body = rendered.split("<body>", 1)
+    article, end = body.split("</body>", 1)
     index = os.path.relpath(DOCS / "index.html", page.parent)
-    nav = f'<nav aria-label="Documentation"><a href="{index}">Memini user knowledge base</a></nav>'
-    return rendered.replace("<body>", f"<body>\n{nav}", 1)
+    menu: list[str] = []
+    for target, label in (
+        ("install.md", "Install"),
+        ("intake.md", "Intake"),
+        ("mcp/README.md", "MCP tools"),
+        ("operations/runbook.md", "Operations"),
+    ):
+        href = os.path.relpath((DOCS / target).with_suffix(".html"), page.parent)
+        current = ' aria-current="page"' if page == DOCS / target else ""
+        menu.append(f'<a href="{href}"{current}>{label}</a>')
+    header = (
+        '<a class="skip" href="#guide-content">Skip to content</a>'
+        '<header class="masthead"><div class="masthead-inner">'
+        f'<a class="brand" href="{index}">Memini <span>Docs</span></a>'
+        f'<nav aria-label="Documentation">{"".join(menu)}</nav></div></header>'
+    )
+    headings = re.findall(r'<h2\b[^>]*\bid="([^"]+)"[^>]*>(.*?)</h2>', article, re.DOTALL)
+    sidebar = ""
+    if len(headings) > 2:
+        links: list[str] = []
+        for anchor, title in headings:
+            label = re.sub(r"<[^>]*>", "", title)
+            links.append(f'<li><a href="#{anchor}">{label}</a></li>')
+        contents = f"<ul>{''.join(links)}</ul>"
+        sidebar = (
+            '<aside class="contents" aria-label="Page sections">'
+            f"<details><summary>On this page</summary>{contents}</details>"
+            f'<nav aria-label="On this page"><strong>On this page</strong>{contents}</nav></aside>'
+        )
+    article = article.replace("<table", '<div class="table-scroll"><table').replace(
+        "</table>", "</table></div>"
+    )
+    return (
+        f'{head}<body>{header}<div class="page">{sidebar}'
+        f'<main id="guide-content">{article}</main></div></body>{end}'
+    )
 
 
 def main() -> None:
@@ -65,7 +105,10 @@ def main() -> None:
     ).strip()
     output.mkdir(parents=True, exist_ok=True)
     for source in sorted(DOCS.rglob("*")):
-        if not source.is_file() or source.suffix not in {".md", ".json"}:
+        if not source.is_file():
+            continue
+        asset = source.is_relative_to(DOCS / "assets") and source.suffix in {".css", ".png"}
+        if source.suffix not in {".md", ".json"} and not asset:
             continue
         dest = output / source.relative_to(DOCS)
         dest.parent.mkdir(parents=True, exist_ok=True)

@@ -7,6 +7,10 @@ on:
         type: string
   push:
     branches: [release/platform-installers]
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "scripts/build-user-guide.py"
   workflow_dispatch:
     inputs:
       tag:
@@ -98,6 +102,9 @@ jobs:
         run: |
           release=${TAG#v}
           python3 packaging/homebrew/formula.py "${release/-rc./rc}" "$TAG" dist-platform > dist-platform/memini.rb
+          if [[ "$TAG" == v0.1.0-rc.1 ]]; then
+            cmp Formula/memini.rb dist-platform/memini.rb
+          fi
           (cd dist-platform && sha256sum -- * > ../installer-SHA256SUMS)
           mv installer-SHA256SUMS dist-platform/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

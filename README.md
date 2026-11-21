@@ -8,13 +8,11 @@ Memini is a self-hosted search and decision journal for code repositories, work 
 
 ## Install
 
-Start with **4 CPU cores, 8 GB RAM and 20 GB of free SSD** on x86-64 or arm64. You need Docker with Compose 2.24 or later. Ollama runs the embedding model locally. A GPU is optional and speeds up the first index.
+**Run your own server.** [Download the v0.1.0-rc.1 server setup (.zip)](https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-v0.1.0-rc.1-server.zip) and follow the [illustrated Docker install guide](https://npavlov.github.io/memini/install.html). Allow 4 CPU cores, 8 GB RAM and 20 GB of free SSD space. Docker Compose 2.24+ starts Memini, PostgreSQL and the local embedding model.
 
-- **Build from source** with Git, Docker and Ollama. Follow the [installation guide](docs/install.md#what-you-need) through step 5 to start the service and save the first admin token.
-- **Run the [published release candidate](https://github.com/npavlov/memini/releases/tag/v0.1.0-rc.1)** with Docker. This [Docker-only installation](docs/install.md#install-a-published-image-with-docker-only) runs Ollama inside Compose too.
-- **Connect to an existing server** with just the CLI. With Python 3.12+ and pipx installed, run `pipx install memini==0.1.0rc1`. Set `MEMINI_URL` to the server address and `MEMINI_TOKEN_FILE` to the token file supplied by its operator. Check access with `memini workspace list`.
+**Connect to an existing server.** Install the CLI with the [Windows x64 installer](docs/install-cli.md#windows-x64) or [Homebrew on Apple Silicon macOS and x86_64 Linux](docs/install-cli.md#homebrew-on-macos-and-linux). You’ll need the server address and a read token from its operator.
 
-From the checkout, `docker compose ps` should show healthy services, and `bin/memini workspace list` should list the workspaces your token can read. For a failed health check or an unreachable model, see [installation troubleshooting](docs/install.md#troubleshooting).
+**Develop Memini.** [Build from source](docs/build-from-source.md).
 
 ## First steps
 

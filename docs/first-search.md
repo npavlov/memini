@@ -4,7 +4,7 @@ Import an invented two-message email conversation. By the end, a search for arch
 
 ## Before you start
 
-Complete the [installation through step 5](install.md#5-the-first-admin-token). Run the commands from the checkout with the embedding model available, `bin` on your PATH and `MEMINI_TOKEN_FILE` pointing to the admin token. A **workspace** groups related sources. A **source** identifies where a record came from. Here the workspace is `demo` and the source is a mailbox named `mail-work`.
+Complete the [installation through step 5](install.md#5-the-first-admin-token). Run the commands from the extracted release folder with the embedding model available, `bin` on your PATH and `MEMINI_TOKEN_FILE` pointing to the admin token. A **workspace** groups related sources. A **source** identifies where a record came from. Here the workspace is `demo` and the source is a mailbox named `mail-work`.
 
 ## Create the mailbox source
 
@@ -34,6 +34,8 @@ The dry run validates one record. The first push reports one inserted record. Se
 ```sh
 memini search "archive bucket retention" --workspace demo --limit 3
 ```
+
+![Terminal showing the matched email, its source and the original question about archive retention](assets/install-search.png)
 
 Find the hit from `mail-work`. Dana asked for at least 90 days. Ana replied that the bucket kept exports for 30 days and she planned to increase it to 120. The thread shows a proposal; a [later meeting example](examples/meeting.json) records what actually changed.
 
