@@ -175,7 +175,7 @@ def reranker(tmp_path: Path, **changes: Any) -> LocalReranker:
 
 
 @pytest.mark.parametrize(
-    ("system", "machine", "digest", "blockwise"),
+    ("system", "machine", "digest", "per_token"),
     [
         ("linux", "x86_64", DEFAULT_RERANKER_DIGEST, True),
         ("linux", "aarch64", DEFAULT_RERANKER_DIGEST, True),
@@ -191,7 +191,7 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     system: str,
     machine: str,
     digest: str,
-    blockwise: bool,
+    per_token: bool,
 ) -> None:
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
@@ -202,7 +202,7 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     monkeypatch.setattr(local, "_import_runtime", lambda: runtime)
     monkeypatch.setattr(local, "ensure_model_files", verify)
     model = reranker(tmp_path, model_file=DEFAULT_RERANKER_MODEL_FILE, digest=digest, threads=2)
-    assert ("blockwise INT8" in model.describe()) == blockwise
+    assert ("per-token INT8" in model.describe()) == per_token
     with pytest.raises(RerankError, match="test CPU kernel unavailable"):
         await model.load()
     verify.assert_awaited_once()
@@ -211,7 +211,7 @@ async def test_graph_selection_preserves_custom_models_and_surfaces_loader_failu
     source = session.call_args.args[0]
     assert session.call_args.kwargs["providers"] == ["CPUExecutionProvider"]
     folder_option = ort.SessionOptions.return_value.add_session_config_entry
-    if blockwise:
+    if per_token:
         assert isinstance(source, bytes)
         folder_option.assert_called_once_with(
             "session.model_external_initializers_file_folder_path",
@@ -228,7 +228,7 @@ async def test_incompatible_packaged_graph_never_reaches_onnxruntime(
 ) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(local, "_BLOCKWISE_GRAPH_SHA256", "0" * 64)
+    monkeypatch.setattr(local, "_LINUX_GRAPH_SHA256", "0" * 64)
     monkeypatch.setattr(local, "ensure_model_files", AsyncMock())
     runtime = Mock()
     monkeypatch.setattr(local, "_import_runtime", lambda: runtime)

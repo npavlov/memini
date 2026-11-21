@@ -5,13 +5,12 @@
 #   "ml-dtypes==0.7.0", "typing-extensions==4.16.0",
 # ]
 # ///
-"""Build the compact blockwise INT8 graph from the pinned Qwen3 reranker export."""
+"""Build the compact per-token INT8 graph from the pinned Qwen3 reranker export."""
 
 import argparse
 import gzip
 import hashlib
 import mmap
-from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -21,84 +20,102 @@ from onnx.external_data_helper import set_external_data
 
 SOURCE_SHA256 = "2bc0a77812a15ff6ead003370f36149139ae2c1bb1faf779b00c00886cd919ef"
 SOURCE_NAME = "model_yesno_quantized.onnx"
-GRAPH_SHA256 = "5eb524d5d293f14cdeae8486bc896a76b7748349ccbf10016fcd499b4dc52b13"
-BLOCK = 128
+GRAPH_SHA256 = "54677185b94fc40db7ac1834c5e4b7fd7dc266501c233919cbd3fea96192bf77"
 
 
-def blockwise_nodes(activation, weight, scale, outputs, shape):
-    k, n = shape
-    if k % BLOCK:
-        raise ValueError(f"weight {weight} has an incomplete block")
-    packed = weight + "_packed"
-    dimensions = numpy_helper.from_array(
-        np.array([n, k // BLOCK, BLOCK], np.int64), packed + "_dims"
-    )
-    scales = numpy_helper.from_array(np.array([n, k // BLOCK], np.int64), packed + "_scdims")
-    nodes = [
-        helper.make_node("Cast", [weight], [packed + "_u8"], to=TensorProto.UINT8),
-        helper.make_node("BitwiseXor", [packed + "_u8", "xor_mask"], [packed + "_shifted"]),
-        helper.make_node("Transpose", [packed + "_shifted"], [packed + "_trans"], perm=[1, 0]),
-        helper.make_node("Reshape", [packed + "_trans", packed + "_dims"], [packed]),
-        helper.make_node("Expand", [scale, packed + "_scdims"], [packed + "_scales"]),
+def per_token_quantization(graph):
+    constants = {
+        "token_axis": np.array([-1], np.int64),
+        "token_epsilon": np.float32(1e-10),
+        "token_scale": np.float32(1 / 127),
+        "token_zero": np.uint8(128),
+    }
+    graph.initializer.extend(numpy_helper.from_array(v, k) for k, v in constants.items())
+    replacements = {}
+    nodes = []
+    quantizers = 0
+    projections = 0
+    for node in graph.node:
+        if node.op_type == "DynamicQuantizeLinear":
+            quantizers += 1
+            (x,) = node.input
+            quantized, scale, zero = node.output
+            peak = x + "_peak"
+            normalized = x + "_unit"
+            nodes.extend(
+                [
+                    helper.make_node("Abs", [x], [x + "_abs"]),
+                    helper.make_node(
+                        "ReduceMax", [x + "_abs", "token_axis"], [x + "_max"], keepdims=1
+                    ),
+                    helper.make_node("Max", [x + "_max", "token_epsilon"], [peak]),
+                    helper.make_node("Mul", [peak, "token_scale"], [x + "_per_scale"]),
+                    helper.make_node("Div", [x, peak], [normalized]),
+                    helper.make_node(
+                        "QuantizeLinear", [normalized, "token_scale", "token_zero"], [quantized]
+                    ),
+                ]
+            )
+            replacements[scale] = x + "_per_scale"
+            replacements[zero] = "token_zero"
+            continue
+        if node.op_type == "MatMulInteger":
+            projections += 1
+            if replacements.get(node.input[2]) != "token_zero":
+                raise ValueError(f"unexpected activation zero point in {node.name}")
+        for index, name in enumerate(node.input):
+            if name in replacements:
+                node.input[index] = replacements[name]
+        nodes.append(node)
+    if (quantizers, projections) != (113, 197):
+        raise ValueError(f"unexpected number of quantizers/projections: {quantizers}/{projections}")
+    graph.ClearField("node")
+    graph.node.extend(nodes)
+
+
+def final_token_mlp(graph):
+    # The final attention layer needs all positions. Its MLP and the rest of the
+    # score head compute only position -1 for the two next-token logits.
+    (index,) = [i for i, node in enumerate(graph.node) if node.name == "node_add_9786"]
+    residual = graph.node[index]
+    if residual.op_type != "Add" or list(residual.input) != ["add_9488", "linear_192"]:
+        raise ValueError("unexpected final attention residual")
+    (source,) = residual.output
+    if source != "add_9786":
+        raise ValueError("unexpected final attention output")
+    consumers = [node for node in graph.node if source in node.input]
+    if {node.name for node in consumers} != {"node_pow_112", "node_mul_8794", "node_add_9836"}:
+        raise ValueError("unexpected consumers of the final attention residual")
+    (select,) = [node for node in graph.node if node.name == "node_select"]
+    (position,) = [tensor for tensor in graph.initializer if tensor.name == "val_5085"]
+    if (
+        select.op_type != "Gather"
+        or list(select.input) != ["mul_8834", position.name]
+        or {a.name: a.i for a in select.attribute} != {"axis": 1}
+        or numpy_helper.to_array(position).item() != -1
+    ):
+        raise ValueError("expected the upstream score head to select the last token")
+    final = source + "_final_token"
+    for node in consumers:
+        for i, name in enumerate(node.input):
+            if name == source:
+                node.input[i] = final
+    graph.initializer.append(helper.make_tensor("last_token_index", TensorProto.INT64, [1], [-1]))
+    graph.node.insert(
+        index + 1,
         helper.make_node(
-            "MatMulNBits",
-            [activation, packed, packed + "_scales"],
-            outputs,
-            domain="com.microsoft",
-            K=k,
-            N=n,
-            bits=8,
-            block_size=BLOCK,
-            accuracy_level=4,
+            "Gather",
+            [source, "last_token_index"],
+            [final],
+            name="last_token_after_attention",
+            axis=1,
         ),
-    ]
-    return nodes, (dimensions, scales)
+    )
 
 
 def convert(model):
-    graph = model.graph
-    tensors = {tensor.name: tensor for tensor in graph.initializer}
-    producers = {output: node for node in graph.node for output in node.output}
-    consumers = defaultdict(list)
-    for node in graph.node:
-        for name in node.input:
-            consumers[name].append(node)
-
-    replacements = {}
-    remove = set()
-    constants = [numpy_helper.from_array(np.uint8(128), "xor_mask")]
-    for node in graph.node:
-        if node.op_type != "MatMulInteger":
-            continue
-        activation, weight, _, zero = node.input
-        quant = producers[activation]
-        (cast,) = consumers[node.output[0]]
-        (rescale,) = consumers[cast.output[0]]
-        combined = producers[next(name for name in rescale.input if name != cast.output[0])]
-        operators = (quant.op_type, cast.op_type, rescale.op_type, combined.op_type)
-        if operators != ("DynamicQuantizeLinear", "Cast", "Mul", "Mul"):
-            raise ValueError(f"unexpected projection in {node.name}")
-        if numpy_helper.to_array(tensors[zero]).item() != 0:
-            raise ValueError(f"expected symmetric INT8 weights in {node.name}")
-        weight_scale = next(name for name in combined.input if name != quant.output[1])
-        nodes, shapes = blockwise_nodes(
-            quant.input[0], weight, weight_scale, rescale.output, tensors[weight].dims
-        )
-        replacements[node.output[0]] = nodes
-        constants.extend(shapes)
-        remove.update(item.output[0] for item in (quant, cast, rescale, combined))
-
-    if len(replacements) != 197:
-        raise ValueError(f"expected 197 projections, found {len(replacements)}")
-    nodes = []
-    for node in graph.node:
-        if node.output[0] not in remove:
-            nodes.extend(replacements.get(node.output[0], (node,)))
-    graph.ClearField("node")
-    graph.node.extend(nodes)
-    graph.initializer.extend(constants)
-    if not any(version.domain == "com.microsoft" for version in model.opset_import):
-        model.opset_import.append(helper.make_opsetid("com.microsoft", 1))
+    per_token_quantization(model.graph)
+    final_token_mlp(model.graph)
     onnx.checker.check_model(model)
 
 
