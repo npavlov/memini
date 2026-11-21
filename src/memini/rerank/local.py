@@ -95,7 +95,7 @@ _BLOCKWISE_FILES_DIGEST: Final = (
     "sha256:eaa6edfadd2440e4f80851b3ff7701f26e8ec6aacaa2fedcee8ce86afd09afea"
 )
 _BLOCKWISE_GRAPH: Final = "qwen3-per-token-int8.onnx.gz"
-_BLOCKWISE_GRAPH_SHA256: Final = "7f8cf431d2c1a36b251357dbff046a2b28480e2ce5bf45b76c81def591f49111"
+_BLOCKWISE_GRAPH_SHA256: Final = "54677185b94fc40db7ac1834c5e4b7fd7dc266501c233919cbd3fea96192bf77"
 
 
 class RerankError(Exception):
