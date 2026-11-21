@@ -1,6 +1,6 @@
 # Connect Cursor, VS Code with GitHub Copilot, or Gemini CLI
 
-These clients can connect directly to Memini over Streamable HTTP. Start Memini, then obtain a token with `read` scope for the workspace you want the assistant to search. [MCP setup and token creation](README.md)
+These clients can connect directly to Memini over Streamable HTTP. Start Memini, then obtain a token with `read` scope for the workspace you want the assistant to search. [MCP setup and token creation](../README.md)
 
 ## Prepare the client environment
 
@@ -77,4 +77,4 @@ Run `gemini mcp list` from the configured shell and look for `memini` marked con
 
 ## Verify workspace access
 
-Ask the assistant **“Call the Memini status tool with no arguments. Show the workspace names from its result.”** Check the tool call and confirm that your workspace appears. An empty workspace can have zero records. If the connection returns HTTP 401, check the client process received the token value and that the token is current. If your workspace is missing, check which workspace the token grants access to. [Memini status tool](status.md)
+Ask the assistant **“Call the Memini status tool with no arguments. Show the workspace names from its result.”** Check the tool call and confirm that your workspace appears. An empty workspace can have zero records. If the connection returns HTTP 401, check the client process received the token value and that the token is current. If your workspace is missing, check which workspace the token grants access to. [Memini status tool](../status.md)

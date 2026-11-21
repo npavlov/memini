@@ -6,14 +6,14 @@ Choose your client, then run the connection check below. Each connects to the sa
 |---|---|
 | Claude Code | [Project config](#claude-code) |
 | Codex CLI | [Register the server](#codex-cli) |
-| OpenCode | [OpenCode setup](clients-terminal.md#opencode) |
-| Pi coding agent | [Pi setup](clients-terminal.md#pi) |
-| Cursor | [Cursor settings](clients-editors.md#cursor) |
-| VS Code with GitHub Copilot | [Copilot settings](clients-editors.md#vs-code-with-github-copilot) |
-| Gemini CLI | [Gemini settings](clients-editors.md#gemini-cli) |
-| Windsurf | [Windsurf setup](clients-more.md#windsurf) |
-| Zed | [Zed settings](clients-more.md#zed) |
-| Cline | [Cline MCP settings](clients-more.md#cline) |
+| OpenCode | [OpenCode setup](clients/terminal.md#opencode) |
+| Pi coding agent | [Pi setup](clients/terminal.md#pi) |
+| Cursor | [Cursor settings](clients/editors.md#cursor) |
+| VS Code with GitHub Copilot | [Copilot settings](clients/editors.md#vs-code-with-github-copilot) |
+| Gemini CLI | [Gemini settings](clients/editors.md#gemini-cli) |
+| Windsurf | [Windsurf setup](clients/more.md#windsurf) |
+| Zed | [Zed settings](clients/more.md#zed) |
+| Cline | [Cline MCP settings](clients/more.md#cline) |
 | Other MCP clients | [Connection settings](#other-clients) |
 
 ## Before you start

@@ -1,6 +1,6 @@
 # Connect OpenCode or Pi
 
-Set `MEMINI_READ_TOKEN` in the shell where you will launch the client. Use a read token scoped to the `demo` workspace. The shared setup includes Bash and PowerShell commands. [Prepare your token](README.md#before-you-start)
+Set `MEMINI_READ_TOKEN` in the shell where you will launch the client. Use a read token scoped to the `demo` workspace. The shared setup includes Bash and PowerShell commands. [Prepare your token](../README.md#before-you-start)
 
 ## OpenCode
 
@@ -59,4 +59,4 @@ Run `pi mcp list`. A successful connection lists `memini: connected` and tools i
 
 ## Check workspace access
 
-Ask the agent: “Call the Memini `status` tool and show me the index status for workspace `demo`.” If the connection returns HTTP 401, reload the read token in the client’s shell and restart the client. If the connection is refused, check that the Memini server is running and that its address is reachable from the client. [Memini connection check](README.md#check-the-connection)
+Ask the agent: “Call the Memini `status` tool and show me the index status for workspace `demo`.” If the connection returns HTTP 401, reload the read token in the client’s shell and restart the client. If the connection is refused, check that the Memini server is running and that its address is reachable from the client. [Memini connection check](../README.md#check-the-connection)

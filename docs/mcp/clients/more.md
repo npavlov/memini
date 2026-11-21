@@ -1,6 +1,6 @@
 # Connect Windsurf, Zed, or Cline
 
-Use a workspace token with `read` scope. For Windsurf or Cline, load `MEMINI_READ_TOKEN` and launch the editor from that shell so it inherits the variable. Merge the `memini` entry into your existing configuration. The examples assume the client and Memini run on the same machine. For a remote server, substitute its HTTPS MCP URL. [Create and load a read token](README.md#before-you-start)
+Use a workspace token with `read` scope. For Windsurf or Cline, load `MEMINI_READ_TOKEN` and launch the editor from that shell so it inherits the variable. Merge the `memini` entry into your existing configuration. The examples assume the client and Memini run on the same machine. For a remote server, substitute its HTTPS MCP URL. [Create and load a read token](../README.md#before-you-start)
 
 ## Windsurf
 
@@ -52,4 +52,4 @@ In the Cline IDE extension, open **MCP Servers → Configure → Configure MCP S
 }
 ```
 
-In **MCP Servers**, expand **memini** and look for `status`. Ask Cline to call that tool and approve the request when prompted. [Memini status tool](status.md)
+In **MCP Servers**, expand **memini** and look for `status`. Ask Cline to call that tool and approve the request when prompted. [Memini status tool](../status.md)
