@@ -6,6 +6,7 @@ import asyncio
 import socket
 import subprocess
 import sys
+import textwrap
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
@@ -116,6 +117,34 @@ def test_python_dash_m_runs_main() -> None:
 
     assert result.returncode == 0
     assert result.stdout == f"memini {memini.__version__}\n"
+
+
+def test_remote_client_without_unix_operator_modules(clean_env: pytest.MonkeyPatch) -> None:
+    clean_env.setenv("MEMINI_TOKEN", "memini_" + "a" * 43)
+    program = textwrap.dedent(
+        """
+        import sys
+
+        import httpx2
+        import mcp.server.stdio  # On POSIX the SDK imports its platform-specific stdio backend.
+
+        sys.modules.update(fcntl=None, resource=None)
+        from memini.cli import main
+
+        def workspaces(request):
+            assert request.url.path == "/v1/workspaces"
+            return httpx2.Response(200, json={"workspaces": []})
+
+        assert main(["--help"]) == 0
+        assert main(["--version"]) == 0
+        assert main(["workspace", "list"], transport=httpx2.MockTransport(workspaces)) == 0
+        """
+    )
+    result = subprocess.run(  # noqa: S603 -- fixed regression test in a fresh interpreter
+        [sys.executable, "-c", program], capture_output=True, text=True, check=False, timeout=60
+    )
+    assert result.returncode == 0, result.stderr
+    assert "no workspaces" in result.stderr
 
 
 @pytest.mark.parametrize(

@@ -42,7 +42,6 @@ remote's default branch changing after the mirror was created, submodule content
 
 import asyncio
 import contextlib
-import fcntl
 import logging
 import os
 import re
@@ -353,6 +352,8 @@ class MirrorManager:
 
     @contextlib.contextmanager
     def _writer(self, source_id: uuid.UUID) -> Generator[None]:
+        import fcntl
+
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd = os.open(self.root / f"{source_id}.lock", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
         try:

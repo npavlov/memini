@@ -1,0 +1,94 @@
+name: Platform installers
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  push:
+    branches: [release/platform-installers]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published Memini release tag
+        required: true
+        default: v0.1.0-rc.1
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      TAG: ${{ inputs.tag || 'v0.1.0-rc.1' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate version
+        shell: bash
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]
+          release=${TAG#v}
+          echo "VERSION=${release/-rc./rc}" >> "$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: false
+      - name: Build and test Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          uv venv --seed --python 3.13 "$env:RUNNER_TEMP/packager"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $extra = @()
+          if ($env:TAG -eq 'v0.1.0-rc.1') {
+            uv build --wheel --out-dir wheelhouse
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $extra = @('--wheel', (Get-Item wheelhouse/*.whl).FullName)
+          }
+          & "$env:RUNNER_TEMP/packager/Scripts/python.exe" packaging/windows/build.py $env:TAG dist-platform @extra
+      - name: Build and test Homebrew installation
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+          packaging/homebrew/build.sh "$VERSION" dist-platform
+          packaging/homebrew/smoke.sh "$VERSION" dist-platform
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: dist-platform/
+          if-no-files-found: error
+  assemble:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || 'v0.1.0-rc.1' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: installer-*
+          path: dist-platform
+          merge-multiple: true
+      - name: Generate formula and checksums
+        run: |
+          release=${TAG#v}
+          python3 packaging/homebrew/formula.py "${release/-rc./rc}" "$TAG" dist-platform > dist-platform/memini.rb
+          (cd dist-platform && sha256sum -- * > ../installer-SHA256SUMS)
+          mv installer-SHA256SUMS dist-platform/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: platform-release
+          path: dist-platform/

@@ -9,7 +9,6 @@ batch, which would grow with the corpus and distort the memory measured).
 """
 
 import math
-import resource
 import sys
 import time
 from collections.abc import Sequence
@@ -30,6 +29,8 @@ __all__ = [
 def peak_rss_bytes() -> int:
     """The most resident memory this process has held so far, in bytes (``ru_maxrss``: bytes on
     macOS, KiB on Linux)."""
+    import resource
+
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(peak) if sys.platform == "darwin" else int(peak) * 1024
 

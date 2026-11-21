@@ -1,0 +1,37 @@
+class Memini < Formula
+  include Language::Python::Virtualenv
+
+  desc "Query a self-hosted Memini knowledge service"
+  homepage "https://github.com/npavlov/memini"
+  version "@VERSION@"
+@REVISION@  license "Apache-2.0"
+
+  on_macos do
+    url "@URL_macos-arm64@"
+    sha256 "@SHA_macos-arm64@"
+    depends_on arch: :arm64
+    depends_on macos: :sonoma
+  end
+
+  on_linux do
+    url "@URL_linux-x86_64@"
+    sha256 "@SHA_linux-x86_64@"
+    depends_on arch: :x86_64
+  end
+
+  depends_on "python@3.12"
+
+  def install
+    python = Formula["python@3.12"].opt_bin/"python3.12"
+    virtualenv_create(libexec, python.to_s, system_site_packages: false)
+    system python, "-m", "pip", "--isolated", "--python", libexec/"bin/python",
+           "install", "--no-index", "--find-links", buildpath/"wheels",
+           "--require-hashes", "--only-binary=:all:", "-r", buildpath/"requirements.txt"
+    bin.install_symlink libexec/"bin/memini"
+  end
+
+  test do
+    assert_equal "memini #{version}", shell_output("#{bin}/memini --version").strip
+    assert JSON.parse(shell_output("#{bin}/memini recipe schema")).key?("properties")
+  end
+end
