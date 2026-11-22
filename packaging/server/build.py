@@ -10,8 +10,8 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TAG = "v0.1.0-rc.1"
-VERSION = "0.1.0rc1"
+TAG = "v0.1.0"
+VERSION = "0.1.0"
 ARCHIVE = f"memini-server-{VERSION}-1.zip"
 URL = f"https://github.com/npavlov/memini/releases/download/{TAG}/{ARCHIVE}"
 FILES = [

@@ -3,19 +3,19 @@ class Memini < Formula
 
   desc "Query a self-hosted Memini knowledge service"
   homepage "https://github.com/npavlov/memini"
-  version "0.1.0rc1"
+  version "0.1.0"
   license "Apache-2.0"
 
   on_macos do
-    url "https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-0.1.0rc1-macos-arm64.tar.gz"
-    sha256 "a0a868f014e0365d165f69292009aa65579ddea32c046e5ad700d72724a1956b"
+    url "https://github.com/npavlov/memini/releases/download/v0.1.0/memini-0.1.0-macos-arm64.tar.gz"
+    sha256 "75da160c928559111bda2ec8825d20b6a86e67fadc3f98182134921c2acf7b02"
     depends_on arch: :arm64
     depends_on macos: :sonoma
   end
 
   on_linux do
-    url "https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-0.1.0rc1-linux-x86_64.tar.gz"
-    sha256 "85daf24478b71d3ca633b5d204c90fdf4daf6ce581f176b504239c575abe89b8"
+    url "https://github.com/npavlov/memini/releases/download/v0.1.0/memini-0.1.0-linux-x86_64.tar.gz"
+    sha256 "be8c17a7e9216b612363633a9e220e132f92c7454ac3e0536dad3c6f01eb40d8"
     depends_on arch: :x86_64
   end
 
