@@ -118,7 +118,7 @@ Memini itself, limited to its bootstrap CLI file so the first sync is small on C
 
 ```sh
 memini workspace create demo
-memini source add demo memini --location https://github.com/npavlov/memini.git --ref refs/tags/v0.1.0-rc.1 \
+memini source add demo memini --location https://github.com/npavlov/memini.git --ref refs/tags/v0.1.0 \
   --include 'src/memini/cli/admin.py' --schedule 1h
 memini sync demo memini --wait --wait-timeout 45m
 ```
@@ -237,7 +237,7 @@ For token recovery, private repositories and agent setup, see the [operations ru
 
 Use this Bash and OpenSSL path if you prefer to manage Compose yourself. On Windows this fallback uses a WSL shell with Docker integration.
 
-[Download the server setup files (.zip)](https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-v0.1.0-rc.1-server.zip). Extract the ZIP, then open a terminal in the extracted folder containing `compose.yaml`. Keep this folder for future starts. It provides the Docker settings, the CLI shortcut and sample data. Docker downloads the prebuilt application.
+[Download the server setup files (.zip)](https://github.com/npavlov/memini/releases/download/v0.1.0/memini-v0.1.0-server.zip). Extract the ZIP, then open a terminal in the extracted folder containing `compose.yaml`. Keep this folder for future starts. It provides the Docker settings, the CLI shortcut and sample data. Docker downloads the prebuilt application.
 
 ### Set the database password
 
@@ -247,7 +247,7 @@ Run this once in the extracted folder. It creates a private settings file for th
 ( set -C; umask 077
   password=$(openssl rand -hex 16) && printf '%s\n' \
     'COMPOSE_FILE=compose.yaml:compose.release.yaml' \
-    'MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:0.1.0-rc.1' \
+    'MEMINI_RELEASE_IMAGE=ghcr.io/npavlov/memini:0.1.0' \
     "MEMINI_DB_PASSWORD=$password" > .env )
 ```
 

@@ -4,8 +4,8 @@ Use the CLI to search an existing Memini server from your terminal. Ask its oper
 
 ## Windows x64
 
-1. Download and run the [v0.1.0-rc.1 Windows x64 installer (.exe)](https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-0.1.0-rc.1-windows-x64.exe). It bundles Python and installs for your Windows account under `%LOCALAPPDATA%\Programs\Memini`.
-2. Open a **new PowerShell window** so it picks up the updated user PATH. Run `memini --version`. For this release, expect `memini 0.1.0rc1`.
+1. Download and run the [v0.1.0 Windows x64 installer (.exe)](https://github.com/npavlov/memini/releases/download/v0.1.0/memini-0.1.0-windows-x64.exe). It bundles Python and installs for your Windows account under `%LOCALAPPDATA%\Programs\Memini`.
+2. Open a **new PowerShell window** so it picks up the updated user PATH. Run `memini --version`. For this release, expect `memini 0.1.0`.
 3. Set the server address and the path where you saved the token. These example values apply to the current PowerShell session:
 
 ```powershell
@@ -28,7 +28,7 @@ brew install npavlov/memini/memini
 memini --version
 ```
 
-For v0.1.0-rc.1, expect `memini 0.1.0rc1`. If the installation succeeded but the command is missing, check `"$(brew --prefix)/bin/memini" --version` and apply the shell setup printed by Homebrew.
+For v0.1.0, expect `memini 0.1.0`. If the installation succeeded but the command is missing, check `"$(brew --prefix)/bin/memini" --version` and apply the shell setup printed by Homebrew.
 
 In Bash or Zsh, replace the example URL and file path with the values from your operator. These settings apply to the current shell:
 
