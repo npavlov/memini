@@ -1,9 +1,9 @@
 class MeminiServer < Formula
   desc "Start and manage a private Memini server with Docker Compose"
   homepage "https://github.com/npavlov/memini"
-  url "https://github.com/npavlov/memini/releases/download/v0.1.0-rc.1/memini-server-0.1.0rc1-1.zip"
-  version "0.1.0rc1"
-  sha256 "7077e904b6f07e174eb3db4e7d664f3f0490de496ca74687fe7d5cab6d671ee4"
+  url "https://github.com/npavlov/memini/releases/download/v0.1.0/memini-server-0.1.0-1.zip"
+  version "0.1.0"
+  sha256 "9af186214feeca38ba08e7081b41de2a4c2714166342441d6881de73525b4490"
   license "Apache-2.0"
 
   depends_on "python@3.12"

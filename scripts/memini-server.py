@@ -14,11 +14,11 @@ from pathlib import Path
 
 COMPOSE_FILES = {
     "compose.yaml": "a9a6f377445eca908d12921396e4d40a61f460abf1727bd70651beb1fb288f6d",
-    "compose.release.yaml": "254b478fc33c02caecb944ccaf14cf4aa2d1099d6cce764a16caa1cc2290b29f",
+    "compose.release.yaml": "dc4b77f7f527dad31d12b1c47cadabd40dca49d6526e5c18ef4fc48d10efc714",
 }
 IMAGE = (
-    "ghcr.io/npavlov/memini:0.1.0-rc.1"
-    "@sha256:b31d29cd401776ab262c307f5da368122062fff6d464a0ebe9aef5504a8649da"
+    "ghcr.io/npavlov/memini:0.1.0"
+    "@sha256:a55fed2b8db036a5b79a482887bebf875c39d3ac10da785407d15598e87021fc"
 )
 MODEL = "qwen3-embedding:0.6b"
 MARKER = ".memini-server-v1"
