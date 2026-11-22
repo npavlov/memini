@@ -9,6 +9,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Keep finished work, failure causes, vendor facts, file locations and questions about a call
+  out of the decision journal. Records are extracted again under `decisions-v6`.
 - Restore multilingual search ranking with the default local reranker on Linux x86-64 and arm64. Existing installations can reuse their verified model cache and search index.
 
 ## [0.1.0-rc.1] - 2026-11-21

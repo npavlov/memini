@@ -612,7 +612,7 @@ own. Git sources write code and documents, which are not extracted. The job read
 is when it runs. A record no LLM may read is skipped and counted, not failed: the gate refuses
 with `policy_none` (the workspace or the source has `llm_policy` `none`) or `no_provider`, and
 nothing is sent. The extractor is the granted model and the prompt version
-(`qwen3:4b-instruct@decisions-v5`); if it has read this content before, nothing is called, so a
+(`qwen3:4b-instruct@decisions-v6`); if it has read this content before, nothing is called, so a
 rerun creates nothing. A passage that appears to address the automated reader is screened in isolation before the extraction call proposes candidates. Record text is data (principle 11): the system message
 holds every instruction and no content; the user message names the task, then the record between
 two marker lines, `<<<BEGIN DATA n>>>` and `<<<END DATA n>>>`, where `n` is taken from the
@@ -634,7 +634,12 @@ can check the immediately following human reply for explicit assent. Acceptance 
 verbatim from that reply. Its anchor becomes the primary evidence and sets the decision time.
 Every proposed open question needs a verbatim quote
 from its cited evidence and must still be open at the end of the conversation. Unpunctuated quotes
-get a separate check that the speaker actually raised the question. All these calls use the same
+get a separate check that the speaker actually raised the question. Since `decisions-v6`, an item
+that passes its check gets one more call that labels what its cited parts do, with the part before
+the first of them as context: only a choice of the team stays an item. Finished work (a pull
+request approved, an account removed), the cause of a failure, what another company's product can
+do, where a file is kept, and a question about the call itself are left out. Asked to veto these
+in the evidence check, the model confirmed that the cited text said them. All these calls use the same
 workspace and source policy check. Then each supported item in turn is
 checked against the `extraction_candidates` (8) most similar active items of the workspace, the
 items already taken from the record and the record's items that are no longer active
@@ -2127,6 +2132,23 @@ The evidence anchors, labels and supersession verdicts matched across both runs.
 updates and factual reports still account for six false entries, tracked in `memini-ytm.1`.
 On the separate 20-thread business regression set, the extractor found all 12 decisions with zero
 extra entries. See the [business scenarios and reproduction commands](../eval/decisions/README.md#business-decisions-and-unsupported-journal-entries).
+
+**`decisions-v6`** (2026-11-22). The same model, sets, records and hybrid top 8. The new label
+check removes the six false entries of `decisions-v5`: a test failure's cause, a pull request
+approved in review, a receiver vendor's statement of what its firmware parses, where the release
+notes are kept, a guest account removed, and a question in a meeting about who joined the call.
+
+| Records | Precision | Recall | Supersession | Model calls |
+| --- | --- | --- | --- | --- |
+| Original, run 1 | 1.00 (24 true, 0 false) | 1.00 | 29/30 | 172 |
+| Original, run 2 | 1.00 (24 true, 0 false) | 1.00 | 29/30 | 172 |
+| With an attempt added to each | 1.00 (24 true, 0 false) | 1.00 | 29/30 | 224 |
+
+Against the `decisions-v5` report of the original records, no tracked group fell by more than
+0.02, and the injected run against run 1 passed the same tolerance in every group. The label
+check costs one call per item that passes its evidence check, 30 more on the original records
+(160,670 input and 12,627 output tokens against 145,530 and 11,906). The business set again
+found all 12 decisions with zero extra entries, in 63 calls instead of 49.
 
 ## 11. Later
 

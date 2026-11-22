@@ -60,6 +60,8 @@ def verified_answer(body: dict[str, Any]) -> httpx2.Response | None:
             return chat_answer('{"meaning": "An explicit question.", "raises_question": true}')
         case "decision_confirmation":
             return chat_answer('{"reason": "", "supported": false}')
+        case "item_act":
+            return chat_answer('{"gist": "Settles a choice.", "label": "choice"}')
         case "decision_support":
             return support_answer(body)
         case _:

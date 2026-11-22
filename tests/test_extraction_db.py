@@ -98,6 +98,8 @@ class FakeLlm:
     excluded: set[str] = field(default_factory=set[str])
     statements: set[str] = field(default_factory=set[str])
     unsupported: set[str] = field(default_factory=set[str])
+    labels: dict[str, str] = field(default_factory=dict[str, str])
+    """The label of an item's act by its statement; any other is a ``choice``."""
     requests: list[httpx2.Request] = field(default_factory=list[httpx2.Request])
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
@@ -113,6 +115,9 @@ class FakeLlm:
         if name == "passage_role":
             role = "exclude" if data_lines(body)[0]["text"] in self.excluded else "context"
             return chat_answer(json.dumps({"purpose": "Checked the passage.", "role": role}))
+        if name == "item_act":
+            label = self.labels.get(data_lines(body)[0]["entry"], "choice")
+            return chat_answer(json.dumps({"gist": "Read the cited parts.", "label": label}))
         if name == "question_act":
             question = data_lines(body)[0]["quote"] not in self.statements
             return chat_answer(
@@ -333,7 +338,7 @@ async def test_a_job_extracts_items_with_anchors_and_reports_what_it_did(
         " ORDER BY 1",
     )
     assert [row["display_name"] for row in people] == ["Ann Example", "Bo Sample"]
-    assert fake.kinds() == ["decisions", "decision_support"]
+    assert fake.kinds() == ["decisions", "decision_support", "item_act"]
 
     [run] = await rows(db, "SELECT * FROM run WHERE kind = %s", (EXTRACT_KIND,))
     assert run["status"] == "succeeded"
@@ -597,7 +602,7 @@ async def test_extract_again_without_parts_labelled_instruction(db: Conn, world:
     )
     async with fake.gate() as gate:
         await extract(db, world, gate, "filtered")
-    assert fake.kinds() == ["decisions", "decisions", "decision_support"]
+    assert fake.kinds() == ["decisions", "decisions", "decision_support", "item_act"]
     assert [part["id"] for part in data_lines(fake.bodies()[1])[1:]] == ["m1"]
     assert [i["statement"] for i in await items(db)] == ["Pick Monday."]
 
@@ -629,6 +634,26 @@ async def test_only_items_supported_by_their_citations_reach_the_journal(
     assert [i["statement"] for i in await items(db)] == ["Monthly billing."]
     checks = [data_lines(b) for b in fake.bodies()[1:]]
     assert [[part["id"] for part in lines[1:]] for lines in checks] == [["m1"], ["m2"]]
+
+
+async def test_only_items_labelled_a_choice_reach_the_journal(db: Conn, world: World) -> None:
+    await push(
+        db, world, "chat", thread("acts", "Agreed: invoices are monthly.", "Approved, one nit.")
+    )
+    fake = FakeLlm(
+        extractions=[[decided(["m1"], "Invoices are monthly."), decided(["m2"], "PR approved.")]],
+        labels={"PR approved.": "done"},
+    )
+    async with fake.gate() as gate:
+        await extract(db, world, gate, "acts")
+    assert [i["statement"] for i in await items(db)] == ["Invoices are monthly."]
+    assert fake.kinds() == [
+        "decisions",
+        "decision_support",
+        "item_act",
+        "decision_support",
+        "item_act",
+    ]
 
 
 async def test_reader_directive_removed_before_extraction(db: Conn, world: World) -> None:
