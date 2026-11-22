@@ -24,6 +24,7 @@ from memini.extraction.llm import (
     PROMPT_VERSION,
     ExtractionOutput,
     SupersessionOutput,
+    act_request,
     data_block,
     extraction_request,
     extractor_name,
@@ -99,6 +100,38 @@ def inside_and_outside(user: str) -> tuple[str, str]:
     found = re.search(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>", user, re.DOTALL)
     assert found is not None, "the user message has one data block"
     return found.group(2), user[: found.start()] + user[found.end() :]
+
+
+# --- The act of an item ------------------------------------------------------------------------
+
+
+def test_the_act_check_shows_the_entry_the_cited_parts_and_what_they_answer() -> None:
+    record = thread("So we start picking on Monday, right?", "Right.", INJECTION)
+    item = ProposedItem("decision", "Picking starts on Monday.", T0, ("m2",))
+    system, user = user_and_system(act_request(item, record))
+    inside, outside = inside_and_outside(user)
+
+    lines = [json.loads(line) for line in inside.split("\n")]
+    assert lines[0] == {"entry": "Picking starts on Monday."}
+    assert lines[1]["before"]["id"] == "m1"  # what the short reply confirms
+    assert [line["id"] for line in lines[2:]] == ["m2"]
+    assert INJECTION not in inside  # only the cited part and the one before it
+    assert "Right." not in system
+    assert "Right." not in outside
+    assert '"done"' in system
+    assert '"place"' in system
+
+
+def test_the_act_check_of_an_open_question_asks_what_it_is_about() -> None:
+    record = thread("Who just joined the call?")
+    item = ProposedItem("open_question", "Who joined the call?", T0, ("m1",))
+    system, user = user_and_system(act_request(item, record))
+    inside, _ = inside_and_outside(user)
+
+    lines = [json.loads(line) for line in inside.split("\n")]
+    assert [line.get("id") for line in lines] == [None, "m1"]  # nothing before the first part
+    assert '"conversation"' in system
+    assert '"done"' not in system
 
 
 # --- The extractor's name ------------------------------------------------------------------------

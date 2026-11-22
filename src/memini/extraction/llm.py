@@ -30,7 +30,10 @@ the record is dropped, and an item left without one is rejected (principle 2: an
 evidence is not stored). ``decided_at`` is not asked for: it is the time of the first anchor that
 has one (the part where it is decided), else of the record. Each candidate gets a separate evidence
 check. Open questions need a quote in a cited part and are checked against the surviving
-conversation so a later answer is visible.
+conversation so a later answer is visible. A candidate that passes is then labelled by what its
+cited parts do (:func:`act_request`): only a ``choice`` of the team stays an item, not finished
+work, the cause of a failure, another company's product, where a file is kept, or a question
+about the call itself. Asked to veto these, a small model confirms that the cited text says them.
 
 **Supersession.** The model says what the new item is about and its value, then, for each existing
 item about the same matter, that item's value (or what a question asks) and its verdict on it:
@@ -86,11 +89,13 @@ __all__ = [
     "Extracted",
     "ExtractedItemOutput",
     "ExtractionOutput",
+    "ItemAct",
     "Judgement",
     "LlmDecisions",
     "MatchOutput",
     "SupersessionOutput",
     "Totals",
+    "act_request",
     "data_block",
     "decided_at",
     "escape_line",
@@ -103,7 +108,7 @@ __all__ = [
     "verdict_of",
 ]
 
-PROMPT_VERSION: Final = "decisions-v5"
+PROMPT_VERSION: Final = "decisions-v6"
 """The version of the extraction and supersession prompts and of the checks of their output.
 Change it with any of them: stored items name it, and a new version extracts every record again."""
 
@@ -119,7 +124,7 @@ _ANCHOR_WRAP: Final = "[]()<>{}#\"'` "
 
 def extractor_name(model: str) -> str:
     """The extractor stored with each item: ``{model}@{PROMPT_VERSION}``, e.g.
-    ``qwen3:4b-instruct@decisions-v5``, in the characters an extractor name allows."""
+    ``qwen3:4b-instruct@decisions-v6``, in the characters an extractor name allows."""
     cleaned = _EXTRACTOR_CHARS.sub("-", model).lstrip("._:@/+=-") or "model"
     suffix = f"@{PROMPT_VERSION}"
     return cleaned[: 200 - len(suffix)] + suffix
@@ -185,6 +190,13 @@ class PassageRole(BaseModel):
 class QuestionAct(BaseModel):
     meaning: str
     raises_question: bool
+
+
+class ItemAct(BaseModel):
+    """What the cited parts of an item do; the fields are in the order of their names."""
+
+    gist: str
+    label: Literal["choice", "done", "cause", "fact", "place", "conversation"]
 
 
 class SupportOutput(BaseModel):
@@ -508,6 +520,51 @@ particular question as unresolved. A statement describing a comparison, pending 
 planned discussion may suggest a question to a reader, but the author has not actually asked it.
 For such a statement return false. An indirect request for a decision can be a question without
 a question mark."""
+
+
+_DECISION_ACT: Final = """
+Label one journal entry by what its cited messages do. First say in a few words what the speaker
+does there ("gist"), then give the "label":
+- "choice": the team settles, or reports or reminds of having settled, how its own product,
+  project or work is or will be: an approach, a value, a date, a rule, a scope, a plan or budget
+  approved, or not doing something, also when a fact is its reason. How the team's own product
+  behaves, stated as settled, is a choice, and so is whatever someone agrees to ("Agreed: …",
+  "договорились").
+- "done": a report that one piece of work is finished: a pull request or change approved in
+  review or merged, a bug fixed, an account removed, a test passing.
+- "cause": an explanation of why something went wrong.
+- "fact": what another company's product or an outside system can or cannot do.
+- "place": where a document or a file is kept or can be found.
+Judge the act, not the wording of the entry, including for non-English text."""
+
+_QUESTION_MATTER: Final = """
+Label one open question by what it asks. First say in a few words what the asker wants to know
+("gist"), then give the "label":
+- "choice": it asks what the team should do, choose or support for its product, project or way
+  of working, or whether something is decided.
+- "conversation": it asks about the conversation or call itself, such as who joined or who is
+  speaking.
+Judge the question as its cited messages ask it, including for non-English text."""
+
+
+def act_request(item: ProposedItem, record: RecordInput) -> ChatRequest[ItemAct]:
+    """Label what the parts ``item`` cites do: only a ``choice`` stays an item (see the module)."""
+    indices = [i for i, part in enumerate(record.parts) if part.anchor in item.anchors]
+    lines: list[dict[str, Any]] = [{"entry": item.statement}]
+    if indices and indices[0] > 0:  # what a short reply such as "Right." answers
+        lines.append({"before": _part_line(record.parts[indices[0] - 1])})
+    lines.extend(_part_line(record.parts[i]) for i in indices)
+    nonce, block = data_block(lines)
+    audit = _QUESTION_MATTER if item.kind == "open_question" else _DECISION_ACT
+    return ChatRequest(
+        messages=[
+            Message("system", _UNTRUSTED.format(nonce=nonce) + audit),
+            Message("user", block + "\n" + _REMINDER),
+        ],
+        output=ItemAct,
+        output_name="item_act",
+        max_tokens=160,
+    )
 
 
 def _punctuated_question(text: str) -> bool:
@@ -946,8 +1003,18 @@ class LlmDecisions:
             ), usage
         if not _has_question_evidence(item, record, check.output):
             return None, check.usage
+        labelled = await self.gate.complete(
+            conn,
+            workspace_id=workspace_id,
+            source_ids=source_ids,
+            request=act_request(item, record),
+        )
+        self.totals.add(labelled.usage)
+        usage = check.usage + labelled.usage
+        if labelled.output.label != "choice":
+            return None, usage
         if item.kind != "open_question" or _punctuated_question(check.output.reason):
-            return item, check.usage
+            return item, usage
         act = await self.gate.complete(
             conn,
             workspace_id=workspace_id,
@@ -955,7 +1022,7 @@ class LlmDecisions:
             request=question_act_request(check.output.reason),
         )
         self.totals.add(act.usage)
-        return item if act.output.raises_question else None, check.usage + act.usage
+        return item if act.output.raises_question else None, usage + act.usage
 
     async def classify(
         self,

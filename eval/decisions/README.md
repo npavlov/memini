@@ -127,7 +127,9 @@ The extractor drops parts labelled `instruction` and repeats extraction once on 
 evidence. Since `decisions-v5`, passages with signs of instructions to an automated reader are first screened
 in isolation. A separate call verifies each candidate. A proposal confirmed by the next speaker
 can cite both messages. Open questions need a quote from their cited messages and are checked
-against later replies.
+against later replies. Since `decisions-v6`, an item that passes is labelled by what its cited
+messages do; finished work, the cause of a failure, another company's product, where a file is
+kept and a question about the call itself are left out (docs/requirements.md, section 10).
 
 ## Business decisions and unsupported journal entries
 
@@ -178,4 +180,5 @@ both versions and counts every proposed entry, including duplicates.
 | mixed | 4 decisions and 3 extra decisions | 4 decisions |
 
 The operations and indirect sets each yielded their two labelled decisions and zero extras
-with `decisions-v5`. The fixtures are synthetic regression cases used during development.
+with `decisions-v5`. On 2026-11-22 `decisions-v6` gave the same result on all five sets: 12 of 12
+decisions, zero extra entries, 63 model calls. The fixtures are synthetic regression cases used during development.

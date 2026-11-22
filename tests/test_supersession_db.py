@@ -274,11 +274,14 @@ async def test_thread_b_supersedes_thread_a_and_the_restatement_is_a_duplicate(
     assert llm.kinds() == [
         "decisions",
         "decision_support",
+        "item_act",
         "decisions",
         "decision_support",
+        "item_act",
         "supersession",
         "decisions",
         "decision_support",
+        "item_act",
         "supersession",
     ]
     assert await statuses(db) == {cbor: ("superseded", True), gzip: ("active", False)}
