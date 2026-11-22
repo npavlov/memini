@@ -7,11 +7,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-22
+
 ### Fixed
 
 - Keep finished work, failure causes, vendor facts, file locations and questions about a call
   out of the decision journal. Records are extracted again under `decisions-v6`.
 - Restore multilingual search ranking with the default local reranker on Linux x86-64 and arm64. Existing installations can reuse their verified model cache and search index.
+
+### Known limits
+
+- Mail import takes normalized threads from an exporter or an agent connected to the mailbox.
+  Native mail connectors are planned for a later release. [Mail thread example](docs/examples/mail-thread.json).
+- Decision extraction is measured on synthetic records only. With `qwen3:4b-instruct` it found
+  all 24 labelled items with no false entries, also with an instruction added to each record,
+  and 29 of 30 supersession cases. Review decision evidence before relying on extracted items.
+  [Decision eval](eval/decisions/README.md).
+- Items extracted by 0.1.0-rc.1 stay in the journal after an upgrade. Run
+  `memini extract WORKSPACE` to read existing threads and meetings with the new extractor; the
+  journal is append-only, so review or retract earlier false entries by hand.
+- A database backup retains records forgotten after the backup. Restoring it requires the
+  encryption keys from the time of the backup. [Restore procedure](docs/operations/backup.md).
 
 ## [0.1.0-rc.1] - 2026-11-21
 
@@ -214,5 +230,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A database backup retains records forgotten after the backup. Restoring it requires the
   encryption keys from the time of the backup. [Restore procedure](docs/operations/backup.md).
 
-[Unreleased]: https://github.com/npavlov/memini/compare/v0.1.0-rc.1...main
+[Unreleased]: https://github.com/npavlov/memini/compare/v0.1.0...main
+[0.1.0]: https://github.com/npavlov/memini/releases/tag/v0.1.0
 [0.1.0-rc.1]: https://github.com/npavlov/memini/releases/tag/v0.1.0-rc.1
