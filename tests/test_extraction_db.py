@@ -345,7 +345,7 @@ async def test_a_job_extracts_items_with_anchors_and_reports_what_it_did(
     counts = run["report"]["counts"]
     assert counts["records_extracted"] == 1
     assert counts["items_proposed"] == counts["items_stored"] == 1
-    assert run["report"]["llm"]["by_model"][f"local/{LOCAL_MODEL}"]["calls"] == 2
+    assert run["report"]["llm"]["by_model"][f"local/{LOCAL_MODEL}"]["calls"] == 3
     assert run["report"]["details"]["extractor"] == extractor_name(LOCAL_MODEL)
 
 
@@ -393,7 +393,7 @@ async def test_a_rerun_creates_no_duplicates(db: Conn, world: World) -> None:
 
     assert first.status == "extracted"
     assert second.status == "unchanged"
-    assert len(fake.requests) == 2  # the same content by the same extractor: no call
+    assert len(fake.requests) == 3  # the same content by the same extractor: no call
     assert len(await items(db)) == 1
 
 
@@ -537,6 +537,8 @@ async def test_candidates_are_held_to_the_strictest_policy(db: Conn, world: Worl
     assert hosts == [
         LOCAL_HOST,
         LOCAL_HOST,
+        LOCAL_HOST,
+        CLOUD_HOST,
         CLOUD_HOST,
         CLOUD_HOST,
     ]  # the chat item was no candidate for the cloud
@@ -632,7 +634,11 @@ async def test_only_items_supported_by_their_citations_reach_the_journal(
     async with fake.gate() as gate:
         await extract(db, world, gate, "support")
     assert [i["statement"] for i in await items(db)] == ["Monthly billing."]
-    checks = [data_lines(b) for b in fake.bodies()[1:]]
+    checks = [
+        data_lines(b)
+        for b in fake.bodies()
+        if b["response_format"]["json_schema"]["name"] == "decision_support"
+    ]
     assert [[part["id"] for part in lines[1:]] for lines in checks] == [["m1"], ["m2"]]
 
 
