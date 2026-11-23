@@ -528,6 +528,26 @@ async def test_the_route_reads_through_the_token_s_workspace_limit(
     assert refused.json()["error"]["code"] == "insufficient_scope"
 
 
+async def test_the_route_says_whether_the_mcp_endpoint_is_served(
+    db: Conn, owner: uuid.UUID, pool: Pool, settings: Settings
+) -> None:
+    headers = await bearer(db, owner, "read")
+    served = create_app(settings, pool=pool)
+    switched_off = create_app(settings.model_copy(update={"mcp_enabled": False}), pool=pool)
+
+    assert (await status_of(served, headers))["mcp_enabled"] is True
+    answer = await status_of(switched_off, headers)
+
+    # The base is read as before; only the endpoint is gone, for a valid token too.
+    assert answer["mcp_enabled"] is False
+    assert answer["database"]["reachable"] is True
+    assert answer["current"] is True
+    async with client_for(switched_off) as client:
+        refused = await client.post("/mcp", headers=headers, json={})
+    assert refused.status_code == 404
+    assert refused.json()["error"]["code"] == "mcp_disabled"
+
+
 # --- The gate -------------------------------------------------------------------------------------
 
 

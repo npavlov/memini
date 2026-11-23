@@ -93,6 +93,8 @@ The ``mcp_*`` settings bound the service executor of MCP recipes (:mod:`memini.e
 endpoints an mcp source may name (hosts or URL prefixes), the internal networks they may resolve to
 all the same, plain http, the executables a stdio source may run, and how often one call is tried.
 Every list is empty by default, so no mcp source reaches anything until the operator lists it.
+``mcp_enabled`` is not one of them: it switches the service's own MCP endpoint
+(:mod:`memini.api.mcp`), on by default.
 
 ``metrics_token``, a secret, turns on ``GET /metrics`` (:mod:`memini.api.metrics`): a scraper sends
 it as its bearer token. ``log_slow_statement_threshold`` is the time after which a database
@@ -380,6 +382,12 @@ class Settings(BaseModel):
         description="the address the HTTP server binds to",
     )
     http_port: int = Field(default=6364, ge=1, le=65535, description="a TCP port from 1 to 65535")
+    # The service's own MCP endpoint (memini.api.mcp), not the executor of MCP recipes below
+    # (mcp_allowed_endpoints and the others). Off: /mcp answers 404 mcp_disabled, the API stays.
+    mcp_enabled: bool = Field(
+        default=True,
+        description="true or false: serve the MCP endpoint at /mcp",
+    )
     log_level: Annotated[LogLevel, BeforeValidator(_upper)] = Field(
         default="INFO",
         description="one of CRITICAL, ERROR, WARNING, INFO, DEBUG",

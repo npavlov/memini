@@ -120,6 +120,15 @@ GROUPS: Final[tuple[Group, ...]] = (
         " minute's worth of requests, refilled steadily, and is kept in the process: budgets start"
         " full after a restart.",
     ),
+    Group(
+        "MCP endpoint",
+        ("mcp_enabled",),
+        "The service's own MCP endpoint, `/mcp` on the HTTP port: the tools agents call, behind"
+        " the same tokens as the HTTP API. Switched off, it answers every request 404"
+        " `mcp_disabled`, with a token or without, and no tool runs; the HTTP API, which serves"
+        " the same calls, stays. `GET /v1/status` says which it is (`mcp_enabled`). The `mcp_*`"
+        " settings further down are another matter: the client that syncs mcp sources.",
+    ),
     Group("Logging", ("log_",), "The service logs one JSON object per line, on stderr."),
     Group(
         "Metrics",
@@ -258,6 +267,8 @@ CHANGE_NOTES: Final[Mapping[str, str]] = {
 NOTES: Final[Mapping[str, str]] = {
     "database_url": "Compose builds it from `MEMINI_DB_PASSWORD`.",
     "http_port": "The HTTP API and MCP (`/mcp`) listen on it.",
+    "mcp_enabled": "With the server launcher: `memini-server mcp on` and `memini-server mcp off`"
+    " set it and restart the service.",
     "log_level": "The lowest level the service logs; any case.",
     "log_slow_statement_threshold": "A statement of the service over it is logged at WARNING with"
     " its duration, the request or run it served, and its text with every literal replaced by"

@@ -7,6 +7,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Switch the MCP endpoint off with the setting `mcp_enabled` (`MEMINI_MCP_ENABLED`), or with
+  `memini-server mcp off` on a managed server. While it is off, `/mcp` answers 404 `mcp_disabled`
+  and the HTTP API keeps working. `GET /v1/status` and `memini status` say which it is.
+- Drive the server launcher from a program: `memini-server status`, `start`, `stop` and `mcp`
+  print one JSON object with `--json`. [Output for programs](docs/install.md#output-for-programs).
+
 ## [0.1.0] - 2026-11-22
 
 ### Fixed
