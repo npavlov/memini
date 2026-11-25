@@ -15,10 +15,15 @@ from memini.catalog import CATALOG_GUIDE, InvalidProjectError, ProjectDocument, 
 from memini.catalog.model import (
     MAX_DESCRIPTION_CHARS,
     MAX_MASKS,
+    MAX_NOTE_CHARS,
     MAX_TITLE_CHARS,
     Catalog,
     CodeEntry,
     DomainEntry,
+    LinkDetail,
+    LinkEntry,
+    MaskFiles,
+    ProjectDetail,
     ProjectEntry,
     PutProjectResult,
     ServiceEntry,
@@ -26,7 +31,7 @@ from memini.catalog.model import (
 )
 from memini.catalog.report import project_report
 from memini.mcp import TOOLS
-from memini.mcp.catalog import summarize_catalog, summarize_put
+from memini.mcp.catalog import summarize_catalog, summarize_project, summarize_put
 from memini.mcp.text import TEXT_NOTICE
 from memini.provenance import DATA_NOTICE
 from memini.query import CodeContext
@@ -462,6 +467,88 @@ def test_a_field_that_is_refused_is_named_and_its_value_is_not(
     assert str(refused.value).startswith(f"{field}: ")
 
 
+LINKED: dict[str, Any] = {
+    "services": [
+        {
+            "name": "quay",
+            "repository": "quay",
+            "uses": [
+                {
+                    "service": "booking-web",
+                    "kind": "library",
+                    "paths": ["quay/api.py", "quay/api.py"],
+                },
+                {
+                    "project": "lights",
+                    "service": "web",
+                    "kind": "queue",
+                    "note": "  Sends berth holds.\r\npassword = hunter2!x\n",
+                },
+            ],
+        },
+        {"name": "booking-web", "repository": "lantern", "root": "web/booking"},
+    ]
+}
+
+
+def test_a_link_is_cleaned_as_the_rest_of_the_document() -> None:
+    project, redacted = normalize("port", ProjectDocument.model_validate(LINKED))
+
+    assert [
+        (link.where, link.service, link.project, link.target, link.kind, link.paths)
+        for link in project.links
+    ] == [
+        ("services[0].uses[0]", "quay", "port", "booking-web", "library", ("quay/api.py",)),
+        ("services[0].uses[1]", "quay", "lights", "web", "queue", ()),
+    ]
+    # The note is a description: its line ends are \n, its ends trimmed, its secrets redacted.
+    assert project.links[1].note == "Sends berth holds.\npassword = [REDACTED:secret]"
+    assert redacted == {"secret": 1}
+
+
+def _uses(*links: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "services": [
+            {"name": "quay", "repository": "quay", "uses": list(links)},
+            {"name": "web", "repository": "lantern"},
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    ("changes", "field"),
+    [
+        (_uses({"service": "tug", "kind": "http"}), "services[0].uses[0].service"),
+        (_uses({"service": "quay", "kind": "http"}), "services[0].uses[0].service"),
+        (
+            _uses({"service": "web", "kind": "http"}, {"service": "web", "kind": "queue"}),
+            "services[0].uses[1]",
+        ),
+        (
+            _uses({"project": "Lights", "service": "web", "kind": "http"}),
+            "services[0].uses[0].project",
+        ),
+        (
+            _uses({"service": "web", "kind": "http", "paths": ["a\nb"]}),
+            "services[0].uses[0].paths[0]",
+        ),
+        (
+            _uses({"service": "web", "kind": "http", "paths": [STRIPE]}),
+            "services[0].uses[0].paths[0]",
+        ),
+        (_uses({"service": "web", "kind": "http", "note": "a\x07b"}), "services[0].uses[0].note"),
+    ],
+)
+def test_a_link_that_is_refused_is_named_and_its_value_is_not(
+    changes: dict[str, Any], field: str
+) -> None:
+    with pytest.raises(InvalidProjectError) as refused:
+        normalize("port", ProjectDocument.model_validate(changes))
+
+    assert refused.value.field == field
+    assert STRIPE not in str(refused.value)
+
+
 def test_a_project_name_is_a_handle() -> None:
     with pytest.raises(InvalidProjectError) as refused:
         normalize("Port Operations", ProjectDocument())
@@ -479,6 +566,18 @@ BAD_SHAPES: list[dict[str, Any]] = [
     {"description": "d" * (MAX_DESCRIPTION_CHARS + 1)},
     {"if_version": -1},
     {"links": NO_PATHS},
+    # A link has a kind of the four, and a short note.
+    {"services": [{"name": "a", "repository": "r", "uses": [{"service": "b"}]}]},
+    {"services": [{"name": "a", "repository": "r", "uses": [{"service": "b", "kind": "rpc"}]}]},
+    {
+        "services": [
+            {
+                "name": "a",
+                "repository": "r",
+                "uses": [{"service": "b", "kind": "http", "note": "n" * (MAX_NOTE_CHARS + 1)}],
+            }
+        ]
+    },
 ]
 
 
@@ -573,6 +672,16 @@ def test_the_text_of_a_catalog_keeps_every_title_and_description_in_a_fence() ->
                         refs=[],
                         files=5,
                         languages=[],
+                        uses=[
+                            LinkEntry(
+                                project="lights",
+                                service="web`",
+                                kind="http",
+                                note=ATTEMPT,
+                                paths=["quay/api/**`"],
+                                **STAMP,
+                            )
+                        ],
                         **STAMP,
                     )
                 ],
@@ -596,13 +705,57 @@ def test_the_text_of_a_catalog_keeps_every_title_and_description_in_a_fence() ->
     assert catalog.model_dump(mode="json")["data_notice"] == DATA_NOTICE
     blocks, outside = fences(summarize_catalog(catalog))
 
-    assert blocks.count(ATTEMPT) == 4
+    assert blocks.count(ATTEMPT) == 5
     assert set(blocks) == {ATTEMPT, "Port operations", "Fees"}
     assert TEXT_NOTICE in outside[0]
     rest = "\n".join(outside)
     assert "IGNORE" not in rest
     assert "`" not in rest  # a mask is a label on its line, its backtick escaped
     assert "quay/fees/**\\u0060" in rest
+
+
+def test_the_text_of_a_project_keeps_every_note_in_a_fence() -> None:
+    def link(**names: str) -> LinkDetail:
+        return LinkDetail(
+            kind="library",
+            note=ATTEMPT,
+            repository="quay",
+            root="",
+            paths=[MaskFiles(path="quay/api/**`", files=2)],
+            **names,
+            **STAMP,
+        )
+
+    project = ProjectEntry(
+        name="port",
+        title="Port operations",
+        description=ATTEMPT,
+        version=3,
+        services=[],
+        domains=[],
+        **STAMP,
+    )
+    result = ProjectDetail(
+        workspace="harbor",
+        project=project,
+        uses=[
+            link(from_project="port", from_service="quay", to_project="lights", to_service="web")
+        ],
+        used_by=[
+            link(from_project="tugs", from_service="dispatch", to_project="port", to_service="quay")
+        ],
+    )
+
+    assert result.model_dump(mode="json")["data_notice"] == DATA_NOTICE
+    blocks, outside = fences(summarize_project(result))
+
+    assert blocks.count(ATTEMPT) == 3
+    assert TEXT_NOTICE in outside[0]
+    rest = "\n".join(outside)
+    assert "IGNORE" not in rest
+    assert "`" not in rest
+    assert "service dispatch of project tugs uses service quay of project port (library)" in rest
+    assert "quay/api/**\\u0060 in repository quay, the whole repository: 2 files" in rest
 
 
 def test_the_text_of_a_write_says_what_to_correct() -> None:
@@ -655,7 +808,7 @@ def test_the_guide_says_what_is_data_and_when_to_write() -> None:
 def test_the_catalog_tools_have_their_scopes() -> None:
     tools = {tool.name: tool for tool in TOOLS}
 
-    for name in ("get_catalog", "get_domain", "catalog_guide"):
+    for name in ("get_catalog", "get_project", "get_domain", "catalog_guide"):
         assert (tools[name].scope, tools[name].read_only) == ("read", True)
     put = tools["put_project"]
     assert (put.scope, put.read_only) == ("ingest", False)

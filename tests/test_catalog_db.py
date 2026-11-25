@@ -1,6 +1,12 @@
 """The catalog through the MCP endpoint and the HTTP API, against a real Postgres and real git
-mirrors: put_project, get_catalog, get_domain, catalog_guide, the projects, domains and services
-filters of search, and the context of code results.
+mirrors: put_project, get_catalog, get_project, get_domain, catalog_guide, the projects, domains
+and services filters of search, and the context of code results.
+
+Acceptance of memini-qpk.8, on the same fixture with two projects (Links between services,
+below): a declared link from a service of one project to a service of the other is returned by
+get_project of both projects, in the right direction; a link to a service of another workspace is
+refused; a link to a service that does not exist is reported by put_project; sending the document
+twice changes nothing.
 
 Acceptance of memini-qpk.1, on a synthetic fixture of two repositories (and a third no service is
 in): the same document twice changes nothing the second time; a mask that matches nothing is
@@ -391,7 +397,7 @@ async def digests(db: Conn, *tables: str) -> dict[str, tuple[int, str]]:
     return found
 
 
-CATALOG_TABLES = ("project", "service", "domain", "domain_code")
+CATALOG_TABLES = ("project", "service", "domain", "domain_code", "service_link")
 INDEX_TABLES = ("record", "chunk", "symbol", "index_state")
 
 
@@ -1176,6 +1182,316 @@ async def test_a_service_goes_with_its_repository_and_the_export_holds_the_catal
     assert [code["service"] for code in fees["subdomains"][0]["code"]] == ["quay"]
     assert places(berth) == {place for place in BERTH if place[0] == "quay"}
     assert [each["repository"] for each in catalog["unassigned_repositories"]] == ["spare"]
+
+
+# --- Links between services ----------------------------------------------------------------------
+
+LINKED_PORT: Json = changed(PORT)
+LINKED_PORT["services"][1]["uses"] = [
+    # A link inside the project: the booking pages import the fee engine.
+    {"service": "quay", "kind": "library", "paths": ["berth.ts"]}
+]
+
+SIGNALS: Json = {
+    "title": "Signals",
+    "services": [
+        {
+            "name": "admin-web",
+            "repository": "lantern",
+            "root": "web/admin",
+            "uses": [
+                {
+                    "project": "port",
+                    "service": "quay",
+                    "kind": "http",
+                    "note": "Reads the harbour rates for the staff pages.",
+                    "paths": ["users.ts", "rates.ts"],
+                }
+            ],
+        }
+    ],
+}
+"""A second project whose only service uses a service of port; ``rates.ts`` does not exist."""
+
+
+def link_of(link: Json) -> tuple[Any, ...]:
+    return (
+        link["from_project"],
+        link["from_service"],
+        link["to_project"],
+        link["to_service"],
+        link["kind"],
+        link["repository"],
+        link["root"],
+        [(mask["path"], mask["files"]) for mask in link["paths"]],
+    )
+
+
+ADMIN_USES_QUAY = (
+    "signals",
+    "admin-web",
+    "port",
+    "quay",
+    "http",
+    "lantern",
+    "web/admin",
+    [("users.ts", 1), ("rates.ts", 0)],
+)
+BOOKING_USES_QUAY = (
+    "port",
+    "booking-web",
+    "port",
+    "quay",
+    "library",
+    "lantern",
+    "web/booking",
+    [("berth.ts", 1)],
+)
+
+
+async def test_a_link_is_returned_by_get_project_of_both_projects_in_its_direction(
+    world: World,
+) -> None:
+    async with mcp_client(world.app(), await world.token("read", "ingest")) as client:
+        ok(await put(client, LINKED_PORT))
+        written = await put(client, SIGNALS, project="signals")
+        port = await client.call_tool("get_project", {"workspace": "harbor", "project": "port"})
+        signals = ok(
+            await client.call_tool("get_project", {"workspace": "harbor", "project": "signals"})
+        )
+        between = ok(
+            await client.call_tool(
+                "get_project",
+                {"workspace": "harbor", "project": "port", "other_project": "signals"},
+            )
+        )
+        inside = ok(
+            await client.call_tool(
+                "get_project", {"workspace": "harbor", "project": "port", "other_project": "port"}
+            )
+        )
+        missing = await client.call_tool("get_project", {"workspace": "harbor", "project": "tug"})
+        no_other = await client.call_tool(
+            "get_project", {"workspace": "harbor", "project": "port", "other_project": "tug"}
+        )
+        catalog = ok(await client.call_tool("get_catalog", {"workspace": "harbor"}))
+    async with http_client(world.app(), await world.token("read")) as http:
+        port_over_http = await http.get(project_url())
+        between_over_http = await http.get(project_url(), params={"other_project": "signals"})
+        missing_over_http = await http.get(project_url("tug"))
+    exported = [
+        json.loads(line)
+        async for line in export_workspace(world.db, "owner", "harbor", include_private=True)
+    ]
+
+    # put_project reports the masks of the links, and the one that matches nothing.
+    report = ok(written)
+    assert [
+        (m["service"], m["to_project"], m["to_service"], m["path"], m["files"])
+        for m in report["link_masks"]
+    ] == [
+        ("admin-web", "port", "quay", "users.ts", 1),
+        ("admin-web", "port", "quay", "rates.ts", 0),
+    ]
+    assert [mask["path"] for mask in report["empty_link_masks"]] == ["rates.ts"]
+    assert "Masks of links that match no file:" in text(written)
+
+    # port: what it uses itself, and what uses it from signals.
+    detail = ok(port)
+    assert detail["data_notice"] == DATA_NOTICE
+    assert (detail["workspace"], detail["project"]["name"]) == ("harbor", "port")
+    assert [link_of(link) for link in detail["uses"]] == [BOOKING_USES_QUAY]
+    assert [link_of(link) for link in detail["used_by"]] == [ADMIN_USES_QUAY]
+    assert detail["used_by"][0]["note"] == "Reads the harbour rates for the staff pages."
+    # signals: the same link, from the other end.
+    assert [link_of(link) for link in signals["uses"]] == [ADMIN_USES_QUAY]
+    assert signals["used_by"] == []
+    # The filter by the other project.
+    assert ([link_of(link) for link in between["uses"]], between["used_by"]) == (
+        [],
+        detail["used_by"],
+    )
+    assert (inside["uses"], inside["used_by"]) == (detail["uses"], [])
+    assert refused(missing) == "No such project."
+    assert refused(no_other) == "No such project."
+    summary = text(port)
+    assert summary.startswith("Project port in workspace harbor, version 1, changed "), summary
+    assert TEXT_NOTICE in summary.splitlines()[0]
+    assert "service admin-web of project signals uses service quay of project port (http)" in (
+        summary
+    )
+    assert "```\nReads the harbour rates for the staff pages.\n```" in summary
+
+    # get_catalog has each link under the service that uses, in the shape of the document.
+    by_name = {project["name"]: project for project in catalog["projects"]}
+    (admin,) = by_name["signals"]["services"]
+    assert [
+        {key: link[key] for key in ("project", "service", "kind", "note", "paths")}
+        for link in admin["uses"]
+    ] == [SIGNALS["services"][0]["uses"][0]]
+    assert [service["uses"] for service in by_name["port"]["services"]][1] == []  # quay
+
+    # HTTP and MCP return the same shapes.
+    assert body(port_over_http) == detail
+    assert body(between_over_http) == between
+    assert error(missing_over_http, 404, "not_found") == "No such project."
+
+    # The export holds the links with the services that use them.
+    projects = {line["name"]: line for line in exported if line["type"] == "project"}
+    (exported_admin,) = projects["signals"]["services"]
+    assert [
+        (link["project"], link["service"], link["kind"]) for link in exported_admin["uses"]
+    ] == [("port", "quay", "http")]
+
+
+async def test_links_sent_twice_change_nothing_and_a_change_is_one_version(world: World) -> None:
+    def document(project: Json) -> Json:
+        """What get_catalog says of a project with services only, as its document."""
+        return {
+            "title": project["title"],
+            "description": project["description"],
+            "services": [
+                {key: service[key] for key in ("name", "description", "repository", "root")}
+                | {
+                    "uses": [
+                        {key: link[key] for key in ("project", "service", "kind", "note", "paths")}
+                        for link in service["uses"]
+                    ]
+                }
+                for service in project["services"]
+            ],
+            "if_version": project["version"],
+        }
+
+    async with mcp_client(world.app(), await world.token("read", "ingest")) as client:
+        ok(await put(client, LINKED_PORT))
+        first = ok(await put(client, SIGNALS, project="signals"))
+        stored = await digests(world.db, *CATALOG_TABLES)
+        again = ok(await put(client, SIGNALS, project="signals"))
+        after = await digests(world.db, *CATALOG_TABLES)
+        catalog = ok(await client.call_tool("get_catalog", {"workspace": "harbor"}))
+        (read,) = [each for each in catalog["projects"] if each["name"] == "signals"]
+        back = ok(await put(client, document(read), project="signals"))
+        noted = changed(SIGNALS)
+        noted["services"][0]["uses"][0] |= {"kind": "other", "note": "Polls the rates."}
+        renoted = ok(await put(client, noted, project="signals"))
+        link_rows = await digests(world.db, "service_link")
+        service_rows = await digests(world.db, "service")
+        unlinked = changed(SIGNALS)
+        del unlinked["services"][0]["uses"]
+        dropped = ok(await put(client, unlinked, project="signals"))
+        port = ok(await client.call_tool("get_project", {"workspace": "harbor", "project": "port"}))
+
+    assert (first["created"], first["version"]) == (True, 1)
+    assert (again["changed"], again["version"]) == (False, 1)
+    assert again["link_masks"] == first["link_masks"]
+    assert after == stored
+    assert stored["service_link"][0] == 2
+    # What get_catalog returns goes back unchanged.
+    assert (back["changed"], back["version"]) == (False, 1)
+    # A changed kind and note is one change: the link's row, not the service's.
+    assert (renoted["changed"], renoted["version"]) == (True, 2)
+    assert link_rows["service_link"] != stored["service_link"]
+    assert service_rows["service"] == stored["service"]
+    # A link the document leaves out is removed.
+    assert (dropped["changed"], dropped["version"]) == (True, 3)
+    assert [link_of(link) for link in port["uses"]] == [BOOKING_USES_QUAY]
+    assert port["used_by"] == []
+
+
+async def test_a_link_out_of_the_workspace_or_to_no_service_is_refused(world: World) -> None:
+    def using(link: Json) -> Json:
+        return {
+            "services": [
+                {"name": "admin-web", "repository": "lantern", "root": "web/admin", "uses": [link]}
+            ]
+        }
+
+    async with mcp_client(world.app(), await world.token("read", "ingest")) as client:
+        ok(await put(client, LINKED_PORT))
+        ok(await put(client, SAFE, project="safe", workspace="other"))
+        stored = await digests(world.db, *CATALOG_TABLES)
+        # vault is a service of the other workspace: here it is not there to name.
+        other_workspace = await put(
+            client,
+            using({"project": "safe", "service": "vault", "kind": "http"}),
+            project="signals",
+        )
+        no_service = await put(
+            client, using({"project": "port", "service": "tug", "kind": "queue"}), project="signals"
+        )
+        not_in_document = await put(
+            client, using({"service": "quay", "kind": "library"}), project="signals"
+        )
+        after_refusals = await digests(world.db, *CATALOG_TABLES)
+        ok(await put(client, SIGNALS, project="signals"))
+        # port cannot drop the service that a link of signals names.
+        kept = changed(LINKED_PORT, domains=[])
+        kept["services"] = [{"name": "booking-web", "repository": "lantern", "root": "web/booking"}]
+        dropped = await put(client, kept)
+    async with http_client(world.app(), await world.token("read", "ingest")) as http:
+        other_over_http = await http.put(
+            project_url("signals"),
+            json=using({"project": "safe", "service": "vault", "kind": "http"}),
+        )
+        dropped_over_http = await http.put(project_url(), json=kept)
+
+    assert refused(other_workspace) == "No such service (services[0].uses[0])."
+    assert error(other_over_http, 404, "not_found") == refused(other_workspace)
+    assert refused(no_service) == refused(other_workspace)
+    assert refused(not_in_document) == (
+        "The project document is not valid: services[0].uses[0].service: names a service the"
+        " document does not have."
+    )
+    # A refused document leaves nothing behind, not even the project.
+    assert after_refusals == stored
+    assert refused(dropped).startswith(
+        "The document removes a service that a service of another project declares it uses."
+    )
+    assert error(dropped_over_http, 409, "service_in_use") == refused(dropped)
+
+    # The database keeps a link inside its workspace whatever the code does.
+    row = await (
+        await world.db.execute(
+            "SELECT s.id, s.workspace_id, s.owner_id, v.id FROM service s, service v"
+            " WHERE s.name = 'admin-web' AND v.name = 'vault'"
+        )
+    ).fetchone()
+    assert row is not None
+    with pytest.raises(errors.ForeignKeyViolation):
+        await world.db.execute(
+            "INSERT INTO service_link (workspace_id, owner_id, service_id, target_id, kind,"
+            " updated_by) VALUES (%s, %s, %s, %s, 'http', %s)",
+            (row[1], row[2], row[0], row[3], row[2]),
+        )
+    with pytest.raises(errors.CheckViolation):
+        await world.db.execute(
+            "INSERT INTO service_link (workspace_id, owner_id, service_id, target_id, kind,"
+            " updated_by) VALUES (%s, %s, %s, %s, 'http', %s)",
+            (row[1], row[2], row[0], row[0], row[2]),
+        )
+
+
+async def test_a_link_goes_with_the_repository_of_either_service(world: World) -> None:
+    async with mcp_client(world.app(), await world.token("read", "ingest")) as client:
+        ok(await put(client, LINKED_PORT))
+        ok(await put(client, SIGNALS, project="signals"))
+        await delete_source(
+            world.db,
+            world.access,
+            "harbor",
+            "lantern",
+            mirrors=MirrorManager(GitOptions.from_settings(world.settings)),
+        )
+        port = ok(await client.call_tool("get_project", {"workspace": "harbor", "project": "port"}))
+        signals = ok(
+            await client.call_tool("get_project", {"workspace": "harbor", "project": "signals"})
+        )
+
+    # Both services that used quay were over lantern: they and their links are gone.
+    assert (port["uses"], port["used_by"]) == ([], [])
+    assert (signals["project"]["services"], signals["uses"]) == ([], [])
+    assert (await digests(world.db, "service_link"))["service_link"][0] == 0
 
 
 # --- Access --------------------------------------------------------------------------------------

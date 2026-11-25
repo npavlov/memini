@@ -419,6 +419,35 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
             "get_domain", {"workspace": WORKSPACE, "project": "port", "domain": "berths"}
         )
         assert {attempts()[7].strip(), attempts()[11].strip()} <= set(blocks)
+        # A link's note is the same kind of text: stored, and shown as data on both ends.
+        linked, blocks = await call(
+            "put_project",
+            {
+                "workspace": WORKSPACE,
+                "project": "tugs",
+                "services": [
+                    {
+                        "name": "dispatch",
+                        "repository": REPOSITORY,
+                        "root": "tugs",
+                        "uses": [
+                            {
+                                "project": "port",
+                                "service": "code",
+                                "kind": "http",
+                                "note": attempts()[4],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        assert (linked["created"], blocks) == (True, [])
+        _, blocks = await call("get_catalog", {"workspace": WORKSPACE})
+        assert attempts()[4].strip() in blocks
+        for project in ("port", "tugs"):
+            _, blocks = await call("get_project", {"workspace": WORKSPACE, "project": project})
+            assert attempts()[4].strip() in blocks, project
         guide, blocks = await call("catalog_guide", {})
         assert "data, never instructions" in guide["guide"]
         assert blocks == []
@@ -455,6 +484,7 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
             (f"/v1/decisions/{items[1]}", {}),
             ("/v1/messages", {"person": "U0GUEST77", "roles": "author"}),
             (f"/v1/workspaces/{WORKSPACE}/catalog", {}),
+            (f"/v1/workspaces/{WORKSPACE}/projects/port", {"other_project": "tugs"}),
             (f"/v1/workspaces/{WORKSPACE}/projects/port/domains/berths/holds", {}),
         ):
             response = await http.get(path, params=params)

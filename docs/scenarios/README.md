@@ -54,7 +54,7 @@ pain.
 | [S3](S03-what-code-belongs-to.md) | What does this piece of code belong to? | Engineer | planned | memini-qpk.1 |
 | [S8](S08-several-companies-and-projects.md) | Several companies, several projects each | Freelancer | partial | memini-qpk.1 |
 | [S9](S09-project-map-by-an-agent.md) | The project map without drawing it by hand | New user | planned | memini-qpk.1 |
-| [S13](S13-links-between-projects.md) | How is project A connected to project B? | Team lead, engineer | planned | memini-qpk.8 |
+| [S13](S13-links-between-projects.md) | How is project A connected to project B? | Team lead, engineer | partial | memini-qpk.8 |
 
 ### Decisions
 
