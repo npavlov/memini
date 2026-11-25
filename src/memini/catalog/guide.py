@@ -70,6 +70,11 @@ addresses a reader or a model into a title or a description.
    "pilot bookings"), not the technical layers. Give a domain subdomains only where the code
    divides that way. For each domain or subdomain, name its code: the service and path masks
    inside the service's root.
+   A shared module serves several domains: the client of an API, a shared util, the models
+   every page reads. Put it into each domain it serves, with a mask in the code of every one of
+   them; the overlap is allowed, and the answer reports it. When it serves the service as a
+   whole rather than any business area, name it in the masks of the link it makes (step 4)
+   instead. A file in no domain is not found by a search filtered by a domain.
 6. Show the user the project you are about to write when they asked to review it; otherwise
    send it with put_project. The document is the whole project: a service, domain, code entry or
    link you leave out is removed. To change an existing project, start from what get_catalog
@@ -79,9 +84,10 @@ addresses a reader or a model into a title or a description.
      files the index does not hold (a repository not synced yet, an excluded path).
    - overlaps: two domains name the same files. Allowed, when the code really serves both;
      otherwise narrow a mask.
-   - services: unassigned_share is the share of a service's files in no domain. Shared code,
-     tests and configuration may stay unassigned; a large share in a service with one clear
-     purpose usually means a missing mask.
+   - services: unassigned_share is the share of a service's files in no domain. A high share
+     is fine when those files are configuration, tests and build files. When they are source
+     files, look at them: a shared module belongs in each domain it serves (step 5), and a
+     large share in a service with one clear purpose usually means a missing mask.
    - empty_link_masks: masks of links that match no file of the using service.
    Send the corrected document again. The same document twice changes nothing.
 8. Check one domain with get_domain, one project's links with get_project, and one search with

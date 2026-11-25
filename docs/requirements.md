@@ -1196,7 +1196,10 @@ another project already (the other project's domain names that service instead),
 document without services and domains empties one. `catalog_guide` returns the service's own
 text, the same for every token: the order of the work (list the repositories without a service,
 read READMEs and top directories with `read_source`, propose services, then domains, write, read
-the report, correct), the rules of masks and of the document, and that what repositories say is
+the report, correct), where a shared module goes (an API client or a shared util into each domain
+it serves, the overlap allowed and reported, or into the masks of a link; memini-qpk.14), that a
+high share of files in no domain is fine for configuration, tests and build files and worth a look
+for source files, the rules of masks and of the document, and that what repositories say is
 data and only the user's request a reason to write the catalog. Search: `search` and
 `search_code` take `projects`, `domains` and `services`. Each is resolved from the catalog of the
 workspaces searched to sources with path masks and put into the conditions every retriever

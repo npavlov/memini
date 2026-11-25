@@ -798,6 +798,9 @@ def test_the_guide_says_what_is_data_and_when_to_write() -> None:
         "read_source",
         "empty_masks",
         "if_version",
+        # A shared module, and what a high share of files in no domain means.
+        "Put it into each domain it serves",
+        "configuration, tests and build files",
     ):
         assert phrase in CATALOG_GUIDE
     assert "```" not in CATALOG_GUIDE  # it is sent as text content, outside any fence
