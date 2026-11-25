@@ -65,6 +65,7 @@ TOOL_NAMES = [
     "search_code",
     "read_source",
     "get_symbol",
+    "list_commits",
     "list_meetings",
     "get_meeting",
     "list_messages",

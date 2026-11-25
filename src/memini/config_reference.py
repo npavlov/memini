@@ -310,6 +310,13 @@ NOTES: Final[Mapping[str, str]] = {
     " The log line `reranking with ...` says how many.",
     "git_local_roots": "With compose, mount the directory into the container as well; compose.yaml"
     " has an example.",
+    "git_log_max_commits": "History is read from the mirrors when `list_commits` asks and is never"
+    " stored. A call that asks for more gets this many and is told where to continue.",
+    "git_log_max_walk": "The filters git cannot apply (path globs, author, text) are applied to"
+    " what it prints. A call that read this many commits of a repository returns what it found"
+    " and where to continue.",
+    "git_log_timeout": "Past it the walk is killed and the call answers 422 `commits_timeout`:"
+    " its caller narrows the question.",
     "credential_key": "Unset: the service starts, and storing or reading a credential fails with"
     " a message that names this setting.",
     "mcp_allowed_endpoints": "Checked when an mcp source is added or changed, and before every"

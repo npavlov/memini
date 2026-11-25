@@ -1,4 +1,5 @@
-"""The query tools: ``search``, ``search_code``, ``get_symbol`` and ``read_source``.
+"""The query tools: ``search``, ``search_code``, ``get_symbol``, ``read_source`` and
+``list_commits``.
 
 Each tool authorizes the read (:func:`~memini.auth.authorization.authorize_read`), borrows a
 connection from the pool and calls its function in :mod:`memini.query.service`, which the HTTP
@@ -27,6 +28,9 @@ from memini.mcp.text import TEXT_NOTICE, fenced, inline
 from memini.mcp.tools import Tool, ToolCall, ToolError
 from memini.query import (
     CodeSearchArguments,
+    CommitInfo,
+    CommitList,
+    ListCommitsArguments,
     QueryError,
     QueryServices,
     ReadSourceArguments,
@@ -37,6 +41,7 @@ from memini.query import (
     SymbolArguments,
     SymbolResult,
     run_get_symbol,
+    run_list_commits,
     run_read_source,
     run_search,
     run_search_code,
@@ -46,10 +51,12 @@ from memini.query.reader import DEFAULT_READ_LIMITS
 
 __all__ = [
     "GET_SYMBOL_TOOL",
+    "LIST_COMMITS_TOOL",
     "QUERY_TOOLS",
     "READ_SOURCE_TOOL",
     "SEARCH_CODE_TOOL",
     "SEARCH_TOOL",
+    "summarize_commits",
     "summarize_read",
     "summarize_search",
     "summarize_symbols",
@@ -196,6 +203,58 @@ def summarize_read(read: SourceRead) -> str:
     )
 
 
+def _commit(number: int, commit: CommitInfo) -> str:
+    details = [
+        f"commit in {commit.workspace}/{commit.repository} ({commit.source_kind})",
+        f"committed {_time(commit.occurred_at)}",
+    ]
+    if commit.authored_at != commit.occurred_at:
+        details.append(f"written {_time(commit.authored_at)}")
+    if commit.author.person_id is not None:
+        details.append(f"author is person {commit.author.person_id}")
+    if len(commit.parents) > 1:
+        details.append(f"a merge of {len(commit.parents)} commits")
+    shown = len(commit.changes)
+    paths = _count(commit.changes_total, "path", "paths")
+    details.append(
+        f"{paths} changed" + (f", {shown} shown" if shown < commit.changes_total else "")
+    )
+    if commit.truncated:
+        details.append("message cut short")
+    # Everything the repository chose goes into the block: the author, the message, the paths.
+    block = [f"Author: {commit.author.name} <{commit.author.email}>", "", commit.subject]
+    if commit.body:
+        block += ["", commit.body]
+    if commit.changes:
+        block += ["", *(f"{change.status} {change.path}" for change in commit.changes)]
+    return "\n".join(
+        [f"{number}. {inline(commit.locator)}", "; ".join(details), fenced("\n".join(block))]
+    )
+
+
+def summarize_commits(result: CommitList) -> str:
+    """The text content of a ``list_commits`` result: what cut the list and how to continue, the
+    repositories nothing was read of, then every commit with its author, message and paths."""
+    parts = [_head(len(result.commits), "commit", "commits")]
+    if result.next_until is not None:
+        cause = (
+            "The service read as many commits of a repository as it reads in one call"
+            if result.cut_by == "walk_limit"
+            else "The list is cut at its limit"
+        )
+        parts.append(
+            f"{cause}: older commits may match too. To continue, call again with until"
+            f" {_time(result.next_until)} and the other arguments as they were."
+        )
+    unread = [
+        f"{walk.workspace}/{walk.repository}" for walk in result.repositories if not walk.heads
+    ]
+    if unread:
+        parts.append(f"No synced commit yet, so nothing was read of: {', '.join(unread)}.")
+    parts += [_commit(number, commit) for number, commit in enumerate(result.commits, start=1)]
+    return "\n\n".join(parts)
+
+
 # --- The tools -----------------------------------------------------------------------------------
 
 _RESULT_NOTE = (
@@ -290,10 +349,37 @@ READ_SOURCE_TOOL = Tool(
     summarize=summarize_read,
 )
 
+LIST_COMMITS_TOOL = Tool(
+    name="list_commits",
+    title="List commits",
+    description=(
+        "Who changed what, and when: the commit history of the git repositories the token may "
+        "read, newest first, read from the service's mirror when asked and never stored. Each "
+        "repository is walked from its pinned commit, the one search results are at. Filters: "
+        "repositories, workspaces, paths (globs with .gitignore rules, e.g. src/fees/** or "
+        "src/fees/calc.py: commits that changed such a path, listed with those paths), author "
+        "(text in the author's name or mail address), since and until (ISO 8601 with a time "
+        "zone, on the committer time), text (words in the message, as written; there is no "
+        "search by meaning over messages). Each commit carries its workspace and repository, "
+        "sha and short_sha, a locator repo@sha, occurred_at (the committer time) and "
+        "authored_at, the author as git shows it and the person the author resolves to "
+        "(person_id), subject, body, parents, and the changed paths with their status. A list "
+        "cut by a bound says so (truncated, cut_by) and gives next_until: pass it as until to "
+        "continue. A walk that runs past the service's time limit is an error: narrow it with "
+        "repositories, paths, since or until. Read a file as a commit left it with read_source "
+        "and the sha as ref."
+    ),
+    arguments=ListCommitsArguments,
+    result=CommitList,
+    run=_tool_run(run_list_commits),
+    summarize=summarize_commits,
+)
+
 QUERY_TOOLS: Sequence[Tool[Any, Any]] = (
     SEARCH_TOOL,
     SEARCH_CODE_TOOL,
     READ_SOURCE_TOOL,
     GET_SYMBOL_TOOL,
+    LIST_COMMITS_TOOL,
 )
 """The query tools, in the order ``tools/list`` shows them."""

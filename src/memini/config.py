@@ -533,6 +533,28 @@ class Settings(BaseModel):
         description="the absolute path of the known_hosts file that ssh remotes are checked"
         " against",
     )
+    # History is read from the mirrors on demand (list_commits, memini.query.commits) and never
+    # stored: what one call returns, what it reads from one repository, and how long it may run.
+    git_log_max_commits: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="the most commits one list_commits call returns, an integer from 1 to 1000",
+    )
+    git_log_max_walk: int = Field(
+        default=2000,
+        ge=1,
+        le=100000,
+        description="the most commits one list_commits call reads from the history of one"
+        " repository, an integer from 1 to 100000",
+    )
+    git_log_timeout: float = Field(
+        default=10.0,
+        gt=0,
+        le=600,
+        description="seconds the history walks of one list_commits call may take, more than 0, at"
+        " most 600",
+    )
 
     # --- Credential store (memini.credentials) ----------------------------------------------------
     # The API keys and OAuth tokens of sources are stored encrypted with credential_key
