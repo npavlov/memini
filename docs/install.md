@@ -224,7 +224,7 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
 
 ### Output for programs
 
-`status`, `start`, `stop` and `mcp` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file.
+`status`, `start`, `stop`, `mcp` and `bootstrap` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
 
 `memini-server status --json` exits 0 whenever it can report, also for a stopped server, a missing installation and a missing Docker. Its object, on several lines here:
 
@@ -261,6 +261,8 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
 | `services` | The containers of the server, by name. `state` is Docker's word: `running`, `exited`, `restarting` and others. `health` is `starting`, `healthy` or `unhealthy`, and `null` for a container that reports none. Empty before the first start. |
 
 `start`, `stop`, `mcp on` and `mcp off` print `{"schema": 1, "ok": true, "error": null}` and exit 0. On a failure `ok` is `false`, `error` is one line, and the exit status is not 0: Docker's own where Docker failed, otherwise 1. `mcp status --json` prints the status object. A wrong argument exits 2 with the usage on stderr, and a state directory that cannot be read exits 1 with a message there; stdout stays empty in both cases.
+
+`memini-server bootstrap` creates the first admin token of the managed server, as `memini-server cli bootstrap` does, and prints it alone on stdout. With `--json` it prints `{"schema": 1, "ok": true, "error": null, "token": "memini_…"}`: the one object that holds a secret, meant for a program that reads it from the pipe and stores it. When the service refuses, because an active admin token exists or the server is not running, `ok` is `false`, `token` is `null`, `error` is the service's reason and the exit status is 1. `--force` creates another admin token although one exists.
 
 ## Machine size
 

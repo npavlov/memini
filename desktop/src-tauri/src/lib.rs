@@ -58,6 +58,7 @@ pub fn run() {
             commands::launcher_set_path,
             commands::launcher_status,
             commands::launcher_change,
+            commands::launcher_setup_token,
         ])
         .run(tauri::generate_context!())
         .expect("the Memini desktop app could not start");

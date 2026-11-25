@@ -42,6 +42,8 @@ export { Pill } from "./pill";
 export type { PillProps } from "./pill";
 export { StatusBarActions, StatusBarFrame } from "./status-bar";
 export type { StatusBarActionsProps, StatusBarFrameProps } from "./status-bar";
+export { StepList } from "./step-list";
+export type { Step, StepListProps, StepState } from "./step-list";
 export { Actions, Card, EmptyState, Mono, Panel, Screen, Section } from "./surfaces";
 export type {
   ActionsProps,

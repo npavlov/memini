@@ -737,3 +737,17 @@ pre,
   background: var(--accent);
   color: var(--on-accent);
 }
+
+/* Steps */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.step-title {
+  font-weight: 600;
+}

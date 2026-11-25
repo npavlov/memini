@@ -16,8 +16,8 @@ export function LauncherMissing({ os, configuredPath }: LauncherMissingProps): R
       <Notice tone="info" title="memini-server was not found on this computer">
         <Text>
           {configuredPath === null
-            ? "This app does not contain the server. It runs the memini-server launcher, which starts Memini with Docker."
-            : "There is no memini-server at the path set below. Correct the path, or clear it to look on PATH."}
+            ? "This build of the app does not carry its launcher, and none is installed on this computer. The launcher starts Memini with Docker."
+            : "There is no memini-server at the path set below. Correct the path, or clear it to use the app’s own."}
         </Text>
       </Notice>
       <Text>

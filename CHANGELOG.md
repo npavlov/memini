@@ -9,6 +9,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Get the first admin token of a managed server from the launcher: `memini-server bootstrap`
+  prints it, and with `--json` hands it to a program as one object. The desktop app uses it to
+  set up a local server in one step, and carries the launcher itself, frozen as a sidecar.
+  [Output for programs](docs/install.md#output-for-programs).
 - See who changed what with `list_commits` over MCP and `GET /v1/commits`: commits by
   repository, path, author, period and message text, newest first, each with its author, the
   person the author resolves to and the changed paths. History is read from the repository

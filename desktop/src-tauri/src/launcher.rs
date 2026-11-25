@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::{clean, AppError, AppResult, ErrorKind};
+use crate::secret::Token;
 
 /// The one program this app runs.
 pub const PROGRAM: &str = "memini-server";
@@ -48,6 +49,10 @@ pub enum Action {
     Stop,
     McpOn,
     McpOff,
+    /// The first admin token of the managed server.
+    Bootstrap,
+    /// Another admin token although an active one exists.
+    BootstrapForce,
 }
 
 impl Action {
@@ -59,6 +64,8 @@ impl Action {
             Self::Stop => &["stop", "--json"],
             Self::McpOn => &["mcp", "on", "--json"],
             Self::McpOff => &["mcp", "off", "--json"],
+            Self::Bootstrap => &["bootstrap", "--json"],
+            Self::BootstrapForce => &["bootstrap", "--force", "--json"],
         }
     }
 
@@ -70,6 +77,7 @@ impl Action {
             Self::Start => Duration::from_secs(60 * 60),
             Self::Stop => Duration::from_secs(5 * 60),
             Self::McpOn | Self::McpOff => Duration::from_secs(10 * 60),
+            Self::Bootstrap | Self::BootstrapForce => Duration::from_secs(2 * 60),
         }
     }
 
@@ -134,6 +142,36 @@ pub fn parse_result(output: &str) -> AppResult<LauncherResult> {
     let mut result: LauncherResult = parse_object(output)?;
     result.error = result.error.map(|text| clean(&text));
     Ok(result)
+}
+
+/// The answer of `bootstrap --json`. The token is a [`Token`]: it cannot be serialized or
+/// printed, so it can go to the keychain and nowhere else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BootstrapAnswer {
+    pub ok: bool,
+    pub error: Option<String>,
+    pub token: Option<Token>,
+}
+
+/// The first admin token in the launcher's output. An answer that says it succeeded without a
+/// well-formed token is not the contract.
+pub fn parse_bootstrap(output: &str) -> AppResult<BootstrapAnswer> {
+    #[derive(Deserialize)]
+    struct Wire {
+        ok: bool,
+        error: Option<String>,
+        token: Option<String>,
+    }
+    let wire: Wire = parse_object(output)?;
+    let token = wire.token.as_deref().and_then(Token::parse);
+    if wire.ok && token.is_none() {
+        return Err(not_the_contract("answered without the token it created"));
+    }
+    Ok(BootstrapAnswer {
+        ok: wire.ok,
+        error: wire.error.map(|text| clean(&text)),
+        token: if wire.ok { token } else { None },
+    })
 }
 
 /// The one JSON object of the output, checked for a schema this app knows. The whole output is
@@ -292,15 +330,45 @@ pub fn check_configured_path(text: &str) -> AppResult<PathBuf> {
     Ok(path)
 }
 
-/// The program to run: the configured path if one is set, else the first found on the search
-/// path. `None` when it is not installed, or the configured file is not there.
-pub fn locate(configured: Option<&str>, search: &SearchPath) -> Option<PathBuf> {
-    match configured {
-        Some(text) => check_configured_path(text)
+/// Where the program that is run comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Source {
+    /// The path the user set.
+    Configured,
+    /// The launcher the app carries with it, next to its own executable.
+    Bundled,
+    /// A launcher installed on this computer, found on the search path.
+    Installed,
+}
+
+/// The launcher the app carries: the file named as the program in the directory of the app's
+/// own executable, which is where Tauri puts a sidecar on every platform.
+pub fn bundled(executable: Option<&Path>, is_file: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    let directory = executable?.parent()?;
+    PROGRAM_FILE_NAMES
+        .iter()
+        .map(|name| directory.join(name))
+        .find(|candidate| is_file(candidate))
+}
+
+/// The program to run. The path the user set comes first; without one, the launcher inside the
+/// app; without that, one installed on this computer. A path that is set and has no file is
+/// "not installed", not a reason to fall back: the user chose it.
+pub fn locate(
+    configured: Option<&str>,
+    executable: Option<&Path>,
+    search: &SearchPath,
+) -> Option<(PathBuf, Source)> {
+    if let Some(text) = configured {
+        return check_configured_path(text)
             .ok()
-            .filter(|path| path.is_file()),
-        None => find(search, Path::is_file),
+            .filter(|path| path.is_file())
+            .map(|path| (path, Source::Configured));
     }
+    bundled(executable, Path::is_file)
+        .map(|path| (path, Source::Bundled))
+        .or_else(|| find(search, Path::is_file).map(|path| (path, Source::Installed)))
 }
 
 pub fn missing() -> AppError {
@@ -512,6 +580,11 @@ mod tests {
                 &["mcp", "off", "--json"][..],
             ]
         );
+        assert_eq!(Action::Bootstrap.arguments(), ["bootstrap", "--json"]);
+        assert_eq!(
+            Action::BootstrapForce.arguments(),
+            ["bootstrap", "--force", "--json"]
+        );
         assert_eq!(Action::McpOff.words(), "memini-server mcp off");
     }
 
@@ -549,7 +622,63 @@ mod tests {
         let renamed = absolute("tools").join("memini-server-old");
         assert!(check_configured_path(renamed.to_str().expect("unicode")).is_err());
         // A configured path that does not exist is "not installed", not a reason to search.
-        assert_eq!(locate(Some(text), &SearchPath::default()), None);
+        assert_eq!(locate(Some(text), None, &SearchPath::default()), None);
+    }
+
+    #[test]
+    fn the_launcher_inside_the_app_is_the_one_beside_its_executable() {
+        let executable = absolute("app").join("memini-desktop");
+        let beside = absolute("app").join(PROGRAM_FILE_NAMES[0]);
+        assert_eq!(
+            bundled(Some(&executable), |path| path == beside),
+            Some(beside.clone())
+        );
+        assert_eq!(bundled(Some(&executable), |_| false), None);
+        assert_eq!(bundled(None, |_| true), None);
+    }
+
+    #[test]
+    fn the_first_admin_token_is_read_and_cannot_be_printed() {
+        let token = fake_token('b');
+        let output = format!(r#"{{"schema": 1, "ok": true, "error": null, "token": "{token}"}}"#);
+        let answer = parse_bootstrap(&output).expect("the contract");
+        assert!(answer.ok);
+        assert_eq!(
+            answer.token.as_ref().map(Token::expose),
+            Some(token.as_str())
+        );
+        assert!(!format!("{answer:?}").contains(&token));
+    }
+
+    #[test]
+    fn a_refused_bootstrap_gives_its_reason_and_no_token() {
+        let output = r#"{"schema": 1, "ok": false, "error": "memini: an active admin token exists", "token": null}"#;
+        let answer = parse_bootstrap(output).expect("the contract");
+        assert_eq!(
+            answer,
+            BootstrapAnswer {
+                ok: false,
+                error: Some("memini: an active admin token exists".to_owned()),
+                token: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_bootstrap_that_succeeds_without_a_token_is_not_the_contract() {
+        for output in [
+            r#"{"schema": 1, "ok": true, "error": null, "token": null}"#,
+            r#"{"schema": 1, "ok": true, "error": null, "token": "not a token"}"#,
+            r#"{"schema": 1, "ok": true, "error": null}"#,
+        ] {
+            let error = parse_bootstrap(output).expect_err("refused");
+            assert_eq!(error.kind, ErrorKind::LauncherOutput, "{output}");
+        }
+        let newer = r#"{"schema": 2, "ok": true, "error": null, "token": null}"#;
+        assert_eq!(
+            parse_bootstrap(newer).expect_err("refused").kind,
+            ErrorKind::LauncherSchema
+        );
     }
 
     #[test]

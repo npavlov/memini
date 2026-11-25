@@ -26,6 +26,7 @@
     "allow-launcher-set-path",
     "allow-launcher-status",
     "allow-launcher-change",
+    "allow-launcher-setup-token",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-write-secret"
   ]

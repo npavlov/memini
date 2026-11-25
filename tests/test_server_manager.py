@@ -17,6 +17,8 @@ from typing import Any
 
 import pytest
 
+from redaction_helpers import MEMINI
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/memini-server.py"
 
@@ -167,6 +169,8 @@ class FakeDocker:
         self.rows: list[dict[str, object]] = []
         self.one_array = False
         self.fail: Exception | None = None
+        self.token = ""
+        """What the service's ``bootstrap`` prints."""
 
     def __call__(
         self, argv: list[str], *, env: dict[str, str], **kwargs: object
@@ -180,6 +184,8 @@ class FakeDocker:
             response = json.dumps(self.rows) if self.one_array else lines
         if argv[-1] == "list":
             response = "NAME ID SIZE\nqwen3-embedding:0.6b c690 639MB\n"
+        if "bootstrap" in argv:
+            response = self.token + "\n"
         return subprocess.CompletedProcess(argv, 0, response)
 
     def ran(self, *command: str) -> bool:
@@ -471,6 +477,85 @@ def test_a_refusal_is_a_result_object_and_exit_status_1(
     # Nothing to stop is no failure.
     nothing = launch(tmp_path / "nothing here", "stop")
     assert (nothing.code, nothing.value) == (0, OK)
+
+
+def test_bootstrap_prints_the_first_admin_token_as_one_object(
+    state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.token = MEMINI
+
+    created = launch(state, "bootstrap")
+
+    assert created.code == 0
+    assert created.value == {"schema": 1, "ok": True, "error": None, "token": MEMINI}
+    argv = docker.calls[-1]
+    assert argv[-7:] == ["exec", "-T", "memini", "memini", "bootstrap", "--name", argv[-1]]
+    assert "--force" not in argv
+    # The token travels on the pipe only: no command line holds it.
+    assert all(MEMINI not in part for call in docker.calls for part in call)
+
+
+def test_bootstrap_passes_force_on_only_when_asked(
+    state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.token = MEMINI
+
+    forced = launch(state, "bootstrap", "--force")
+
+    assert forced.value["token"] == MEMINI
+    assert docker.calls[-1][-1] == "--force"
+
+
+def test_bootstrap_gives_the_services_reason_when_it_refuses(
+    state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    refusal = "memini: an active admin token exists (memini_Fake0Fak); pass --force"
+    docker.fail = subprocess.CalledProcessError(1, "docker", stderr=f"\n{refusal}\n")
+
+    refused = launch(state, "bootstrap")
+
+    assert refused.code == 1
+    assert refused.value == {"schema": 1, "ok": False, "error": refusal, "token": None}
+
+
+@pytest.mark.parametrize("printed", ["", "not a token", MEMINI + " and more", MEMINI[:-1]])
+def test_bootstrap_refuses_output_that_is_not_one_token(
+    state: Path, docker: FakeDocker, launch: Callable[..., Printed], printed: str
+) -> None:
+    docker.token = printed
+
+    refused = launch(state, "bootstrap")
+
+    assert refused.code == 1
+    assert refused.value["ok"] is False
+    assert refused.value["token"] is None
+    assert refused.value["error"] == "the service's bootstrap did not print a token"
+    assert printed == "" or printed not in refused.text
+
+
+def test_bootstrap_needs_a_managed_server(
+    tmp_path: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    missing = launch(tmp_path / "nothing here", "bootstrap")
+
+    assert missing.code == 1
+    assert missing.value["token"] is None
+    assert missing.value["error"].startswith("no managed server at ")
+    assert docker.calls == []
+
+
+def test_bootstrap_without_json_prints_the_token_alone(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+) -> None:
+    docker.token = MEMINI
+
+    invoke(monkeypatch, manager, state, "bootstrap")
+
+    assert capsys.readouterr().out == MEMINI + "\n"
 
 
 def test_mcp_off_and_on_set_the_switch_and_restart_a_running_service(

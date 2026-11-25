@@ -76,6 +76,7 @@ pain.
 | [S11](S11-run-without-a-terminal.md) | Run Memini without a terminal | Operator | planned | memini-qpk.5 |
 | [S12](S12-see-and-edit-the-project-map.md) | See the project map and correct it | Team lead | planned | memini-qpk.5 |
 | [S15](S15-see-what-memini-holds.md) | See what Memini holds and try its tools | Operator, team lead | planned | memini-qpk.9 |
+| [S16](S16-connect-agents-in-one-click.md) | Connect my agent clients in one click | Operator, engineer | planned | memini-qpk.11 |
 
 ## Tools and filters the scenarios need
 

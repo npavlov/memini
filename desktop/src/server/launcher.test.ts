@@ -96,10 +96,15 @@ describe("parseLauncherInfo", () => {
   it("reads where the launcher is and whether the user set the path", () => {
     const info = parseLauncherInfo({
       configured_path: null,
-      resolved_path: "/opt/homebrew/bin/memini-server",
+      resolved_path: "/Applications/Memini.app/Contents/MacOS/memini-server",
+      source: "bundled",
     });
 
-    expect(info).toEqual({ configuredPath: null, resolvedPath: "/opt/homebrew/bin/memini-server" });
+    expect(info).toEqual({
+      configuredPath: null,
+      resolvedPath: "/Applications/Memini.app/Contents/MacOS/memini-server",
+      source: "bundled",
+    });
   });
 });
 

@@ -6,6 +6,7 @@ import codecs
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -37,6 +38,12 @@ SETTINGS = ".env.memini"
 MCP_SWITCH = "MEMINI_MCP_ENABLED"
 # Seconds status waits for Docker: an engine that is still starting can keep its client waiting.
 DOCKER_TIMEOUT = 20
+# A token of the service (src/memini/auth/tokens.py): what bootstrap must print, and nothing else.
+TOKEN = re.compile(r"memini_[A-Za-z0-9_-]{43}")
+# The name of the admin token `bootstrap` creates, as the service's list of tokens shows it.
+BOOTSTRAP_NAME = "memini-server bootstrap"
+# Seconds the service's bootstrap may take: one transaction in a database that is up.
+BOOTSTRAP_TIMEOUT = 60
 
 
 def resources() -> Path:
@@ -367,6 +374,63 @@ def report(directory: Path) -> dict[str, object]:
     return answer
 
 
+def first_token(project: Project, *, force: bool) -> str:
+    """The first admin token of the managed server, from the service's own ``bootstrap``.
+
+    The token comes back on the pipe of Docker's command and is returned to the caller: it is
+    never put on a command line, into the environment or into a message. The service refuses
+    while an active admin token exists, unless ``force``; its own reason is the error.
+    """
+    if not project.docker:
+        raise ValueError("install Docker with Compose 2.24 or later and start the Docker engine")
+    command = ["exec", "-T", "memini", "memini", "bootstrap", "--name", BOOTSTRAP_NAME]
+    if force:
+        command.append("--force")
+    try:
+        result = subprocess.run(  # noqa: S603 - resolved docker executable, argument vector only
+            [project.docker, *project.arguments, *command],
+            cwd=project.directory,
+            env=project.env,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=BOOTSTRAP_TIMEOUT,
+        )
+    except subprocess.CalledProcessError as error:
+        # What the service says of a refusal names token prefixes at most, never a token.
+        said = [line.strip() for line in str(error.stderr or "").splitlines() if line.strip()]
+        reason = f"docker compose failed with exit status {error.returncode}"
+        raise ValueError(said[-1] if said else reason) from None
+    except subprocess.TimeoutExpired:
+        raise ValueError(f"bootstrap did not answer in {BOOTSTRAP_TIMEOUT} seconds") from None
+    token = str(result.stdout or "").strip()
+    if not TOKEN.fullmatch(token):
+        raise ValueError("the service's bootstrap did not print a token")
+    return token
+
+
+def bootstrap(directory: Path, *, force: bool, as_json: bool) -> int:
+    """Print the first admin token of the managed server in ``directory``: alone on stdout, or
+    with ``as_json`` as the ``token`` of the one object, which a failure prints with its reason
+    and a null token. This object is the only output of the launcher that holds a secret."""
+    token: str | None = None
+    failure: str | None = None
+    try:
+        if not (directory / MARKER).is_file():
+            raise ValueError(f"no managed server at {directory}; start one first")
+        token = first_token(Project(directory, quiet=True), force=force)
+    except (ValueError, OSError) as error:
+        if not as_json:
+            raise
+        failure = str(error)
+    if as_json:
+        answer = {"schema": SCHEMA, "ok": failure is None, "error": failure, "token": token}
+        print(json.dumps(answer))
+    else:
+        print(token)
+    return 0 if failure is None else 1
+
+
 def mcp_line(answer: dict[str, object], directory: Path) -> str:
     """What ``mcp status`` tells a person, from the object of :func:`report`."""
     if not answer["installed"]:
@@ -453,17 +517,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
         epilog="`mcp on`, `mcp off` and `mcp status` switch or show the server's MCP endpoint."
-        " start, status, stop and mcp take --json after the command: one JSON object on stdout.",
+        " `bootstrap` prints the first admin token of the server. start, status, stop, mcp and"
+        " bootstrap take --json after the command: one JSON object on stdout.",
     )
     parser.add_argument("--state-dir", type=Path, help="directory for this local server")
-    parser.add_argument("command", choices=("start", "status", "stop", "mcp", "path", "cli"))
+    parser.add_argument(
+        "command", choices=("start", "status", "stop", "mcp", "bootstrap", "path", "cli")
+    )
     parser.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     options = parser.parse_args()
     command: str = options.command
     args: list[str] = options.args
     port: int | None = None
     as_json = False
-    if command in {"start", "status", "stop", "mcp"}:
+    force = False
+    if command in {"start", "status", "stop", "mcp", "bootstrap"}:
         details = argparse.ArgumentParser(prog=f"{parser.prog} {command}")
         details.add_argument(
             "--json", action="store_true", help="print one JSON object on stdout, for programs"
@@ -471,6 +539,12 @@ def main() -> int:
         if command == "start":
             details.add_argument(
                 "--http-port", type=int, help="first-run local port (default 6364)"
+            )
+        if command == "bootstrap":
+            details.add_argument(
+                "--force",
+                action="store_true",
+                help="create another admin token although an active one exists",
             )
         if command == "mcp":
             details.add_argument(
@@ -480,6 +554,7 @@ def main() -> int:
             )
         chosen = details.parse_args(args)
         as_json = chosen.json
+        force = command == "bootstrap" and chosen.force
         if command == "start":
             port = chosen.http_port
             if port is not None and not 0 <= port <= 65535:
@@ -491,6 +566,8 @@ def main() -> int:
         print(resources())
         return 0
     directory = (options.state_dir or state_directory()).expanduser().resolve()
+    if command == "bootstrap":
+        return bootstrap(directory, force=force, as_json=as_json)
     if (command == "status" and as_json) or (command == "mcp" and args == ["status"]):
         answer = report(directory)
         print(json.dumps(answer) if as_json else mcp_line(answer, directory))

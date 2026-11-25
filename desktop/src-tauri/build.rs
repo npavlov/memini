@@ -25,6 +25,7 @@ const COMMANDS: &[&str] = &[
     "launcher_set_path",
     "launcher_status",
     "launcher_change",
+    "launcher_setup_token",
 ];
 
 fn main() {

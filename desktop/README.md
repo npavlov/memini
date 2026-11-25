@@ -15,7 +15,7 @@ on it.
 | Screen | What it shows and does | What it needs |
 |---|---|---|
 | Connection | Saved connections: this computer, or a server by its address. Stores, replaces and removes a connection's token. Checks a connection. | — |
-| Server | The local server: whether Docker is available, whether the server is installed and running, each service, start and stop. Explains how to install the launcher when it is missing. | The `memini-server` launcher |
+| Server | The local server. **Set up** in one button: checks Docker, installs and starts the server, creates its first admin token and makes this computer a connection, without a terminal. Then start, stop and restart, the state of each service, and which launcher is used. | Docker |
 | MCP | The MCP address, whether the endpoint is on, the switch for the local server, and configuration for the clients of [docs/mcp](../docs/mcp/README.md). | A connection |
 | Tokens | Lists, creates and revokes tokens. A new token is shown once. | A token with the `admin` scope |
 | Data | What the base holds: per workspace, each source with its kind, records and freshness. A console for the read tools: a form per tool, built from the arguments the server publishes, and the answer as cards and as raw JSON with the request that produced it. Read-only. | A token with the `read` scope |
@@ -32,8 +32,10 @@ their last run. The bar asks again every minute while the window is in front.
 - Rust 1.90 or later with `rustfmt` and `clippy`.
 - On Linux, the system libraries Tauri builds against: `build-essential file
   libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev`.
-- To manage a local server: Docker and the launcher, installed as the
-  [repository README](../README.md#install) says. The app contains neither.
+- To build the launcher that the app carries: [uv](https://docs.astral.sh/uv/), which gets
+  Python 3.12 and PyInstaller into a throwaway environment.
+- To manage a local server: Docker. The app carries the launcher; it needs no Homebrew, Scoop or
+  Python on the user's computer.
 
 The versions the app was last built with are in [the workflow](../.github/workflows/desktop.yml):
 Node 24.22.0 and Rust 1.100.0.
@@ -43,8 +45,13 @@ Node 24.22.0 and Rust 1.100.0.
 ```sh
 cd desktop
 pnpm install
+uv run --no-project --python 3.12 --with pyinstaller==6.22.3 python sidecar/freeze.py
 pnpm tauri dev
 ```
+
+The second command freezes the launcher for this machine into `src-tauri/binaries/` (see
+[The launcher inside the app](#the-launcher-inside-the-app)). The Rust side does not build without
+it. Run it again when `scripts/memini-server.py` changes.
 
 `pnpm tauri dev` starts the Vite dev server on `127.0.0.1:1420` and the app's window on top of it.
 It has not been run yet: see [What was verified](#what-was-verified).
@@ -61,7 +68,8 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 ```
 
-The Rust side embeds the built front end, so run `pnpm build` once before the `cargo` commands.
+The Rust side embeds the built front end and bundles the frozen launcher, so run `pnpm build` and
+`sidecar/freeze.py` once before the `cargo` commands.
 The Rust tests use a keychain in memory: they never touch the keychain of the machine.
 
 ## Build
@@ -161,6 +169,7 @@ themes.
 | `Sidebar`, `Brand`, `NavItem` | The navigation: the glyph and the name, and one item per screen. |
 | `StatusBarFrame`, `StatusBarActions` | The bar at the bottom of the window, its details, and its buttons. |
 | `Glyph`, `Icon` | The brand's mark in the colour of its text, and the small line icons. |
+| `StepList` | The steps of a process in their order, each with its state: waiting, running, done or failed. |
 
 ## Brand
 
@@ -224,6 +233,23 @@ rule, not around it.
 - **Nothing is logged.** Errors that reach the front end are built from the app's own words and the
   API's message, masked for anything that looks like a token.
 
+## The launcher inside the app
+
+The app does not reimplement the launcher and does not ask the user to install it. It carries
+`scripts/memini-server.py`, the one implementation, frozen into one program per platform and bundled
+as a Tauri sidecar (`bundle.externalBin`), next to the app's own executable.
+
+`sidecar/freeze.py` makes it. It takes the launcher and the files it ships with from
+`packaging/server/build.py`, the recipe of the Homebrew and Scoop packages, so the compose files are
+those of the launcher's pinned release, checked against its own checksums. PyInstaller freezes them
+into `src-tauri/binaries/memini-server-<target triple>`, which is not committed. The script ends by
+running the frozen program and the script side by side, without Docker, and fails unless both print
+the same JSON. PyInstaller does not cross-compile, so each platform's sidecar is built on that
+platform: the workflow does it on its three runners.
+
+Which launcher runs: a path the user set on the Server screen, else the one inside the app, else
+one installed on this computer. The Server screen says which.
+
 ## The launcher contract
 
 The app reads one JSON object from the launcher's standard output per command and refuses a
@@ -233,12 +259,17 @@ The app reads one JSON object from the launcher's standard output per command an
   "mcp_enabled", "image", "directory", "docker": {"available", "error"}, "services": [{"name",
   "state", "health"}]}`.
 - `memini-server start|stop --json` and `memini-server mcp on|off --json`:
-  `{"schema": 1, "ok", "error"}`.
+  `{"schema": 1, "ok", "error"}`. Restart is a stop and then a start.
+- `memini-server bootstrap [--force] --json`: `{"schema": 1, "ok", "error", "token"}`, the
+  first admin token of the server. Rust reads it from the launcher's pipe, puts it in the
+  keychain and makes the local connection; the command's answer to the front end says only
+  whether it worked.
 
-The launcher is looked for on `PATH`, then where Homebrew and Scoop install it. An app started from
-the desktop gets a shorter `PATH` than a terminal, so those directories and the ones Docker installs
-its command into are added to the `PATH` the launcher runs with. After a change the app reads the
-status again, because recreating the service can change its port.
+An app started from the desktop gets a shorter `PATH` than a terminal, so the directories package
+managers and Docker install their commands into are added to the `PATH` the launcher runs with:
+the launcher finds `docker` there. One change runs at a time; while it runs the other buttons are
+disabled and the screen says why, and the services are read again every few seconds. After a
+change the app reads the status again, because recreating the service can change its port.
 
 ## Where the app keeps things
 
@@ -249,40 +280,39 @@ status again, because recreating the service can change its port.
 
 ## What was verified
 
-On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3 and Rust 1.100.0:
+On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3, Rust 1.100.0 and uv 0.10.0:
 
 | Command | Result |
 |---|---|
+| `uv run … python sidecar/freeze.py` | sidecar built; frozen and script print the same JSON |
 | `pnpm typecheck` | no errors |
-| `pnpm test` | 640 tests passed |
+| `pnpm test` | 674 tests passed |
 | `pnpm build` | built |
 | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` | clean |
-| `cargo test --locked` | 64 tests passed |
-| `pnpm tauri icon brand-src/icon.svg` | icon set written |
-| `pnpm tauri build --bundles app -- --locked` | `Memini.app` built |
+| `cargo test --locked` | 72 tests passed |
+| `pnpm tauri build --bundles app -- --locked` | `Memini.app` built, with the launcher inside |
 
 The built front end was also opened in a browser with a stand-in for the Rust side, under the
-production content security policy and with `Object.prototype` frozen as Tauri freezes it. Every
-screen rendered without an error; markup in a server's text stayed text; the bundled fonts loaded;
-every button measured the same height, padding, font and radius, the primary one without a border;
-a click with the mouse drew no focus ring and the Tab key drew one; and the forms of the ten read
-tools were built from the OpenAPI document of the service in this repository.
+production content security policy and with `Object.prototype` frozen as Tauri freezes it: the
+screens rendered without an error, and markup in a server's text stayed text. The launcher's new
+`bootstrap` command was run against a stand-in for Docker.
 
 ## What is not done
 
-- **The app was not checked against a real server.** It was opened on macOS; nothing here has run
-  it against a real server, launcher or keychain, and `pnpm tauri dev` was not run.
-- **Windows and Linux were not compiled.** The code for them (finding the launcher, starting it
-  without a console window, the Secret Service) is written and waits for the first CI run.
-- **The launcher's `--json` output and `mcp on|off`** arrive with another change. The app was
-  tested against the contract above, not against the launcher.
+- **Nothing here was run against a real Docker or a real server.** The setup, start, stop, restart,
+  the MCP switch and the first token were tested with stand-ins: the launcher's commands against a
+  stub of Docker, the app's commands against a stub of the launcher. `pnpm tauri dev` was not run.
+- **Windows and Linux were not compiled**, and their sidecars were not built: the code and the
+  workflow step are written and wait for the first CI run.
+- **The link to Docker's install page is text to copy.** The app opens no link: that would need a
+  capability it does not have.
+- **Agent clients in one click** (scenario S16, `memini-qpk.11`) and **the project map** (scenario
+  S12): not started. The MCP screen still gives configuration to copy, and the Project map screen
+  is a placeholder.
 - **Signing, notarization, published installers and updates.** CI builds unsigned bundles to look
-  at. The application identifier should be confirmed before the first release: changing it later
-  moves the settings.
-- **The first admin token still comes from a terminal** (`memini-server cli bootstrap`). The
-  launcher contract has no command for it.
-- **`list_commits`** is in the table of read tools with the route `GET /v1/commits`, which is a
-  guess: the server does not have the tool yet. The Data screen offers it once the server's
-  OpenAPI document has that route.
+  at; a frozen launcher inside a signed app will need signing too. The application identifier
+  should be confirmed before the first release: changing it later moves the settings.
+- **`list_commits`** is in the table of read tools with its route, `GET /v1/commits`. The Data
+  screen offers it once the connected server's OpenAPI document has that route; it was not tried
+  against such a server.
 - **Chunks per source.** The overview counts chunks per workspace; no route counts them per source.
-- **The project map** and repositories: the server has no catalog API yet.

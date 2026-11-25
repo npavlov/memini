@@ -29,7 +29,9 @@ use crate::error::{clean, AppError, AppResult, ErrorKind};
 use crate::keychain::SecretStore;
 use crate::launcher::{self, Action, LauncherResult, LauncherStatus, SearchPath};
 use crate::secret::Token;
-use crate::store::{ConnectionInput, ConnectionsView, Settings, Store, DEFAULT_LOCAL_URL};
+use crate::store::{
+    check_url, ConnectionInput, ConnectionKind, ConnectionsView, Settings, Store, DEFAULT_LOCAL_URL,
+};
 use crate::tools::{self, ToolCall, ToolDescription};
 
 /// The largest token file that is read, in bytes. A token is 50 characters.
@@ -132,6 +134,38 @@ impl Inner {
         self.view()
     }
 
+    /// Makes the server on this computer a connection that holds `token`. The local connection
+    /// is created when there is none, at the address the launcher reports if that is on this
+    /// computer; it becomes the active connection. The token goes to the keychain and nowhere else.
+    fn adopt_local(&self, token: &Token, reported: Option<&str>) -> AppResult<ConnectionsView> {
+        let id = self.update(|settings| {
+            let existing = settings
+                .connections
+                .iter()
+                .find(|connection| connection.kind == ConnectionKind::Local);
+            if let Some(local) = existing {
+                return Ok(local.id.clone());
+            }
+            let url = reported
+                .filter(|url| check_url(url, ConnectionKind::Local, false).is_ok())
+                .unwrap_or(DEFAULT_LOCAL_URL);
+            let input = ConnectionInput {
+                id: None,
+                name: "This computer".to_owned(),
+                kind: ConnectionKind::Local,
+                url: url.to_owned(),
+                allow_http: false,
+            };
+            settings.save_connection(&input).map(|saved| saved.id)
+        })?;
+        self.secrets.set(&id, token)?;
+        self.update(|settings| {
+            settings.set_has_token(&id, true)?;
+            settings.activate(&id)
+        })?;
+        self.view()
+    }
+
     fn target(&self, id: &str) -> AppResult<Target> {
         Target::of(self.lock()?.settings.find(id)?)
     }
@@ -153,18 +187,26 @@ impl Inner {
     fn launcher(&self) -> AppResult<(PathBuf, SearchPath)> {
         let configured = self.lock()?.settings.launcher_path.clone();
         let search = SearchPath::from_environment();
-        let program =
-            launcher::locate(configured.as_deref(), &search).ok_or_else(launcher::missing)?;
+        let executable = std::env::current_exe().ok();
+        let (program, _) = launcher::locate(configured.as_deref(), executable.as_deref(), &search)
+            .ok_or_else(launcher::missing)?;
         Ok((program, search))
     }
 
     fn launcher_info(&self) -> AppResult<LauncherInfo> {
         let configured = self.lock()?.settings.launcher_path.clone();
-        let resolved = launcher::locate(configured.as_deref(), &SearchPath::from_environment())
-            .map(|path| path.to_string_lossy().into_owned());
+        let executable = std::env::current_exe().ok();
+        let found = launcher::locate(
+            configured.as_deref(),
+            executable.as_deref(),
+            &SearchPath::from_environment(),
+        );
         Ok(LauncherInfo {
             configured_path: configured,
-            resolved_path: resolved,
+            resolved_path: found
+                .as_ref()
+                .map(|(path, _)| path.to_string_lossy().into_owned()),
+            source: found.map(|(_, source)| source),
         })
     }
 
@@ -714,6 +756,8 @@ pub struct LauncherInfo {
     pub configured_path: Option<String>,
     /// The program the app would run; `None` when it is not installed.
     pub resolved_path: Option<String>,
+    /// Where that program comes from: the path set here, the app itself, or this computer.
+    pub source: Option<launcher::Source>,
 }
 
 #[tauri::command]
@@ -747,17 +791,21 @@ pub async fn launcher_status(state: State<'_, AppState>) -> AppResult<LauncherSt
 pub enum Change {
     Start,
     Stop,
+    /// Stop, then start: the launcher has no command of its own for it.
+    Restart,
     McpOn,
     McpOff,
 }
 
-impl From<Change> for Action {
-    fn from(change: Change) -> Self {
-        match change {
-            Change::Start => Self::Start,
-            Change::Stop => Self::Stop,
-            Change::McpOn => Self::McpOn,
-            Change::McpOff => Self::McpOff,
+impl Change {
+    /// The launcher actions a change stands for, in the order they run.
+    const fn actions(self) -> &'static [Action] {
+        match self {
+            Self::Start => &[Action::Start],
+            Self::Stop => &[Action::Stop],
+            Self::Restart => &[Action::Stop, Action::Start],
+            Self::McpOn => &[Action::McpOn],
+            Self::McpOff => &[Action::McpOff],
         }
     }
 }
@@ -784,7 +832,8 @@ impl Drop for BusyGuard<'_> {
     }
 }
 
-/// `memini-server start|stop|mcp on|mcp off --json`, one at a time.
+/// `memini-server start|stop|mcp on|mcp off --json`, one at a time. A change of several actions
+/// stops at the first that fails and answers with it.
 #[tauri::command]
 pub async fn launcher_change(
     state: State<'_, AppState>,
@@ -794,8 +843,63 @@ pub async fn launcher_change(
     let _busy = BusyGuard::begin(&inner.launcher_busy)?;
     let shared = Arc::clone(&inner);
     let (program, search) = blocking(move || shared.launcher()).await?;
-    let output = launcher::run(&program, change.into(), &search).await?;
-    launcher::parse_result(&output)
+    let mut result = LauncherResult {
+        ok: true,
+        error: None,
+    };
+    for action in change.actions() {
+        let output = launcher::run(&program, *action, &search).await?;
+        result = launcher::parse_result(&output)?;
+        if !result.ok {
+            break;
+        }
+    }
+    Ok(result)
+}
+
+/// What the last step of the first setup did. It never holds the token.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SetupOutcome {
+    pub ok: bool,
+    /// The service's reason when it refused, such as an admin token that exists already.
+    pub error: Option<String>,
+    pub view: ConnectionsView,
+}
+
+/// The last step of the first setup: `memini-server bootstrap --json` creates the first admin
+/// token of the server on this computer, and Rust reads it from the launcher's pipe, puts it in
+/// the keychain and makes the local connection. The token is in no answer of this command, no
+/// log and no command line. `force` asks for another admin token although one exists.
+#[tauri::command]
+pub async fn launcher_setup_token(
+    state: State<'_, AppState>,
+    force: bool,
+) -> AppResult<SetupOutcome> {
+    let inner = state.shared();
+    let _busy = BusyGuard::begin(&inner.launcher_busy)?;
+    let shared = Arc::clone(&inner);
+    let (program, search) = blocking(move || shared.launcher()).await?;
+    let action = if force {
+        Action::BootstrapForce
+    } else {
+        Action::Bootstrap
+    };
+    let answer = launcher::parse_bootstrap(&launcher::run(&program, action, &search).await?)?;
+    let Some(token) = answer.token else {
+        return Ok(SetupOutcome {
+            ok: false,
+            error: answer.error,
+            view: inner.view()?,
+        });
+    };
+    let status = launcher::parse_status(&launcher::run(&program, Action::Status, &search).await?)?;
+    let shared = Arc::clone(&inner);
+    let view = blocking(move || shared.adopt_local(&token, status.api_url.as_deref())).await?;
+    Ok(SetupOutcome {
+        ok: true,
+        error: None,
+        view,
+    })
 }
 
 #[cfg(test)]
@@ -1016,6 +1120,83 @@ mod tests {
     }
 
     #[test]
+    fn the_first_setup_makes_the_local_connection_and_keeps_the_token_in_the_keychain() {
+        let fixture = Fixture::new("adopt-local");
+        let remote = fixture.add("Harbour", "https://a.example.org");
+        let token = Token::parse(&fake_token('s')).expect("a token");
+
+        let view = fixture
+            .inner
+            .adopt_local(&token, Some("http://127.0.0.1:7001"))
+            .expect("adopted");
+
+        let local = view.connections.last().expect("the local connection");
+        assert_eq!(local.kind, ConnectionKind::Local);
+        assert_eq!(local.url, "http://127.0.0.1:7001");
+        assert!(local.has_token);
+        assert_eq!(view.active_id.as_deref(), Some(local.id.as_str()));
+        assert_ne!(local.id, remote);
+        assert!(!serde_json::to_string(&view)
+            .expect("serializable")
+            .contains(token.expose()));
+        assert_eq!(
+            fixture.inner.secrets.get(&local.id).expect("readable"),
+            Some(token)
+        );
+    }
+
+    #[test]
+    fn the_first_setup_keeps_an_existing_local_connection_and_its_address() {
+        let fixture = Fixture::new("adopt-existing");
+        let saved = fixture
+            .inner
+            .save_connection(&ConnectionInput {
+                id: None,
+                name: "My server".to_owned(),
+                kind: ConnectionKind::Local,
+                url: "http://localhost:6364".to_owned(),
+                allow_http: false,
+            })
+            .expect("saved");
+        let id = saved.connections[0].id.clone();
+        let token = Token::parse(&fake_token('e')).expect("a token");
+
+        let view = fixture
+            .inner
+            .adopt_local(&token, Some("http://127.0.0.1:7001"))
+            .expect("adopted");
+
+        assert_eq!(view.connections.len(), 1);
+        assert_eq!(view.connections[0].name, "My server");
+        assert_eq!(view.connections[0].url, "http://localhost:6364");
+        assert!(view.connections[0].has_token);
+        assert_eq!(
+            fixture.inner.secrets.get(&id).expect("readable"),
+            Some(token)
+        );
+    }
+
+    #[test]
+    fn the_first_setup_never_takes_an_address_that_is_not_on_this_computer() {
+        let fixture = Fixture::new("adopt-elsewhere");
+        let token = Token::parse(&fake_token('n')).expect("a token");
+
+        let view = fixture
+            .inner
+            .adopt_local(&token, Some("https://elsewhere.example.org"))
+            .expect("adopted");
+
+        assert_eq!(view.connections[0].url, DEFAULT_LOCAL_URL);
+    }
+
+    #[test]
+    fn a_restart_is_a_stop_and_then_a_start() {
+        let change: Change = serde_json::from_str("\"restart\"").expect("known");
+        assert_eq!(change.actions(), [Action::Stop, Action::Start]);
+        assert_eq!(Change::McpOn.actions(), [Action::McpOn]);
+    }
+
+    #[test]
     fn one_launcher_action_runs_at_a_time() {
         let flag = AtomicBool::new(false);
         let first = BusyGuard::begin(&flag).expect("free");
@@ -1046,7 +1227,8 @@ mod tests {
     #[test]
     fn the_webview_names_a_change_and_never_an_argument() {
         let change: Change = serde_json::from_str("\"mcp_off\"").expect("known");
-        assert_eq!(Action::from(change).arguments(), ["mcp", "off", "--json"]);
+        assert_eq!(change.actions()[0].arguments(), ["mcp", "off", "--json"]);
+        assert!(serde_json::from_str::<Change>("\"bootstrap\"").is_err());
         assert!(serde_json::from_str::<Change>("\"cli\"").is_err());
         assert!(serde_json::from_str::<Change>("\"status; rm -rf /\"").is_err());
         assert!(serde_json::from_str::<Change>("[\"start\", \"--http-port\", \"1\"]").is_err());

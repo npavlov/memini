@@ -29,13 +29,29 @@ export interface LauncherResult {
   readonly error: string | null;
 }
 
+export const LAUNCHER_SOURCES = ["configured", "bundled", "installed"] as const;
+
+/** Where the launcher that is run comes from: a path the user set, the app, or this computer. */
+export type LauncherSource = (typeof LAUNCHER_SOURCES)[number];
+
 export interface LauncherInfo {
   readonly configuredPath: string | null;
   readonly resolvedPath: string | null;
+  readonly source: LauncherSource | null;
+}
+
+const SOURCE_WORDS: Readonly<Record<LauncherSource, string>> = {
+  configured: "the path set here",
+  bundled: "the app: it carries its own launcher",
+  installed: "this computer: PATH and the package managers’ folders",
+};
+
+export function describeSource(source: LauncherSource | null): string {
+  return source === null ? "nowhere: no launcher was found" : SOURCE_WORDS[source];
 }
 
 /** The changes the app may ask of the launcher. Rust maps each to a fixed argument vector. */
-export type LauncherChange = "start" | "stop" | "mcp_on" | "mcp_off";
+export type LauncherChange = "start" | "stop" | "restart" | "mcp_on" | "mcp_off";
 
 export type ServerPhase =
   | "no_docker"
@@ -86,6 +102,7 @@ export function parseLauncherInfo(value: unknown): LauncherInfo {
   return {
     configuredPath: readString(info["configured_path"]),
     resolvedPath: readString(info["resolved_path"]),
+    source: LAUNCHER_SOURCES.find((source) => source === info["source"]) ?? null,
   };
 }
 
