@@ -5,3 +5,4 @@
 3. Run all tests exclusively in GitHub Actions CI. Use the PR checks and job logs to verify results and diagnose failures. For retrieval or extraction changes, compare the relevant eval with its existing baseline and record the results.
 4. When authorized to publish the change, push the topic branch and open a PR against `main`. Include the Beads ID, validation results and remaining limitations. Wait for CI on the current PR head, resolve failures and respect branch protection.
 5. When the merge is authorized and required checks pass, merge through the PR. Verify that GitHub reports the PR as merged and the merge commit is on `main`. Record the PR in Beads. Report local completion, merge and release publication as separate states.
+6. A release or a release candidate follows [docs/releasing.md](../../docs/releasing.md): `scripts/bump-version.py` writes the version everywhere; never edit a version by hand.

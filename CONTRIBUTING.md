@@ -17,6 +17,7 @@ Read first:
 - Work follows the milestones in [docs/plan.md](docs/plan.md), in order. A milestone is finished when its
   "Done when" check passes. If your change belongs to a later milestone, say so in the issue.
 - A security problem does not go in a public issue. See [SECURITY.md](SECURITY.md).
+- Cutting a release or a release candidate: [docs/releasing.md](docs/releasing.md).
 
 ## Set up
 

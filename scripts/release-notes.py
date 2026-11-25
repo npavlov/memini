@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import tomllib
@@ -17,6 +18,13 @@ def release_notes(tag: str, project: Path, changelog: Path) -> str:
     package = version if rc is None else f"{version}rc{rc}"
     if tomllib.loads(project.read_text())["project"]["version"] != package:
         raise ValueError(f"set project.version to {package} and refresh uv.lock")
+    # The desktop app carries the same version in semver form; scripts/bump-version.py writes all.
+    root = project.parent
+    cargo, npm = root / "desktop/src-tauri/Cargo.toml", root / "desktop/package.json"
+    if cargo.is_file() and tomllib.loads(cargo.read_text())["package"]["version"] != tag[1:]:
+        raise ValueError(f"set the desktop app's version to {tag[1:]}: scripts/bump-version.py")
+    if npm.is_file() and json.loads(npm.read_text())["version"] != tag[1:]:
+        raise ValueError(f"set the desktop app's version to {tag[1:]}: scripts/bump-version.py")
     headings = re.split(r"^## ", changelog.read_text(), flags=re.MULTILINE)[1:]
     for section in headings:
         title, _, body = section.partition("\n")

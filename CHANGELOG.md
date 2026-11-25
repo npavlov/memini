@@ -33,6 +33,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- A release writes its version with `scripts/bump-version.py`, which also moves the changelog
+  entries; the release run refuses a tag whose desktop app version differs.
+  [Releasing](docs/releasing.md).
 - The server launcher, and the desktop app that carries it, install and start the image of
   0.2.0-rc.1, so a managed server has the catalog, domains and the project map. A managed server
   of 0.1.0 moves to it at its next start, and its database is migrated on the way.
