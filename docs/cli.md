@@ -18,7 +18,7 @@ memini streams <ws> <source>                     # lag, last run and queued sync
 memini sync <ws> <source> [--stream KEY ...] [--wait]
 memini runs <ws> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
 memini run <run-id>                              # one run with its report
-memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME] [--name LABEL]
+memini token create --scope {read,ingest,admin,sensitive} [--scope ...] [--workspace NAME] [--name LABEL]
                     [--expires-in DURATION]      # prints the token alone, once
 memini token list | revoke <id-or-prefix>
 memini search <query> [--code] [--mode MODE] [--workspace NAME] [--repository NAME] [--limit N]
@@ -44,7 +44,7 @@ memini bootstrap [--name LABEL] [--expires-in DURATION] [--force]   # the first 
 memini workspace llm <name> [none|local|cloud]   # which LLM may read a workspace; cloud is an opt-in
 memini reindex --workspace <name>
 memini replay --workspace <name> --source <name> --recipe PATH   # after a parser fix, no source calls
-memini export --workspace <name> [--include-private]   # workspace records and decision history as JSONL
+memini export --workspace <name> [--include-private] [--include-sensitive]   # workspace records and decision history as JSONL
 memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--fake-embeddings] ...
 memini credentials set|list|delete|rotate-key ...   # credentials of sources, encrypted; secrets on stdin
 ```

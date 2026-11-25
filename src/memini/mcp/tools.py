@@ -22,11 +22,11 @@ from mcp_types import CallToolResult, TextContent, ToolAnnotations
 from mcp_types import Tool as ToolDefinition
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from memini.auth import Principal, Scope
+from memini.auth import Principal, ReadFilter, Scope, authorization
 from memini.db import TIMEOUT_ERRORS, Pool
 from memini.query import QueryServices
 
-__all__ = ["NoArguments", "Tool", "ToolCall", "ToolDefinition", "ToolError"]
+__all__ = ["NoArguments", "Tool", "ToolCall", "ToolDefinition", "ToolError", "read_access"]
 
 _log = logging.getLogger(__name__)
 
@@ -120,3 +120,16 @@ class Tool[ArgumentsT: BaseModel, ResultT: BaseModel]:
 
 def _error_result(message: str) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=message)], is_error=True)
+
+
+def read_access(call: "ToolCall", arguments: BaseModel) -> ReadFilter:
+    """The read filter of a read tool's call: ``include_sensitive`` of the arguments, when the
+    tool takes it, asks for records marked sensitive, which needs the ``sensitive`` scope."""
+    include = bool(getattr(arguments, "include_sensitive", False))
+    try:
+        # Called through its module, so a test can watch the tool go through the filter.
+        return authorization.authorize_read(call.principal, include_sensitive=include)
+    except authorization.SensitiveNotAllowedError:
+        raise ToolError(
+            "include_sensitive needs a token with the sensitive scope; this one has not."
+        ) from None

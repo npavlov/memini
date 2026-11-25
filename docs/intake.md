@@ -169,6 +169,7 @@ Every record has the same fields; what is inside `payload` depends on `kind`.
 | `external_url` | optional: an `http` or `https` link to it in its source |
 | `project` | optional: the project of the workspace's catalog it belongs to, by name, when the sender knows it; left out, the default of its source or stream |
 | `domains` | optional, with `project`: the domains of the project it belongs to, `domain` or `domain/subdomain` |
+| `sensitive` | optional, `true`: mark the record sensitive (a salary, a diagnosis); it is stored and indexed but left out of answers unless a reader asks with the `sensitive` scope, and no model reads it. A push never clears a mark |
 | `payload` | the content, a JSON object (below) |
 
 **Updates are upserts.** A record pushed again with the same `kind` and `external_id` replaces the

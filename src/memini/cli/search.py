@@ -56,6 +56,7 @@ def search_command(args: argparse.Namespace, api: Api) -> int:
         "mode": mode,
         "workspaces": args.workspace,
         "repositories": args.repository,
+        "include_sensitive": "true" if args.include_sensitive else None,
     }
     if code:
         params |= {"paths": args.path, "languages": args.language}
@@ -103,6 +104,11 @@ def add_commands(commands: Commands) -> None:
     )
     search.add_argument("query", help="a question or keywords; with --code also a name or regex")
     search.add_argument("--code", action="store_true", help="search code (search_code)")
+    search.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="also records marked sensitive; needs a token with the sensitive scope",
+    )
     search.add_argument(
         "--mode", choices=(*get_args(SearchMode), *get_args(CodeMode)), help="how to search"
     )

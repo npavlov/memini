@@ -68,10 +68,12 @@ Relation = Literal["replaces", "answers"]
 """How a newer item supersedes an earlier one: ``replaces`` makes it superseded; ``answers`` (a
 decision answering an open question) makes it closed."""
 
-RecordState = Literal["stored", "deleted", "expired", "forgotten", "gone"]
+RecordState = Literal["stored", "sensitive", "deleted", "expired", "forgotten", "gone"]
 """What became of the record a piece of evidence names.
 
 - ``stored``: the record is in the store.
+- ``sensitive``: in the store and marked sensitive; the reader did not ask for sensitive records,
+  so it is not read (its reference is all that is shown).
 - ``deleted``: a tombstone; the source deleted it, and the store keeps it until retention.
 - ``expired``: removed by the retention of its source.
 - ``forgotten``: removed by hand (forget).

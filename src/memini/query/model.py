@@ -28,6 +28,7 @@ from memini.query.reader import MAX_REF_CHARS, code_locator
 from memini.search import MAX_LIMIT, Hit, SourceKind
 from memini.search.model import DEFAULT_LIMIT, MAX_FILTER_VALUES, MAX_QUERY_CHARS
 from memini.search.patterns import MAX_GLOB_CHARS
+from memini.sensitive_option import include_sensitive_field
 
 __all__ = [
     "MAX_NAME_CHARS",
@@ -124,6 +125,8 @@ class SearchArguments(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    include_sensitive: bool = include_sensitive_field()
+
     query: str = Field(min_length=1, max_length=MAX_QUERY_CHARS, description=_QUERY)
     limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description=_LIMIT)
     workspaces: Names | None = Field(default=None, description=_WORKSPACES)
@@ -157,6 +160,8 @@ class CodeSearchArguments(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    include_sensitive: bool = include_sensitive_field()
+
     query: str = Field(
         min_length=1,
         max_length=MAX_QUERY_CHARS,
@@ -184,6 +189,8 @@ class SymbolArguments(BaseModel):
     """Arguments of ``get_symbol``."""
 
     model_config = ConfigDict(extra="forbid")
+
+    include_sensitive: bool = include_sensitive_field()
 
     name: str = Field(
         min_length=1,

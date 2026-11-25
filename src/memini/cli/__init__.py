@@ -24,13 +24,15 @@ mirrors and writes run reports; no database credentials leave it::
     memini runs <workspace> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
     memini run <run-id>
     memini status [--gate]
-    memini token create --scope {read,ingest,admin} [--scope ...] [--workspace NAME]
+    memini token create --scope {read,ingest,admin,sensitive} [--scope ...] [--workspace NAME]
                         [--name LABEL] [--expires-in DURATION]
     memini token list | revoke <id-or-prefix>
     memini search <query> [--code] [--mode MODE] [--workspace NAME ...] ...
     memini meetings [QUERY] [--person ME_ID_OR_ALIAS] [--since TIME] [--until TIME] ...
     memini messages [QUERY] [--person ME_ID_OR_ALIAS] [--role {recipient,mention,author} ...] ...
     memini forget <workspace> (--record ID | --source NAME --external-id ID [--kind KIND])
+    memini sensitive mark|unmark <workspace> (--record ID | --source NAME --external-id ID) ...
+    memini sensitive list <workspace>
     memini extract <workspace> [--source NAME ...] [--since TIME] [--dry-run]
     memini person list|show|lookup|add|rename|merge|split|me <workspace> ...
     memini person alias add|remove <workspace> <person-id> ...
@@ -51,7 +53,7 @@ below the API::
     memini migrate
     memini bootstrap [--name LABEL] [--expires-in DURATION] [--force]
     memini workspace llm <name> [none|local|cloud]
-    memini export --workspace <name> [--include-private]
+    memini export --workspace <name> [--include-private] [--include-sensitive]
     memini reindex --workspace <name>
     memini replay --workspace <name> --source <name> --recipe PATH [--stream KEY] [--run ID]
     memini eval [--suite PATH] [--baseline PATH [--write-baseline]] [--margin M] [--k 1,5,10]
@@ -173,6 +175,7 @@ from memini.cli import (
     replay,
     runs,
     search,
+    sensitive,
     serve,
     sources,
     status,
@@ -405,6 +408,7 @@ def build_parser() -> argparse.ArgumentParser:
     decisions.add_commands(commands)
     extract.add_commands(commands)
     forget.add_commands(commands)
+    sensitive.add_commands(commands)
     push.add_commands(commands)
     person = commands.add_client("person", help=persons.HELP, description=persons.DESCRIPTION)
     persons.configure_parser(person)
@@ -466,6 +470,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-private",
         action="store_true",
         help="include private records and their derived journal items",
+    )
+    export_parser.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="include records marked sensitive, and the journal items only they support",
     )
     export_parser.set_defaults(command=export.export_command)
 

@@ -22,6 +22,7 @@ from memini.provenance import Labelled
 from memini.query.model import MAX_NAME_CHARS, Names, PersonName
 from memini.search import MAX_LIMIT, SourceKind
 from memini.search.model import DEFAULT_LIMIT, MAX_QUERY_CHARS
+from memini.sensitive_option import include_sensitive_field
 
 __all__ = [
     "MESSAGE_ROLES",
@@ -97,6 +98,8 @@ class ListMeetingsArguments(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    include_sensitive: bool = include_sensitive_field()
+
     person: PersonName = Field(default="me", description=_PERSON)
     query: str | None = Field(
         default=None,
@@ -121,6 +124,8 @@ class ListMessagesArguments(BaseModel):
     """Arguments of ``list_messages``."""
 
     model_config = ConfigDict(extra="forbid")
+
+    include_sensitive: bool = include_sensitive_field()
 
     person: PersonName = Field(default="me", description=_PERSON)
     roles: list[MessageRole] = Field(
@@ -153,6 +158,8 @@ class RecordArguments(BaseModel):
     workspaces the token may read have that source)."""
 
     model_config = ConfigDict(extra="forbid")
+
+    include_sensitive: bool = include_sensitive_field()
 
     record_id: str | None = Field(
         default=None,

@@ -16,12 +16,12 @@ from memini.cli.common import EXIT_OK, EXIT_USAGE, CommandError
 from memini.cli.output import as_mapping, print_fields, print_json, text, timestamp
 from memini.ids import RECORD_KINDS
 
-__all__ = ["add_commands", "forget_command"]
+__all__ = ["add_commands", "forget_command", "record_id_argument"]
 
 _RECORD_ID: Final = re.compile(r"[0-9a-f]{64}")
 
 
-def _record_id(value: str) -> str:
+def record_id_argument(value: str) -> str:
     if not _RECORD_ID.fullmatch(value):
         raise argparse.ArgumentTypeError("a record id is 64 lowercase hex characters")
     return value
@@ -77,7 +77,10 @@ def add_commands(commands: Commands) -> None:
     forget.add_argument("workspace", type=parse_workspace_name, help="the workspace's name")
     which = forget.add_mutually_exclusive_group(required=True)
     which.add_argument(
-        "--record", metavar="ID", type=_record_id, help="the record's id, as search results give it"
+        "--record",
+        metavar="ID",
+        type=record_id_argument,
+        help="the record's id, as search results give it",
     )
     which.add_argument(
         "--source", type=parse_source_name, help="the record's source; with --external-id"

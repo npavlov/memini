@@ -68,6 +68,7 @@ pain.
 | Id | Question | Who | Status | Issue |
 |---|---|---|---|---|
 | [S6](S06-my-meetings-and-messages.md) | Which meetings did I attend, and what was sent to me? | Team lead | works |  |
+| [S19](S19-keep-sensitive-records-out.md) | Keep what is private out of answers without deleting it | Owner of the base | ready | memini-qpk.30 |
 
 ### Running Memini
 
@@ -102,6 +103,8 @@ asks for it. A filter no scenario asks for is not built.
 | `put_project` |  | new: the project document: services, domains with their code, links | [S9](S09-project-map-by-an-agent.md), [S12](S12-see-and-edit-the-project-map.md), [S13](S13-links-between-projects.md) |
 | `catalog_guide` |  | new: no arguments | [S9](S09-project-map-by-an-agent.md) |
 | `list_commits` |  | new: `repository`, `paths`, `project`, `domain`, `service`, `author`, `since`, `until`, text | [S7](S07-who-changed-what.md) |
+| reads of records (`search`, `search_code`, `get_symbol`, `list_messages`, `list_meetings`, `get_thread`, `get_meeting`, `list_decisions`, `get_decision`, `get_domain`) |  | new: `include_sensitive`, with the scope `sensitive` | [S19](S19-keep-sensitive-records-out.md) |
+| push of records |  | optional `sensitive` per record | [S19](S19-keep-sensitive-records-out.md) |
 
 ## Not pursued
 

@@ -173,6 +173,8 @@ def _current_extractor(
 _SCOPE: Final = sql.SQL(
     "r.workspace_id = {workspace} AND r.kind = ANY({kinds}::text[])"
     " AND r.deleted_at IS NULL AND r.payload IS NOT NULL"
+    # A record marked sensitive is never sent to a model (memini.sensitivity).
+    " AND NOT r.sensitive"
 )
 
 _COUNT: Final = sql.SQL("""

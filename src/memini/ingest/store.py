@@ -135,6 +135,12 @@ RETURNING new.id, old.id IS NULL, old.deleted_at IS NOT NULL,
           old.content_hash IS DISTINCT FROM new.content_hash
 """
 
+# A record pushed as sensitive is marked; one marked already keeps its mark, reason and time.
+_MARK: Final = (
+    "UPDATE record SET sensitive = true, sensitive_at = now()"
+    " WHERE id = ANY(%s::text[]) AND workspace_id = %s AND NOT sensitive"
+)
+
 _TOMBSTONE: Final = (
     "UPDATE record SET deleted_at = now(), updated_at = now()"
     " WHERE source_id = %s AND id = ANY(%s::text[]) AND deleted_at IS NULL RETURNING id"
@@ -348,10 +354,24 @@ async def _store(
             ids=ids,
         )
 
+        # The sensitivity hook (memini.sensitivity): a record pushed as sensitive is marked, also
+        # when its row was not written again. A push never clears a mark.
+        marked = sorted(
+            ids[item.index]
+            for item in batch.records
+            if item.sensitive and ids[item.index] not in forgotten
+        )
+        if marked:
+            await conn.execute(_MARK, (marked, target.workspace_id))
+        sensitive = frozenset(marked)
+
         if extract:
             # The extraction hook (memini.jobs.extraction): a job for each thread and meeting whose
-            # content is new or changed, visible to workers when the batch commits.
+            # content is new or changed, visible to workers when the batch commits. A sensitive
+            # record is never sent to a model.
             for record in sorted(written, key=lambda record: record.id):
+                if record.id in sensitive:
+                    continue
                 if record.kind in _EXTRACTED_KINDS and record.content_changed:
                     await enqueue_extraction(
                         conn,

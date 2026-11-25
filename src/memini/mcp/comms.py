@@ -47,7 +47,7 @@ from memini.comms import (
     run_list_messages,
 )
 from memini.mcp.text import TEXT_NOTICE, fenced, inline
-from memini.mcp.tools import Tool, ToolCall, ToolError
+from memini.mcp.tools import Tool, ToolCall, ToolError, read_access
 from memini.payloads import format_offset
 from memini.query import QueryError, QueryServices
 
@@ -78,8 +78,7 @@ def _read_run[A: BaseModel, R: BaseModel](
     """A read tool's ``run``: authorize, borrow a connection, call ``run``, report a refusal."""
 
     async def tool_run(call: ToolCall, arguments: A) -> R:
-        # Called through its module, so a test can watch the tool go through the filter.
-        access = authorization.authorize_read(call.principal)
+        access = read_access(call, arguments)
         pool = call.pool
         if pool is None:
             raise ToolError("The database is not available.")

@@ -22,6 +22,7 @@ from memini.auth import (
     NewToken,
     Principal,
     ReadFilter,
+    SensitiveNotAllowedError,
     TokenInfo,
     authorize_read,
     bearer_token,
@@ -104,7 +105,7 @@ def test_malformed_tokens_are_recognized(value: str) -> None:
 
 
 def test_the_scopes() -> None:
-    assert SCOPES == ("read", "ingest", "admin")
+    assert SCOPES == ("read", "ingest", "admin", "sensitive")
 
 
 def test_a_new_token_does_not_show_its_secret_in_repr() -> None:
@@ -265,3 +266,39 @@ def test_a_request_beyond_the_token_reads_nothing() -> None:
 def test_the_filter_keeps_the_principal() -> None:
     caller = principal("read", workspace_id=WS_A)
     assert authorize_read(caller).principal is caller
+
+
+# --- Records marked sensitive --------------------------------------------------------------------
+
+
+def rendered_records(access: ReadFilter) -> str:
+    condition = access.where(
+        workspace_id=sql.Identifier("r", "workspace_id"),
+        owner_id=sql.Identifier("r", "owner_id"),
+        source_id=sql.Identifier("r", "source_id"),
+        sensitive=sql.Identifier("r", "sensitive"),
+    )
+    return condition.as_string(None)
+
+
+def test_a_read_of_records_leaves_out_the_sensitive_ones_by_default() -> None:
+    assert rendered_records(authorize_read(principal("read"))) == 'NOT "r"."sensitive"'
+    limited = rendered_records(authorize_read(principal("read", workspace_id=WS_A)))
+    assert limited.startswith('("r"."workspace_id" = ANY(')
+    assert limited.endswith(' AND NOT "r"."sensitive")')
+    # Nothing to read stays nothing.
+    assert rendered_records(authorize_read(principal("read"), workspaces=[])) == "FALSE"
+    # A read of rows that are not records passes no column, and nothing changes for it.
+    assert rendered(authorize_read(principal("read"))) == "TRUE"
+
+
+def test_sensitive_records_are_read_only_when_asked_for_with_the_scope() -> None:
+    access = authorize_read(principal("read", "sensitive"), include_sensitive=True)
+    assert access.include_sensitive
+    assert rendered_records(access) == "TRUE"
+    # The scope alone asks for nothing.
+    assert rendered_records(authorize_read(principal("read", "sensitive"))) == 'NOT "r"."sensitive"'
+    with pytest.raises(SensitiveNotAllowedError) as refused:
+        authorize_read(principal("read", "admin"), include_sensitive=True)
+    assert refused.value.scope == "sensitive"
+    assert isinstance(refused.value, InsufficientScopeError)

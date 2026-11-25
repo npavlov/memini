@@ -503,6 +503,86 @@ pub async fn api_catalog(
         .await
 }
 
+/// `GET /v1/workspaces/{workspace}/records/sensitive`: the records of a workspace marked
+/// sensitive, with their reasons and no content. Needs an admin token.
+#[tauri::command]
+pub async fn api_sensitive_list(
+    state: State<'_, AppState>,
+    id: String,
+    workspace: String,
+) -> AppResult<Value> {
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    let segments = [
+        "v1",
+        "workspaces",
+        workspace.as_str(),
+        "records",
+        "sensitive",
+    ];
+    inner
+        .http
+        .call(&target, Some(&token), Method::GET, &segments, None)
+        .await
+}
+
+/// What `api_sensitive_mark` changes: one record, named by its id, marked or cleared.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SensitiveMark {
+    pub workspace: String,
+    pub record_id: String,
+    pub sensitive: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// The body of a mark: the record by its id, checked here first, and the reason of a mark.
+fn sensitive_body(mark: &SensitiveMark) -> AppResult<Value> {
+    let record = mark.record_id.trim();
+    let hex = record
+        .bytes()
+        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    if record.len() != 64 || !hex {
+        return Err(AppError::invalid(
+            "A record id is 64 lowercase hexadecimal characters, as search results give it.",
+        ));
+    }
+    let mut body = json!({"record_id": record, "sensitive": mark.sensitive});
+    let reason = mark
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty());
+    if let (true, Some(reason)) = (mark.sensitive, reason) {
+        body["reason"] = Value::String(reason.to_owned());
+    }
+    Ok(body)
+}
+
+/// `PUT /v1/workspaces/{workspace}/records/sensitive`: mark one record sensitive, or clear its
+/// mark. The record is named by its id only; the server checks the rest.
+#[tauri::command]
+pub async fn api_sensitive_mark(
+    state: State<'_, AppState>,
+    id: String,
+    mark: SensitiveMark,
+) -> AppResult<Value> {
+    let body = sensitive_body(&mark)?;
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    let segments = [
+        "v1",
+        "workspaces",
+        mark.workspace.as_str(),
+        "records",
+        "sensitive",
+    ];
+    inner
+        .http
+        .call(&target, Some(&token), Method::PUT, &segments, Some(&body))
+        .await
+}
+
 /// Which project `api_project` reads.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProjectPlace {
@@ -704,6 +784,8 @@ pub enum Scope {
     Read,
     Ingest,
     Admin,
+    /// With read: records marked sensitive, when a read asks for them.
+    Sensitive,
 }
 
 /// What the user enters to create a token. The server checks it; this is its shape only.
@@ -1119,6 +1201,28 @@ pub async fn launcher_uninstall(state: State<'_, AppState>) -> AppResult<Uninsta
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_mark_names_the_record_by_its_id_and_keeps_a_reason_only_when_marking() {
+        let mark = |record: &str, sensitive: bool| SensitiveMark {
+            workspace: "harbour".to_owned(),
+            record_id: record.to_owned(),
+            sensitive,
+            reason: Some("  salary  ".to_owned()),
+        };
+        let id = "a".repeat(64);
+        assert_eq!(
+            sensitive_body(&mark(&id, true)).expect("a record id"),
+            json!({"record_id": id, "sensitive": true, "reason": "salary"})
+        );
+        assert_eq!(
+            sensitive_body(&mark(&id, false)).expect("a record id"),
+            json!({"record_id": id, "sensitive": false})
+        );
+        for bad in ["", "A".repeat(64).as_str(), "a".repeat(63).as_str(), "../x"] {
+            assert!(sensitive_body(&mark(bad, true)).is_err(), "{bad}");
+        }
+    }
+
     use super::*;
     use crate::keychain::MemoryStore;
     use crate::secret::fake_token;
