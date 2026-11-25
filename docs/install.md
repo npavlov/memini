@@ -212,6 +212,14 @@ exits 0 when everything is current and 6 when not, for scripts and health checks
 
 State holds the managed settings and generated database password. Docker volumes hold the database, mirrors and model. `memini-server path` prints the packaged **resources**, including sample records. [Backup and restore](operations/backup.md)
 
+### Remove the server
+
+```sh
+memini-server uninstall --yes
+```
+
+This deletes the managed server with everything in it: its containers, its volumes (the database with every workspace, source, record and token, the repository mirrors and the search model) and its state directory with the settings and the database password. It cannot be undone; take a [backup](operations/backup.md) first if you may want the data again. Docker keeps the downloaded images, so a later `memini-server start` installs a new, empty server without downloading the application again; `docker image rm` removes them. Without `--yes` the command refuses. It removes only a directory the launcher created: one without its marker file is left alone. To remove the launcher itself, uninstall its package (`brew uninstall memini-server`, `scoop uninstall memini-server`).
+
 ### Switch the MCP endpoint off
 
 ```sh
@@ -224,7 +232,7 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
 
 ### Output for programs
 
-`status`, `start`, `stop`, `mcp` and `bootstrap` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
+`status`, `start`, `stop`, `mcp`, `bootstrap` and `uninstall` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
 
 `memini-server status --json` exits 0 whenever it can report, also for a stopped server, a missing installation and a missing Docker. Its object, on several lines here:
 

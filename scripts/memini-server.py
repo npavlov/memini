@@ -490,11 +490,30 @@ def compose(directory: Path, command: str, args: list[str], *, quiet: bool = Fal
     return 0
 
 
+def uninstall(directory: Path, *, quiet: bool = False) -> int:
+    """Remove the managed server in ``directory``: its containers, its volumes (the database and
+    the search model) and the directory with its settings and secrets. Docker keeps the images,
+    which a later start reuses. Only a directory with the manager's marker is removed."""
+    if not directory.exists():
+        if not quiet:
+            print(f"No managed server at {directory}")
+        return 0
+    if not (directory / MARKER).is_file():
+        raise ValueError(f"no managed server at {directory}; nothing was removed")
+    Project(directory, quiet=quiet).run("down", "--volumes", "--remove-orphans")
+    shutil.rmtree(directory)
+    if not quiet:
+        print(f"Removed the server at {directory} with its data; the Docker images are kept")
+    return 0
+
+
 def manage(
     directory: Path, command: str, args: list[str], port: int | None, *, quiet: bool = False
 ) -> int:
     """Run ``command`` on the managed server in ``directory``; ``quiet`` prints nothing on
     stdout."""
+    if command == "uninstall":
+        return uninstall(directory, quiet=quiet)
     if command == "start":
         if not directory.exists():
             initialize(directory, API_PORT if port is None else port)
@@ -518,11 +537,13 @@ def main() -> int:
         description=__doc__,
         epilog="`mcp on`, `mcp off` and `mcp status` switch or show the server's MCP endpoint."
         " `bootstrap` prints the first admin token of the server. start, status, stop, mcp and"
-        " bootstrap take --json after the command: one JSON object on stdout.",
+        " bootstrap take --json after the command: one JSON object on stdout. `uninstall --yes`"
+        " removes the server with its data.",
     )
     parser.add_argument("--state-dir", type=Path, help="directory for this local server")
     parser.add_argument(
-        "command", choices=("start", "status", "stop", "mcp", "bootstrap", "path", "cli")
+        "command",
+        choices=("start", "status", "stop", "mcp", "bootstrap", "uninstall", "path", "cli"),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     options = parser.parse_args()
@@ -531,7 +552,7 @@ def main() -> int:
     port: int | None = None
     as_json = False
     force = False
-    if command in {"start", "status", "stop", "mcp", "bootstrap"}:
+    if command in {"start", "status", "stop", "mcp", "bootstrap", "uninstall"}:
         details = argparse.ArgumentParser(prog=f"{parser.prog} {command}")
         details.add_argument(
             "--json", action="store_true", help="print one JSON object on stdout, for programs"
@@ -546,6 +567,12 @@ def main() -> int:
                 action="store_true",
                 help="create another admin token although an active one exists",
             )
+        if command == "uninstall":
+            details.add_argument(
+                "--yes",
+                action="store_true",
+                help="confirm: the containers, the database and the settings are deleted",
+            )
         if command == "mcp":
             details.add_argument(
                 "switch",
@@ -555,6 +582,8 @@ def main() -> int:
         chosen = details.parse_args(args)
         as_json = chosen.json
         force = command == "bootstrap" and chosen.force
+        if command == "uninstall" and not chosen.yes:
+            details.error("uninstall deletes the server and all its data; add --yes to confirm")
         if command == "start":
             port = chosen.http_port
             if port is not None and not 0 <= port <= 65535:

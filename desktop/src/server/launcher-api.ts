@@ -31,6 +31,14 @@ export async function changeServer(
  * in the keychain and makes the local connection. The answer says whether it worked, never the
  * token. `force` asks for another admin token although the server has one.
  */
+/**
+ * Removes the server on this computer with its data. Rust runs `memini-server uninstall`, then
+ * forgets the local connection to that server and its token; the view says what is left.
+ */
+export async function removeServer(backend: Backend): Promise<SetupOutcome> {
+  return parseSetupOutcome(await backend.invoke("launcher_uninstall"));
+}
+
 export async function setupToken(backend: Backend, force: boolean): Promise<SetupOutcome> {
   return parseSetupOutcome(await backend.invoke("launcher_setup_token", { force }));
 }

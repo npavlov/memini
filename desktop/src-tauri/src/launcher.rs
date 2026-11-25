@@ -15,6 +15,7 @@
 
 use std::env;
 use std::ffi::{OsStr, OsString};
+use std::net::{Ipv4Addr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -53,12 +54,21 @@ pub enum Action {
     Bootstrap,
     /// Another admin token although an active one exists.
     BootstrapForce,
+    /// The first start of a server that is not installed yet, on the port the app chose.
+    FirstStart(u16),
+    /// Removes the server with its data; the app asks the user first.
+    Uninstall,
 }
 
+/// The port a first start asks for, and how many after it are tried when it is taken.
+pub const DEFAULT_PORT: u16 = 6364;
+pub const PORTS_TRIED: u16 = 20;
+
 impl Action {
-    /// The whole argument vector of the action.
-    pub const fn arguments(self) -> &'static [&'static str] {
-        match self {
+    /// The whole argument vector of the action. The only value in it that is not fixed is the
+    /// port of a first start, a number the app chose itself.
+    pub fn arguments(self) -> Vec<String> {
+        let fixed: &[&str] = match self {
             Self::Status => &["status", "--json"],
             Self::Start => &["start", "--json"],
             Self::Stop => &["stop", "--json"],
@@ -66,7 +76,17 @@ impl Action {
             Self::McpOff => &["mcp", "off", "--json"],
             Self::Bootstrap => &["bootstrap", "--json"],
             Self::BootstrapForce => &["bootstrap", "--force", "--json"],
-        }
+            Self::Uninstall => &["uninstall", "--yes", "--json"],
+            Self::FirstStart(port) => {
+                return vec![
+                    "start".to_owned(),
+                    "--http-port".to_owned(),
+                    port.to_string(),
+                    "--json".to_owned(),
+                ];
+            }
+        };
+        fixed.iter().map(|&word| word.to_owned()).collect()
     }
 
     /// How long the action may take. The first start downloads the application, the database
@@ -74,17 +94,28 @@ impl Action {
     pub const fn time_limit(self) -> Duration {
         match self {
             Self::Status => Duration::from_secs(60),
-            Self::Start => Duration::from_secs(60 * 60),
-            Self::Stop => Duration::from_secs(5 * 60),
+            Self::Start | Self::FirstStart(_) => Duration::from_secs(60 * 60),
+            Self::Stop | Self::Uninstall => Duration::from_secs(5 * 60),
             Self::McpOn | Self::McpOff => Duration::from_secs(10 * 60),
             Self::Bootstrap | Self::BootstrapForce => Duration::from_secs(2 * 60),
         }
     }
 
-    fn words(self) -> String {
+    pub fn words(self) -> String {
         let arguments = self.arguments();
         format!("{PROGRAM} {}", arguments[..arguments.len() - 1].join(" "))
     }
+}
+
+/// The first port from [`DEFAULT_PORT`] that `is_free` accepts, of [`PORTS_TRIED`].
+pub fn first_free_port(is_free: impl Fn(u16) -> bool) -> Option<u16> {
+    (DEFAULT_PORT..DEFAULT_PORT.saturating_add(PORTS_TRIED)).find(|&port| is_free(port))
+}
+
+/// Whether nothing listens on `port` of this computer's loopback address, where the server
+/// publishes its port. Another server, or Docker publishing one, holds it.
+pub fn port_is_free(port: u16) -> bool {
+    TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok()
 }
 
 /// The answer of `memini-server status --json`.
@@ -562,30 +593,40 @@ mod tests {
 
     #[test]
     fn every_action_has_a_fixed_argument_vector_that_asks_for_json() {
-        let actions = [
-            Action::Status,
-            Action::Start,
-            Action::Stop,
-            Action::McpOn,
-            Action::McpOff,
-        ];
-        let vectors: Vec<&[&str]> = actions.iter().map(|action| action.arguments()).collect();
+        assert_eq!(Action::Status.arguments(), ["status", "--json"]);
+        assert_eq!(Action::Start.arguments(), ["start", "--json"]);
+        assert_eq!(Action::Stop.arguments(), ["stop", "--json"]);
+        assert_eq!(Action::McpOn.arguments(), ["mcp", "on", "--json"]);
+        assert_eq!(Action::McpOff.arguments(), ["mcp", "off", "--json"]);
         assert_eq!(
-            vectors,
-            [
-                &["status", "--json"][..],
-                &["start", "--json"][..],
-                &["stop", "--json"][..],
-                &["mcp", "on", "--json"][..],
-                &["mcp", "off", "--json"][..],
-            ]
+            Action::Uninstall.arguments(),
+            ["uninstall", "--yes", "--json"]
         );
+        assert_eq!(
+            Action::FirstStart(6371).arguments(),
+            ["start", "--http-port", "6371", "--json"]
+        );
+        assert_eq!(Action::Uninstall.words(), "memini-server uninstall --yes");
         assert_eq!(Action::Bootstrap.arguments(), ["bootstrap", "--json"]);
         assert_eq!(
             Action::BootstrapForce.arguments(),
             ["bootstrap", "--force", "--json"]
         );
         assert_eq!(Action::McpOff.words(), "memini-server mcp off");
+    }
+
+    #[test]
+    fn a_first_start_takes_the_first_free_port_from_the_default() {
+        assert_eq!(first_free_port(|_| true), Some(DEFAULT_PORT));
+        assert_eq!(
+            first_free_port(|port| port > DEFAULT_PORT + 2),
+            Some(DEFAULT_PORT + 3)
+        );
+        assert_eq!(first_free_port(|_| false), None);
+        // A port that is listened on is not free.
+        let taken = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("a port");
+        let port = taken.local_addr().expect("its address").port();
+        assert!(!port_is_free(port));
     }
 
     #[test]

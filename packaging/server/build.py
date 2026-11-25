@@ -15,7 +15,7 @@ VERSION = "0.1.0"
 # The package revision: raised when the launcher changes between releases of the service, so the
 # archive of an earlier revision, which users have installed, is never replaced. Back to 1 with a
 # new VERSION.
-REVISION = 3
+REVISION = 4
 ARCHIVE = f"memini-server-{VERSION}-{REVISION}.zip"
 URL = f"https://github.com/npavlov/memini/releases/download/{TAG}/{ARCHIVE}"
 FILES = [
