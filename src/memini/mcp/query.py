@@ -288,6 +288,15 @@ _CATALOG_NOTE = (
     "the project and service it is in and the domains that name it."
 )
 
+_SEARCH_CATALOG_NOTE = (
+    "projects and domains (a domain includes its subdomains; one is domain/subdomain) narrow to "
+    "the code the catalog names, by its path masks as they are now, and to the threads, meetings "
+    "and documents linked to them: pushed with them, by a default of their source or stream, or "
+    "else by the domains the model gave the decisions taken from them. services narrows to code. "
+    "A name the catalog does not hold is an error, get_catalog lists them. A hit of a file of a "
+    "repository carries context: the project and service it is in and the domains that name it."
+)
+
 _ANCHOR_NOTE = (
     "A hit of a thread, a meeting or a document also carries anchor, its place in the record "
     "(msg-<id>, seg-<id>, summary/<heading trail>, action-items, a heading trail), link (the "
@@ -308,7 +317,7 @@ SEARCH_TOOL = Tool(
         "a chat user id or a display name; merged persons count as one) and roles (with persons: "
         "author, recipient, mention, participant). Active items matching statement words or "
         "citing retrieved records are in decisions. Use get_decision for their full history. "
-        f"{_CATALOG_NOTE} "
+        f"{_SEARCH_CATALOG_NOTE} "
         "With projects or domains, decisions holds only items under those projects and in those "
         "domains, as list_decisions reads them; with services, only items citing retrieved "
         "records. "

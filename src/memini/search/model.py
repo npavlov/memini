@@ -186,13 +186,16 @@ class SearchFilters:
     """With ``persons``: only records where one of them has one of these roles: ``author``,
     ``recipient``, ``mention``, ``participant``. Default: any role."""
     projects: tuple[str, ...] | None = None
-    """Projects of the catalog, by name: the code of their services and of their domains
-    (:mod:`memini.search.catalog`). With ``domains`` or ``services``, the projects those names
-    are looked up in. Unlike a source name, a name the catalog does not hold is an error
+    """Projects of the catalog, by name: the code of their services and of their domains, and
+    the records of push and mcp sources linked to them (:mod:`memini.search.catalog`). With
+    ``domains`` or ``services``, the projects those names are looked up in. Unlike a source name,
+    a name the catalog does not hold is an error
     (:class:`~memini.search.errors.UnknownNameError`)."""
     domains: tuple[str, ...] | None = None
     """Domains of the catalog: ``domain``, which includes its subdomains, or
-    ``domain/subdomain``. Only files of repositories match: the catalog names code."""
+    ``domain/subdomain``. Files of repositories under their masks, and records of push and mcp
+    sources linked to them: pushed with them, by a default, or by the model's domains of the
+    decisions taken from them."""
     services: tuple[str, ...] | None = None
     """Services of the catalog, by name: a repository, or one directory of it."""
 

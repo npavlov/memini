@@ -42,7 +42,9 @@ from memini.search.catalog import (
     FileContext,
     ServiceArea,
     SourcePaths,
+    catalog_groups,
     code_groups,
+    place_key,
 )
 from memini.search.patterns import directory_regex, glob_regex, globs_regex, path_matcher
 from redaction_helpers import STRIPE
@@ -249,6 +251,47 @@ def test_each_filter_is_a_group_and_all_of_them_apply() -> None:
     assert code_groups({HARBOR: harbor()}, projects=["idle"]) == ((),)
     assert code_groups({HARBOR: harbor()}, domains=["plans"]) == ((),)
     assert code_groups({HARBOR: harbor()}) == ()
+
+
+MAIL = UUID(int=4)
+
+
+def test_projects_and_domains_also_name_the_records_linked_to_them() -> None:
+    maps = {HARBOR: harbor()}
+    projects, domains, services = catalog_groups(
+        maps, projects=["port"], domains=["fees"], services=["quay"], sources=[MAIL]
+    )
+
+    # The code is what code_groups gives; services names code only.
+    assert (projects.code, domains.code, services.code) == code_groups(
+        maps, projects=["port"], domains=["fees"], services=["quay"]
+    )
+    assert services.records is None
+    assert projects.records is not None
+    assert domains.records is not None
+    assert (projects.records.level, projects.records.names) == (
+        "project",
+        (place_key(HARBOR, "port"),),
+    )
+    # A domain stands for itself and each of its subdomains.
+    assert (domains.records.level, domains.records.names) == (
+        "domain",
+        tuple(place_key(HARBOR, "port", a) for a in ("fees", "fees/berth", "fees/pilot")),
+    )
+    assert domains.records.sources == (MAIL,)
+    assert place_key(HARBOR, "lights", "signals") in domains.records.known
+    assert str(HARBOR) in place_key(HARBOR, "port")
+
+    # A subdomain is itself only, and a domain without code is not empty when records may link.
+    (berth,) = catalog_groups(maps, domains=["fees/berth"], sources=[MAIL])
+    assert berth.records is not None
+    assert berth.records.names == (place_key(HARBOR, "port", "fees/berth"),)
+    (plans,) = catalog_groups(maps, domains=["plans"], sources=[MAIL])
+    assert plans.code == ()
+    assert not plans.empty
+    # In a search of code only (no source whose records link), it is empty, as before.
+    (code_only,) = catalog_groups(maps, domains=["plans"])
+    assert (code_only.records, code_only.empty) == (None, True)
 
 
 def test_with_projects_a_domain_or_service_is_looked_up_in_them_only() -> None:

@@ -7,9 +7,10 @@ record come before the default; a decision recorded with domains is listed under
 unlink removes one; a domain filter returns its subdomains' decisions newest first; the count of
 the project's decisions without a domain is right; get_domain lists the domain's decisions; search
 returns the decisions of the projects and domains named, subdomains included, the same over HTTP
-and MCP; a link made by hand survives a run of assign_domains again, and an answer, "none"
-included, is not asked again until the catalog changes; a source with llm_policy none is skipped
-and counted; the journal tables and their triggers do not change. The library's rules are in
+and MCP, and the threads that belong to them by a push, a default or the model (memini-qpk.13); a
+link made by hand survives a run of assign_domains again, and an answer, "none" included, is not
+asked again until the catalog changes; a source with llm_policy none is skipped and counted; the
+journal tables and their triggers do not change. The library's rules are in
 test_decision_context.py.
 
 Every record, name and statement here is synthetic.
@@ -517,6 +518,91 @@ async def test_search_returns_the_decisions_of_the_projects_and_domains_named(
         assert await found(projects=["fleet"]) == ["crew"]
         assert await found(projects=["fleet"], domains=["fees"]) == []
         assert await found(domains=["fees"], kinds=["decision"]) == ["berth"]
+
+
+# --- The threads of search ----------------------------------------------------------------------
+
+
+async def test_search_by_a_project_or_domain_finds_the_threads_that_belong_to_it(
+    app: FastAPI, db: Conn, migrated_database_url: str, pool: Pool, world: World
+) -> None:
+    """memini-qpk.13: a thread pushed with a domain is found by that domain and not by another, a
+    subdomain counts for its domain, and so do a source default and, for a thread with no domain
+    of its own, the model's domains of the decisions taken from it; HTTP and MCP agree."""
+    async with search_clients(migrated_database_url, pool, world.tokens["writer"]) as (http, mcp):
+
+        async def push_indexed(source: str, *records: Json) -> None:
+            url = f"/v1/workspaces/harbor/sources/{source}/records"
+            ok(await http.post(url, json={"records": list(records)}))
+
+        default = "/v1/workspaces/harbor/sources/chat/catalog-default"
+        ok(await http.put(default, json={"project": "port", "domains": ["bookings"]}))
+        await push_indexed(
+            "mail",
+            thread(
+                "berth",
+                T0,
+                "Tide notes: berths by the hour.",
+                project="port",
+                domains=["fees/berth"],
+            ),
+            thread("pilot", T0, "Tide notes: pilots at night."),
+            thread("canteen", T0, "Tide notes: the canteen opens at seven."),
+        )
+        await push_indexed(
+            "chat",
+            thread("crew", T0, "Tide notes: crews swap shifts.", project="fleet", domains=["crew"]),
+            thread("booking", T0, "Tide notes: berths booked a week ahead."),
+        )
+        # The pilot thread has no domain of its own: a decision taken from it gets one from the
+        # model, which names a domain and its own subdomain; only the subdomain is kept
+        # (memini-qpk.12).
+        await record(app, world, "mail", "pilot", "Pilots are on call at night.", T0)
+        fake = FakeAssigner(
+            answers={"Pilots are on call at night.": ["port:fees", "port:fees/pilot"]}
+        )
+        async with fake.gate() as gate:
+            await assign(db, world, gate)
+        model = await rows(
+            db, "SELECT project, domain FROM knowledge_item_domain WHERE origin = 'model'"
+        )
+        assert model == [{"project": "port", "domain": "fees/pilot"}]
+
+        async def found(**filters: Any) -> list[str]:
+            arguments = {"query": "tide notes", "mode": "lexical", "kinds": ["thread"], **filters}
+            over_http = ok(await http.get("/v1/search", params=arguments))
+            result = await mcp.call_tool("search", arguments)
+            assert not result.is_error, result.content
+            assert result.structured_content is not None
+            over_mcp: Json = result.structured_content
+            listed = sorted({hit["external_id"] for hit in over_http["hits"]})
+            assert sorted({hit["external_id"] for hit in over_mcp["hits"]}) == listed
+            return listed
+
+        assert await found() == ["berth", "booking", "canteen", "crew", "pilot"]
+        assert await found(domains=["fees/berth"]) == ["berth"]
+        assert await found(domains=["crew"]) == ["crew"]
+        # A domain includes its subdomains, by a push or by the model.
+        assert await found(domains=["fees"]) == ["berth", "pilot"]
+        assert await found(domains=["fees/pilot"]) == ["pilot"]
+        assert await found(domains=["bookings"]) == ["booking"]
+        assert await found(domains=["bookings", "crew"]) == ["booking", "crew"]
+        assert await found(projects=["port"]) == ["berth", "booking", "pilot"]
+        assert await found(projects=["fleet"]) == ["crew"]
+        assert await found(projects=["fleet"], domains=["fees"]) == []
+        assert await found(projects=["port"], domains=["fees"]) == ["berth", "pilot"]
+        # The crew thread is in chat: a filter on mail leaves it out.
+        assert await found(sources=["mail"], domains=["crew"]) == []
+
+        # The record's own domain comes first: pushed with one, the model's no longer counts.
+        await push_indexed(
+            "mail",
+            thread(
+                "pilot", T0, "Tide notes: pilots at night.", project="port", domains=["bookings"]
+            ),
+        )
+        assert await found(domains=["fees"]) == ["berth"]
+        assert await found(domains=["bookings"]) == ["booking", "pilot"]
 
 
 # --- assign_domains ------------------------------------------------------------------------------

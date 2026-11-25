@@ -1212,8 +1212,23 @@ subdomains; with `projects`, the domains and services named are looked up in tho
 only, and without it a name stands for every project that has it. A name the catalog does not
 hold is an error, not an empty answer (422 `unknown_project`, `unknown_domain`,
 `unknown_service`; the message gives the position of the value, never the value): an empty
-answer would read as "this domain has no such code". A domain that exists and names no code
-gives no hits. The journal items `search` returns with its hits follow `projects` and `domains`
+answer would read as "this domain has no such code". Records other than code (memini-qpk.13):
+in `search`, `projects` and `domains` also select the threads, meetings and pushed documents of
+push and mcp sources that belong to them, so "what was discussed about accounts" finds the
+conversation and not only the code. A record belongs by its own links, in the order decisions use
+(section 3, Decisions by project and domain): what it was pushed with (`record_catalog`), else the
+default of its stream, else of its source (`source_catalog`); and only when those give it no domain
+the catalog holds, the domains the `assign_domains` model gave the items taken from it (not
+retracted). A link by hand to a decision does not place its record. A domain includes its
+subdomains; a project is the record's project, or a domain of it from the model. The condition is
+one more member of the group of the filter, beside the code masks (code under the masks, or a
+record linked), in the shared condition builder, so every retriever and the final read apply it;
+it is read through keys only (`record_catalog` by record, `source_catalog` by source and stream
+key, `stream`, `knowledge_evidence` by record, `knowledge_item` and `knowledge_item_domain` by
+item), and starts with the source so the `chunk (source_id, path)` index can still serve it.
+`services`, and `search_code`, name code only. A domain that exists and names no code gives no
+hits in `search_code`, and in `search` only the records linked to it. `list_meetings` and
+`list_messages` do not take these filters yet. The journal items `search` returns with its hits follow `projects` and `domains`
 as `list_decisions` does (section 3, Decisions by project and domain): only items under one of the
 projects and in one of the domains, a domain with its subdomains, whichever way the item came by
 them; matches by statement words first, then items citing the records retrieved, both among those.
@@ -1659,8 +1674,9 @@ many chunks its words match, that plan was three to four times slower on 77,000 
 ([operations/performance.md](operations/performance.md), Search). Filters
 (workspaces, sources, repositories, record kinds, languages, path globs with the rules of
 `.gitignore`, a time range on `occurred_at`, and the projects, domains and services of the
-catalog, each a set of sources with path masks: section 6, Catalog tools) apply inside the
-authorization filter, to every retriever and to the final read; a tombstoned record never
+catalog, each a set of sources with path masks and, for projects and domains in `search`, the
+links that place a thread, a meeting or a pushed document: section 6, Catalog tools) apply
+inside the authorization filter, to every retriever and to the final read; a tombstoned record never
 appears. A filter of the catalog is `source = … AND path ~ …`, which the index on `chunk
 (source_id, path)` (migration 0018) lets the planner answer for a small domain without walking
 the HNSW index past everything else; `memini bench` times it (section 10, Performance). Every
