@@ -145,13 +145,14 @@ jobs:
         run: pnpm tauri build --bundles "$BUNDLE" -- --locked
 
       # One archive, so that file modes survive: an artifact alone drops the executable bit.
+      # A relative name: GNU tar on Windows reads the colon of "D:\..." as a remote host.
       - name: Pack the bundle
-        run: tar -czf "$RUNNER_TEMP/memini-desktop-unsigned.tar.gz" -C src-tauri/target/release bundle
+        run: tar -czf memini-desktop-unsigned.tar.gz -C src-tauri/target/release bundle
 
       - name: Upload the unsigned bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: memini-desktop-unsigned-${{ matrix.os }}
-          path: ${{ runner.temp }}/memini-desktop-unsigned.tar.gz
+          path: desktop/memini-desktop-unsigned.tar.gz
           if-no-files-found: error
           retention-days: 7
