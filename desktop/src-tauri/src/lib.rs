@@ -19,6 +19,7 @@ mod api;
 mod clients;
 mod commands;
 mod error;
+mod host_model;
 mod jsonc;
 mod keychain;
 mod launcher;
@@ -76,6 +77,10 @@ pub fn run() {
             commands::launcher_uninstall,
             commands::launcher_indexing,
             commands::launcher_indexing_set,
+            commands::launcher_embedding_set,
+            commands::host_model_status,
+            commands::host_model_pull,
+            commands::host_ollama_install,
             commands::repositories::launcher_repos,
             commands::repositories::launcher_git,
             commands::repositories::api_workspace_create,

@@ -1158,7 +1158,9 @@ def test_indexing_limits_the_model_to_half_the_cores_by_default(
 
     before = launch(state, "indexing", "status")
 
-    assert before.value == OK | {"indexing": {"mode": "half", "cpus": 4.0, "cores": 8}}
+    assert before.value == OK | {
+        "indexing": {"mode": "half", "cpus": 4.0, "cores": 8, "runtime": "container"}
+    }
     assert not (state / "compose.resources.yaml").exists()
 
     # A start writes the default, and every command adds its Compose file.
@@ -1185,7 +1187,12 @@ def test_each_mode_sets_a_limit_from_the_cores(
 
     answer = launch(state, "indexing", "set", mode)
 
-    assert answer.value["indexing"] == {"mode": mode, "cpus": cpus, "cores": available}
+    assert answer.value["indexing"] == {
+        "mode": mode,
+        "cpus": cpus,
+        "cores": available,
+        "runtime": "container",
+    }
     assert indexing_compose(state)["services"]["ollama"]["cpus"] == cpus
 
 
@@ -1202,7 +1209,12 @@ def test_full_takes_the_limit_away_and_a_running_model_is_recreated(
 
     full = launch(state, "indexing", "set", "full")
 
-    assert full.value["indexing"] == {"mode": "full", "cpus": None, "cores": 8}
+    assert full.value["indexing"] == {
+        "mode": "full",
+        "cpus": None,
+        "cores": 8,
+        "runtime": "container",
+    }
     assert not (state / "compose.resources.yaml").exists()
     assert docker.ran("up", "-d", "--no-build", "--wait", "ollama")
     assert launch(state, "indexing", "status").value["indexing"]["mode"] == "full"
@@ -1219,4 +1231,154 @@ def test_indexing_needs_a_managed_server_and_a_mode_to_set(
         launch(tmp_path / "nothing here", "indexing", "set")
     with pytest.raises(SystemExit):
         launch(tmp_path / "nothing here", "indexing", "set", "turbo")
+    assert docker.calls == []
+
+
+class FakeHostOllama:
+    """Stands in for Ollama on this computer: ``host_ollama`` answers from ``found`` and
+    ``digest``, and ``pull_host_model`` gives it the model and counts the pulls."""
+
+    def __init__(self, manager: ModuleType) -> None:
+        self.manager = manager
+        self.found = True
+        self.has_model = True
+        self.digest = "c690" + "0" * 60
+        self.pulls = 0
+
+    def answer(self) -> dict[str, object]:
+        return {
+            "found": self.found,
+            "version": "0.34.2" if self.found else None,
+            "model": self.manager.MODEL,
+            "has_model": self.found and self.has_model,
+            "digest": self.digest if self.found and self.has_model else None,
+        }
+
+    def pull(self) -> None:
+        self.pulls += 1
+        self.has_model = True
+
+
+@pytest.fixture
+def host(monkeypatch: pytest.MonkeyPatch, manager: ModuleType) -> FakeHostOllama:
+    fake = FakeHostOllama(manager)
+    monkeypatch.setattr(manager, "host_ollama", fake.answer)
+    monkeypatch.setattr(manager, "pull_host_model", fake.pull)
+    return fake
+
+
+def test_embedding_status_answers_before_a_server_is_set_up(
+    tmp_path: Path, docker: FakeDocker, host: FakeHostOllama, launch: Callable[..., Printed]
+) -> None:
+    printed = launch(tmp_path / "nothing here", "embedding", "status")
+
+    assert printed.code == 0
+    assert printed.value["indexing"] is None
+    assert printed.value["host"]["found"] is True
+    assert printed.value["host"]["has_model"] is True
+    assert docker.calls == []
+
+
+def test_a_first_start_with_the_model_on_this_computer_starts_no_ollama_service(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    tmp_path: Path,
+    docker: FakeDocker,
+    host: FakeHostOllama,
+    launch: Callable[..., Printed],
+) -> None:
+    monkeypatch.setattr(manager, "cores", lambda: 8)
+    host.has_model = False
+    state = tmp_path / "new server"
+
+    started = launch(state, "start", "--embedding", "host")
+
+    assert (started.code, started.value) == (0, OK)
+    assert host.pulls == 1  # the model is downloaded by Ollama on this computer
+    assert not docker.ran("up", "-d", "--no-build", "--wait", "ollama")
+    assert not any("ollama" in argv and "exec" in argv for argv in docker.calls)
+    assert docker.ran("up", "-d", "--no-build", "--wait")
+    resources = indexing_compose(state)
+    assert resources["services"]["ollama"] == {"cpus": 4.0, "profiles": ["container-model"]}
+    memini = resources["services"]["memini"]
+    assert memini["environment"]["MEMINI_EMBEDDING_URL"] == "http://host.docker.internal:11434/v1"
+    assert memini["environment"]["MEMINI_EMBEDDING_BATCH_SIZE"] == "32"
+    assert memini["depends_on"] == {"ollama": {"condition": "service_healthy", "required": False}}
+    assert memini["extra_hosts"] == ["host.docker.internal:host-gateway"]
+    status = launch(state, "embedding", "status")
+    assert status.value["indexing"]["runtime"] == "host"
+
+    # The runtime is chosen at the first start only; a later start may not move it.
+    moved = launch(state, "start", "--embedding", "container")
+    assert moved.code == 1
+    assert moved.value["error"] == "use `memini-server embedding container` to move the model"
+
+
+def test_a_start_in_host_mode_without_ollama_says_how_to_get_it(
+    tmp_path: Path, docker: FakeDocker, host: FakeHostOllama, launch: Callable[..., Printed]
+) -> None:
+    host.found = False
+
+    refused = launch(tmp_path / "new server", "start", "--embedding", "host")
+
+    assert refused.code == 1
+    assert "https://ollama.com/download" in refused.value["error"]
+    assert "brew install ollama" in refused.value["error"]
+    assert not docker.ran("up", "-d", "--no-build", "--wait")
+
+
+def test_moving_a_running_server_to_ollama_on_this_computer(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    host: FakeHostOllama,
+    launch: Callable[..., Printed],
+) -> None:
+    monkeypatch.setattr(manager, "cores", lambda: 8)
+    docker.rows = [container("ollama", health=""), container("memini", port=6399)]
+    assert launch(state, "start").code == 0
+    assert launch(state, "embedding", "status").value["indexing"]["runtime"] == "container"
+
+    moved = launch(state, "embedding", "host")
+
+    assert moved.code == 0
+    assert moved.value["indexing"]["runtime"] == "host"
+    assert docker.ran(*UP_MEMINI)
+    assert docker.calls[-1][-2:] == ["stop", "ollama"]
+    assert "memini" in indexing_compose(state)["services"]
+
+    # Back to the container: the model service comes back before the service moves to it.
+    back = launch(state, "embedding", "container")
+    assert back.value["indexing"]["runtime"] == "container"
+    assert docker.ran("up", "-d", "--no-build", "--wait", "ollama")
+    assert docker.calls[-1][-5:] == list(UP_MEMINI)
+    assert indexing_compose(state) == {"services": {"ollama": {"cpus": 4.0}}}
+
+
+def test_another_build_of_the_model_on_this_computer_is_refused(
+    state: Path, docker: FakeDocker, host: FakeHostOllama, launch: Callable[..., Printed]
+) -> None:
+    docker.rows = [container("ollama", health=""), container("memini", port=6399)]
+    assert launch(state, "start").code == 0
+    host.digest = "ffff" + "0" * 60  # the container lists c690
+
+    refused = launch(state, "embedding", "host")
+
+    assert refused.code == 1
+    assert "another build" in refused.value["error"]
+    assert launch(state, "embedding", "status").value["indexing"]["runtime"] == "container"
+
+
+def test_embedding_takes_a_known_place_and_needs_a_server_to_move(
+    tmp_path: Path, docker: FakeDocker, host: FakeHostOllama, launch: Callable[..., Printed]
+) -> None:
+    refused = launch(tmp_path / "nothing here", "embedding", "host")
+
+    assert refused.code == 1
+    assert refused.value["error"].startswith("no managed server at ")
+    with pytest.raises(SystemExit):
+        launch(tmp_path / "nothing here", "embedding", "gpu")
+    with pytest.raises(SystemExit):
+        launch(tmp_path / "nothing here", "start", "--embedding", "cloud")
     assert docker.calls == []

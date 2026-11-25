@@ -55,13 +55,38 @@ pub enum Action {
     /// Another admin token although an active one exists.
     BootstrapForce,
     /// The first start of a server that is not installed yet, on the port the app chose.
-    FirstStart(u16),
+    FirstStart {
+        port: u16,
+        /// Run the search model in Ollama on this computer from the start, not in a container.
+        host_model: bool,
+    },
     /// Removes the server with its data; the app asks the user first.
     Uninstall,
     /// How many cores the search model may use.
     IndexingStatus,
     /// Sets how many cores the search model may use, and recreates a running model.
     IndexingSet(IndexingMode),
+    /// Moves the search model to Ollama on this computer or back into its container.
+    EmbeddingSet(Runtime),
+}
+
+/// Where the search model runs: in the server's ollama container, or in Ollama on this computer
+/// (the GPU of a Mac). The launcher keeps it in the managed server's Compose files.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Runtime {
+    #[default]
+    Container,
+    Host,
+}
+
+impl Runtime {
+    const fn word(self) -> &'static str {
+        match self {
+            Self::Container => "container",
+            Self::Host => "host",
+        }
+    }
 }
 
 /// How much of this computer the search model uses while it embeds (scenario S18): half the
@@ -109,11 +134,24 @@ impl Action {
                     .map(|&word| word.to_owned())
                     .collect();
             }
-            Self::FirstStart(port) => {
+            Self::EmbeddingSet(runtime) => {
+                return ["embedding", runtime.word(), "--json"]
+                    .iter()
+                    .map(|&word| word.to_owned())
+                    .collect();
+            }
+            Self::FirstStart { port, host_model } => {
+                let runtime = if host_model {
+                    Runtime::Host
+                } else {
+                    Runtime::Container
+                };
                 return vec![
                     "start".to_owned(),
                     "--http-port".to_owned(),
                     port.to_string(),
+                    "--embedding".to_owned(),
+                    runtime.word().to_owned(),
                     "--json".to_owned(),
                 ];
             }
@@ -127,7 +165,9 @@ impl Action {
         match self {
             Self::Status | Self::IndexingStatus => Duration::from_secs(60),
             Self::IndexingSet(_) => Duration::from_secs(5 * 60),
-            Self::Start | Self::FirstStart(_) => Duration::from_secs(60 * 60),
+            // Moving to Ollama on this computer may download the model first.
+            Self::EmbeddingSet(_) => Duration::from_secs(60 * 60),
+            Self::Start | Self::FirstStart { .. } => Duration::from_secs(60 * 60),
             Self::Stop | Self::Uninstall => Duration::from_secs(5 * 60),
             Self::McpOn | Self::McpOff => Duration::from_secs(10 * 60),
             Self::Bootstrap | Self::BootstrapForce => Duration::from_secs(2 * 60),
@@ -200,6 +240,9 @@ pub struct IndexingState {
     pub cpus: Option<f64>,
     /// The cores of this computer.
     pub cores: u32,
+    /// Where the model runs; a launcher from before the setting answers without it.
+    #[serde(default)]
+    pub runtime: Runtime,
 }
 
 /// The indexing answer in the launcher's output.
@@ -700,8 +743,42 @@ mod tests {
             ["uninstall", "--yes", "--json"]
         );
         assert_eq!(
-            Action::FirstStart(6371).arguments(),
-            ["start", "--http-port", "6371", "--json"]
+            Action::FirstStart {
+                port: 6371,
+                host_model: false
+            }
+            .arguments(),
+            [
+                "start",
+                "--http-port",
+                "6371",
+                "--embedding",
+                "container",
+                "--json"
+            ]
+        );
+        assert_eq!(
+            Action::FirstStart {
+                port: 6364,
+                host_model: true
+            }
+            .arguments(),
+            [
+                "start",
+                "--http-port",
+                "6364",
+                "--embedding",
+                "host",
+                "--json"
+            ]
+        );
+        assert_eq!(
+            Action::EmbeddingSet(Runtime::Host).arguments(),
+            ["embedding", "host", "--json"]
+        );
+        assert_eq!(
+            Action::EmbeddingSet(Runtime::Container).arguments(),
+            ["embedding", "container", "--json"]
         );
         assert_eq!(Action::Uninstall.words(), "memini-server uninstall --yes");
         assert_eq!(
@@ -731,6 +808,15 @@ mod tests {
         assert_eq!(state.mode, IndexingMode::Half);
         assert_eq!(state.cpus, Some(4.0));
         assert_eq!(state.cores, 8);
+        // A launcher from before the runtime setting: the model is in its container.
+        assert_eq!(state.runtime, Runtime::Container);
+        let host = parse_indexing(
+            r#"{"schema": 1, "ok": true, "error": null,
+                "indexing": {"mode": "half", "cpus": 4.0, "cores": 8, "runtime": "host"},
+                "host": {"found": true, "version": "0.34.2"}}"#,
+        )
+        .expect("the contract");
+        assert_eq!(host.indexing.expect("a state").runtime, Runtime::Host);
         let full = parse_indexing(
             r#"{"schema": 1, "ok": true, "error": null,
                 "indexing": {"mode": "full", "cpus": null, "cores": 8}}"#,
