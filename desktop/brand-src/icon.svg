@@ -28,8 +28,8 @@
   <!-- Tile: full canvas, rounded. Set rx="0" for a full-bleed master. -->
   <rect id="tile-shape" x="0" y="0" width="1024" height="1024" rx="230" fill="url(#tile)"/>
   <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#sheen)"/>
-  <!-- One rounded line, 96 wide with gaps of 56 before the 0.96 scale; the mark takes 60 percent of the tile clear on each side, turning inward to the point: the source. -->
-  <g filter="url(#shadow)" transform="matrix(0.96 0 0 0.96 20.48 20.48)">
+  <!-- One rounded line, 96 wide with gaps of 56 before the 1.056 scale; the mark takes 66 percent of the tile clear on each side, turning inward to the point: the source. -->
+  <g filter="url(#shadow)" transform="matrix(1.056 0 0 1.056 -28.672 -28.672)">
     <path fill="url(#line)" d="M288 731 A40 40 0 0 1 248 771 H232 A40 40 0 0 1 192 731 V293 A101 101 0 0 1 293 192 H731 A101 101 0 0 1 832 293 V731 A101 101 0 0 1 731 832 H384 A40 40 0 0 1 344 792 V384 A40 40 0 0 1 384 344 H632 A48 48 0 0 1 632 440 H480 A40 40 0 0 0 440 480 V696 A40 40 0 0 0 480 736 H696 A40 40 0 0 0 736 696 V328 A40 40 0 0 0 696 288 H328 A40 40 0 0 0 288 328 Z"/>
     <circle cx="588" cy="588" r="60" fill="url(#dot)"/>
   </g>
