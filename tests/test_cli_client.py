@@ -727,7 +727,7 @@ def test_source_add_mcp_sends_the_recipe_file_s_text_and_shows_the_source(
         "name": "chat",
         "endpoint": {"url": "https://hearth.example/mcp"},
         "recipe": {"toml": 'format = 1\nname = "hearth"\n'},
-        "items": ["C0042", "C0043"],
+        "streams": ["C0042", "C0043"],
         "schedule_seconds": 900,
         "window": {"initial": "3d", "backfill": None},
         "filters": {"exclude_authors": ["*bot*"]},
@@ -811,7 +811,7 @@ def test_source_edit_mcp_sends_the_new_endpoint_streams_and_window(
     assert result.code == EXIT_OK, result.err
     assert json.loads(service.last.content) == {
         "endpoint": {"url": "https://hearth.example/v2/mcp"},
-        "items": ["C0042"],
+        "streams": ["C0042"],
         "window": {},
     }
 
@@ -1096,7 +1096,7 @@ def test_runs_lists_runs_and_the_next_page(cli: Callable[..., Run], service: Fak
         "2026-11-18T16:00Z",
         "1.5",
     ]
-    assert "more runs: add --before cursor-2" in result.err
+    assert "more runs: add --cursor cursor-2" in result.err
 
 
 def test_search_prints_hits_with_escaped_snippets(
@@ -1200,7 +1200,6 @@ def test_meetings_prints_each_meeting_with_its_passage(
 
     assert service.last.url.path == "/v1/meetings"
     assert service.last.url.params.multi_items() == [
-        ("persons", "me"),
         ("query", "release"),
         ("since", "2026-03-01T00:00:00+00:00"),
         ("sources", "notes"),
