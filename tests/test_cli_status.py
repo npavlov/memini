@@ -385,6 +385,31 @@ def test_status_without_streams_says_so_and_still_names_what_is_behind(
     )
 
 
+def test_status_says_how_far_the_rebuild_after_an_upgrade_is(cli: Callable[..., Run]) -> None:
+    body = index_behind()
+    rebuilding = body["workspaces"][1]["index"]
+    rebuilding["rebuild"] = {
+        "state": "running",
+        "records_done": 312,
+        "records_total": 1472,
+        "percent": 21,
+        "started_at": "2026-11-25T20:00:00Z",
+    }
+
+    lines = cli(body).out.splitlines()
+
+    assert "  beta: index stale (changed: model); rebuilding: 312 of 1472 records (21%)" in lines
+
+    rebuilding["rebuild"] = {
+        "state": "queued",
+        "records_done": None,
+        "records_total": None,
+        "percent": None,
+        "started_at": None,
+    }
+    assert "  beta: index stale (changed: model); rebuild queued" in cli(body).out.splitlines()
+
+
 def test_status_escapes_what_a_terminal_would_take_for_control_sequences(
     cli: Callable[..., Run],
 ) -> None:

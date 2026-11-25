@@ -9,6 +9,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A managed server rebuilds its search index by itself after an upgrade that changes how code
+  is read (the setting `index_auto_rebuild`, which the server launcher sets), reusing every
+  vector that did not change. Until a workspace is done, search answers `index_rebuilding` with
+  how far it is, `GET /v1/status` and `memini status` show it, and the desktop app shows a bar
+  on its Server and Codebases screens. [Upgrade the server](docs/install.md#upgrade-the-server).
 - See how far a git sync is while it runs: its run report carries `details.progress`, the files
   it writes, those read, chunked and embedded so far, and those committed, saved every few seconds
   (`GET /v1/runs/{id}`).

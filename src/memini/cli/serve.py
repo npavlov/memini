@@ -2,7 +2,9 @@
 
 Order of start: logging, migrations (refuse to start while any is pending, unless ``--migrate``
 applies them), the connection pool, the embedder (:func:`service_embedder`), the application, the
-job handlers (:func:`job_handlers`), the job worker and scheduler, the HTTP server. Order of stop:
+job handlers (:func:`job_handlers`), with ``index_auto_rebuild`` the rebuild of every out-of-date
+workspace enqueued (:mod:`memini.index.auto`), the job worker and scheduler, the HTTP server. Order
+of stop:
 the HTTP server finishes open requests (up to :data:`SHUTDOWN_GRACE` seconds) and runs the
 application's shutdown; the worker and scheduler stop (a running job finishes within the worker's
 grace period or goes back to the queue); pending run reports are written; the embedder is closed;
@@ -49,7 +51,9 @@ from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_emb
 from memini.executors.service import MCP_SYNC, ServiceOptions, mcp_sync_handler
 from memini.extraction.job import extract_handler, extraction_enabled
 from memini.git import GitOptions, MirrorManager
-from memini.gitsync import GIT_SYNC, git_sync_handler, mirrors_unusable
+from memini.gitsync import GIT_SYNC, MirrorContent, git_sync_handler, mirrors_unusable
+from memini.index import REINDEX_KIND
+from memini.index.auto import enqueue_stale_reindexes, reindex_handler
 from memini.ingest import PayloadIndexer
 from memini.jobs import (
     ASSIGN_DOMAINS_KIND,
@@ -128,6 +132,9 @@ async def job_handlers(
     ingest enqueues its jobs only then. It finds candidates by statement vectors too when an
     embedding provider is configured and ``extraction_candidate_retriever`` is ``hybrid``.
     ``assign_domains`` (:mod:`memini.decisions.assign`) is there with it, on the same gate.
+    ``reindex`` (:mod:`memini.index.auto`) is there when an embedding provider is configured and
+    ``index_auto_rebuild`` is on: ``serve`` enqueues one for every out-of-date workspace when it
+    starts.
     ``git_sync`` (:mod:`memini.gitsync`) is
     there when an embedding provider is configured and
     mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
@@ -175,6 +182,9 @@ async def job_handlers(
                 )
             else:
                 log.warning("git sources are not synced: %s", problem)
+            if settings.index_auto_rebuild:
+                code = MirrorContent(MirrorManager(options)) if problem is None else None
+                handlers[REINDEX_KIND] = reindex_handler(pool, embedder, code=code)
         yield handlers
     finally:
         if gate is not None:
@@ -261,13 +271,13 @@ async def serve_command(args: argparse.Namespace, settings: Settings) -> int:
             readiness_checks={"database": database_check(pool)},
             embedder=embedder,
         )
-        async with (
-            job_handlers(settings, pool, embedder=embedder) as handlers,
-            background_jobs(
+        async with job_handlers(settings, pool, embedder=embedder) as handlers:
+            if REINDEX_KIND in handlers and embedder is not None:
+                await enqueue_stale_reindexes(pool, embedder)
+            async with background_jobs(
                 pool, handlers, retention_interval=timedelta(seconds=settings.retention_interval)
-            ),
-        ):
-            started = await run_http_server(app, settings)
+            ):
+                started = await run_http_server(app, settings)
     if not started:
         raise CommandError("the HTTP server did not start; see the log above")
     log.info("memini stopped")

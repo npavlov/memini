@@ -40,6 +40,7 @@ function index(changes: Partial<WorkspaceIndex>): WorkspaceIndex {
     chunks: 0,
     behind: false,
     reindex: null,
+    rebuild: null,
     ...changes,
   };
 }

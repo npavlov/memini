@@ -20,6 +20,11 @@ the fingerprint the embedder and this chunker make (:func:`~memini.index.current
    (:func:`~memini.index.check_index`) until this transaction commits, and passes from then on.
 5. Vector indexes of keys that no workspace uses any more are dropped.
 
+Under a run (:func:`memini.runs.current_run`) the report carries a ``progress`` detail: the
+records of the workspace when the rebuild started (``records_total``) and how many it has visited
+(``records_done``), saved at most every few seconds; status and the refusal of search read it
+(:mod:`memini.index.progress`).
+
 Writing goes through the writer's comparisons, so a rebuild of an index that is current changes no
 row and embeds nothing, and a rebuild that stopped halfway (a crash, a failed embedding call) can
 simply be run again: what it wrote is kept and not embedded twice. While a rebuild to a new
@@ -37,6 +42,7 @@ import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
@@ -44,6 +50,7 @@ import anyio
 import psycopg
 from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow
+from pydantic import JsonValue
 
 from memini.chunking import FileChunks, chunk_file, chunk_markdown, chunk_payload
 from memini.embeddings import Embedder
@@ -70,7 +77,7 @@ from memini.index.writer import (
     write_record_chunks,
 )
 from memini.payloads import PayloadError
-from memini.runs import current_run
+from memini.runs import Run, current_run
 
 __all__ = [
     "DEFAULT_CHUNKERS",
@@ -221,6 +228,7 @@ async def reindex(
 
         totals = IndexCounts()
         records = indexed = 0
+        progress = await _Progress.start(conn, workspace_id)
         async with _step("rebuild_records"):
             async for page in _pages(conn, workspace_id, page_size):
                 if isinstance(raw, Prefetcher):
@@ -237,6 +245,7 @@ async def reindex(
                     totals += counts
                     records += 1
                     indexed += wrote
+                    await progress.visited(records)
 
         async with _step("finish"), conn.transaction():
             # Wait for writers that checked the old fingerprint, and keep new ones out until the
@@ -284,6 +293,45 @@ async def reindex(
         },
     )
     return result
+
+
+class _Progress:
+    """The ``progress`` detail of the run: records of the workspace, and records visited."""
+
+    def __init__(self, run: Run | None, total: int) -> None:
+        self.run = run
+        self.value: dict[str, JsonValue] = {
+            "records_total": total,
+            "records_done": 0,
+            "started_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        }
+
+    @classmethod
+    async def start(cls, conn: Conn, workspace_id: UUID) -> "_Progress":
+        run = current_run()
+        total = 0
+        if run is not None:
+            cur = await conn.execute(
+                "SELECT count(*) FROM record WHERE workspace_id = %s", (workspace_id,)
+            )
+            row = await cur.fetchone()
+            total = int(row[0]) if row else 0
+        progress = cls(run, total)
+        if run is not None:
+            run.detail("progress", dict(progress.value))
+            await run.save_progress()
+        return progress
+
+    async def visited(self, records: int) -> None:
+        if self.run is None:
+            return
+        self.value["records_done"] = records
+        # Records written while the rebuild runs are visited too: the total grows with them.
+        total = self.value["records_total"]
+        if isinstance(total, int) and records > total:
+            self.value["records_total"] = records
+        self.run.detail("progress", dict(self.value))
+        await self.run.save_progress_if_due()
 
 
 async def _workspace(conn: Conn, workspace_id: UUID) -> tuple[str, UUID]:

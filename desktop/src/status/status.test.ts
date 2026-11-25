@@ -1,7 +1,11 @@
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 
+import { markupOf } from "../components/markup";
 import { ShapeError } from "../json/read-json";
-import { parseServiceStatus } from "./status";
+import { IndexRebuilds } from "./index-rebuilds";
+import { describeRebuild, parseServiceStatus, rebuildsOf } from "./status";
+import type { IndexRebuild } from "./status";
 
 /** One stream as `GET /v1/status` answers it; the names are invented. */
 const stream = {
@@ -134,5 +138,70 @@ describe("parseServiceStatus", () => {
     ["has a workspace without an index", { ...answer, workspaces: [{ name: "harbour" }] }],
   ])("throws a ShapeError when the answer %s", (_what, value) => {
     expect(() => parseServiceStatus(value)).toThrow(ShapeError);
+  });
+});
+
+/** The status of a server rebuilding the index of harbour after an upgrade; fleet is current. */
+function rebuilding(): unknown {
+  const [harbour] = answer.workspaces;
+  return {
+    ...answer,
+    workspaces: [
+      {
+        ...harbour,
+        index: {
+          ...harbour?.index,
+          state: "stale",
+          rebuild: {
+            state: "running",
+            records_done: 312,
+            records_total: 1472,
+            percent: 21,
+            started_at: "2026-11-25T20:00:00Z",
+          },
+        },
+      },
+      { ...harbour, name: "fleet" },
+    ],
+  };
+}
+
+describe("rebuildsOf", () => {
+  it("lists the workspaces whose index is rebuilt, with how far each is", () => {
+    const rebuilds = rebuildsOf(parseServiceStatus(rebuilding()));
+
+    expect(rebuilds).toEqual([
+      { workspace: "harbour", rebuild: { state: "running", recordsDone: 312, recordsTotal: 1472, percent: 21 } },
+    ]);
+  });
+
+  it("lists none when the server reports no rebuild", () => {
+    expect(rebuildsOf(parseServiceStatus(answer))).toEqual([]);
+  });
+});
+
+describe("describeRebuild", () => {
+  it.each<[string, IndexRebuild, string]>([
+    ["runs", { state: "running", recordsDone: 312, recordsTotal: 1472, percent: 21 }, "312 of 1,472 records (21%)"],
+    ["has not counted yet", { state: "running", recordsDone: null, recordsTotal: null, percent: null }, "Started"],
+    ["waits", { state: "queued", recordsDone: null, recordsTotal: null, percent: null }, "Waiting to start"],
+  ])("says how far a rebuild is when it %s", (_what, rebuild, words) => {
+    expect(describeRebuild(rebuild)).toBe(words);
+  });
+});
+
+describe("IndexRebuilds", () => {
+  it("shows a bar per rebuilt workspace with its count", () => {
+    const rebuilds = rebuildsOf(parseServiceStatus(rebuilding()));
+
+    const markup = markupOf(createElement(IndexRebuilds, { rebuilds }));
+
+    expect(markup).toContain("The search index is being rebuilt after an update");
+    expect(markup).toContain('aria-valuenow="312"');
+    expect(markup).toContain("harbour: 312 of 1,472 records (21%)");
+  });
+
+  it("shows nothing without a rebuild", () => {
+    expect(markupOf(createElement(IndexRebuilds, { rebuilds: [] }))).toBe("");
   });
 });

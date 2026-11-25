@@ -10,6 +10,9 @@
   column, and the expressions a search orders by.
 - :mod:`memini.index.rebuild`: :func:`reindex` rebuilds a workspace's index from raw records
   (principle 1), reading them through :mod:`memini.index.raw`.
+- :mod:`memini.index.progress`: whether a rebuild of a workspace waits or runs, and how far it is.
+- :mod:`memini.index.auto` (not imported here: it needs the job queue): the ``reindex`` job a
+  service with ``auto_reindex`` enqueues for every out-of-date workspace when it starts.
 
 The tables are ``chunk`` and ``symbol`` (migration 0005) and ``index_state`` (migration 0004).
 """
@@ -18,6 +21,7 @@ from memini.index.fingerprint import (
     REINDEX_COMMAND,
     IndexFingerprint,
     IndexMismatchError,
+    IndexRebuildingError,
     IndexState,
     check_index,
     current_fingerprint,
@@ -28,6 +32,7 @@ from memini.index.fingerprint import (
     reindex_command,
     set_index_fingerprint,
 )
+from memini.index.progress import REINDEX_KIND, RebuildProgress, read_rebuild, read_rebuilds
 from memini.index.raw import (
     ByKind,
     BySourceKind,
@@ -69,17 +74,20 @@ from memini.index.writer import (
 __all__ = [
     "DEFAULT_CHUNKERS",
     "REINDEX_COMMAND",
+    "REINDEX_KIND",
     "ByKind",
     "BySourceKind",
     "IndexCounts",
     "IndexFingerprint",
     "IndexMismatchError",
+    "IndexRebuildingError",
     "IndexState",
     "MirrorNotAvailable",
     "Prefetcher",
     "RawContent",
     "RawContentUnavailableError",
     "RawDocument",
+    "RebuildProgress",
     "RecordChunker",
     "RecordNotFoundError",
     "RecordRef",
@@ -103,6 +111,8 @@ __all__ = [
     "lock_record",
     "read_index_state",
     "read_index_states",
+    "read_rebuild",
+    "read_rebuilds",
     "reindex",
     "reindex_command",
     "set_index_fingerprint",

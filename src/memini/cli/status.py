@@ -20,7 +20,7 @@ or refuses the token exits as for any client command (3, 5). The verdict is the 
 
 import argparse
 from collections.abc import Mapping
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from memini.cli.arguments import Commands
 from memini.cli.client import Api
@@ -124,8 +124,21 @@ def _index_line(workspace: Mapping[str, Any]) -> str:
     not_indexed = index.get("records_not_indexed")
     if isinstance(not_indexed, int) and not_indexed > 0:
         line += f", {not_indexed} records not indexed"
+    rebuild = index.get("rebuild")
+    if isinstance(rebuild, Mapping):
+        return f"{line}; {_rebuild_words(cast(Mapping[str, Any], rebuild))}"
     reindex = index.get("reindex")
     return line if reindex is None else f"{line}; run `{text(reindex)}`"
+
+
+def _rebuild_words(rebuild: Mapping[str, Any]) -> str:
+    """``rebuilding: 312 of 1472 records (21%)``, or that the rebuild waits."""
+    if rebuild.get("state") != "running":
+        return "rebuild queued"
+    done, total = rebuild.get("records_done"), rebuild.get("records_total")
+    if not isinstance(done, int) or not isinstance(total, int):
+        return "rebuilding"
+    return f"rebuilding: {done} of {total} records ({text(rebuild.get('percent'))}%)"
 
 
 def status_command(args: argparse.Namespace, api: Api) -> int:

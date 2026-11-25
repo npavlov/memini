@@ -41,6 +41,15 @@ export interface StreamStatus {
   readonly recordsNotIndexed: number;
 }
 
+/** A rebuild of a workspace's index that waits or runs: after an upgrade the server starts one. */
+export interface IndexRebuild {
+  readonly state: "queued" | "running";
+  /** Null until the running rebuild has counted the records. */
+  readonly recordsDone: number | null;
+  readonly recordsTotal: number | null;
+  readonly percent: number | null;
+}
+
 export interface WorkspaceIndex {
   readonly state: string;
   readonly builtWith: string | null;
@@ -49,6 +58,7 @@ export interface WorkspaceIndex {
   readonly chunks: number;
   readonly behind: boolean;
   readonly reindex: string | null;
+  readonly rebuild: IndexRebuild | null;
 }
 
 export interface WorkspaceStatus {
@@ -114,6 +124,19 @@ function parseStream(value: unknown): StreamStatus {
   };
 }
 
+function parseRebuild(value: unknown): IndexRebuild | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const rebuild = readObject(value, "the rebuild of an index");
+  return {
+    state: readString(rebuild["state"]) === "running" ? "running" : "queued",
+    recordsDone: readNumber(rebuild["records_done"]),
+    recordsTotal: readNumber(rebuild["records_total"]),
+    percent: readNumber(rebuild["percent"]),
+  };
+}
+
 function parseIndex(index: JsonObject): WorkspaceIndex {
   return {
     state: shown(index["state"], 20),
@@ -123,6 +146,7 @@ function parseIndex(index: JsonObject): WorkspaceIndex {
     chunks: readNumber(index["chunks"]) ?? 0,
     behind: readBoolean(index["behind"]) ?? false,
     reindex: shownOrNull(index["reindex"], 200),
+    rebuild: parseRebuild(index["rebuild"]),
   };
 }
 
@@ -155,4 +179,29 @@ export function parseServiceStatus(value: unknown): ServiceStatus {
 
 export async function readServiceStatus(backend: Backend, id: string): Promise<ServiceStatus> {
   return parseServiceStatus(await backend.invoke("api_status", { id }));
+}
+
+/** A workspace whose index is being rebuilt, with how far it is. */
+export interface WorkspaceRebuild {
+  readonly workspace: string;
+  readonly rebuild: IndexRebuild;
+}
+
+/** The workspaces of the status whose index rebuild waits or runs, in the server's order. */
+export function rebuildsOf(status: ServiceStatus): readonly WorkspaceRebuild[] {
+  return status.workspaces.flatMap((workspace) =>
+    workspace.index.rebuild === null ? [] : [{ workspace: workspace.name, rebuild: workspace.index.rebuild }],
+  );
+}
+
+/** The words under a rebuild's bar: "312 of 1,472 records (21%)", or that it waits. */
+export function describeRebuild(rebuild: IndexRebuild): string {
+  if (rebuild.state === "queued") {
+    return "Waiting to start";
+  }
+  if (rebuild.recordsDone === null || rebuild.recordsTotal === null) {
+    return "Started";
+  }
+  const percent = rebuild.percent === null ? "" : ` (${String(rebuild.percent)}%)`;
+  return `${rebuild.recordsDone.toLocaleString("en-US")} of ${rebuild.recordsTotal.toLocaleString("en-US")} records${percent}`;
 }

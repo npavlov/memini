@@ -1142,6 +1142,9 @@ def test_repos_and_git_need_a_managed_server(
 # --- How much of the computer the search model uses ----------------------------------------------
 
 
+AUTO_REBUILD = {"MEMINI_INDEX_AUTO_REBUILD": "true"}
+
+
 def indexing_compose(state: Path) -> Any:
     text = (state / "compose.resources.yaml").read_text()
     return json.loads(text.split("\n", 1)[1])
@@ -1165,8 +1168,32 @@ def test_indexing_limits_the_model_to_half_the_cores_by_default(
 
     # A start writes the default, and every command adds its Compose file.
     assert launch(state, "start").code == 0
-    assert indexing_compose(state) == {"services": {"ollama": {"cpus": 4.0}}}
+    assert indexing_compose(state) == {
+        "services": {"memini": {"environment": AUTO_REBUILD}, "ollama": {"cpus": 4.0}}
+    }
     assert str(state / "compose.resources.yaml") in docker.calls[-1]
+
+
+def test_a_start_gives_a_server_of_an_older_launcher_the_rebuild_after_an_upgrade(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+) -> None:
+    monkeypatch.setattr(manager, "cores", lambda: 8)
+    # What a launcher before the setting wrote: the mode, and a file with the limit alone.
+    (state / "indexing.json").write_text('{"mode": "background", "runtime": "container"}\n')
+    (state / "compose.resources.yaml").write_text(
+        '# old\n{"services": {"ollama": {"cpus": 2.0}}}\n'
+    )
+
+    assert launch(state, "start").code == 0
+
+    assert indexing_compose(state) == {
+        "services": {"memini": {"environment": AUTO_REBUILD}, "ollama": {"cpus": 2.0}}
+    }
+    assert launch(state, "indexing", "status").value["indexing"]["mode"] == "background"
 
 
 @pytest.mark.parametrize(
@@ -1215,7 +1242,8 @@ def test_full_takes_the_limit_away_and_a_running_model_is_recreated(
         "cores": 8,
         "runtime": "container",
     }
-    assert not (state / "compose.resources.yaml").exists()
+    # No limit: only the service's own settings stay in the file.
+    assert indexing_compose(state) == {"services": {"memini": {"environment": AUTO_REBUILD}}}
     assert docker.ran("up", "-d", "--no-build", "--wait", "ollama")
     assert launch(state, "indexing", "status").value["indexing"]["mode"] == "full"
 
@@ -1303,6 +1331,7 @@ def test_a_first_start_with_the_model_on_this_computer_starts_no_ollama_service(
     memini = resources["services"]["memini"]
     assert memini["environment"]["MEMINI_EMBEDDING_URL"] == "http://host.docker.internal:11434/v1"
     assert memini["environment"]["MEMINI_EMBEDDING_BATCH_SIZE"] == "32"
+    assert memini["environment"]["MEMINI_INDEX_AUTO_REBUILD"] == "true"
     assert memini["depends_on"] == {"ollama": {"condition": "service_healthy", "required": False}}
     assert memini["extra_hosts"] == ["host.docker.internal:host-gateway"]
     status = launch(state, "embedding", "status")
@@ -1353,7 +1382,9 @@ def test_moving_a_running_server_to_ollama_on_this_computer(
     assert back.value["indexing"]["runtime"] == "container"
     assert docker.ran("up", "-d", "--no-build", "--wait", "ollama")
     assert docker.calls[-1][-5:] == list(UP_MEMINI)
-    assert indexing_compose(state) == {"services": {"ollama": {"cpus": 4.0}}}
+    assert indexing_compose(state) == {
+        "services": {"memini": {"environment": AUTO_REBUILD}, "ollama": {"cpus": 4.0}}
+    }
 
 
 def test_another_build_of_the_model_on_this_computer_is_refused(
