@@ -172,15 +172,15 @@ def secret_batch() -> Batch:
             "messages": [
                 {
                     "id": f"msg-{SLACK}",
-                    "persons": ["Ann Example"],
-                    "occurred_at": iso(at - timedelta(minutes=5)),
+                    "author": "Ann Example",
+                    "sent_at": iso(at - timedelta(minutes=5)),
                     "text": f"Pay with {VISA} 12/28 737, or {AMEX}.",
                     "url": f"https://reader:{URL_PASSWORD}@chat.example.invalid/m/1",
                 },
                 {
                     "id": ID_LIKE_A_CARD,
-                    "persons": ["Bo Sample"],
-                    "occurred_at": iso(at),
+                    "author": "Bo Sample",
+                    "sent_at": iso(at),
                     "text": f"Deploy key:\n{PEM}\nand {AWS_KEY_ID} with {AWS_SECRET}",
                     "files": [{"url": f"https://u:{URL_PASSWORD}@files.example.invalid/a.txt"}],
                 },

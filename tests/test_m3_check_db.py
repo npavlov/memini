@@ -412,8 +412,7 @@ def quillpost_parser() -> RecipeParser:
                 "title": found[0]["subject"],
                 "channel": item.listed.fields["mailbox"] if item.listed else None,
                 "messages": [
-                    {"author": m["sender"], "occurred_at": m["date"], "text": m["text"]}
-                    for m in found
+                    {"author": m["sender"], "sent_at": m["date"], "text": m["text"]} for m in found
                 ],
             },
             external_url=f"https://quillpost.example/t/{item.key}",
@@ -1344,5 +1343,5 @@ def authors(found: Mapping[str, list[Row]]) -> set[str]:
     return {
         message["author"]
         for row in found["records"]
-        for message in json.loads(bytes.fromhex(row["row"]["payload"][2:]))["items"]
+        for message in json.loads(bytes.fromhex(row["row"]["payload"][2:]))["messages"]
     }

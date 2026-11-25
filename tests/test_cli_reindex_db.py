@@ -115,11 +115,7 @@ def add(world: World, kind: RecordKind) -> str:
                 source_id=world.notes,
                 external_id="note-1",
                 content=canonical_json(
-                    {
-                        "messages": [
-                            {"persons": ["Ann Example"], "occurred_at": T, "text": "A note."}
-                        ]
-                    }
+                    {"messages": [{"author": "Ann Example", "sent_at": T, "text": "A note."}]}
                 ),
                 kind=kind,
             )

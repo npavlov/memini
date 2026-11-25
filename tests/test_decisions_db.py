@@ -295,7 +295,7 @@ async def item(db: Conn, w: World, item_id: UUID | str) -> Item:
 def correction(**changes: Any) -> Json:
     body: Json = {
         "statement": "Water the beds at seven, not six.",
-        "occurred_at": iso(SAID + timedelta(hours=1)),
+        "decided_at": iso(SAID + timedelta(hours=1)),
         "evidence": [{"source": "chat", "external_id": "garden/0001", "anchor": "m2"}],
     }
     body.update(changes)
@@ -529,7 +529,7 @@ async def test_the_mcp_tools_link_close_and_retract(app: FastAPI, db: Conn, worl
         third = await call("record_decision", {"workspace": "alpha", **correction()})
         assert (await call("retract_decision", {"item_id": third["id"]}))["status"] == "retracted"
 
-        again = await client.call_tool("retract_decision", {"id": third["id"]})
+        again = await client.call_tool("retract_decision", {"item_id": third["id"]})
     assert again.is_error is True
     (content,) = again.content
     assert isinstance(content, TextContent)
@@ -726,7 +726,7 @@ async def test_a_token_limited_to_one_workspace_writes_only_there(
         assert refused(response, 404, "not_found") == "No such knowledge item."
 
     async with mcp_client(app, world.tokens["beta_writer"]) as client:
-        result = await client.call_tool("retract_decision", {"id": alpha_item})
+        result = await client.call_tool("retract_decision", {"item_id": alpha_item})
         recorded = await client.call_tool("record_decision", {"workspace": "alpha", **correction()})
     assert result.is_error is True
     assert recorded.is_error is True
@@ -760,7 +760,7 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
         active = await client.call_tool("list_decisions", {"query": "marigolds"})
         assert not active.is_error
         assert [i["id"] for i in active.structured_content["items"]] == [new]
-        result = await client.call_tool("get_decision", {"id": str(old)})
+        result = await client.call_tool("get_decision", {"item_id": str(old)})
         assert not result.is_error
         assert [i["id"] for i in result.structured_content["chain"]] == [str(old), new]
         chat = await scalar(
@@ -770,7 +770,7 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
             world.alpha,
         )
         await expire_source(db, chat, as_of=SAID + timedelta(days=4))
-        expired = await client.call_tool("get_decision", {"id": new})
+        expired = await client.call_tool("get_decision", {"item_id": new})
         assert expired.structured_content["item"]["evidence"][0]["record_state"] == "expired"
         assert expired.structured_content["item"]["evidence"][0]["anchor"] == "m2"
 
@@ -779,13 +779,13 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
     params = {"query": "marigolds", "mode": "lexical", "kinds": "decision"}
     async with http_client(app, world.tokens["reader"]) as http:
         found = ok(await http.get("/v1/search", params=params))
-        assert found["items"] == []
+        assert found["hits"] == []
         assert [i["id"] for i in found["decisions"]] == [new]
         assert found["decisions"][0]["evidence"][0]["anchor"] == "m2"
         for exclusions in (
             {"persons": str(world.beta_person)},
             {"sources": "other"},
-            {"sources": "chat"},
+            {"repositories": "chat"},
         ):
             assert ok(await http.get("/v1/search", params=params | exclusions))["decisions"] == []
         assert (

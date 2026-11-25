@@ -81,7 +81,7 @@ _BLOCK = re.compile(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>",
 
 def data_lines(body: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The JSON lines of the data block of a request's user message."""
-    found = _BLOCK.search(body["items"][-1]["content"])
+    found = _BLOCK.search(body["messages"][-1]["content"])
     assert found is not None
     return [json.loads(line) for line in found.group(2).split("\n")]
 
@@ -190,8 +190,8 @@ def thread(external_id: str, *texts: str, start: datetime = T0) -> RecordIn:
     messages = [
         {
             "id": f"m{n}",
-            "persons": ["Ann Example"] if n % 2 else "Bo Sample",
-            "occurred_at": iso(start + timedelta(minutes=n)),
+            "author": "Ann Example" if n % 2 else "Bo Sample",
+            "sent_at": iso(start + timedelta(minutes=n)),
             "text": text,
         }
         for n, text in enumerate(texts, start=1)
@@ -330,7 +330,7 @@ async def test_a_job_extracts_items_with_anchors_and_reports_what_it_did(
         "active",
     )
     assert item["anchors"] == ["m2", "m1"]
-    assert item["occurred_at"] == T0 + timedelta(minutes=2)
+    assert item["decided_at"] == T0 + timedelta(minutes=2)
     assert item["extractor"] == extractor_name(LOCAL_MODEL)
     people = await rows(
         db,
@@ -361,7 +361,7 @@ async def test_the_prompt_holds_the_record_only_inside_the_data_block(
     [body] = [
         b for b in fake.bodies() if b["response_format"]["json_schema"]["name"] == "decisions"
     ]
-    system, user = (message["content"] for message in body["items"])
+    system, user = (message["content"] for message in body["messages"])
     found = _BLOCK.search(user)
     assert found is not None
     outside = user[: found.start()] + user[found.end() :]
@@ -742,4 +742,4 @@ async def test_a_proposal_can_cite_a_subsequent_confirmation(
     assert fake.kinds() == ["decisions", "decision_support", "decision_confirmation"]
     if accepted:
         assert stored[0]["anchors"] == ["m2", "m1"]
-        assert stored[0]["occurred_at"] == T0 + timedelta(minutes=2)
+        assert stored[0]["decided_at"] == T0 + timedelta(minutes=2)

@@ -553,7 +553,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "status": {},
         "search": query_values["/v1/search"],
         "search_code": query_values["/v1/search/code"],
-        "get_file": {"workspace": "alpha", "source": "source"},
+        "get_file": {"workspace": "alpha", "repository": "source"},
         "get_symbol": {"name": "sample"},
         "list_commits": {},
         "list_meetings": {},

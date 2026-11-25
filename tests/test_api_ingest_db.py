@@ -315,7 +315,7 @@ async def test_a_batch_that_is_not_valid_is_refused_without_its_values(
     private = "private-text-that-must-not-echo-7f3a"
 
     no_author = thread("general/0001")
-    no_author["payload"]["items"][0] = {"occurred_at": iso(T0), "text": private}
+    no_author["payload"]["messages"][0] = {"sent_at": iso(T0), "text": private}
     error = refused(
         await client.post(RECORDS, json=day_batch(no_author), headers=pusher), 422, "invalid_batch"
     )

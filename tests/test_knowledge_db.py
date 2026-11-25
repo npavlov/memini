@@ -268,9 +268,9 @@ KNOWLEDGE_TABLES = (
     [
         ("statement", "The pump runs at night."),
         ("kind", "open_question"),
-        ("occurred_at", datetime(2020, 1, 1, tzinfo=UTC)),
+        ("decided_at", datetime(2020, 1, 1, tzinfo=UTC)),
         ("extractor", "another-model@v9"),
-        ("created_at", datetime(2020, 1, 1, tzinfo=UTC)),
+        ("recorded_at", datetime(2020, 1, 1, tzinfo=UTC)),
         ("owner_id", None),
     ],
 )
@@ -281,9 +281,9 @@ async def test_a_stored_item_cannot_be_edited(
     queries: dict[str, LiteralString] = {
         "statement": "UPDATE knowledge_item SET statement = %s WHERE id = %s",
         "kind": "UPDATE knowledge_item SET kind = %s WHERE id = %s",
-        "occurred_at": "UPDATE knowledge_item SET decided_at = %s WHERE id = %s",
+        "decided_at": "UPDATE knowledge_item SET decided_at = %s WHERE id = %s",
         "extractor": "UPDATE knowledge_item SET extractor = %s WHERE id = %s",
-        "created_at": "UPDATE knowledge_item SET recorded_at = %s WHERE id = %s",
+        "recorded_at": "UPDATE knowledge_item SET recorded_at = %s WHERE id = %s",
         "owner_id": "UPDATE knowledge_item SET owner_id = coalesce(%s, owner_id) WHERE id = %s",
     }
 
@@ -1135,7 +1135,7 @@ LOOKUPS: list[tuple[str, str, tuple[str, ...], bool]] = [
     (
         "list_decisions: items of a workspace by status and time",
         "knowledge_item",
-        ("workspace_id", "status", "occurred_at"),
+        ("workspace_id", "status", "decided_at"),
         False,
     ),
     ("items of an extraction", "knowledge_item", ("extraction_id",), False),
