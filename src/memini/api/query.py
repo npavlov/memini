@@ -23,7 +23,8 @@ ref or range that is not valid, a regular expression that runs past ``search_tim
 (``search_timeout``), a history walk that runs past ``git_log_timeout`` (``commits_timeout``) or
 a file over the size limit; 404 ``not_found`` for anything the token may
 not read or that does not exist; 409 ``not_synced`` for a repository without a mirror yet; 503 for
-a stale index (``index_mismatch``, the message names ``memini reindex``) or missing embeddings.
+a stale index (``index_mismatch``, the message names ``memini reindex``; ``index_rebuilding`` while
+its rebuild waits or runs, with how far it is) or missing embeddings.
 """
 
 from typing import Annotated, cast

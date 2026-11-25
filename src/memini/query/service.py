@@ -28,6 +28,7 @@ a message that never repeats an argument or stored content:
 | a file over ``git_max_blob_size`` | 422 | ``file_too_large`` |
 | no such workspace, repository, ref, commit or path the caller may read | 404 | ``not_found`` |
 | the repository has no mirror yet | 409 | ``not_synced`` |
+| a stale index whose rebuild waits or runs | 503 | ``index_rebuilding`` |
 | an index built with another fingerprint (principle 9) | 503 | ``index_mismatch`` |
 | no embedding provider configured | 503 | ``embeddings_not_configured`` |
 | the query could not be embedded | 503 | ``embedding_failed`` |
@@ -35,7 +36,8 @@ a message that never repeats an argument or stored content:
 
 A timeout is the query's to fix (narrow it, or a more specific pattern), so it is a 422, not a
 server error. A stale index and a missing provider are the operator's: the message of a stale index
-names ``memini reindex --workspace NAME``.
+names ``memini reindex --workspace NAME``. A stale index whose rebuild waits or runs (a service with
+``index_auto_rebuild`` after an upgrade) says how far the rebuild is instead: it passes by itself.
 
 Embeddings: every search mode checks the index fingerprint, and the fingerprint is made from the
 embedder's spec, so ``search``, ``search_code`` and ``get_symbol`` need the configured embedder in
@@ -61,6 +63,7 @@ from memini.decisions.model import DecisionItem
 from memini.embeddings import Embedder, EmbeddingError, EmbeddingsNotConfiguredError
 from memini.git import GitOptions, MirrorManager
 from memini.ids import RecordKind
+from memini.index import IndexRebuildingError
 from memini.ingest import DEFAULT_LIMITS, IngestLimits
 from memini.persons import parse_person_ref, resolve_persons
 from memini.query.commits import (
@@ -197,6 +200,8 @@ def query_errors() -> Generator[None]:
         raise QueryError(422, "commits_timeout", _sentence(str(error))) from None
     except CommitsTooLargeError as error:
         raise QueryError(422, "commits_too_large", _sentence(str(error))) from None
+    except IndexRebuildingError as error:
+        raise QueryError(503, "index_rebuilding", _sentence(str(error))) from None
     except IndexMismatchError as error:
         raise QueryError(503, "index_mismatch", _sentence(str(error))) from None
     except EmbeddingsNotConfiguredError:

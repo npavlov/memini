@@ -21,6 +21,7 @@ import { useAction } from "../hooks/use-action";
 import { useLoad } from "../hooks/use-load";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
+import { ConnectionRebuilds } from "../status/index-rebuilds";
 import { AddRepository } from "./add-repository";
 import { LocalFolders } from "./local-folders";
 import { isHandle } from "./repositories";
@@ -44,7 +45,10 @@ export function RepositoriesScreen({ connection, info }: RepositoriesScreenProps
       lead="The code the server follows and indexes: add a folder of this computer or a repository at an address, choose what it indexes, and see how far each sync is. Needs a token with the admin scope."
     >
       {connection.hasToken ? (
-        <Workspaces connection={connection} info={info} />
+        <>
+          <ConnectionRebuilds connectionId={connection.id} />
+          <Workspaces connection={connection} info={info} />
+        </>
       ) : (
         <Notice tone="warn" title="This connection has no token">
           <Text>Store a token with the admin scope on the Connection screen.</Text>

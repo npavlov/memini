@@ -883,9 +883,10 @@ is one PyPI package with wheels for macOS arm64, Linux x86_64 and aarch64, and W
 (Elixir: Apache-2.0); R has no package and is not parsed, Elixir is the twentieth. The new grammars
 add about 50 MB to the image. The language of a chunk or symbol is checked for its shape only
 (migration 0021), so a further language needs no migration. Chunker 3 changes the index
-fingerprint, so after an upgrade search refuses each workspace until `memini reindex --workspace
-NAME` has rebuilt it; a vector is reused by its text hash, so the rebuild re-reads every file but
-embeds only the texts that changed: the files of the fifteen languages, until then line windows.
+fingerprint, so after an upgrade search refuses each workspace until it is rebuilt: by the managed
+server itself (**Rebuild after an upgrade**, section 9), or by `memini reindex --workspace NAME`; a
+vector is reused by its text hash, so the rebuild re-reads every file but embeds only the texts
+that changed: the files of the fifteen languages, until then line windows.
 
 **Document chunks** (decided 2026-11-18). A Markdown document is cut by its headings: ATX (`#` to
 `######`) and setext (a paragraph underlined with `=` or `-`), as CommonMark has them at the top
@@ -1647,6 +1648,22 @@ sources, code and Markdown documents, are read again from the repository mirror 
 hash is the blob id), in batches: two git processes read the blobs of up to a page of records of
 one source, within a memory budget (8 MiB by default), not one process per file. Other records are
 read from the stored payload.
+
+**Rebuild after an upgrade** (decided 2026-11-25, owner). A person who upgrades through the desktop
+app does not run commands, so a managed server rebuilds an out-of-date index by itself. The
+setting `index_auto_rebuild` (off by default; the server launcher sets it in the Compose file it
+writes at every start, so a server of an older launcher gets it too) makes `serve` enqueue one
+`reindex` job per workspace whose stored fingerprint differs from the configured one, when it
+starts; a job of the same workspace that waits or runs is kept. The job worker runs the rebuild
+above on a pooled connection in autocommit, under a `reindex` run whose report carries the records
+of the workspace and how many are visited (`details.progress`, saved every few seconds; `memini
+reindex` reports the same). While the job waits or the run runs, search refuses the workspace with
+503 `index_rebuilding` and that progress instead of `index_mismatch` (writers keep the plain
+refusal); `GET /v1/status` gives it per workspace (`index.rebuild`), and the desktop app shows a
+bar on its Server and Codebases screens. A failed attempt goes back to the queue with the worker's
+backoff and resumes without embedding twice; `memini reindex` run meanwhile takes the rebuild lock,
+and the job then ends. The rebuild was not started by the launcher: the service knows the
+fingerprint, and a self-managed install opts in with the same setting.
 
 **Code sync** (decided 2026-11-18). Each tracked ref of a git source is a stream; its pin, kept in
 `stream.cursor`, is the commit its records are complete at and a digest of the rules that selected

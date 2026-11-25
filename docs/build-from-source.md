@@ -337,6 +337,10 @@ search and indexing there are refused until you rebuild it:
 memini reindex --workspace demo
 ```
 
+**`index_rebuilding`**: `The index of workspace demo is being rebuilt … 312 of 1,472 records (21%)`.
+The service was started with `index_auto_rebuild` and rebuilds the workspace by itself after an
+upgrade; search there is back when it finishes. `memini status` shows how far it is.
+
 **`memini: no token: set MEMINI_TOKEN or MEMINI_TOKEN_FILE`** in a new shell: export
 `MEMINI_TOKEN_FILE` again (step 5). Exit code 5 with `invalid_token, HTTP 401`: the token is unknown
 or revoked; with `insufficient_scope, HTTP 403`: it lacks the scope, e.g. a read token on

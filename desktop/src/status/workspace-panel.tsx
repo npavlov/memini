@@ -5,6 +5,7 @@ import { useBackend } from "../ipc/backend-context";
 import { countNoun } from "../text/count-noun";
 import { formatAgo, formatDuration } from "../text/format-time";
 import { runTone, streamVerdict, workspaceIndexVerdict } from "./freshness";
+import { IndexRebuilds } from "./index-rebuilds";
 import type { StreamRun, StreamStatus, WorkspaceStatus } from "./status";
 
 export interface WorkspacePanelProps {
@@ -22,7 +23,9 @@ export function WorkspacePanel({ workspace }: WorkspacePanelProps): ReactElement
         {index.recordsNotIndexed > 0 ? `, ${String(index.recordsNotIndexed)} not indexed` : ""}
         {index.builtWith === null ? "" : `; index built with ${index.builtWith}`}
       </Text>
-      {index.reindex === null ? null : (
+      {index.rebuild !== null ? (
+        <IndexRebuilds rebuilds={[{ workspace: workspace.name, rebuild: index.rebuild }]} />
+      ) : index.reindex === null ? null : (
         <Text>
           To bring the index up to date, the server suggests running, where its CLI is:{" "}
           <Mono>{index.reindex}</Mono>

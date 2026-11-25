@@ -303,6 +303,19 @@ this on a Mac by itself: its first setup finds Ollama on the Mac, downloads the 
 installs the server in this mode, or offers to install Ollama with Homebrew. Keep Ollama running
 while the server indexes and searches. On Linux and Windows the model stays in its container.
 
+### Upgrade the server
+
+A new launcher starts the server on the image of its release: `memini-server start`, or Start on
+the desktop app's Server screen. The service migrates its database as it starts. When the new
+version cuts or reads code differently (its index fingerprint changed, for example new languages),
+the index of each workspace is out of date, and the managed server rebuilds it by itself
+(`index_auto_rebuild`, which the launcher sets): it reuses every vector whose text did not change
+and embeds only what is new. Until a workspace's rebuild is done, search there answers
+`index_rebuilding` with how far it is, `memini status` prints `rebuilding: N of M records`, and
+the desktop app shows a bar for it on the Server and Codebases screens. Nothing needs to be run.
+A server set up without the launcher rebuilds with `memini reindex --workspace NAME`, or with
+`MEMINI_INDEX_AUTO_REBUILD=true` (see [configuration](configuration.md#index)).
+
 ### Remove the server
 
 ```sh

@@ -73,6 +73,9 @@ HOST_EMBEDDING = {
     "MEMINI_EMBEDDING_TIMEOUT": "120",
     "MEMINI_CLIENT_TIMEOUT": "180",
 }
+# The service's settings on every managed server: after an upgrade that changes the index
+# fingerprint, it rebuilds out-of-date workspaces by itself instead of waiting for `memini reindex`.
+MANAGED_SERVICE = {"MEMINI_INDEX_AUTO_REBUILD": "true"}
 # Seconds to ask Ollama on this computer, and to let it download the model.
 HOST_PROBE_TIMEOUT = 5
 HOST_PULL_TIMEOUT = 60 * 60
@@ -632,39 +635,37 @@ def embedding_runtime(directory: Path) -> str:
     return indexing_settings(directory)["runtime"]
 
 
-def resources_compose(cpus: float | None, runtime: str) -> dict[str, object] | None:
-    """The Compose file of the indexing settings: the CPU limit of the ollama service and, when
-    the model runs on this computer, the service's address of it, with the ollama service in a
-    profile no command starts and the service's wait for it made optional. Every value is the
-    launcher's own; none comes from the user. ``None`` when the settings change nothing."""
-    services: dict[str, object] = {}
+def resources_compose(cpus: float | None, runtime: str) -> dict[str, object]:
+    """The Compose file of the indexing settings: the service's own settings of a managed server
+    (it rebuilds an out-of-date index after an upgrade), the CPU limit of the ollama service and,
+    when the model runs on this computer, the service's address of it, with the ollama service in
+    a profile no command starts and the service's wait for it made optional. Every value is the
+    launcher's own; none comes from the user."""
+    services: dict[str, object] = {"memini": {"environment": dict(MANAGED_SERVICE)}}
     ollama: dict[str, object] = {}
     if cpus is not None:
         ollama["cpus"] = cpus
     if runtime == "host":
         ollama["profiles"] = [CONTAINER_MODEL_PROFILE]
         services["memini"] = {
-            "environment": dict(HOST_EMBEDDING),
+            "environment": {**MANAGED_SERVICE, **HOST_EMBEDDING},
             # Docker Desktop and OrbStack know this name; on Linux it is the host's gateway.
             "extra_hosts": ["host.docker.internal:host-gateway"],
             "depends_on": {"ollama": {"condition": "service_healthy", "required": False}},
         }
     if ollama:
         services["ollama"] = ollama
-    return {"services": services} if services else None
+    return {"services": services}
 
 
 def save_indexing(directory: Path, mode: str | None = None, runtime: str | None = None) -> None:
-    """Write the mode and the runtime, each kept when not given, and the Compose file they make;
-    no Compose file when they change nothing."""
+    """Write the mode and the runtime, each kept when not given, and the Compose file they make.
+    A start writes it again, so a server installed by an older launcher gets what this one sets."""
     settings = indexing_settings(directory)
     mode = mode or settings["mode"]
     runtime = runtime or settings["runtime"]
     write_private(directory / INDEXING, json.dumps({"mode": mode, "runtime": runtime}) + "\n")
     content = resources_compose(indexing_cpus(mode, cores()), runtime)
-    if content is None:
-        write_private(directory / INDEXING_COMPOSE, None)
-        return
     # JSON is YAML: Compose reads it as it is.
     text = json.dumps(content, indent=2)
     header = "# Made by memini-server from indexing.json; change it with memini-server indexing.\n"
@@ -1189,6 +1190,9 @@ def manage(
                 save_indexing(directory, DEFAULT_INDEXING, runtime or DEFAULT_RUNTIME)
             elif runtime is not None and runtime != embedding_runtime(directory):
                 raise ValueError(f"use `memini-server embedding {runtime}` to move the model")
+            else:
+                # The settings as they are, in this launcher's Compose file.
+                save_indexing(directory)
     if not directory.exists() and command in {"status", "stop"}:
         if not quiet:
             print(f"No managed server at {directory}")

@@ -22,7 +22,9 @@ version and the versions of tree-sitter and its grammars; then the version of th
 writer applies to chunk text, :data:`memini.redaction.REDACTION_VERSION`), and:
 
 - search calls :func:`check_index` first: a stored fingerprint that differs raises
-  :class:`IndexMismatchError`, whose message names ``memini reindex``;
+  :class:`IndexMismatchError`, whose message names ``memini reindex``, or, while a rebuild of the
+  workspace waits or runs (:mod:`memini.index.progress`), :class:`IndexRebuildingError`, whose
+  message says how far it is;
 - the index writer calls :func:`ensure_index` in the transaction that writes chunks: it records the
   fingerprint of a first index, and refuses to add to an index built with another one;
 - a rebuild calls :func:`set_index_fingerprint` in the transaction that finishes it.
@@ -42,6 +44,7 @@ from memini.chunking import chunker_fingerprint
 from memini.config import EmbeddingPooling, EmbeddingProvider
 from memini.embeddings.base import EmbeddingSpec, Normalization
 from memini.ids import hash_fields
+from memini.index.progress import RebuildProgress, read_rebuild
 from memini.redaction import REDACTION_VERSION
 
 __all__ = [
@@ -50,6 +53,7 @@ __all__ = [
     "REINDEX_COMMAND",
     "IndexFingerprint",
     "IndexMismatchError",
+    "IndexRebuildingError",
     "IndexState",
     "check_index",
     "current_fingerprint",
@@ -182,6 +186,24 @@ class IndexMismatchError(Exception):
         )
 
 
+class IndexRebuildingError(IndexMismatchError):
+    """The index of a workspace is out of date, and its rebuild waits or runs: after an upgrade,
+    a service with ``auto_reindex`` rebuilds it by itself. Search is back when it finishes; the
+    message says how far it is instead of asking for ``memini reindex``."""
+
+    def __init__(
+        self, state: IndexState, expected: IndexFingerprint, rebuild: RebuildProgress
+    ) -> None:
+        super().__init__(state, expected)
+        self.rebuild = rebuild
+        Exception.__init__(
+            self,
+            f"the index of workspace {state.workspace} is being rebuilt for"
+            f" {expected.describe()} (changed: {', '.join(self.changed)}): {rebuild.describe()}."
+            " Search in this workspace is back when the rebuild finishes",
+        )
+
+
 _STATE_COLUMNS: Final = sql.SQL(
     "s.workspace_id, w.name, s.fingerprint, s.provider, s.model, s.model_digest, s.dimension,"
     " s.normalization, s.pooling, s.max_tokens, s.document_prefix, s.chunker_version,"
@@ -219,10 +241,14 @@ async def check_index(
     search, and nothing stale).
 
     Raises:
+        IndexRebuildingError: the stored fingerprint differs, and a rebuild waits or runs.
         IndexMismatchError: the stored fingerprint differs from ``expected``.
     """
     state = await read_index_state(conn, workspace_id)
     if state is not None and state.fingerprint != expected.digest:
+        rebuild = await read_rebuild(conn, workspace_id)
+        if rebuild is not None:
+            raise IndexRebuildingError(state, expected, rebuild)
         raise IndexMismatchError(state, expected)
     return state
 

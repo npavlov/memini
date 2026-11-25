@@ -156,6 +156,17 @@ GROUPS: Final[tuple[Group, ...]] = (
         " `embedding_*` setting without a provider, is an error.",
     ),
     Group(
+        "Index",
+        ("index_",),
+        "Each workspace's index records what built it: the embedding model and the chunker. An"
+        " upgrade that changes either makes the index out of date, and search in the workspace is"
+        " refused until it is rebuilt. With `index_auto_rebuild` the service enqueues the rebuild"
+        " of every out-of-date workspace when it starts; vectors are reused by their text, so only"
+        " what changed is embedded. Meanwhile search answers 503 `index_rebuilding` with how far"
+        " the rebuild is, and `GET /v1/status` shows it. Without it, `memini reindex --workspace"
+        " NAME` rebuilds one workspace.",
+    ),
+    Group(
         "Search",
         ("search_",),
         "The limits of one search, and how a hybrid search fuses its retrievers: each contributes"
@@ -269,6 +280,8 @@ NOTES: Final[Mapping[str, str]] = {
     "http_port": "The HTTP API and MCP (`/mcp`) listen on it.",
     "mcp_enabled": "With the server launcher: `memini-server mcp on` and `memini-server mcp off`"
     " set it and restart the service.",
+    "index_auto_rebuild": "The server launcher sets it for a managed server. A rebuild runs as a"
+    " `reindex` job, one workspace at a time, beside the other jobs of the worker.",
     "log_level": "The lowest level the service logs; any case.",
     "log_slow_statement_threshold": "A statement of the service over it is logged at WARNING with"
     " its duration, the request or run it served, and its text with every literal replaced by"

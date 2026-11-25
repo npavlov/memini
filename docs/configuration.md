@@ -123,6 +123,14 @@ A value that is set wins. Another model gets no dimension, digest or query prefi
 | `embedding_pooling`<br>`MEMINI_EMBEDDING_POOLING` | one of `mean`, `cls` | `mean` | restart, then `memini reindex` | *`local` only.* mean or cls. How the token vectors of a text become one: their mean, or the vector of the first token. |
 | `embedding_max_tokens`<br>`MEMINI_EMBEDDING_MAX_TOKENS` | integer, 1 to 32768 | `512` | restart, then `memini reindex` | *`local` only.* An integer from 1 to 32768. A longer text is cut to this many tokens. |
 
+### Index
+
+Each workspace's index records what built it: the embedding model and the chunker. An upgrade that changes either makes the index out of date, and search in the workspace is refused until it is rebuilt. With `index_auto_rebuild` the service enqueues the rebuild of every out-of-date workspace when it starts; vectors are reused by their text, so only what changed is embedded. Meanwhile search answers 503 `index_rebuilding` with how far the rebuild is, and `GET /v1/status` shows it. Without it, `memini reindex --workspace NAME` rebuilds one workspace.
+
+| Setting | Values | Default | Change needs | Description |
+| --- | --- | --- | --- | --- |
+| `index_auto_rebuild`<br>`MEMINI_INDEX_AUTO_REBUILD` | boolean | `false` | restart | True or false: rebuild an out-of-date index when the service starts. The server launcher sets it for a managed server. A rebuild runs as a `reindex` job, one workspace at a time, beside the other jobs of the worker. |
+
 ### Search
 
 The limits of one search, and how a hybrid search fuses its retrievers: each contributes `search_candidates` results, merged by reciprocal rank fusion with k `search_rrf_k`, each retriever's ranks weighted. The reranker (what it gains and costs: docs/requirements.md, section 9, Reranker) is `none` by default and `local` in the image, which carries its runtime and its files, about 610 MB; they are verified against `search_reranker_digest` each time the service starts, before they are loaded. Outside the image, `local` needs the optional dependencies `memini[local-embeddings]`, and its files are fetched at the pinned revision when the service first starts with it. A `search_reranker_*` setting while `search_reranker` is `none` is an error, but for `search_reranker_model_dir`. Another model or model file needs its own digest, and another model its own revision; in the image it also needs a writable `search_reranker_model_dir`, such as a volume, as the image's own is read-only.

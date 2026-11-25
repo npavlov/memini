@@ -29,7 +29,10 @@ Definitions:
   behind, ``True`` when it has a schedule and is not, and ``None`` for a stream without a schedule
   that is not behind: it runs only when triggered, so its lag is not judged.
 - A workspace's index is **behind** when it is stale, or holds records that are not indexed while
-  an embedding provider is set; its ``reindex`` names the command that brings it up to date.
+  an embedding provider is set; its ``reindex`` names the command that brings it up to date. Its
+  ``rebuild`` says whether a rebuild waits or runs, and how far it is
+  (:mod:`memini.index.progress`): after an upgrade a service with ``index_auto_rebuild`` starts one
+  by itself.
 - The **base** is current when the database is reachable, no stream is behind and no workspace's
   index is behind. With no streams it is trivially current.
 - A stream is **missing** when what it follows no longer exists at the source: a git ref deleted
@@ -90,8 +93,10 @@ from memini.embeddings import Embedder
 from memini.index import (
     IndexFingerprint,
     IndexState,
+    RebuildProgress,
     current_fingerprint,
     read_index_states,
+    read_rebuilds,
     reindex_command,
 )
 from memini.logs import redact
@@ -103,6 +108,7 @@ __all__ = [
     "BehindReason",
     "DatabaseStatus",
     "GitPin",
+    "IndexRebuild",
     "IndexStatus",
     "ServiceIndexState",
     "ServiceStatus",
@@ -227,6 +233,22 @@ class StreamStatus(BaseModel):
     )
 
 
+class IndexRebuild(BaseModel):
+    """A rebuild of a workspace's index that waits or runs."""
+
+    state: Literal["queued", "running"] = Field(
+        description="queued: waits for the job worker. running: visiting the records."
+    )
+    records_done: int | None = Field(
+        description="Records visited so far; null until the running rebuild has counted them."
+    )
+    records_total: int | None = Field(
+        description="Records of the workspace when the rebuild started; null likewise."
+    )
+    percent: int | None = Field(description="Whole percent of the records visited; null unknown.")
+    started_at: datetime | None = Field(description="When it started; null while it waits.")
+
+
 class WorkspaceIndex(BaseModel):
     """The index of one workspace."""
 
@@ -252,6 +274,11 @@ class WorkspaceIndex(BaseModel):
     )
     reindex: str | None = Field(
         description="The command that brings the index up to date when it is behind."
+    )
+    rebuild: IndexRebuild | None = Field(
+        default=None,
+        description="A rebuild that waits or runs: after an upgrade, a service with"
+        " index_auto_rebuild starts one by itself. null when there is none.",
     )
 
 
@@ -471,8 +498,10 @@ async def _indexes(
         ),
     )
     cur = await conn.execute(query)
+    rows = await cur.fetchall()
+    rebuilds = await read_rebuilds(conn, [row[0] for row in rows])
     indexes: dict[UUID, WorkspaceIndex] = {}
-    for workspace_id, name, records, not_indexed, chunks in await cur.fetchall():
+    for workspace_id, name, records, not_indexed, chunks in rows:
         indexes[workspace_id] = _index(
             name,
             states.get(workspace_id),
@@ -480,6 +509,7 @@ async def _indexes(
             records=records,
             not_indexed=not_indexed,
             chunks=chunks,
+            rebuild=rebuilds.get(workspace_id),
         )
     return indexes
 
@@ -492,6 +522,7 @@ def _index(
     records: int = 0,
     not_indexed: int = 0,
     chunks: int = 0,
+    rebuild: RebuildProgress | None = None,
 ) -> WorkspaceIndex:
     changed: tuple[str, ...] = ()
     if fingerprint is None:
@@ -513,6 +544,15 @@ def _index(
         chunks=chunks,
         behind=behind,
         reindex=reindex_command(workspace) if behind else None,
+        rebuild=None
+        if rebuild is None
+        else IndexRebuild(
+            state=rebuild.state,
+            records_done=rebuild.records_done,
+            records_total=rebuild.records_total,
+            percent=rebuild.percent,
+            started_at=rebuild.started_at,
+        ),
     )
 
 

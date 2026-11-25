@@ -463,6 +463,15 @@ class Settings(BaseModel):
         default=512, ge=1, le=32768, description="an integer from 1 to 32768"
     )
 
+    # --- Index (memini.index) ------------------------------------------------------------------
+    # After an upgrade that changes the index fingerprint, rebuild out-of-date workspaces by
+    # themselves (memini.index.auto) instead of waiting for `memini reindex`. The managed server
+    # turns it on.
+    index_auto_rebuild: bool = Field(
+        default=False,
+        description="true or false: rebuild an out-of-date index when the service starts",
+    )
+
     # --- Git connector (memini.git) --------------------------------------------------------------
     # The service keeps a bare mirror of every git source and reads code from it. Remote sources
     # use https or ssh; plain http and local paths are refused unless allowed here. Credentials

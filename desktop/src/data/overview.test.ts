@@ -37,6 +37,7 @@ function workspace(streams: readonly StreamStatus[]): WorkspaceStatus {
       chunks: 900,
       behind: true,
       reindex: null,
+      rebuild: null,
     },
   };
 }

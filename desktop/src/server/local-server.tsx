@@ -10,6 +10,7 @@ import { useLoad } from "../hooks/use-load";
 import type { Load } from "../hooks/use-load";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
+import { ConnectionRebuilds } from "../status/index-rebuilds";
 import { FirstSetup } from "./first-setup";
 import { GitAccessPanel } from "./git-access";
 import { IndexingPanel } from "./indexing-panel";
@@ -122,6 +123,7 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
   const reason = busyReason(working);
   return (
     <>
+      {offered === "done" && local !== null ? <ConnectionRebuilds connectionId={local.id} /> : null}
       {offered === "setup" ? (
         <FirstSetup
           disabled={working !== null && working !== "setup"}
