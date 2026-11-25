@@ -1137,3 +1137,86 @@ def test_repos_and_git_need_a_managed_server(
         assert refused.code == 1
         assert str(refused.value["error"]).startswith("no managed server at ")
     assert not nothing.exists()
+
+
+# --- How much of the computer the search model uses ----------------------------------------------
+
+
+def indexing_compose(state: Path) -> Any:
+    text = (state / "compose.resources.yaml").read_text()
+    return json.loads(text.split("\n", 1)[1])
+
+
+def test_indexing_limits_the_model_to_half_the_cores_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+) -> None:
+    monkeypatch.setattr(manager, "cores", lambda: 8)
+
+    before = launch(state, "indexing", "status")
+
+    assert before.value == OK | {"indexing": {"mode": "half", "cpus": 4.0, "cores": 8}}
+    assert not (state / "compose.resources.yaml").exists()
+
+    # A start writes the default, and every command adds its Compose file.
+    assert launch(state, "start").code == 0
+    assert indexing_compose(state) == {"services": {"ollama": {"cpus": 4.0}}}
+    assert str(state / "compose.resources.yaml") in docker.calls[-1]
+
+
+@pytest.mark.parametrize(
+    ("mode", "available", "cpus"),
+    [("background", 4, 1.0), ("background", 12, 2.0), ("half", 2, 1.0), ("half", 1, 1.0)],
+)
+def test_each_mode_sets_a_limit_from_the_cores(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+    mode: str,
+    available: int,
+    cpus: float,
+) -> None:
+    monkeypatch.setattr(manager, "cores", lambda: available)
+
+    answer = launch(state, "indexing", "set", mode)
+
+    assert answer.value["indexing"] == {"mode": mode, "cpus": cpus, "cores": available}
+    assert indexing_compose(state)["services"]["ollama"]["cpus"] == cpus
+
+
+def test_full_takes_the_limit_away_and_a_running_model_is_recreated(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+) -> None:
+    monkeypatch.setattr(manager, "cores", lambda: 8)
+    docker.rows = [container("ollama", health=""), container("memini", port=6399)]
+    launch(state, "indexing", "set", "background")
+
+    full = launch(state, "indexing", "set", "full")
+
+    assert full.value["indexing"] == {"mode": "full", "cpus": None, "cores": 8}
+    assert not (state / "compose.resources.yaml").exists()
+    assert docker.ran("up", "-d", "--no-build", "--wait", "ollama")
+    assert launch(state, "indexing", "status").value["indexing"]["mode"] == "full"
+
+
+def test_indexing_needs_a_managed_server_and_a_mode_to_set(
+    tmp_path: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    refused = launch(tmp_path / "nothing here", "indexing", "status")
+
+    assert refused.code == 1
+    assert refused.value["error"].startswith("no managed server at ")
+    with pytest.raises(SystemExit):
+        launch(tmp_path / "nothing here", "indexing", "set")
+    with pytest.raises(SystemExit):
+        launch(tmp_path / "nothing here", "indexing", "set", "turbo")
+    assert docker.calls == []

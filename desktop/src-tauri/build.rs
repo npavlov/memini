@@ -34,6 +34,8 @@ const COMMANDS: &[&str] = &[
     "launcher_change",
     "launcher_setup_token",
     "launcher_uninstall",
+    "launcher_indexing",
+    "launcher_indexing_set",
     "launcher_repos",
     "launcher_git",
     "api_workspace_create",

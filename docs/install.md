@@ -263,6 +263,21 @@ exits 0 when everything is current and 6 when not, for scripts and health checks
 
 State holds the managed settings and generated database password. Docker volumes hold the database, mirrors and model. `memini-server path` prints the packaged **resources**, including sample records. [Backup and restore](operations/backup.md)
 
+### Limit the cores the search model uses
+
+```sh
+memini-server indexing status
+memini-server indexing set background
+```
+
+While it indexes, the search model of a managed server runs on the processor and would take every
+core of the computer. The launcher limits it: `half` the cores (the default, which a start writes),
+`background` (one core on a computer of four or fewer, else two) or `full` (no limit). It keeps the
+mode in `indexing.json` and the limit in `compose.resources.yaml` in the state directory, and
+recreates a running model, so an embedding it was doing fails and its sync is tried again. A lower
+limit makes the first sync of a large repository take longer. The desktop app sets it on the Server
+screen.
+
 ### Remove the server
 
 ```sh
@@ -283,7 +298,7 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
 
 ### Output for programs
 
-`status`, `start`, `stop`, `mcp`, `bootstrap`, `uninstall`, `repos` and `git` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
+`status`, `start`, `stop`, `mcp`, `bootstrap`, `uninstall`, `repos`, `git` and `indexing` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
 
 `memini-server status --json` exits 0 whenever it can report, also for a stopped server, a missing installation and a missing Docker. Its object, on several lines here:
 

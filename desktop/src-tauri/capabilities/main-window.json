@@ -35,6 +35,8 @@
     "allow-launcher-change",
     "allow-launcher-setup-token",
     "allow-launcher-uninstall",
+    "allow-launcher-indexing",
+    "allow-launcher-indexing-set",
     "allow-launcher-repos",
     "allow-launcher-git",
     "allow-api-workspace-create",

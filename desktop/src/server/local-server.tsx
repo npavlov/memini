@@ -12,6 +12,7 @@ import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
 import { FirstSetup } from "./first-setup";
 import { GitAccessPanel } from "./git-access";
+import { IndexingPanel } from "./indexing-panel";
 import { describePhase, serverPhase } from "./launcher";
 import type { LauncherChange, LauncherStatus } from "./launcher";
 import { changeServer, readLauncherStatus, removeServer } from "./launcher-api";
@@ -157,6 +158,7 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
         <>
           <ServerFacts status={loaded} />
           <LocalConnection status={loaded} view={view} info={info} onView={onView} />
+          {loaded.installed ? <IndexingPanel /> : null}
           {loaded.installed ? <GitAccessPanel /> : null}
         </>
       )}

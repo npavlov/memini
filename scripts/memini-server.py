@@ -50,6 +50,13 @@ BOOTSTRAP_TIMEOUT = 60
 # mounts each one read-only under LOCAL_ROOT and lists LOCAL_ROOT in MEMINI_GIT_LOCAL_ROOTS.
 LOCAL_REPOS = "local-repos.json"
 LOCAL_COMPOSE = "compose.local.yaml"
+# How much of this computer the search model may use while it embeds (S18): a mode in this file,
+# and a Compose file with the CPU limit of the ollama service that every command adds. No file:
+# the default mode, which a start writes.
+INDEXING = "indexing.json"
+INDEXING_COMPOSE = "compose.resources.yaml"
+INDEXING_MODES = ("half", "background", "full")
+DEFAULT_INDEXING = "half"
 LOCAL_ROOT = "/srv/local"
 # The name of a local folder: a handle, as the names of the service are.
 HANDLE = re.compile(r"[a-z0-9][a-z0-9_-]{0,62}")
@@ -217,8 +224,9 @@ class Project:
         ]
         for filename in COMPOSE_FILES:
             self.arguments.extend(["-f", str(directory / filename)])
-        if (directory / LOCAL_COMPOSE).is_file():
-            self.arguments.extend(["-f", str(directory / LOCAL_COMPOSE)])
+        for extra in (LOCAL_COMPOSE, INDEXING_COMPOSE):
+            if (directory / extra).is_file():
+                self.arguments.extend(["-f", str(directory / extra)])
         self.env = environment()
 
     def run(self, *argv: str, capture: bool = False, timeout: float | None = None) -> str:
@@ -562,6 +570,63 @@ def recreate(project: Project, *, force: bool = False) -> bool:
         command.append("--force-recreate")
     project.run(*command, "memini")
     return True
+
+
+def cores() -> int:
+    """The processors of this computer, as the model's container sees them through Docker."""
+    return max(1, os.cpu_count() or 1)
+
+
+def indexing_cpus(mode: str, available: int) -> float | None:
+    """The CPU limit of the model for ``mode``: half the cores, one or two in the background, or
+    none."""
+    if mode == "half":
+        return max(1.0, available / 2)
+    if mode == "background":
+        return 1.0 if available <= 4 else 2.0
+    return None
+
+
+def indexing_mode(directory: Path) -> str:
+    """The mode set for the server in ``directory``; the default before one is set."""
+    try:
+        value: object = json.loads((directory / INDEXING).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return DEFAULT_INDEXING
+    mode = cast(dict[str, object], value).get("mode") if isinstance(value, dict) else None
+    return mode if isinstance(mode, str) and mode in INDEXING_MODES else DEFAULT_INDEXING
+
+
+def save_indexing(directory: Path, mode: str) -> None:
+    """Write ``mode`` and the Compose file with its CPU limit; no Compose file for ``full``."""
+    write_private(directory / INDEXING, json.dumps({"mode": mode}) + "\n")
+    cpus = indexing_cpus(mode, cores())
+    if cpus is None:
+        write_private(directory / INDEXING_COMPOSE, None)
+        return
+    text = json.dumps({"services": {"ollama": {"cpus": cpus}}}, indent=2)
+    header = "# Made by memini-server from indexing.json; change it with memini-server indexing.\n"
+    write_private(directory / INDEXING_COMPOSE, header + text + "\n")
+
+
+def describe_indexing(directory: Path) -> dict[str, object]:
+    mode = indexing_mode(directory)
+    available = cores()
+    return {"mode": mode, "cpus": indexing_cpus(mode, available), "cores": available}
+
+
+def indexing(directory: Path, action: str, mode: str | None, quiet: bool) -> dict[str, object]:
+    """``indexing status|set MODE``: the fields of the object --json prints. Setting a mode
+    recreates a running model with its new limit; an embedding it was doing fails and its sync is
+    tried again."""
+    managed(directory)
+    if action == "set" and mode is not None:
+        save_indexing(directory, mode)
+        project = Project(directory, quiet=quiet)
+        rows = project.services()
+        if any(row.get("Service") == "ollama" and row.get("State") == "running" for row in rows):
+            project.run("up", "-d", "--no-build", "--wait", "ollama")
+    return {"indexing": describe_indexing(directory)}
 
 
 def local_repos(directory: Path) -> list[dict[str, str]]:
@@ -911,6 +976,8 @@ def manage(
     if command == "start":
         if not directory.exists():
             initialize(directory, API_PORT if port is None else port)
+        if (directory / MARKER).is_file() and not (directory / INDEXING).is_file():
+            save_indexing(directory, DEFAULT_INDEXING)
         elif (
             port is not None
             and (directory / MARKER).is_file()
@@ -927,11 +994,20 @@ def manage(
 
 
 def configuration_parser(prog: str, command: str) -> argparse.ArgumentParser:
-    """The arguments of ``repos`` and ``git``."""
+    """The arguments of ``repos``, ``git`` and ``indexing``."""
     details = argparse.ArgumentParser(prog=f"{prog} {command}")
     details.add_argument(
         "--json", action="store_true", help="print one JSON object on stdout, for programs"
     )
+    if command == "indexing":
+        details.add_argument("action", choices=("status", "set"))
+        details.add_argument(
+            "mode",
+            nargs="?",
+            choices=INDEXING_MODES,
+            help="set: half the cores (the default), background (one or two) or full (no limit)",
+        )
+        return details
     if command == "repos":
         details.add_argument("action", choices=("list", "add", "remove"))
         details.add_argument("target", nargs="?", help="add: the folder; remove: its name")
@@ -955,6 +1031,8 @@ def configure(directory: Path, command: str, choice: argparse.Namespace) -> int:
     try:
         if command == "repos":
             answer = repos(directory, choice.action, choice.target, quiet=choice.json)
+        elif command == "indexing":
+            answer = indexing(directory, choice.action, choice.mode, quiet=choice.json)
         else:
             answer = git(directory, choice, quiet=choice.json)
     except subprocess.CalledProcessError as error:
@@ -974,6 +1052,11 @@ def configure(directory: Path, command: str, choice: argparse.Namespace) -> int:
 
 
 def describe_configuration(command: str, answer: dict[str, object]) -> list[str]:
+    if command == "indexing":
+        found = cast(dict[str, object], answer["indexing"])
+        cpus = found["cpus"]
+        limit = "no limit" if cpus is None else f"at most {cpus:g} of {found['cores']} cores"
+        return [f"indexing: {found['mode']}, the search model uses {limit}"]
     if command == "repos":
         lines = [
             f"{repo['name']}: {repo['path']} as {repo['location']}"
@@ -1010,7 +1093,8 @@ def main() -> int:
         " bootstrap take --json after the command: one JSON object on stdout. `uninstall --yes`"
         " removes the server with its data. `repos list|add PATH|remove NAME` gives the server"
         " folders of this computer as git sources; `git status|ssh-key|https-token|remove` sets"
-        " its access to private remotes, the secret on stdin.",
+        " its access to private remotes, the secret on stdin. `indexing status|set MODE` limits the"
+        " cores the search model uses: half (the default), background or full.",
     )
     parser.add_argument("--state-dir", type=Path, help="directory for this local server")
     parser.add_argument(
@@ -1024,6 +1108,7 @@ def main() -> int:
             "uninstall",
             "repos",
             "git",
+            "indexing",
             "path",
             "cli",
         ),
@@ -1078,9 +1163,11 @@ def main() -> int:
         print(resources())
         return 0
     directory = (options.state_dir or state_directory()).expanduser().resolve()
-    if command in {"repos", "git"}:
+    if command in {"repos", "git", "indexing"}:
         details = configuration_parser(parser.prog, command)
         choice = details.parse_args(args)
+        if command == "indexing" and (choice.action == "set") != (choice.mode is not None):
+            details.error("set takes a mode; status takes none")
         if command == "repos" and (choice.action == "list") != (choice.target is None):
             details.error("add takes a folder and remove a name; list takes nothing")
         if command == "git" and (choice.action == "remove") != (choice.kind is not None):

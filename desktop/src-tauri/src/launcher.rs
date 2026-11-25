@@ -58,6 +58,31 @@ pub enum Action {
     FirstStart(u16),
     /// Removes the server with its data; the app asks the user first.
     Uninstall,
+    /// How many cores the search model may use.
+    IndexingStatus,
+    /// Sets how many cores the search model may use, and recreates a running model.
+    IndexingSet(IndexingMode),
+}
+
+/// How much of this computer the search model uses while it embeds (scenario S18): half the
+/// cores, one or two in the background, or no limit. The launcher keeps it in the managed
+/// server's Compose files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexingMode {
+    Half,
+    Background,
+    Full,
+}
+
+impl IndexingMode {
+    const fn word(self) -> &'static str {
+        match self {
+            Self::Half => "half",
+            Self::Background => "background",
+            Self::Full => "full",
+        }
+    }
 }
 
 /// The port a first start asks for, and how many after it are tried when it is taken.
@@ -77,6 +102,13 @@ impl Action {
             Self::Bootstrap => &["bootstrap", "--json"],
             Self::BootstrapForce => &["bootstrap", "--force", "--json"],
             Self::Uninstall => &["uninstall", "--yes", "--json"],
+            Self::IndexingStatus => &["indexing", "status", "--json"],
+            Self::IndexingSet(mode) => {
+                return ["indexing", "set", mode.word(), "--json"]
+                    .iter()
+                    .map(|&word| word.to_owned())
+                    .collect();
+            }
             Self::FirstStart(port) => {
                 return vec![
                     "start".to_owned(),
@@ -93,7 +125,8 @@ impl Action {
     /// and the search model.
     pub const fn time_limit(self) -> Duration {
         match self {
-            Self::Status => Duration::from_secs(60),
+            Self::Status | Self::IndexingStatus => Duration::from_secs(60),
+            Self::IndexingSet(_) => Duration::from_secs(5 * 60),
             Self::Start | Self::FirstStart(_) => Duration::from_secs(60 * 60),
             Self::Stop | Self::Uninstall => Duration::from_secs(5 * 60),
             Self::McpOn | Self::McpOff => Duration::from_secs(10 * 60),
@@ -150,6 +183,30 @@ pub struct ServiceState {
 pub struct LauncherResult {
     pub ok: bool,
     pub error: Option<String>,
+}
+
+/// The answer of `indexing status|set --json`: the mode and the limit it gives.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IndexingAnswer {
+    pub ok: bool,
+    pub error: Option<String>,
+    pub indexing: Option<IndexingState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IndexingState {
+    pub mode: IndexingMode,
+    /// The cores the model may use; `None` for no limit.
+    pub cpus: Option<f64>,
+    /// The cores of this computer.
+    pub cores: u32,
+}
+
+/// The indexing answer in the launcher's output.
+pub fn parse_indexing(output: &str) -> AppResult<IndexingAnswer> {
+    let mut answer: IndexingAnswer = parse_object(output)?;
+    answer.error = answer.error.map(|text| clean(&text));
+    Ok(answer)
 }
 
 /// The status in the launcher's output.
@@ -647,12 +704,43 @@ mod tests {
             ["start", "--http-port", "6371", "--json"]
         );
         assert_eq!(Action::Uninstall.words(), "memini-server uninstall --yes");
+        assert_eq!(
+            Action::IndexingStatus.arguments(),
+            ["indexing", "status", "--json"]
+        );
+        assert_eq!(
+            Action::IndexingSet(IndexingMode::Background).arguments(),
+            ["indexing", "set", "background", "--json"]
+        );
         assert_eq!(Action::Bootstrap.arguments(), ["bootstrap", "--json"]);
         assert_eq!(
             Action::BootstrapForce.arguments(),
             ["bootstrap", "--force", "--json"]
         );
         assert_eq!(Action::McpOff.words(), "memini-server mcp off");
+    }
+
+    #[test]
+    fn the_indexing_answer_gives_the_mode_and_its_limit() {
+        let answer = parse_indexing(
+            r#"{"schema": 1, "ok": true, "error": null,
+                "indexing": {"mode": "half", "cpus": 4.0, "cores": 8}}"#,
+        )
+        .expect("the contract");
+        let state = answer.indexing.expect("a state");
+        assert_eq!(state.mode, IndexingMode::Half);
+        assert_eq!(state.cpus, Some(4.0));
+        assert_eq!(state.cores, 8);
+        let full = parse_indexing(
+            r#"{"schema": 1, "ok": true, "error": null,
+                "indexing": {"mode": "full", "cpus": null, "cores": 8}}"#,
+        )
+        .expect("the contract");
+        assert_eq!(full.indexing.expect("a state").cpus, None);
+        let refused =
+            parse_indexing(r#"{"schema": 1, "ok": false, "error": "no managed server at /srv/x"}"#)
+                .expect("the contract");
+        assert!(!refused.ok && refused.indexing.is_none());
     }
 
     #[test]
