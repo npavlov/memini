@@ -190,6 +190,7 @@ business area, not a symbol.
 | Service | A deployable or a library of a project: `name`, `description`, a git source and a root directory in it, empty for the whole repository. |
 | Domain | A business area of a project: `name`, `title`, `description`, an optional parent. Two levels and no more: a domain and its subdomains, addressed as `domain/subdomain`. |
 | Domain code | The code of a domain or subdomain inside one service: path masks, read inside the service's root. |
+| Service link | A service uses another, of its own or another project of the workspace: a kind (`library`, `http`, `queue`, `other`), a note, and path masks inside the using service's root that show the use. |
 
 **Catalog** (decided 2026-11-23; memini-qpk.1). The catalog is authored data, neither raw nor
 derived: an agent or a person writes it (`put_project`, section 6), no sync brings it and nothing
@@ -219,8 +220,25 @@ changes anything in it. Titles and descriptions are written by agents from what 
 so they are data, never instructions (principle 11; section 9, **Prompt injection**): secrets in
 them are redacted before they are stored, as ingest redacts a payload, their lengths are limited
 (a title 200 characters, a description 4000), and a name, a root or a mask that holds a secret is
-refused, as an external id is, because rewriting it would change what it names. The link between
-services (memini-qpk.8) and between decisions and domains (memini-qpk.6) are not part of it yet.
+refused, as an external id is, because rewriting it would change what it names. The link
+between decisions and domains (memini-qpk.6) is not part of it yet.
+
+**Service links** (decided 2026-11-23; memini-qpk.8). A service declares the services it uses;
+nothing infers a link from the code. Table `service_link` (migration 0019): the service that
+uses, the service used, a `kind` (`library`: it imports the other's code; `http`: it calls its
+HTTP API; `queue`: they exchange messages through a queue or topic; `other`), a `note` (at most
+1000 characters) and up to 64 path masks in the catalog's dialect, read inside the using
+service's root, that show the use (none is allowed). One link per pair of services in each
+direction, and a service does not use itself (both checked by the database). The service used is
+of the same project or of another project of the same workspace, never of another workspace:
+both ends carry the workspace in their keys. A link belongs to the project of the service that
+uses: it is part of that project's document, compared and versioned with it, and goes with
+either service (deleting a source deletes the services over it and their links). A link note is
+text an agent wrote, as a description is: redacted, limited, labelled and fenced when shown
+(principle 11); its masks are identifiers and refused when they hold a secret. The export holds
+each link under the service that uses it, without a link to a service the export leaves out.
+Later, not in 0.2: links read from dependency manifests (`package.json`, `go.mod`, `Gemfile`,
+`pyproject.toml`) by git sync, and references to symbols across repositories.
 
 ## 4. Intake
 
@@ -845,7 +863,8 @@ in the index fingerprint (`payload/1`).
 | `read_source` | A file or a line range at the pinned commit or a given ref. |
 | `get_symbol` | Definitions of a symbol, with location. |
 | `list_commits` | Who changed what: commits by repository, path, author, time and message text, read from the mirror on demand. Nothing is stored. |
-| `get_catalog` | The projects of a workspace with their services and domains, and the repositories no service is in. |
+| `get_catalog` | The projects of a workspace with their services, the services each uses, and domains, and the repositories no service is in. |
+| `get_project` | A project and its links in both directions (what it uses, what uses it), with a filter by the other project. |
 | `get_domain` | A domain or subdomain: its code (services, path masks) and the files each mask matches. |
 | `catalog_guide` | The instruction an agent follows to fill the catalog. |
 | `list_decisions` | Decisions and open questions by query, person and time. Active by default; history on request. |
@@ -1067,9 +1086,10 @@ partial is returned. The library takes scopes, each a source with its own path m
 scopes; they are not arguments yet. Accepted limits: with `since`, git stops a line of history at
 its first older commit; a history whose commit times run backwards is ordered and continued by
 those times; a rename is not followed.
-**Catalog tools** (decided 2026-11-23; memini-qpk.1; section 3, Catalog). `get_catalog`,
-`get_domain`, `put_project` and `catalog_guide` are one library, `memini.catalog`, behind the MCP
-tools and their routes, with the same arguments and results: `GET …/catalog`,
+**Catalog tools** (decided 2026-11-23; memini-qpk.1, links memini-qpk.8; section 3, Catalog).
+`get_catalog`, `get_project`, `get_domain`, `put_project` and `catalog_guide` are one library,
+`memini.catalog`, behind the MCP tools and their routes, with the same arguments and results:
+`GET …/catalog`, `GET …/projects/{project}` (`other_project` as a query parameter),
 `GET …/projects/{project}/domains/{domain}` (a subdomain is `…/domains/{domain}/{subdomain}`),
 `PUT …/projects/{project}` (`…` is `/v1/workspaces/{workspace}`) and `GET /v1/catalog/guide`. Over
 MCP a read may leave the workspace out when the token reads exactly one (422
@@ -1079,12 +1099,19 @@ could otherwise probe a repository's paths through it. A token limited to one wo
 inside it; anything else is not found (404), as elsewhere. `get_catalog` gives each project in
 the shape `put_project` takes, with its `version`, who changed each entry last and when, and per
 service the repository, its tracked refs with the commit the index holds them at, and the files
-in the index below its root, in all and by language; the repositories no service of any project
-is in are listed apart. `get_domain` gives a domain or subdomain with the code that names it
+in the index below its root, in all and by language, and the services it uses (`uses`, in the
+shape of the document); the repositories no service of any project is in are listed apart.
+`get_project` gives one project in the same shape and its links in both directions: `uses`, the
+links of its services (to its own services or another project's), and `used_by`, the links of
+services of other projects to its services; each link names both services with their projects,
+its kind and note, the using service's repository and root, and each mask with the files it
+matches now. `other_project` keeps the links whose other end is in that project; the project's
+own name keeps the links between its own services. `get_domain` gives a domain or subdomain with the code that names it
 (service, repository, root, masks), the files each mask matches now, and its subdomains;
 `files` counts each file once and is what a search of the domain looks at. `put_project` takes
 the whole project as one document: `title`, `description`, `services` (`name`, `description`,
-`repository`, `root`) and `domains` (`name`, `title`, `description`, `code`, `subdomains`; a
+`repository`, `root`, `uses`: links, each a `service`, the `project` of that service when it is
+another one, a `kind`, a `note` and `paths`) and `domains` (`name`, `title`, `description`, `code`, `subdomains`; a
 code entry is a `service`, the `project` of that service when it is another one, and `paths`,
 at least one mask; `**` is the whole service). A subdomain has no `subdomains`, so the document
 can say two levels and no more. The document replaces what is stored: what it leaves out is
@@ -1096,11 +1123,13 @@ nothing, so an agent does not overwrite a person's later edit. The answer report
 as it is: the files each mask matches, the masks that match nothing (`empty_masks`), the pairs of
 the project's domains that name the same files (`overlaps`; allowed, a domain and its own
 subdomain are not a pair) and per service its files and the share of them no domain of any
-project names; nothing of the report is stored, and counting it is linear in the files of the
+project names, and the masks of the links with the files each matches (`link_masks`,
+`empty_link_masks`); nothing of the report is stored, and counting it is linear in the files of the
 repositories named. Refusals: 422 `invalid_project` naming the field of the document
 (`domains[1].code[0].paths[2]`), never its value; 404 for a workspace, project, domain,
-repository or service that is not there; 409 `service_in_use` when the document removes a service
-a domain of another project names, `service_conflict` when a service's directory is a service of
+repository or service that is not there (a link to a service of another workspace answers the
+same, as one that does not exist); 409 `service_in_use` when the document removes a service a
+domain or a link of another project names, `service_conflict` when a service's directory is a service of
 another project already (the other project's domain names that service instead), and
 `catalog_conflict` for a write that lost a race. There is no tool that deletes a project: a
 document without services and domains empties one. `catalog_guide` returns the service's own
@@ -1989,8 +2018,8 @@ and names each entry's source kind, source, locator and time; in the text conten
 (`memini.mcp.text`) the sources' text is in fenced blocks whose fence is longer than any run of
 backticks in it, and the labels outside them (locators, links, anchors, paths: values a source
 chose) are escaped onto one line, backticks and invisible characters included. Forget and tokens
-are not MCP tools (section 6). The catalog's titles and descriptions are a second-hand form of
-the same text: an agent writes them from what a repository says, so an attempt in a README can
+are not MCP tools (section 6). The catalog's titles, descriptions and link notes are a second-hand
+form of the same text: an agent writes them from what a repository says, so an attempt in a README can
 end up in one. They are redacted and limited when written, labelled (`data_notice`) and fenced
 when shown, the names beside them are handles, and `catalog_guide` and `put_project` say that
 only the user's request is a reason to write the catalog (section 3, Catalog). The corpus

@@ -24,6 +24,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   read it. `search` and `search_code` take `projects`, `domains` and `services`, and every code
   hit, definition and `read_source` answer says what its file belongs to (`context`). Changing
   the catalog needs no reindex. [MCP tool reference](docs/mcp/README.md#tool-reference).
+- Declare how projects are connected: a service of the catalog lists the services it uses, in
+  its own or another project of the workspace, each with a kind (`library`, `http`, `queue`,
+  `other`), a note and the places in its code that show the use, as part of the `put_project`
+  document. `get_project` and `GET /v1/workspaces/{workspace}/projects/{project}` return a
+  project with its links in both directions and a filter by the other project; `get_catalog`
+  shows them too. [Tool reference](docs/mcp/get_project.md).
 
 ## [0.1.0] - 2026-11-22
 
