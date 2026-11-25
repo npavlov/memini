@@ -2,7 +2,7 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Code | Team lead, engineer | planned | memini-qpk.4 |
+| Code | Team lead, engineer | ready | memini-qpk.4 |
 
 ## Who and pain
 

@@ -78,6 +78,24 @@ supersession accuracy for the chosen local model.
 Done when: a clean machine goes from the release installation guide to a working search over one
 repository and one pushed thread.
 
+## 0.2. Code catalog and navigation
+
+Built from the [user scenarios](scenarios/README.md); Beads epic `memini-qpk`.
+
+- Catalog: projects, domains and subdomains, services, path masks; `context` on every code result;
+  filters by project, domain and service. Declared links between services and projects.
+- `list_commits`: history read from the mirrors on demand.
+- Decisions and records by project and domain, with a model step that never overrides a domain
+  given another way, and its eval.
+- The MCP switch and the launcher's JSON output.
+- The desktop app: one-step setup, server and MCP control, agent clients in one click, the project
+  map, the Data screen; a component library and the brand.
+
+Done when: on two public repositories of one product, an agent builds the project map through
+`catalog_guide` and `put_project`; a search filtered by a domain returns code from both
+repositories and the domain's decisions and threads; the desktop app, on a clean machine with
+Docker, sets up a server, connects an agent client and shows the map.
+
 ## Order and risks
 
 - M3 comes right after M2 because the agent executor is the only way to reach sources that have no

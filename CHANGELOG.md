@@ -9,6 +9,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A desktop app for macOS, Windows and Linux. It sets up a local server in one step with the
+  launcher inside the app (no Homebrew, Scoop or Python needed), starts, stops and restarts it,
+  switches MCP on and off, issues tokens, and connects or disconnects agent clients (Claude Code,
+  Cursor, Codex, VS Code, Gemini CLI, Windsurf, Zed, Cline, OpenCode) in one click. It shows the
+  project map and edits it, shows what the base holds, and runs the read tools from a form. It
+  also connects to a remote server by address and token, and checks a connection step by step.
+  Tokens stay in the operating system's keychain. The app is not signed yet.
+- `search` with `projects` or `domains` also returns the threads, meetings and documents that
+  belong to them: by what they were pushed with, a default of their source or stream, or the
+  domains the model gave their decisions.
 - Get the first admin token of a managed server from the launcher: `memini-server bootstrap`
   prints it, and with `--json` hands it to a program as one object. The desktop app uses it to
   set up a local server in one step, and carries the launcher itself, frozen as a sidecar.

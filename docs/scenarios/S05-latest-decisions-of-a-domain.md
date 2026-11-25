@@ -2,7 +2,7 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Decisions | Team lead | planned | memini-qpk.6 |
+| Decisions | Team lead | ready | memini-qpk.6 |
 
 ## Who and pain
 
