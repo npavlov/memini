@@ -31,8 +31,10 @@ of two domains, and the Russian items, whose words no English description shares
 
 ## The recommended local model
 
-No baseline of a real model is committed yet. To record one: run the `llm` assigner above with the
-recommended local model (`qwen3:4b-instruct`, the extractor's) on a machine with Ollama, check the
-wrong answers, and commit the report as `baseline-qwen3.json` with
+`baseline-qwen3.json` is the report of `qwen3:4b-instruct` (the extractor's model) through Ollama,
+recorded on 2026-11-25 with prompt `domains-v1`: accuracy 0.92 (24 of 26), no item left without its
+domain, and two items labelled none given a domain (a none rate of 0.15 for 0.23 labelled). Both
+runs gave the same answers. English items 0.96; the two Russian items 0.5, too few to judge. To
+record it again, run the `llm` assigner above with
 `--baseline eval/domains/baseline-qwen3.json --write-baseline`. A change of the prompt
 (`PROMPT_VERSION` in `memini.decisions.assign`) is compared with that baseline before it is merged.

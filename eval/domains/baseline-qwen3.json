@@ -1,0 +1,258 @@
+{
+  "assigner": "qwen3:4b-instruct@domains-v1",
+  "set": "harbour",
+  "items": 26,
+  "accuracy": 0.9231,
+  "none_rate": 0.1538,
+  "expected_none_rate": 0.2308,
+  "false_none": 0,
+  "false_domain": 2,
+  "by_language": {
+    "en": 0.9583,
+    "ru": 0.5
+  },
+  "cases": [
+    {
+      "id": "d01",
+      "language": "en",
+      "expected": [
+        "port:fees/berth"
+      ],
+      "answered": [
+        "port:fees/berth"
+      ]
+    },
+    {
+      "id": "d02",
+      "language": "en",
+      "expected": [
+        "port:fees/pilot"
+      ],
+      "answered": [
+        "port:fees/pilot"
+      ]
+    },
+    {
+      "id": "d03",
+      "language": "en",
+      "expected": [
+        "port:fees"
+      ],
+      "answered": [
+        "port:fees"
+      ]
+    },
+    {
+      "id": "d04",
+      "language": "en",
+      "expected": [
+        "port:bookings"
+      ],
+      "answered": [
+        "port:bookings"
+      ]
+    },
+    {
+      "id": "d05",
+      "language": "en",
+      "expected": [
+        "port:water"
+      ],
+      "answered": [
+        "port:water"
+      ]
+    },
+    {
+      "id": "d06",
+      "language": "en",
+      "expected": [
+        "fleet:maintenance"
+      ],
+      "answered": [
+        "fleet:maintenance"
+      ]
+    },
+    {
+      "id": "d07",
+      "language": "en",
+      "expected": [
+        "fleet:crew"
+      ],
+      "answered": [
+        "fleet:crew"
+      ]
+    },
+    {
+      "id": "d08",
+      "language": "en",
+      "expected": [
+        "fleet:fuel"
+      ],
+      "answered": [
+        "fleet:fuel"
+      ]
+    },
+    {
+      "id": "d09",
+      "language": "en",
+      "expected": [],
+      "answered": []
+    },
+    {
+      "id": "d10",
+      "language": "en",
+      "expected": [],
+      "answered": []
+    },
+    {
+      "id": "d11",
+      "language": "en",
+      "expected": [
+        "port:bookings",
+        "port:fees/berth"
+      ],
+      "answered": [
+        "port:bookings",
+        "port:fees/berth"
+      ]
+    },
+    {
+      "id": "d12",
+      "language": "en",
+      "expected": [
+        "fleet:maintenance"
+      ],
+      "answered": [
+        "fleet:maintenance"
+      ]
+    },
+    {
+      "id": "d13",
+      "language": "en",
+      "expected": [],
+      "answered": []
+    },
+    {
+      "id": "d14",
+      "language": "en",
+      "expected": [
+        "fleet:crew"
+      ],
+      "answered": [
+        "fleet:crew"
+      ]
+    },
+    {
+      "id": "d15",
+      "language": "en",
+      "expected": [
+        "fleet:fuel"
+      ],
+      "answered": [
+        "fleet:fuel"
+      ]
+    },
+    {
+      "id": "d16",
+      "language": "en",
+      "expected": [
+        "port:water"
+      ],
+      "answered": [
+        "port:water"
+      ]
+    },
+    {
+      "id": "d17",
+      "language": "en",
+      "expected": [
+        "port:bookings"
+      ],
+      "answered": [
+        "port:bookings"
+      ]
+    },
+    {
+      "id": "d18",
+      "language": "en",
+      "expected": [],
+      "answered": [
+        "fleet:maintenance"
+      ]
+    },
+    {
+      "id": "d19",
+      "language": "en",
+      "expected": [
+        "fleet:maintenance"
+      ],
+      "answered": [
+        "fleet:maintenance"
+      ]
+    },
+    {
+      "id": "d20",
+      "language": "en",
+      "expected": [
+        "port:fees"
+      ],
+      "answered": [
+        "port:fees"
+      ]
+    },
+    {
+      "id": "d21",
+      "language": "en",
+      "expected": [
+        "fleet:maintenance"
+      ],
+      "answered": [
+        "fleet:maintenance"
+      ]
+    },
+    {
+      "id": "d22",
+      "language": "en",
+      "expected": [
+        "port:fees/pilot"
+      ],
+      "answered": [
+        "port:fees/pilot"
+      ]
+    },
+    {
+      "id": "d23",
+      "language": "en",
+      "expected": [],
+      "answered": []
+    },
+    {
+      "id": "d24",
+      "language": "en",
+      "expected": [
+        "port:water"
+      ],
+      "answered": [
+        "port:water"
+      ]
+    },
+    {
+      "id": "d25",
+      "language": "ru",
+      "expected": [
+        "port:fees/berth"
+      ],
+      "answered": [
+        "port:fees/berth"
+      ]
+    },
+    {
+      "id": "d26",
+      "language": "ru",
+      "expected": [],
+      "answered": [
+        "port:bookings"
+      ]
+    }
+  ]
+}
