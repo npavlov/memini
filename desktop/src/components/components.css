@@ -14,6 +14,15 @@ body,
   margin: 0;
 }
 
+/* The window never scrolls as a whole: only the screen in <main> does. Without this, a selection
+   dragged past the edge or a focused element scrolls the document, and the side bar and the
+   status bar slide out of the window. clip, unlike hidden, cannot be scrolled by a script either. */
+html,
+body {
+  overflow: hidden;
+  overflow: clip;
+}
+
 /* The root sets the size every rem is measured in. */
 html {
   font-size: var(--font-size);
@@ -117,6 +126,9 @@ pre,
 }
 
 .app-frame > main {
+  /* The containing block of what is positioned inside the screen, such as visually hidden text:
+     otherwise it is placed against the document and makes the document taller than the window. */
+  position: relative;
   min-width: 0;
   padding: 24px;
   overflow: auto;

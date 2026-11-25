@@ -58,11 +58,17 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
   const backend = useBackend();
   const loaded = useLoad(useCallback(() => listWorkspaces(backend, connection.id), [backend, connection.id]));
   const [chosen, setChosen] = useState<string | null>(null);
+  // The form to add a repository opens on a click and closes once it has added one.
+  const [adding, setAdding] = useState(false);
   // Bumped after a change, so the lists below read the server again.
   const [round, setRound] = useState(0);
   const changed = useCallback((): void => {
     setRound((value) => value + 1);
   }, []);
+  const added = useCallback((): void => {
+    setAdding(false);
+    changed();
+  }, [changed]);
   if (loaded.state.phase === "loading") {
     return <Text tone="muted">Asking the server…</Text>;
   }
@@ -88,6 +94,7 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
         )}
         <NewWorkspace
           connection={connection}
+          startOpen={names.length === 0}
           onCreated={(name) => {
             setChosen(name);
             loaded.reload();
@@ -100,13 +107,29 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
         </EmptyState>
       ) : (
         <>
-          <AddRepository
-            connection={connection}
-            info={info}
-            workspace={workspace}
-            local={local}
-            onAdded={changed}
-          />
+          {adding ? (
+            <AddRepository
+              connection={connection}
+              info={info}
+              workspace={workspace}
+              local={local}
+              onAdded={added}
+              onCancel={() => {
+                setAdding(false);
+              }}
+            />
+          ) : (
+            <Actions>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setAdding(true);
+                }}
+              >
+                Add a repository
+              </Button>
+            </Actions>
+          )}
           <SourceTable key={`${workspace}:${String(round)}`} connection={connection} workspace={workspace} />
         </>
       )}
@@ -117,10 +140,45 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
 
 interface NewWorkspaceProps {
   readonly connection: Connection;
+  /** Open from the start: a server without a workspace needs one first. */
+  readonly startOpen?: boolean;
   readonly onCreated: (name: string) => void;
 }
 
-function NewWorkspace({ connection, onCreated }: NewWorkspaceProps): ReactElement {
+function NewWorkspace({ connection, startOpen = false, onCreated }: NewWorkspaceProps): ReactElement {
+  const [open, setOpen] = useState(startOpen);
+  if (!open) {
+    return (
+      <Actions>
+        <Button
+          onClick={() => {
+            setOpen(true);
+          }}
+        >
+          New workspace
+        </Button>
+      </Actions>
+    );
+  }
+  return (
+    <NewWorkspaceForm
+      connection={connection}
+      onCreated={(name) => {
+        setOpen(false);
+        onCreated(name);
+      }}
+      onCancel={() => {
+        setOpen(false);
+      }}
+    />
+  );
+}
+
+interface NewWorkspaceFormProps extends NewWorkspaceProps {
+  readonly onCancel: () => void;
+}
+
+function NewWorkspaceForm({ connection, onCreated, onCancel }: NewWorkspaceFormProps): ReactElement {
   const backend = useBackend();
   const [name, setName] = useState("");
   const valid = isHandle(name);
@@ -145,6 +203,7 @@ function NewWorkspace({ connection, onCreated }: NewWorkspaceProps): ReactElemen
         <Button submit disabled={!valid || creating.pending}>
           {creating.pending ? "Creating…" : "Create workspace"}
         </Button>
+        <Button onClick={onCancel}>Cancel</Button>
       </Actions>
     </Form>
   );

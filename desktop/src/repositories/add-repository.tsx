@@ -40,6 +40,8 @@ export interface AddRepositoryProps {
   /** The connection is this computer's server: a folder of this computer can be given to it. */
   readonly local: boolean;
   readonly onAdded: () => void;
+  /** Closes the form without adding anything. */
+  readonly onCancel: () => void;
 }
 
 type Mode = "folder" | "remote";
@@ -51,7 +53,10 @@ export function AddRepository(props: AddRepositoryProps): ReactElement {
     { id: "remote", label: "A repository at an address" },
   ];
   return (
-    <Panel title={`Add a repository to ${props.workspace}`}>
+    <Panel
+      title={`Add a repository to ${props.workspace}`}
+      actions={<Button onClick={props.onCancel}>Cancel</Button>}
+    >
       <Tabs
         label="Where the repository is"
         items={items}
