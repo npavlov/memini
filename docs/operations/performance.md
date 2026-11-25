@@ -50,6 +50,10 @@ What it does, in order (`src/memini/bench/runner.py` has the details):
    `memini.search.search` as the API calls it, one pooled connection per search, at each
    `--concurrency` (default 1 and 8), after one untimed pass of every query (a first pass right
    after indexing is several times slower: the cache is cold). Hybrid also at each `--candidates`.
+   Then the ranked modes once more at concurrency 1 on a small domain of the catalog: the
+   benchmark writes a project with `put_project` whose one domain is the smallest directory of
+   the repository with at least 20 chunks, and searches the code queries with the `domains`
+   filter (the `filter` column of the report says how many chunks the domain selects).
    The HTTP and MCP layers add their own few milliseconds; the dense and hybrid figures of a fake
    run have no model call in them (add the query's embedding, below).
 6. **Dense retriever.** The dense statement against the exact nearest chunks (the same statement
@@ -333,6 +337,13 @@ Ollama's context lowered, unmeasured.
 
 ## Not measured, and next
 
+- **A small domain in a large index.** The `domains`, `projects` and `services` filters of the
+  catalog are a filter by source and path, and migration 0018 adds an index on `chunk (source_id,
+  path)` so that the planner can read a small domain directly instead of walking the HNSW index
+  past everything outside it. The benchmark times that case (step 5), but the runs quoted in this
+  document were made before it existed: run it on the reference machine, add the three rows to
+  Search above, and check with `EXPLAIN ANALYZE` which plan the dense statement takes for a
+  domain of a few dozen chunks among 77,000.
 - **The HNSW index on `halfvec`.** A third of the size (602 against 201 MiB for 77,084 vectors),
   a third faster to build (33 against 48 s at 1GB) and to scan (p50 4.9 against 6.6 ms, fake
   vectors); its recall was lower in run R (0.77 against 0.88 for the same build at `ef_search`

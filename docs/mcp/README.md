@@ -111,6 +111,9 @@ tools your token can call.
 | [`read_source`](read_source.md) | Read source | `read` |
 | [`get_symbol`](get_symbol.md) | Get symbol | `read` |
 | [`list_commits`](list_commits.md) | List commits | `read` |
+| [`get_catalog`](get_catalog.md) | Get the catalog | `read` |
+| [`get_domain`](get_domain.md) | Get a domain | `read` |
+| [`catalog_guide`](catalog_guide.md) | Catalog guide | `read` |
 | [`list_meetings`](list_meetings.md) | List meetings | `read` |
 | [`get_meeting`](get_meeting.md) | Get a meeting | `read` |
 | [`list_messages`](list_messages.md) | List messages | `read` |
@@ -123,3 +126,4 @@ tools your token can call.
 | [`supersede_decision`](supersede_decision.md) | Supersede decisions | `ingest` |
 | [`close_decision`](close_decision.md) | Close a decision | `ingest` |
 | [`retract_decision`](retract_decision.md) | Retract a decision | `ingest` |
+| [`put_project`](put_project.md) | Put a project | `ingest` and `read` |

@@ -8,6 +8,8 @@
   ``list_commits``, over :mod:`memini.query`, the library the HTTP routes call too.
 - :mod:`memini.mcp.comms`: ``list_meetings``, ``get_meeting``, ``list_messages``, ``get_thread``
   and the write ``add_document``, over :mod:`memini.comms`, the library the HTTP routes call too.
+- :mod:`memini.mcp.catalog`: ``get_catalog``, ``get_domain``, ``catalog_guide`` and the write
+  ``put_project``, over :mod:`memini.catalog`, the library the HTTP routes call too.
 - :mod:`memini.mcp.status`: the ``status`` tool.
 - :mod:`memini.mcp.decisions`: ``record_decision``, ``supersede_decision``, ``close_decision`` and
   ``retract_decision``, over :mod:`memini.decisions`; writes, with the ``ingest`` scope.
