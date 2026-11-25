@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
+import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
-import { useAction } from "./use-action";
+import { Button } from "./button";
 
 const SHOWN_MS = 2000;
 
@@ -13,6 +14,14 @@ export interface CopyButtonProps {
   readonly secret?: boolean;
 }
 
+function wordsFor(failed: boolean, copied: boolean, label: string): string {
+  if (failed) {
+    return "Could not copy";
+  }
+  return copied ? "Copied" : label;
+}
+
+/** Copies a text to the clipboard through the Rust side, and says for a moment that it did. */
 export function CopyButton({ text, label = "Copy", secret = false }: CopyButtonProps): ReactElement {
   const backend = useBackend();
   const [copied, setCopied] = useState(false);
@@ -32,10 +41,5 @@ export function CopyButton({ text, label = "Copy", secret = false }: CopyButtonP
       window.clearTimeout(timer);
     };
   }, [copied]);
-  const words = action.error === null ? (copied ? "Copied" : label) : "Could not copy";
-  return (
-    <button type="button" className="button" onClick={() => action.run()}>
-      {words}
-    </button>
-  );
+  return <Button onClick={() => action.run()}>{wordsFor(action.error !== null, copied, label)}</Button>;
 }

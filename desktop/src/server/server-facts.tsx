@@ -1,16 +1,12 @@
 import type { ReactElement } from "react";
 
-import { DataTable } from "../ui/data-table";
-import { Fact, Panel } from "../ui/panel";
-import { Pill } from "../ui/pill";
+import { DataTable, Fact, Facts, Mono, Panel, Pill, Text } from "../components";
 import { serviceTone } from "./launcher";
 import type { LauncherStatus, ServiceState } from "./launcher";
 
 export interface ServerFactsProps {
   readonly status: LauncherStatus;
 }
-
-const NOTHING = "—";
 
 function mcpWords(enabled: boolean | null): string {
   if (enabled === null) {
@@ -19,11 +15,20 @@ function mcpWords(enabled: boolean | null): string {
   return enabled ? "on" : "off";
 }
 
+interface LiteralProps {
+  readonly value: string | null;
+}
+
+/** An address or a path the launcher reported, or a dash when it reported none. */
+function Literal({ value }: LiteralProps): ReactElement {
+  return value === null ? <>—</> : <Mono>{value}</Mono>;
+}
+
 /** What the launcher reports about the installation, as text, and the state of each service. */
 export function ServerFacts({ status }: ServerFactsProps): ReactElement {
   return (
     <Panel title="Installation and services">
-      <dl className="facts">
+      <Facts>
         <Fact name="Docker">
           <Pill tone={status.dockerAvailable ? "good" : "bad"}>
             {status.dockerAvailable ? "available" : "not available"}
@@ -34,12 +39,20 @@ export function ServerFacts({ status }: ServerFactsProps): ReactElement {
             {status.installed ? "installed" : "not installed"}
           </Pill>
         </Fact>
-        <Fact name="Address">{status.apiUrl ?? NOTHING}</Fact>
-        <Fact name="MCP address">{status.mcpUrl ?? NOTHING}</Fact>
+        <Fact name="Address">
+          <Literal value={status.apiUrl} />
+        </Fact>
+        <Fact name="MCP address">
+          <Literal value={status.mcpUrl} />
+        </Fact>
         <Fact name="MCP endpoint">{mcpWords(status.mcpEnabled)}</Fact>
-        <Fact name="Image">{status.image ?? NOTHING}</Fact>
-        <Fact name="Settings folder">{status.directory ?? NOTHING}</Fact>
-      </dl>
+        <Fact name="Image">
+          <Literal value={status.image} />
+        </Fact>
+        <Fact name="Settings folder">
+          <Literal value={status.directory} />
+        </Fact>
+      </Facts>
       <ServicesTable services={status.services} />
     </Panel>
   );
@@ -51,7 +64,7 @@ interface ServicesTableProps {
 
 function ServicesTable({ services }: ServicesTableProps): ReactElement {
   if (services.length === 0) {
-    return <p className="muted">No service exists yet. They are created by the first start.</p>;
+    return <Text tone="muted">No service exists yet. They are created by the first start.</Text>;
   }
   return (
     <DataTable columns={["Service", "State", "Health"]}>

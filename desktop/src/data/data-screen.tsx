@@ -1,15 +1,24 @@
 import { useCallback } from "react";
 import type { ReactElement } from "react";
 
+import {
+  Button,
+  DataTable,
+  EmptyState,
+  ErrorNotice,
+  NoWrap,
+  Notice,
+  Panel,
+  Pill,
+  Screen,
+  Section,
+  Text,
+} from "../components";
 import type { Connection } from "../connections/connections";
+import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
 import { countNoun } from "../text/count-noun";
 import { formatDuration } from "../text/format-time";
-import { DataTable } from "../ui/data-table";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Panel, Screen } from "../ui/panel";
-import { Pill } from "../ui/pill";
-import { useLoad } from "../ui/use-load";
 import { readOverview } from "./data-api";
 import type { SourceRow, WorkspaceOverview } from "./overview";
 import { ToolConsole } from "./tool-console";
@@ -32,7 +41,7 @@ export function DataScreen({ connection }: DataScreenProps): ReactElement {
         </>
       ) : (
         <Notice tone="warn" title="This connection has no token">
-          <p>Store a token with the read scope on the Connection screen.</p>
+          <Text>Store a token with the read scope on the Connection screen.</Text>
         </Notice>
       )}
     </Screen>
@@ -48,12 +57,12 @@ function Overview({ connection }: DataScreenProps): ReactElement {
     <Panel
       title="What the base holds"
       actions={
-        <button type="button" className="button" disabled={loaded.busy} onClick={loaded.reload}>
+        <Button disabled={loaded.busy} onClick={loaded.reload}>
           {loaded.busy ? "Refreshing…" : "Refresh"}
-        </button>
+        </Button>
       }
     >
-      {loaded.state.phase === "loading" ? <p className="muted">Asking the server…</p> : null}
+      {loaded.state.phase === "loading" ? <Text tone="muted">Asking the server…</Text> : null}
       {loaded.state.phase === "failed" ? <ErrorNotice error={loaded.state.error} /> : null}
       {loaded.state.phase === "ready" ? <Workspaces workspaces={loaded.state.data} /> : null}
     </Panel>
@@ -66,16 +75,16 @@ interface WorkspacesProps {
 
 function Workspaces({ workspaces }: WorkspacesProps): ReactElement {
   if (workspaces.length === 0) {
-    return <p className="muted">The token may read no workspace, or none exists yet.</p>;
+    return <EmptyState title="The token may read no workspace, or none exists yet" />;
   }
   return (
     <>
       {workspaces.map((workspace, position) => (
         <WorkspaceSources key={`${String(position)}:${workspace.name}`} workspace={workspace} />
       ))}
-      <p className="muted small">
+      <Text tone="muted" small>
         Chunks are counted per workspace: no route of the server counts them per source.
-      </p>
+      </Text>
     </>
   );
 }
@@ -87,18 +96,19 @@ interface WorkspaceSourcesProps {
 const SOURCE_COLUMNS = ["Source", "Kind", "Streams", "Records", "Not indexed", "Syncs every", "Freshness"];
 
 function WorkspaceSources({ workspace }: WorkspaceSourcesProps): ReactElement {
+  const counts = (
+    <>
+      <Text tone="muted" inline>
+        {countNoun(workspace.records, "record")}, {countNoun(workspace.chunks, "chunk")}
+        {workspace.notIndexed > 0 ? `, ${String(workspace.notIndexed)} not indexed` : ""}
+      </Text>
+      <Pill tone={workspace.index.tone}>{workspace.index.label}</Pill>
+    </>
+  );
   return (
-    <section className="subsection">
-      <header className="subsection-header">
-        <h3>{workspace.name}</h3>
-        <span className="muted">
-          {countNoun(workspace.records, "record")}, {countNoun(workspace.chunks, "chunk")}
-          {workspace.notIndexed > 0 ? `, ${String(workspace.notIndexed)} not indexed` : ""}
-        </span>
-        <Pill tone={workspace.index.tone}>{workspace.index.label}</Pill>
-      </header>
+    <Section title={workspace.name} aside={counts}>
       {workspace.sources.length === 0 ? (
-        <p className="muted">This workspace has no source yet.</p>
+        <Text tone="muted">This workspace has no source yet.</Text>
       ) : (
         <DataTable columns={SOURCE_COLUMNS}>
           {workspace.sources.map((source, position) => (
@@ -106,7 +116,7 @@ function WorkspaceSources({ workspace }: WorkspaceSourcesProps): ReactElement {
           ))}
         </DataTable>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -122,8 +132,10 @@ function SourceLine({ source }: SourceLineProps): ReactElement {
       <td>{String(source.streams)}</td>
       <td>{String(source.records)}</td>
       <td>{String(source.notIndexed)}</td>
-      <td className="nowrap">
-        {source.scheduleSeconds === null ? "on demand" : formatDuration(source.scheduleSeconds)}
+      <td>
+        <NoWrap>
+          {source.scheduleSeconds === null ? "on demand" : formatDuration(source.scheduleSeconds)}
+        </NoWrap>
       </td>
       <td>
         <Pill tone={source.freshness.tone}>{source.freshness.label}</Pill>

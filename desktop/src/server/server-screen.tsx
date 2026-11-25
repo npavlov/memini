@@ -1,12 +1,11 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import { ErrorNotice, Screen, Text } from "../components";
 import type { ConnectionsView } from "../connections/connections";
+import { useLoad } from "../hooks/use-load";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
-import { ErrorNotice } from "../ui/notice";
-import { Screen } from "../ui/panel";
-import { useLoad } from "../ui/use-load";
 import type { LauncherInfo } from "./launcher";
 import { readLauncherInfo } from "./launcher-api";
 import { LauncherMissing } from "./launcher-missing";
@@ -29,7 +28,7 @@ export function ServerScreen({ view, info, onView }: ServerScreenProps): ReactEl
       title="Server"
       lead="The Memini server on this computer: Docker, the installation, and each service."
     >
-      {located.state.phase === "loading" ? <p className="muted">Looking for the launcher…</p> : null}
+      {located.state.phase === "loading" ? <Text tone="muted">Looking for the launcher…</Text> : null}
       {located.state.phase === "failed" ? <ErrorNotice error={located.state.error} /> : null}
       {located.state.phase === "ready" ? (
         <Launcher

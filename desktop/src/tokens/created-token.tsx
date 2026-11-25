@@ -1,8 +1,6 @@
 import type { ReactElement } from "react";
 
-import { CopyButton } from "../ui/copy-button";
-import { Notice } from "../ui/notice";
-import { Panel } from "../ui/panel";
+import { Actions, Button, CodeBlock, CopyButton, Notice, Panel, Text } from "../components";
 import type { CreatedToken } from "./tokens";
 
 export interface CreatedTokenPanelProps {
@@ -20,20 +18,18 @@ export function CreatedTokenPanel({ created, onDone }: CreatedTokenPanelProps): 
   return (
     <Panel title={`New token: ${created.info.name}`}>
       <Notice tone="warn" title="Copy this token now. It is shown this once.">
-        <p>
+        <Text>
           The server stores only a digest of it. Save it where its user will read it from, such as
           a file only they can read; do not paste it into a chat or a project file.
-        </p>
+        </Text>
       </Notice>
-      <pre className="secret">
-        <code>{created.secret}</code>
-      </pre>
-      <div className="actions">
+      <CodeBlock text={created.secret} secret />
+      <Actions>
         <CopyButton text={created.secret} label="Copy the token" secret />
-        <button type="button" className="button primary" onClick={onDone}>
+        <Button variant="primary" onClick={onDone}>
           I have saved it
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </Panel>
   );
 }

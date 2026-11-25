@@ -1,13 +1,12 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import { Button, ErrorNotice, Notice, Panel, Screen, Text } from "../components";
 import type { Connection } from "../connections/connections";
+import { useLoad } from "../hooks/use-load";
 import { AppError } from "../ipc/app-error";
 import type { Backend } from "../ipc/backend";
 import { useBackend } from "../ipc/backend-context";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Panel, Screen } from "../ui/panel";
-import { useLoad } from "../ui/use-load";
 import { CreatedTokenPanel } from "./created-token";
 import { TokenForm } from "./token-form";
 import { TokenTable } from "./token-table";
@@ -51,7 +50,7 @@ export function TokensScreen({ connection }: TokensScreenProps): ReactElement {
         <Tokens connection={connection} />
       ) : (
         <Notice tone="warn" title="This connection has no token">
-          <p>Store a token with the admin scope on the Connection screen.</p>
+          <Text>Store a token with the admin scope on the Connection screen.</Text>
         </Notice>
       )}
     </Screen>
@@ -89,12 +88,12 @@ function Tokens({ connection }: TokensScreenProps): ReactElement {
       <Panel
         title="Tokens"
         actions={
-          <button type="button" className="button" disabled={loaded.busy} onClick={reload}>
+          <Button disabled={loaded.busy} onClick={reload}>
             {loaded.busy ? "Refreshing…" : "Refresh"}
-          </button>
+          </Button>
         }
       >
-        {loaded.state.phase === "loading" ? <p className="muted">Asking the server…</p> : null}
+        {loaded.state.phase === "loading" ? <Text tone="muted">Asking the server…</Text> : null}
         {loaded.state.phase === "failed" ? <ErrorNotice error={loaded.state.error} /> : null}
         {data === null ? null : (
           <TokenTable connection={connection} tokens={data.tokens} onChanged={reload} />

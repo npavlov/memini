@@ -1,6 +1,19 @@
 import { useCallback } from "react";
 import type { ReactElement } from "react";
 
+import {
+  Button,
+  CopyButton,
+  ErrorNotice,
+  Fact,
+  Facts,
+  Mono,
+  Notice,
+  Panel,
+  Pill,
+  Screen,
+  Text,
+} from "../components";
 import type { Connection } from "../connections/connections";
 import { AppError } from "../ipc/app-error";
 import type { Backend } from "../ipc/backend";
@@ -8,11 +21,7 @@ import { useBackend } from "../ipc/backend-context";
 import type { LauncherStatus } from "../server/launcher";
 import { readLauncherStatus } from "../server/launcher-api";
 import { movedLocalAddress } from "../server/local-address";
-import { CopyButton } from "../ui/copy-button";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Fact, Panel, Screen } from "../ui/panel";
-import { Pill } from "../ui/pill";
-import { useLoad } from "../ui/use-load";
+import { useLoad } from "../hooks/use-load";
 import { ClientGuides } from "./client-guides";
 import {
   describeEndpoint,
@@ -69,18 +78,18 @@ export function McpScreen({ connection }: McpScreenProps): ReactElement {
       <Panel
         title="Endpoint"
         actions={
-          <button type="button" className="button" disabled={endpoint.busy} onClick={endpoint.reload}>
+          <Button disabled={endpoint.busy} onClick={endpoint.reload}>
             {endpoint.busy ? "Checking…" : "Check again"}
-          </button>
+          </Button>
         }
       >
-        <dl className="facts">
+        <Facts>
           <Fact name="Address">
-            {address ?? "The connection’s address is not valid."}
+            {address === null ? "The connection’s address is not valid." : <Mono>{address}</Mono>}
             {address === null ? null : <CopyButton text={address} label="Copy address" />}
           </Fact>
-        </dl>
-        {endpoint.state.phase === "loading" ? <p className="muted">Asking the server…</p> : null}
+        </Facts>
+        {endpoint.state.phase === "loading" ? <Text tone="muted">Asking the server…</Text> : null}
         {endpoint.state.phase === "failed" ? <ErrorNotice error={endpoint.state.error} /> : null}
         {loaded === null ? null : (
           <EndpointReport connection={connection} endpoint={loaded} onChanged={endpoint.reload} />
@@ -105,28 +114,31 @@ function EndpointReport({ connection, endpoint, onChanged }: EndpointReportProps
     <>
       {moved === null ? null : (
         <Notice tone="warn" title="The server answers at another address now">
-          <p>
-            The launcher reports {moved}; this connection uses {connection.url}. Update the
-            connection on the Server screen, then Status and Tokens reach the server again.
-          </p>
+          <Text>
+            The launcher reports <Mono>{moved}</Mono>; this connection uses{" "}
+            <Mono>{connection.url}</Mono>. Update the connection on the Server screen, then Data and
+            Tokens reach the server again.
+          </Text>
         </Notice>
       )}
       <Notice tone={summary.tone}>
-        <p>
+        <Text>
           <Pill tone={summary.tone}>{summary.label}</Pill> {summary.text}
-        </p>
+        </Text>
         {endpoint.launcher !== null && !endpoint.launcher.running ? (
-          <p className="muted small">The server is not running; this is its setting.</p>
+          <Text tone="muted" small>
+            The server is not running; this is its setting.
+          </Text>
         ) : null}
       </Notice>
       {switchable ? (
         <McpSwitch on={endpoint.state === "on"} onChanged={onChanged} />
       ) : (
-        <p className="muted">
+        <Text tone="muted">
           {connection.kind === "local"
             ? "The switch needs the memini-server launcher; see the Server screen."
             : "The switch is on the computer that runs the server: its operator sets it."}
-        </p>
+        </Text>
       )}
     </>
   );

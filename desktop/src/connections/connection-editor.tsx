@@ -1,12 +1,22 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import {
+  Actions,
+  Button,
+  Checkbox,
+  ConfirmButton,
+  ErrorNotice,
+  Field,
+  Form,
+  Notice,
+  Panel,
+  Text,
+  TextInput,
+} from "../components";
+import { useAction } from "../hooks/use-action";
+import type { Action } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
-import { ConfirmButton } from "../ui/confirm-button";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Panel } from "../ui/panel";
-import { useAction } from "../ui/use-action";
-import type { Action } from "../ui/use-action";
 import { checkConnectionForm, dropsToken, isPlainHttpToAnotherComputer } from "./connections";
 import type { Connection, ConnectionForm, ConnectionsView } from "./connections";
 import { deleteConnection, saveConnection } from "./connections-api";
@@ -48,16 +58,9 @@ export function ConnectionEditor(props: ConnectionEditorProps): ReactElement {
   const removing = useAction(remove);
   return (
     <Panel title={titleOf(form, saved)}>
-      <form
-        className="form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          return problem === null ? saving.run() : undefined;
-        }}
-      >
-        <NameField form={form} onChange={setForm} />
-        <AddressField form={form} onChange={setForm} />
-        {problem === null ? null : <p className="hint">{problem}</p>}
+      <Form onSubmit={() => (problem === null ? saving.run() : undefined)}>
+        <ConnectionFields form={form} onChange={setForm} />
+        {problem === null ? null : <Text tone="hint">{problem}</Text>}
         {dropsToken(form, saved) ? <TokenWillBeRemoved /> : null}
         <ErrorNotice error={saving.error ?? removing.error} />
         <EditorButtons
@@ -69,7 +72,7 @@ export function ConnectionEditor(props: ConnectionEditorProps): ReactElement {
             onSelect(null);
           }}
         />
-      </form>
+      </Form>
     </Panel>
   );
 }
@@ -77,10 +80,10 @@ export function ConnectionEditor(props: ConnectionEditorProps): ReactElement {
 function TokenWillBeRemoved(): ReactElement {
   return (
     <Notice tone="warn">
-      <p>
+      <Text>
         This address is another server. A token belongs to the server it was stored for, so saving
         removes this connection’s token.
-      </p>
+      </Text>
     </Notice>
   );
 }
@@ -97,14 +100,12 @@ interface EditorButtonsProps {
 function EditorButtons(props: EditorButtonsProps): ReactElement {
   const { saved, blocked, saving, removing, onCancel } = props;
   return (
-    <div className="actions">
-      <button type="submit" className="button primary" disabled={blocked || saving.pending}>
+    <Actions>
+      <Button variant="primary" submit disabled={blocked || saving.pending}>
         {saved === null ? "Save connection" : "Save changes"}
-      </button>
+      </Button>
       {saved === null ? (
-        <button type="button" className="button" onClick={onCancel}>
-          Cancel
-        </button>
+        <Button onClick={onCancel}>Cancel</Button>
       ) : (
         <ConfirmButton
           label="Delete connection"
@@ -114,67 +115,51 @@ function EditorButtons(props: EditorButtonsProps): ReactElement {
           onConfirm={() => removing.run()}
         />
       )}
-    </div>
+    </Actions>
   );
 }
 
-interface FieldProps {
+interface FieldsProps {
   readonly form: ConnectionForm;
   readonly onChange: (form: ConnectionForm) => void;
 }
 
-function NameField({ form, onChange }: FieldProps): ReactElement {
-  return (
-    <label className="field">
-      <span>Name</span>
-      <input
-        type="text"
-        value={form.name}
-        maxLength={80}
-        placeholder={form.kind === "local" ? "This computer" : "Harbour team"}
-        onChange={(event) => {
-          onChange({ ...form, name: event.target.value });
-        }}
-      />
-    </label>
-  );
-}
+const LOCAL_ADDRESS = "Where the server on this computer answers. The Server screen shows the launcher’s address.";
+const REMOTE_ADDRESS = "The address the server’s operator gave you. Use https:// for another computer.";
 
-function AddressField({ form, onChange }: FieldProps): ReactElement {
-  const plainHttp = form.kind === "remote" && isPlainHttpToAnotherComputer(form.url);
+function ConnectionFields({ form, onChange }: FieldsProps): ReactElement {
+  const local = form.kind === "local";
   return (
     <>
-      <label className="field">
-        <span>Address</span>
-        <input
-          type="text"
-          inputMode="url"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          value={form.url}
-          placeholder="https://memini.example.org"
-          onChange={(event) => {
-            onChange({ ...form, url: event.target.value });
+      <Field label="Name">
+        <TextInput
+          value={form.name}
+          maxLength={80}
+          placeholder={local ? "This computer" : "Harbour team"}
+          onChange={(name) => {
+            onChange({ ...form, name });
           }}
         />
-        <small className="muted">
-          {form.kind === "local"
-            ? "Where the server on this computer answers. The Server screen shows the launcher’s address."
-            : "The address the server’s operator gave you. Use https:// for another computer."}
-        </small>
-      </label>
-      {plainHttp ? (
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={form.allowHttp}
-            onChange={(event) => {
-              onChange({ ...form, allowHttp: event.target.checked });
-            }}
-          />
-          <span>Allow plain HTTP for this connection. The token can be read on the network.</span>
-        </label>
+      </Field>
+      <Field label="Address" hint={local ? LOCAL_ADDRESS : REMOTE_ADDRESS}>
+        <TextInput
+          kind="code"
+          value={form.url}
+          placeholder="https://memini.example.org"
+          onChange={(url) => {
+            onChange({ ...form, url });
+          }}
+        />
+      </Field>
+      {!local && isPlainHttpToAnotherComputer(form.url) ? (
+        <Checkbox
+          checked={form.allowHttp}
+          onChange={(allowHttp) => {
+            onChange({ ...form, allowHttp });
+          }}
+        >
+          Allow plain HTTP for this connection. The token can be read on the network.
+        </Checkbox>
       ) : null}
     </>
   );

@@ -10,7 +10,7 @@ import type { AppError } from "../ipc/app-error";
 import type { Backend } from "../ipc/backend";
 import { probeEndpoint } from "../mcp/mcp-endpoint";
 import type { EndpointState } from "../mcp/mcp-endpoint";
-import type { Tone } from "../ui/tone";
+import type { Tone } from "../components";
 import { totals } from "./freshness";
 import { readServiceStatus } from "./status";
 import type { ServiceStatus } from "./status";

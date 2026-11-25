@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
+import { Button, IconButton, Mono, Pill, StatusBarActions, StatusBarFrame, Text } from "../components";
 import type { Connection } from "../connections/connections";
+import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
-import { Pill } from "../ui/pill";
-import { useLoad } from "../ui/use-load";
 import { barItems, readConnectionHealth } from "./connection-health";
 import type { ConnectionHealth } from "./connection-health";
 import { StatusDetails } from "./status-details";
@@ -16,6 +16,7 @@ export interface StatusBarProps {
 
 /** How often the bar asks again while the window is in front. */
 const REFRESH_MS = 60_000;
+const DETAILS_ID = "status-details";
 
 /**
  * The bar at the bottom of the window. It is always there and says how the selected connection
@@ -24,9 +25,11 @@ const REFRESH_MS = 60_000;
 export function StatusBar({ connection }: StatusBarProps): ReactElement {
   if (connection === null) {
     return (
-      <footer className="statusbar">
-        <span className="muted">No connection is selected. Add or choose one on the Connection screen.</span>
-      </footer>
+      <StatusBarFrame>
+        <Text tone="muted" inline>
+          No connection is selected. Add or choose one on the Connection screen.
+        </Text>
+      </StatusBarFrame>
     );
   }
   const key = `${connection.id}:${connection.url}:${String(connection.hasToken)}`;
@@ -55,34 +58,33 @@ function ConnectionBar({ connection }: ConnectionBarProps): ReactElement {
     };
   }, [reload]);
   const health = loaded.state.phase === "ready" ? loaded.state.data : null;
+  const details = open && health !== null ? <StatusDetails health={health} /> : null;
   return (
-    <footer className="statusbar">
-      {open && health !== null ? (
-        <div className="statusbar-details" id="status-details" role="region" aria-label="Status details">
-          <StatusDetails health={health} />
-        </div>
-      ) : null}
+    <StatusBarFrame details={details} detailsId={DETAILS_ID}>
       <strong>{connection.name}</strong>
-      <span className="muted statusbar-address">{connection.url}</span>
+      <Text tone="muted" inline>
+        <Mono>{connection.url}</Mono>
+      </Text>
       <BarStates health={health} />
-      <span className="statusbar-actions">
-        <button type="button" className="button" disabled={loaded.busy} onClick={reload}>
-          {loaded.busy ? "Checking…" : "Check now"}
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-expanded={open}
-          aria-controls="status-details"
+      <StatusBarActions>
+        <IconButton
+          label={loaded.busy ? "Checking the connection" : "Check the connection now"}
+          icon="refresh"
+          disabled={loaded.busy}
+          onClick={reload}
+        />
+        <Button
+          expanded={open}
+          controls={DETAILS_ID}
           disabled={health === null}
           onClick={() => {
             setOpen(!open);
           }}
         >
           {open ? "Hide details" : "Details"}
-        </button>
-      </span>
-    </footer>
+        </Button>
+      </StatusBarActions>
+    </StatusBarFrame>
   );
 }
 
@@ -92,7 +94,11 @@ interface BarStatesProps {
 
 function BarStates({ health }: BarStatesProps): ReactElement {
   if (health === null) {
-    return <span className="muted">Asking the server…</span>;
+    return (
+      <Text tone="muted" inline>
+        Asking the server…
+      </Text>
+    );
   }
   return (
     <>

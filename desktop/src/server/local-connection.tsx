@@ -1,13 +1,13 @@
 import { useCallback } from "react";
 import type { ReactElement } from "react";
 
+import { Button, ErrorNotice, Mono, Notice, Text } from "../components";
 import { formOf, localConnection, newForm } from "../connections/connections";
 import type { ConnectionForm, ConnectionsView } from "../connections/connections";
 import { saveConnection } from "../connections/connections-api";
+import { useAction } from "../hooks/use-action";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { useAction } from "../ui/use-action";
 import type { LauncherStatus } from "./launcher";
 import { movedLocalAddress, reportedLocalAddress } from "./local-address";
 
@@ -38,10 +38,13 @@ export function LocalConnection(props: LocalConnectionProps): ReactElement | nul
     const form = newForm("local", reportedLocalAddress(status) ?? info.defaultLocalUrl);
     return (
       <Notice tone="info" title="This computer is not a saved connection yet">
-        <p>Save it to see its status and manage its tokens here. Its address will be {form.url}.</p>
-        <button type="button" className="button" disabled={saving.pending} onClick={() => saving.run(form)}>
+        <Text>
+          Save it to see its status and manage its tokens here. Its address will be{" "}
+          <Mono>{form.url}</Mono>.
+        </Text>
+        <Button disabled={saving.pending} onClick={() => saving.run(form)}>
           Add this computer as a connection
-        </button>
+        </Button>
         <ErrorNotice error={saving.error} />
       </Notice>
     );
@@ -52,19 +55,14 @@ export function LocalConnection(props: LocalConnectionProps): ReactElement | nul
   }
   return (
     <Notice tone="warn" title="The saved connection uses another address">
-      <p>
-        The launcher reports {moved}; the connection “{saved.name}” uses {saved.url}. The server
-        can come back on another port, for example after its MCP endpoint was switched. The token
-        is kept: it is the same server on this computer.
-      </p>
-      <button
-        type="button"
-        className="button"
-        disabled={saving.pending}
-        onClick={() => saving.run({ ...formOf(saved), url: moved })}
-      >
+      <Text>
+        The launcher reports <Mono>{moved}</Mono>; the connection “{saved.name}” uses{" "}
+        <Mono>{saved.url}</Mono>. The server can come back on another port, for example after its
+        MCP endpoint was switched. The token is kept: it is the same server on this computer.
+      </Text>
+      <Button disabled={saving.pending} onClick={() => saving.run({ ...formOf(saved), url: moved })}>
         Use the launcher’s address
-      </button>
+      </Button>
       <ErrorNotice error={saving.error} />
     </Notice>
   );

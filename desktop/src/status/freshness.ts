@@ -1,7 +1,7 @@
 // Words and colours for the freshness the status reports. The definitions are the server's
 // (docs/mcp/status.md); this module only names them for a reader.
 
-import type { Tone } from "../ui/tone";
+import type { Tone } from "../components";
 import type { ServiceStatus, StreamStatus, WorkspaceIndex } from "./status";
 
 export interface Verdict {

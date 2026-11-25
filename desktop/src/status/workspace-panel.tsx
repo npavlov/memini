@@ -1,11 +1,9 @@
 import type { ReactElement } from "react";
 
+import { DataTable, Mono, NoWrap, Panel, Pill, Text } from "../components";
 import { useBackend } from "../ipc/backend-context";
 import { countNoun } from "../text/count-noun";
 import { formatAgo, formatDuration } from "../text/format-time";
-import { DataTable } from "../ui/data-table";
-import { Panel } from "../ui/panel";
-import { Pill } from "../ui/pill";
 import { runTone, streamVerdict, workspaceIndexVerdict } from "./freshness";
 import type { StreamRun, StreamStatus, WorkspaceStatus } from "./status";
 
@@ -19,19 +17,19 @@ export function WorkspacePanel({ workspace }: WorkspacePanelProps): ReactElement
   const verdict = workspaceIndexVerdict(index);
   return (
     <Panel title={`Workspace: ${workspace.name}`} actions={<Pill tone={verdict.tone}>{verdict.label}</Pill>}>
-      <p className="muted">
+      <Text tone="muted">
         {countNoun(index.records, "record")}, {countNoun(index.chunks, "chunk")}
         {index.recordsNotIndexed > 0 ? `, ${String(index.recordsNotIndexed)} not indexed` : ""}
         {index.builtWith === null ? "" : `; index built with ${index.builtWith}`}
-      </p>
+      </Text>
       {index.reindex === null ? null : (
-        <p>
+        <Text>
           To bring the index up to date, the server suggests running, where its CLI is:{" "}
-          <code>{index.reindex}</code>
-        </p>
+          <Mono>{index.reindex}</Mono>
+        </Text>
       )}
       {workspace.streams.length === 0 ? (
-        <p className="muted">No source has a stream yet.</p>
+        <Text tone="muted">No source has a stream yet.</Text>
       ) : (
         <StreamsTable streams={workspace.streams} />
       )}
@@ -64,16 +62,30 @@ function StreamRow({ stream }: StreamRowProps): ReactElement {
   return (
     <tr>
       <th scope="row">
-        {stream.source} <span className="muted small">{stream.sourceKind}</span>
+        {stream.source}{" "}
+        <Text tone="muted" small inline>
+          {stream.sourceKind}
+        </Text>
       </th>
-      <td>{stream.key}</td>
+      <td>
+        <Mono>{stream.key}</Mono>
+      </td>
       <td>
         <Pill tone={verdict.tone}>{verdict.label}</Pill>
-        {stream.historyLoaded === false ? <span className="muted small"> history loading</span> : null}
+        {stream.historyLoaded === false ? (
+          <Text tone="muted" small inline>
+            {" "}
+            history loading
+          </Text>
+        ) : null}
       </td>
-      <td className="nowrap">{formatDuration(stream.lagSeconds)}</td>
-      <td className="nowrap">
-        {stream.scheduleSeconds === null ? "on demand" : formatDuration(stream.scheduleSeconds)}
+      <td>
+        <NoWrap>{formatDuration(stream.lagSeconds)}</NoWrap>
+      </td>
+      <td>
+        <NoWrap>
+          {stream.scheduleSeconds === null ? "on demand" : formatDuration(stream.scheduleSeconds)}
+        </NoWrap>
       </td>
       <td>
         <LastRun run={stream.lastRun} />
@@ -94,12 +106,18 @@ interface LastRunProps {
 function LastRun({ run }: LastRunProps): ReactElement {
   const backend = useBackend();
   if (run === null) {
-    return <span className="muted">never ran</span>;
+    return (
+      <Text tone="muted" inline>
+        never ran
+      </Text>
+    );
   }
   return (
     <>
       <Pill tone={runTone(run.status)}>{run.status === "" ? "unknown" : run.status}</Pill>{" "}
-      <span className="muted small">{formatAgo(run.finishedAt ?? run.startedAt, backend.now())}</span>
+      <Text tone="muted" small inline>
+        {formatAgo(run.finishedAt ?? run.startedAt, backend.now())}
+      </Text>
     </>
   );
 }
@@ -110,8 +128,8 @@ function Failures({ stream }: StreamRowProps): ReactElement | null {
   }
   const error = stream.lastFailure?.error ?? null;
   return (
-    <p className="failure small">
+    <Text tone="failure" small>
       {String(stream.failures)} failed in a row{error === null ? "" : `: ${error}`}
-    </p>
+    </Text>
   );
 }

@@ -7,7 +7,7 @@ import { displayText } from "../text/display-text";
 import { streamVerdict, workspaceIndexVerdict } from "../status/freshness";
 import type { Verdict } from "../status/freshness";
 import type { StreamStatus, WorkspaceStatus } from "../status/status";
-import type { Tone } from "../ui/tone";
+import type { Tone } from "../components";
 
 /** A source as the list of a workspace's sources names it. */
 export interface ListedSource {
