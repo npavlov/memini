@@ -25,6 +25,9 @@ pub const ENTRY: &str = "memini";
 /// What is added to a file's name for the copy made before the app first changes it.
 pub const BACKUP_SUFFIX: &str = ".memini-backup";
 const TEMPORARY_SUFFIX: &str = ".memini-tmp";
+/// The byte order mark some editors on Windows put at the start of a file. It is not part of
+/// what the file says, and stays where it is.
+pub const BYTE_ORDER_MARK: &str = "\u{feff}";
 /// The largest configuration file that is read, in bytes.
 const MAX_FILE: u64 = 8 * 1024 * 1024;
 
@@ -617,23 +620,49 @@ fn json_entry(entry: &Value) -> Entry {
     }
 }
 
-/// A new file with the entry alone.
-fn fresh_json(path: &[&str], shape: Shape) -> String {
+/// A text as its format reads it, and the byte order mark that stood before it, if any.
+fn unmarked(text: &str) -> (&'static str, &str) {
+    match text.strip_prefix(BYTE_ORDER_MARK) {
+        Some(body) => (BYTE_ORDER_MARK, body),
+        None => ("", text),
+    }
+}
+
+/// Whether a text is blank: nothing a format could read, with or without a byte order mark.
+fn is_blank(text: &str) -> bool {
+    unmarked(text).1.trim().is_empty()
+}
+
+/// Whether every line of the text ends as an editor on Windows ends it.
+fn has_windows_line_ends(text: &str) -> bool {
+    text.contains("\r\n") && !text.replace("\r\n", "").contains('\n')
+}
+
+/// `text` with the line ends of Windows throughout.
+fn to_windows_line_ends(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
+/// A new file with the entry alone, for a file that was not there or was blank: `blank` is
+/// what it held. Its byte order mark and its line ends are kept.
+fn fresh_json(blank: &str, path: &[&str], shape: Shape) -> String {
+    let (mark, body) = unmarked(blank);
     let layout = Layout {
         indent: String::new(),
         unit: "  ".to_owned(),
-        newline: "\n",
+        newline: if body.contains("\r\n") { "\r\n" } else { "\n" },
     };
     let whole = shape.inside(&[ENTRY]).inside(path);
-    format!("{}\n", whole.render("", &layout))
+    format!("{mark}{}{}", whole.render("", &layout), layout.newline)
 }
 
 fn connect_json(client: &Client, text: Option<&str>, request: &Request<'_>) -> AppResult<Planned> {
     let bearer = bearer(client, request.pass)?;
     let shape = client.shape(request.url, &bearer);
-    let Some(text) = text.filter(|text| !text.trim().is_empty()) else {
+    let Some(text) = text.filter(|text| !is_blank(text)) else {
         let variant = chosen_variant(client, None, request.variant)?;
-        return Ok(Planned::Change(fresh_json(client.parents(variant), shape)));
+        let fresh = fresh_json(text.unwrap_or(""), client.parents(variant), shape);
+        return Ok(Planned::Change(fresh));
     };
     let document = jsonc::parse(text).map_err(|_| malformed(client))?;
     if entry_at(client, &document)?.is_some() {
@@ -678,7 +707,7 @@ fn checked_json(after: &str, expected: Option<Value>) -> AppResult<String> {
 }
 
 fn disconnect_json(client: &Client, text: &str) -> AppResult<Option<String>> {
-    if text.trim().is_empty() {
+    if is_blank(text) {
         return Ok(None);
     }
     let document = jsonc::parse(text).map_err(|_| malformed(client))?;
@@ -691,7 +720,7 @@ fn disconnect_json(client: &Client, text: &str) -> AppResult<Option<String>> {
 }
 
 fn read_json(client: &Client, text: &str) -> AppResult<Option<Entry>> {
-    if text.trim().is_empty() {
+    if is_blank(text) {
         return Ok(None);
     }
     let document = jsonc::parse(text).map_err(|_| malformed(client))?;
@@ -738,7 +767,20 @@ fn neutral(item: &Item) -> Value {
 }
 
 fn parse_toml(client: &Client, text: &str) -> AppResult<DocumentMut> {
-    text.parse::<DocumentMut>().map_err(|_| malformed(client))
+    let (_, body) = unmarked(text);
+    body.parse::<DocumentMut>().map_err(|_| malformed(client))
+}
+
+/// The document as text, as the file it was read from was written. The TOML editor keeps the
+/// rest of a document but writes plain line feeds and no byte order mark: a file that had the
+/// line ends of Windows throughout, or a mark, gets them back.
+fn toml_text(document: &DocumentMut, original: &str) -> String {
+    let (mark, body) = unmarked(original);
+    let written = document.to_string();
+    if has_windows_line_ends(body) {
+        return format!("{mark}{}", to_windows_line_ends(&written));
+    }
+    format!("{mark}{written}")
 }
 
 fn toml_servers<'a>(client: &Client, document: &'a DocumentMut) -> AppResult<Option<&'a Table>> {
@@ -759,7 +801,8 @@ fn checked_toml(client: &Client, after: String, expected: Option<Value>) -> AppR
 
 fn connect_toml(client: &Client, text: Option<&str>, request: &Request<'_>) -> AppResult<Planned> {
     let variable = bearer(client, request.pass)?;
-    let mut document = parse_toml(client, text.unwrap_or(""))?;
+    let original = text.unwrap_or("");
+    let mut document = parse_toml(client, original)?;
     if toml_servers(client, &document)?.is_some_and(|servers| servers.contains_key(ENTRY)) {
         return Ok(Planned::Unchanged);
     }
@@ -782,7 +825,7 @@ fn connect_toml(client: &Client, text: Option<&str>, request: &Request<'_>) -> A
     entry.insert("url", toml_edit::value(request.url));
     entry.insert("bearer_token_env_var", toml_edit::value(variable));
     servers.insert(ENTRY, Item::Table(entry));
-    checked_toml(client, document.to_string(), expected).map(Planned::Change)
+    checked_toml(client, toml_text(&document, original), expected).map(Planned::Change)
 }
 
 fn disconnect_toml(client: &Client, text: &str) -> AppResult<Option<String>> {
@@ -796,7 +839,7 @@ fn disconnect_toml(client: &Client, text: &str) -> AppResult<Option<String>> {
         .and_then(Item::as_table_mut)
         .ok_or_else(|| unsupported(client))?;
     servers.remove(ENTRY);
-    checked_toml(client, document.to_string(), expected).map(Some)
+    checked_toml(client, toml_text(&document, text), expected).map(Some)
 }
 
 fn read_toml(client: &Client, text: &str) -> AppResult<Option<Entry>> {
@@ -1139,16 +1182,36 @@ mod tests {
         }
     }
 
-    fn connected(fixture: &Fixture, token: &str) -> String {
+    /// `text`, a configuration of the fixture's client, with the entry added.
+    fn connected_from(fixture: &Fixture, text: &str, token: &str) -> String {
         let request = Request {
             url: URL,
             pass: pass_of(fixture.client, token),
             variant: None,
         };
-        match connect_text(fixture.client, Some(fixture.text), &request).expect("planned") {
+        match connect_text(fixture.client, Some(text), &request).expect("planned") {
             Planned::Change(text) => text,
             Planned::Unchanged => panic!("{} has no entry yet", fixture.client.id),
         }
+    }
+
+    fn connected(fixture: &Fixture, token: &str) -> String {
+        connected_from(fixture, fixture.text, token)
+    }
+
+    /// A text as an editor on Windows saves it. The fixtures are kept with plain line feeds,
+    /// so this is made here and the test runs the same on every platform.
+    fn with_windows_line_ends(text: &str) -> String {
+        text.replace("\r\n", "\n").replace('\n', "\r\n")
+    }
+
+    /// Whether a text has a line feed that no carriage return stands before.
+    fn has_bare_line_feed(text: &str) -> bool {
+        text.replace("\r\n", "").contains('\n')
+    }
+
+    fn with_mark(text: &str) -> String {
+        format!("{BYTE_ORDER_MARK}{text}")
     }
 
     /// The value of a configuration text, whatever its format.
@@ -1236,6 +1299,99 @@ mod tests {
             .map(|fixture| Some(fixture.text.to_owned()))
             .collect();
         assert_eq!(restored, originals);
+    }
+
+    #[test]
+    fn connect_writes_windows_line_ends_into_a_file_that_has_them() {
+        let token = fake_token('a');
+
+        let bare: Vec<bool> = all()
+            .iter()
+            .map(|fixture| {
+                let original = with_windows_line_ends(fixture.text);
+                has_bare_line_feed(&connected_from(fixture, &original, &token))
+            })
+            .collect();
+
+        assert_eq!(bare, vec![false; 10]);
+    }
+
+    #[test]
+    fn disconnect_gives_a_file_with_windows_line_ends_back_byte_for_byte() {
+        let token = fake_token('a');
+
+        let restored: Vec<Option<String>> = all()
+            .iter()
+            .map(|fixture| {
+                let original = with_windows_line_ends(fixture.text);
+                let connected = connected_from(fixture, &original, &token);
+                disconnect_text(fixture.client, &connected).expect("planned")
+            })
+            .collect();
+
+        let originals: Vec<Option<String>> = all()
+            .iter()
+            .map(|fixture| Some(with_windows_line_ends(fixture.text)))
+            .collect();
+        assert_eq!(restored, originals);
+    }
+
+    #[test]
+    fn a_byte_order_mark_stays_through_connect_and_disconnect() {
+        let token = fake_token('a');
+
+        let kept: Vec<(bool, Option<String>)> = all()
+            .iter()
+            .map(|fixture| {
+                let original = with_mark(&with_windows_line_ends(fixture.text));
+                let connected = connected_from(fixture, &original, &token);
+                (
+                    connected.starts_with(BYTE_ORDER_MARK),
+                    disconnect_text(fixture.client, &connected).expect("planned"),
+                )
+            })
+            .collect();
+
+        let originals: Vec<(bool, Option<String>)> = all()
+            .iter()
+            .map(|fixture| (true, Some(with_mark(&with_windows_line_ends(fixture.text)))))
+            .collect();
+        assert_eq!(kept, originals);
+    }
+
+    #[test]
+    fn a_file_that_holds_only_a_byte_order_mark_gets_the_entry_after_it() {
+        let client = find("cursor").expect("known");
+        let request = Request {
+            url: URL,
+            pass: Pass::Reference,
+            variant: None,
+        };
+
+        let planned = connect_text(client, Some(&with_mark("\r\n")), &request).expect("planned");
+
+        let Planned::Change(text) = planned else {
+            panic!("an entry is written")
+        };
+        assert!(text.starts_with(&with_mark("{\r\n")) && !has_bare_line_feed(&text));
+    }
+
+    #[test]
+    fn the_entry_is_read_from_a_file_with_a_byte_order_mark_and_windows_line_ends() {
+        let token = fake_token('a');
+
+        let shown: Vec<bool> = all()
+            .iter()
+            .map(|fixture| {
+                let original = with_mark(&with_windows_line_ends(fixture.text));
+                let connected = connected_from(fixture, &original, &token);
+                read_entry(fixture.client, &connected)
+                    .expect("readable")
+                    .is_some()
+            })
+            .collect();
+
+        assert_eq!(shown, vec![true; 10]);
     }
 
     #[test]
@@ -1409,7 +1565,9 @@ mod tests {
             (Kind::Codex, _) => panic!("Codex is documented as a command"),
         };
         let own = fixture.client.variable.unwrap_or(DOCUMENTED_VARIABLE);
+        // A checkout on Windows may give the guide Windows line ends: it is read the same.
         let page = page
+            .replace("\r\n", "\n")
             .replace(DOCUMENTED_VARIABLE, own)
             .replace(DOCUMENTED_TOKEN, token);
         let example = documented(&page, heading, nth);

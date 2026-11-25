@@ -163,7 +163,8 @@ valid, and offers to revoke it again.
 **The rest of the file is kept.** In a JSON file the app changes the bytes of the `memini` member
 and nothing else: comments, order, indentation and line ends stay, and Disconnect after Connect
 gives the file back byte for byte. The Codex file is changed through a TOML editor that keeps the
-rest as it was. Before a change is written, the app checks that the new text says exactly what the
+rest as it was. The line ends of a file, those of Windows included, and a byte order mark at its
+start are kept in both formats, and what the app adds is written with the file's own line ends. Before a change is written, the app checks that the new text says exactly what the
 old text said plus or minus the entry, and refuses otherwise. A file that is not in the client's
 format is refused and left alone, before any token is made. Before its first change the app copies
 the file beside itself as `<file>.memini-backup`; that copy is never overwritten. A file that is a
@@ -367,7 +368,7 @@ On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3, Rust 1.10
 | `pnpm test` | 819 tests passed |
 | `pnpm build` | built |
 | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` | clean |
-| `cargo test --locked` | 120 tests passed |
+| `cargo test --locked` | 125 tests passed |
 | `pnpm tauri build --bundles app -- --locked` | `Memini.app` built, with the launcher inside |
 
 The built front end was also opened in a browser with a stand-in for the Rust side, under the
