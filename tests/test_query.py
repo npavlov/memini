@@ -41,19 +41,17 @@ from memini.mcp.query import (
 from memini.mcp.text import TEXT_NOTICE, fenced
 from memini.query import (
     CodeSearchArguments,
-    Definition,
     DirectoryEntry,
     FileTooLargeError,
+    GetFileArguments,
     InvalidReadError,
     NotSyncedError,
     QueryError,
     QueryServices,
-    ReadSourceArguments,
     SearchArguments,
     SearchHit,
     SearchResult,
     SourceRead,
-    SymbolArguments,
     code_locator,
     query_errors,
 )
@@ -106,24 +104,24 @@ def test_code_and_symbol_arguments() -> None:
         CodeSearchArguments.model_validate({"query": "x", "languages": ["cobol"]})
     with pytest.raises(ValidationError):
         CodeSearchArguments.model_validate({"query": "x", "paths": [""]})
-    symbol = SymbolArguments(name="Lamp.on")
-    assert (symbol.match, symbol.case_sensitive) == ("exact", True)
+    symbol = CodeSearchArguments(query="Lamp.on", mode="symbol_prefix")
+    assert (symbol.mode, symbol.case_sensitive) == ("symbol_prefix", True)
     with pytest.raises(ValidationError):
-        SymbolArguments.model_validate({"name": "on", "match": "fuzzy"})
+        CodeSearchArguments.model_validate({"query": "on", "mode": "fuzzy"})
 
 
-def test_read_source_arguments() -> None:
-    arguments = ReadSourceArguments(repository="shop")
+def test_get_file_arguments() -> None:
+    arguments = GetFileArguments(source="shop")
     assert (arguments.path, arguments.workspace, arguments.ref) == ("", None, None)
     for bad in (
         {},
-        {"repository": "shop", "start_line": 0},
-        {"repository": "shop", "end_line": -1},
-        {"repository": "shop", "ref": ""},
-        {"repository": "shop", "path": "a" * 4097},
+        {"source": "shop", "start_line": 0},
+        {"source": "shop", "end_line": -1},
+        {"source": "shop", "ref": ""},
+        {"source": "shop", "path": "a" * 4097},
     ):
         with pytest.raises(ValidationError):
-            ReadSourceArguments.model_validate(bad)
+            GetFileArguments.model_validate(bad)
 
 
 # --- Results -------------------------------------------------------------------------------------
@@ -159,11 +157,16 @@ def hit(**changes: Any) -> Hit:
 
 def test_a_code_hit_carries_repository_ref_commit_and_locator() -> None:
     found = SearchHit.of(hit())
-    assert (found.repository, found.ref, found.commit) == ("shop", "refs/heads/main", SHA)
+    assert (found.source, found.ref, found.commit) == ("shop", "refs/heads/main", SHA)
     assert found.locator == f"shop@{SHA}:src/lamp.py#L4-L19"
     assert (found.kind, found.source_kind, found.occurred_at) == ("code_file", "repository", WHEN)
     # No place inside the file but its lines: no anchor, no link, the commit's time.
-    assert (found.anchor, found.link, found.url, found.at) == (None, None, None, WHEN)
+    assert (found.anchor, found.link, found.url, found.chunk_occurred_at) == (
+        None,
+        None,
+        None,
+        WHEN,
+    )
     unpinned = SearchHit.of(hit(commit=None))
     assert unpinned.locator == "shop:src/lamp.py#L4-L19"
 
@@ -181,7 +184,7 @@ def test_a_markdown_file_of_a_repository_is_located_like_code() -> None:
             end_line=9,
         )
     )
-    assert (found.kind, found.repository, found.ref) == ("document", "shop", "refs/heads/main")
+    assert (found.kind, found.source, found.ref) == ("document", "shop", "refs/heads/main")
     assert found.locator == f"shop@{SHA}:docs/guide.md#L1-L9"
 
 
@@ -198,10 +201,10 @@ def test_a_pushed_document_has_no_repository_or_ref() -> None:
             language=None,
         )
     )
-    assert (found.repository, found.ref, found.commit) == (None, None, None)
+    assert (found.ref, found.commit) == (None, None)
     # Its text before the first heading: the record is the place, its URL the link.
     assert found.locator == "notes:notes/watering.md"
-    assert (found.anchor, found.at) == (None, WHEN)
+    assert (found.anchor, found.chunk_occurred_at) == (None, WHEN)
     assert found.link == found.url == "https://notes.example.invalid/watering"
 
 
@@ -243,8 +246,8 @@ def test_a_thread_hit_carries_its_anchor_link_and_time() -> None:
     assert found.link == MESSAGE_URL
     assert found.url == "https://chat.example.invalid/t/1772355600000100"
     # occurred_at stays the record's time, the one since and until compare; at is the group's.
-    assert (found.occurred_at, found.at) == (THREAD_TIME, GROUP_TIME)
-    assert (found.repository, found.ref, found.commit, found.path) == (None, None, None, None)
+    assert (found.occurred_at, found.chunk_occurred_at) == (THREAD_TIME, GROUP_TIME)
+    assert (found.ref, found.commit, found.path) == (None, None, None)
     without_url = SearchHit.of(thread_hit(chunk_url=None))
     assert without_url.link == "https://chat.example.invalid/t/1772355600000100"
 
@@ -262,12 +265,12 @@ def test_a_meeting_hit_is_located_by_its_section_or_segment() -> None:
     }
     summary = SearchHit.of(thread_hit(**meeting, anchor="summary/Risks", chunk_occurred_at=start))
     assert summary.locator == "notes:meeting-2026-03-03#summary/Risks"
-    assert (summary.link, summary.at) == (None, start)
+    assert (summary.link, summary.chunk_occurred_at) == (None, start)
     window = SearchHit.of(
         thread_hit(**meeting, anchor="seg-2d55dec577cc4361", chunk_occurred_at=window_start)
     )
     assert window.locator == "notes:meeting-2026-03-03#seg-2d55dec577cc4361"
-    assert (window.occurred_at, window.at) == (start, window_start)
+    assert (window.occurred_at, window.chunk_occurred_at) == (start, window_start)
 
 
 def test_a_definition_is_located_by_its_own_lines() -> None:
@@ -281,11 +284,11 @@ def test_a_definition_is_located_by_its_own_lines() -> None:
         start_line=11,
         end_line=14,
     )
-    found = Definition.of(hit(definition=definition))
-    assert found.locator == f"shop@{SHA}:src/lamp.py#L11-L14"
-    assert (found.snippet_start_line, found.ref, found.parent) == (4, "refs/heads/main", "Lamp")
-    with pytest.raises(ValueError, match="definition"):
-        Definition.of(hit())
+    found = SearchHit.of(hit(definition=definition))
+    assert found.definition is not None
+    assert (found.definition.start_line, found.definition.end_line) == (11, 14)
+    assert (found.start_line, found.ref, found.definition.parent) == (4, "refs/heads/main", "Lamp")
+    assert SearchHit.of(hit()).definition is None
 
 
 def test_code_locator() -> None:
@@ -343,11 +346,11 @@ def test_a_fence_is_longer_than_any_backticks_in_the_content() -> None:
 
 
 def test_the_summary_of_no_hits() -> None:
-    assert summarize_search(SearchResult(hits=[])) == "0 hits."
+    assert summarize_search(SearchResult(items=[])) == "0 hits."
 
 
 def test_the_summary_of_a_thread_hit_names_its_link_time_and_evidence() -> None:
-    summary = summarize_search(SearchResult(hits=[SearchHit.of(thread_hit(score=0.5))]))
+    summary = summarize_search(SearchResult(items=[SearchHit.of(thread_hit(score=0.5))]))
     assert summary.splitlines()[:6] == [
         f"1 hit. {TEXT_NOTICE}",
         "",
@@ -361,10 +364,10 @@ def test_the_summary_of_a_thread_hit_names_its_link_time_and_evidence() -> None:
 
 
 def test_the_summary_of_a_code_hit_has_no_link_or_evidence_line() -> None:
-    summary = summarize_search(SearchResult(hits=[SearchHit.of(hit())]))
+    summary = summarize_search(SearchResult(items=[SearchHit.of(hit())]))
     assert summary.splitlines()[2:4] == [
         f"1. shop@{SHA}:src/lamp.py#L4-L19",
-        "code_file in acme/shop (git); 2026-01-02T12:00:00+00:00; in Lamp",
+        "code_file in acme/shop (repository); 2026-01-02T12:00:00+00:00; in Lamp",
     ]
     assert "link:" not in summary
     assert "evidence:" not in summary
@@ -485,8 +488,8 @@ async def http_client(app: FastAPI, token: str) -> AsyncGenerator[httpx2.AsyncCl
     [
         ("search", {"query": "lamp"}),
         ("search_code", {"query": "lamp", "mode": "exact"}),
-        ("get_symbol", {"name": "Lamp"}),
-        ("get_file", {"repository": "shop"}),
+        ("search_code", {"query": "Lamp", "mode": "symbol"}),
+        ("get_file", {"source": "shop"}),
     ],
 )
 async def test_without_a_database_the_tools_say_so(

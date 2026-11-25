@@ -335,7 +335,11 @@ async def test_search_finds_code_with_repo_at_sha_and_time(world: World) -> None
     hits = ok(result)["hits"]
     lamp = code_hit(hits, "src/lamp.py")
     assert lamp["workspace"] == "acme"
-    assert (lamp["source"], lamp["source_kind"], lamp["kind"]) == ("shop", "repository", "code_file")
+    assert (lamp["source"], lamp["source_kind"], lamp["kind"]) == (
+        "shop",
+        "repository",
+        "code_file",
+    )
     assert (lamp["repository"], lamp["ref"], lamp["commit"]) == ("shop", MAIN, world.pin)
     assert lamp["locator"].startswith(f"shop@{world.pin}:src/lamp.py#L")
     assert when(lamp["occurred_at"]) == FIRST_COMMIT
@@ -523,7 +527,11 @@ async def test_read_source_reads_a_file_at_the_pinned_commit(world: World) -> No
         )
 
     read = ok(whole)
-    assert (read["workspace"], read["repository"], read["source_kind"]) == ("acme", "shop", "repository")
+    assert (read["workspace"], read["repository"], read["source_kind"]) == (
+        "acme",
+        "shop",
+        "repository",
+    )
     assert (read["ref"], read["commit"], read["pinned"]) == (MAIN, world.pin, True)
     assert when(read["occurred_at"]) == FIRST_COMMIT
     assert (read["kind"], read["language"], read["binary"]) == ("file", "python", False)
@@ -714,9 +722,7 @@ async def test_a_workspace_token_reads_only_its_workspace(world: World) -> None:
     token = await world.token("read", workspace=world.other)
     async with mcp_client(world.app(), token) as client:
         acme = await client.call_tool("get_file", {"workspace": "acme", "repository": "shop"})
-        unnamed = ok(
-            await client.call_tool("get_file", {"repository": "shop", "path": "vault.py"})
-        )
+        unnamed = ok(await client.call_tool("get_file", {"repository": "shop", "path": "vault.py"}))
         searched = ok(await client.call_tool("search_code", {"query": "def", "mode": "exact"}))
         symbols = ok(await client.call_tool("get_symbol", {"name": "brighten"}))
         everything = ok(await client.call_tool("search", {"query": "lamp unlock"}))

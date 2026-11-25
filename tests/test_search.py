@@ -462,7 +462,7 @@ _SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 def test_a_git_hit_carries_the_commit_of_its_stream_pin() -> None:
-    assert pinned_commit("git", {"commit": _SHA, "rules": "r1"}) == _SHA
+    assert pinned_commit("repository", {"commit": _SHA, "rules": "r1"}) == _SHA
 
 
 @pytest.mark.parametrize(

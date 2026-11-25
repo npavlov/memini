@@ -1039,7 +1039,11 @@ async def test_a_code_hit_carries_its_source_kind_time_and_place(
     assert hit.chunk_id == water.id
     assert hit.record_id == corpus.records["greenhouse"]
     assert (hit.workspace_id, hit.workspace) == (corpus.scope.acme, "acme")
-    assert (hit.source_id, hit.source, hit.source_kind) == (corpus.scope.repo, "greenhouse", "repository")
+    assert (hit.source_id, hit.source, hit.source_kind) == (
+        corpus.scope.repo,
+        "greenhouse",
+        "repository",
+    )
     assert (hit.record_kind, hit.chunk_kind, hit.language) == ("code_file", "function", "python")
     assert (hit.path, hit.symbol, hit.start_line, hit.end_line) == (
         PATH,

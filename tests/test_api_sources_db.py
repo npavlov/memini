@@ -119,7 +119,13 @@ async def new_workspace(client: httpx2.AsyncClient, headers: dict[str, str], nam
 async def new_source(
     client: httpx2.AsyncClient, headers: dict[str, str], workspace: str, **body: Any
 ) -> httpx2.Response:
-    payload: Json = {"kind": "repository", "name": "site", "location": REMOTE, "refs": ["main"], **body}
+    payload: Json = {
+        "kind": "repository",
+        "name": "site",
+        "location": REMOTE,
+        "refs": ["main"],
+        **body,
+    }
     return await client.post(f"/v1/workspaces/{workspace}/sources", json=payload, headers=headers)
 
 

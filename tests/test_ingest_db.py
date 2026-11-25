@@ -585,7 +585,8 @@ async def test_concurrent_batches_leave_the_latest_checkpoint(env: Env) -> None:
 
 async def test_a_git_source_and_one_beyond_the_access_take_no_batch(env: Env) -> None:
     await env.db.execute(
-        "INSERT INTO source (workspace_id, owner_id, name, kind) VALUES (%s, %s, 'repo', 'repository')",
+        "INSERT INTO source (workspace_id, owner_id, name, kind)"
+        " VALUES (%s, %s, 'repo', 'repository')",
         (env.acme, env.owner),
     )
     batch = Batch(stream=STREAM, records=[thread("general/0001")])

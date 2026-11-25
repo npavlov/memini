@@ -670,11 +670,10 @@ def test_the_report_counts_what_each_mask_matches() -> None:
     # Two subdomains name rates.py; a domain and its own subdomain are not a pair.
     (overlap,) = report.overlaps
     assert overlap.domains == ["fees/berth", "fees/pilot"]
-    assert (overlap.repository, overlap.files) == ("quay", 1)
+    assert (overlap.source, overlap.files) == ("quay", 1)
     assert overlap.examples == ["quay/fees/rates.py"]
     assert [
-        (s.service, s.repository, s.files, s.unassigned, s.unassigned_share)
-        for s in report.services
+        (s.service, s.source, s.files, s.unassigned, s.unassigned_share) for s in report.services
     ] == [("booking-web", "lantern", 2, 1, 0.5), ("quay", "quay", 5, 2, 0.4)]
 
 
@@ -710,7 +709,7 @@ def test_the_text_of_a_catalog_keeps_every_title_and_description_in_a_fence() ->
                     ServiceEntry(
                         name="quay",
                         description=ATTEMPT,
-                        repository="quay",
+                        source="quay",
                         root="",
                         refs=[],
                         files=5,
@@ -742,7 +741,7 @@ def test_the_text_of_a_catalog_keeps_every_title_and_description_in_a_fence() ->
                 **STAMP,
             )
         ],
-        unassigned_repositories=[],
+        unassigned_sources=[],
     )
 
     assert catalog.model_dump(mode="json")["data_notice"] == DATA_NOTICE
@@ -762,7 +761,7 @@ def test_the_text_of_a_project_keeps_every_note_in_a_fence() -> None:
         return LinkDetail(
             kind="library",
             note=ATTEMPT,
-            repository="quay",
+            source="quay",
             root="",
             paths=[MaskFiles(path="quay/api/**`", files=2)],
             **names,

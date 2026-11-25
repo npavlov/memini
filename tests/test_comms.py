@@ -12,8 +12,6 @@ from pydantic import ValidationError
 from memini.comms import (
     MESSAGE_ROLES,
     ActionItemInfo,
-    PutDocumentArguments,
-    PutDocumentResult,
     GetMeetingArguments,
     GetThreadArguments,
     ListedMeeting,
@@ -25,14 +23,16 @@ from memini.comms import (
     MessageInfo,
     MessageList,
     PersonInfo,
+    PutDocumentArguments,
+    PutDocumentResult,
     RecordPerson,
     SegmentInfo,
     ThreadRecord,
     document_external_id,
 )
 from memini.mcp.comms import (
-    PUT_DOCUMENT_TOOL,
     COMMS_READ_TOOLS,
+    PUT_DOCUMENT_TOOL,
     summarize_added,
     summarize_meeting,
     summarize_meetings,
@@ -44,7 +44,7 @@ from memini.persons import alias_keys, parse_person_ref
 RECORD = "ab" * 32
 WHEN = datetime(2026, 3, 2, 9, 30, tzinfo=UTC)
 ME = PersonInfo(
-    person_id=uuid.UUID("00000000-0000-7000-8000-000000000001"),
+    id=uuid.UUID("00000000-0000-7000-8000-000000000001"),
     workspace="acme",
     display_name="Ann Example",
     is_me=True,
@@ -59,12 +59,14 @@ def test_list_arguments_default_to_me() -> None:
     meetings = ListMeetingsArguments()
     messages = ListMessagesArguments()
 
-    assert (meetings.person, meetings.query, meetings.limit) == ("me", None, 10)
-    assert (messages.person, messages.roles) == ("me", list(MESSAGE_ROLES))
+    assert (meetings.persons, meetings.query, meetings.limit) == (["me"], None, 10)
+    assert (messages.persons, messages.roles) == (["me"], list(MESSAGE_ROLES))
     assert messages.roles == ["recipient", "mention"]
 
     refused: list[tuple[type[ListMeetingsArguments | ListMessagesArguments], dict[str, Any]]] = [
-        (ListMeetingsArguments, {"person": ""}),
+        (ListMeetingsArguments, {"persons": [""]}),
+        (ListMeetingsArguments, {"persons": []}),
+        (ListMeetingsArguments, {"person": "me"}),
         (ListMeetingsArguments, {"query": ""}),
         (ListMeetingsArguments, {"limit": 0}),
         (ListMeetingsArguments, {"limit": 101}),
@@ -80,25 +82,22 @@ def test_list_arguments_default_to_me() -> None:
             model.model_validate(bad)
 
 
-def test_a_record_is_named_one_way() -> None:
-    assert GetThreadArguments(record_id=RECORD).source is None
-    by_reference = GetMeetingArguments(source="notes", external_id="m/1", workspace="acme")
-    assert by_reference.include_transcript is False
+def test_a_record_is_named_by_its_id() -> None:
+    assert GetThreadArguments(id=RECORD).id == RECORD
+    assert GetMeetingArguments(id=RECORD).include_transcript is False
 
     for bad in (
         {},
-        {"record_id": RECORD, "source": "notes", "external_id": "m/1"},
-        {"record_id": RECORD, "workspace": "acme"},
-        {"source": "notes"},
-        {"external_id": "m/1"},
-        {"record_id": "AB" * 32},
-        {"record_id": "ab"},
+        {"id": RECORD, "source": "notes", "external_id": "m/1"},
+        {"source": "notes", "external_id": "m/1"},
+        {"id": "AB" * 32},
+        {"id": "ab"},
     ):
         with pytest.raises(ValidationError):
             GetThreadArguments.model_validate(bad)
 
 
-def test_add_document_arguments() -> None:
+def test_put_document_arguments() -> None:
     arguments = PutDocumentArguments(workspace="acme", source="notes", title="Plan", text="")
     assert (arguments.external_id, arguments.occurred_at, arguments.url) == (None, None, None)
 
@@ -152,7 +151,7 @@ def record_fields(**overrides: Any) -> dict[str, Any]:
         "workspace": "acme",
         "source": "notes",
         "source_kind": "push",
-        "record_id": RECORD,
+        "id": RECORD,
         "external_id": "m/1",
         "url": None,
         "occurred_at": WHEN,
@@ -174,9 +173,9 @@ def test_meetings_summary_fences_what_the_sources_hold() -> None:
         truncated=True,
         score=0.0412,
     )
-    text = summarize_meetings(MeetingList(persons=[ME], meetings=[meeting]))
+    text = summarize_meetings(MeetingList(persons=[ME], items=[meeting]))
 
-    assert text.startswith(f"1 meeting. Of person {ME.person_id} in acme (me).")
+    assert text.startswith(f"1 meeting. Of person {ME.id} in acme (me).")
     assert "1. notes:m/1#summary" in text
     assert "started 2026-03-02T09:30:00+00:00; score 0.0412; snippet cut short" in text
     assert "link: https://notes.example.test/m/1" in text
@@ -184,17 +183,17 @@ def test_meetings_summary_fences_what_the_sources_hold() -> None:
     fence = text.index("````\n")  # longer than the backticks of the snippet
     assert text.index(INJECTION) > fence
     assert text.index("Participants: Ann Example, Bo Example") > fence
-    assert summarize_meetings(MeetingList(persons=[ME], meetings=[])).startswith("0 meetings.")
+    assert summarize_meetings(MeetingList(persons=[ME], items=[])).startswith("0 meetings.")
 
 
 def message(**overrides: Any) -> dict[str, Any]:
     fields: dict[str, Any] = {
-        "message_id": "m1",
+        "id": "m1",
         "anchor": "msg-m1",
         "locator": "chat:general/1#msg-m1",
         "link": None,
         "author": "U02BO",
-        "sent_at": WHEN,
+        "occurred_at": WHEN,
         "recipients": ["U01ANN"],
         "cc": [],
         "mentions": ["U01ANN"],
@@ -205,15 +204,18 @@ def message(**overrides: Any) -> dict[str, Any]:
 
 
 def test_messages_summary() -> None:
+    fields = record_fields(source="chat", external_id="general/1")
+    del fields["id"], fields["occurred_at"]
     listed = ListedMessage(
-        **record_fields(source="chat", external_id="general/1"),
+        **fields,
         **message(),
+        record_id=RECORD,
         title=None,
         channel="general",
         roles=["mention", "recipient"],
         score=None,
     )
-    text = summarize_messages(MessageList(persons=[ME], messages=[listed]))
+    text = summarize_messages(MessageList(persons=[ME], items=[listed]))
 
     assert text.startswith("1 message. Of person")
     assert "1. chat:general/1#msg-m1" in text
@@ -241,7 +243,7 @@ def test_meeting_and_thread_summaries() -> None:
     text = summarize_meeting(meeting)
     assert "The transcript has 2 segments: ask with include_transcript." in text
     assert "- Ann Example: Tag rc2 (due Mon)" in text
-    assert f"Persons: Ann Example (participant, me, {ME.person_id})" in text
+    assert f"Persons: Ann Example (participant, me, {ME.id})" in text
 
     with_transcript = meeting.model_copy(
         update={
@@ -263,7 +265,7 @@ def test_meeting_and_thread_summaries() -> None:
         persons=[],
         messages=[
             MessageInfo(**message()),
-            MessageInfo(**message(message_id="m2", anchor="msg-m2")),
+            MessageInfo(**message(id="m2", anchor="msg-m2")),
         ],
     )
     text = summarize_thread(thread)
@@ -276,7 +278,7 @@ def test_added_summary() -> None:
     added = PutDocumentResult(
         workspace="acme",
         source="notes",
-        record_id=RECORD,
+        id=RECORD,
         external_id="doc-1",
         locator="notes:doc-1",
         url=None,
@@ -288,7 +290,7 @@ def test_added_summary() -> None:
     )
     text = summarize_added(added)
     assert text.startswith("Document notes:doc-1 in acme/notes: inserted, not indexed: No")
-    assert f"record_id {RECORD}" in text
+    assert f"id {RECORD}" in text
 
 
 # --- Tools ---------------------------------------------------------------------------------------

@@ -8,7 +8,7 @@ and options. A name that breaks a rule is a bug; there are no aliases.
 import argparse
 import re
 from collections.abc import Iterator, Mapping
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -67,15 +67,15 @@ def _is_list(prop: Mapping[str, Any]) -> bool:
     return any(each.get("type") == "array" for each in prop.get("anyOf", []))
 
 
-def _all_keys(schema: Any) -> Iterator[str]:
+def _all_keys(schema: object) -> Iterator[str]:
     """Every property name anywhere in a JSON schema, its definitions included."""
-    if isinstance(schema, Mapping):
-        for key, value in schema.items():
-            if key == "properties" and isinstance(value, Mapping):
-                yield from value
-            yield from _all_keys(value)
+    if isinstance(schema, dict):
+        for key, value in cast("dict[str, object]", schema).items():
+            if key == "properties" and isinstance(value, dict):
+                yield from cast("dict[str, object]", value)
+            yield from _all_keys(cast("object", value))
     elif isinstance(schema, list):
-        for value in schema:
+        for value in cast("list[object]", schema):
             yield from _all_keys(value)
 
 
@@ -144,9 +144,11 @@ def test_a_list_route_answers_items(settings: Settings) -> None:
 
 
 def _commands(parser: argparse.ArgumentParser, trail: str = "") -> Iterator[tuple[str, Any]]:
-    for action in parser._actions:
-        if isinstance(action, argparse._SubParsersAction):
-            for name, child in action.choices.items():
+    for action in parser._actions:  # pyright: ignore[reportPrivateUsage]
+        found: object = getattr(action, "choices", None)
+        if isinstance(found, dict) and action.nargs == argparse.PARSER:
+            choices = cast("dict[str, argparse.ArgumentParser]", found)
+            for name, child in choices.items():
                 yield from _commands(child, f"{trail} {name}".strip())
         else:
             yield trail, action

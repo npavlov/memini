@@ -216,7 +216,8 @@ async def world(app: FastAPI, db: Conn) -> World:
     # A git source with one file record: code is synced, not pushed.
     repo = await scalar(
         db,
-        "INSERT INTO source (workspace_id, owner_id, name, kind) VALUES (%s, %s, 'repo', 'repository')"
+        "INSERT INTO source (workspace_id, owner_id, name, kind)"
+        " VALUES (%s, %s, 'repo', 'repository')"
         " RETURNING id",
         ids["alpha"],
         owner,

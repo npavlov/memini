@@ -483,9 +483,9 @@ async def test_a_subdomain_that_spans_two_repositories_is_one_list(world: World)
         ("gateway", day(2)),
         ("billing", day(1)),
     ]
-    assert changes(found["commits"][3]) == [("added", "lib/fees/apply.rb")]  # not the router
-    assert [walk["repository"] for walk in found["repositories"]] == ["billing", "gateway"]
-    assert [c.subject for c in whole.commits] == [
+    assert changes(found["items"][3]) == [("added", "lib/fees/apply.rb")]  # not the router
+    assert [walk["source"] for walk in found["sources"]] == ["billing", "gateway"]
+    assert [c.subject for c in whole.items] == [
         "Retry on a timeout",
         "Add the partner fee table",
         "Apply fees at checkout",
@@ -637,7 +637,7 @@ async def test_a_path_outside_the_tokens_workspace_returns_nothing(world: World)
         assert unseen["repositories"] == []  # not even that such a repository exists
     assert labels(world, same_name) == ["v1"]
     assert labels(world, theirs) == ["b5", "b4", "b3", "b2", "b1"]
-    assert (seam.commits, seam.repositories) == ([], [])
+    assert (seam.items, seam.sources) == ([], [])
 
 
 async def test_list_commits_reads_through_the_authorization_filter(

@@ -38,7 +38,7 @@ from memini.query import (
     PathChange,
     QueryError,
     QueryServices,
-    RepositoryWalk,
+    SourceWalk,
     WalkHead,
     list_commits,
     query_errors,
@@ -356,14 +356,14 @@ def commit(**fields: Any) -> CommitInfo:
 
 def listing(*commits: CommitInfo, **fields: Any) -> CommitList:
     values: dict[str, Any] = {
-        "commits": list(commits),
+        "items": list(commits),
         "truncated": False,
         "cut_by": None,
-        "next_until": None,
-        "repositories": [
-            RepositoryWalk(
+        "next_cursor": None,
+        "sources": [
+            SourceWalk(
                 workspace="acme",
-                repository="billing",
+                source="billing",
                 heads=[WalkHead(ref="refs/heads/main", commit=SHA)],
                 complete=True,
             )
@@ -412,20 +412,20 @@ def test_the_summary_keeps_what_a_repository_chose_in_its_block() -> None:
 
 
 def test_the_summary_says_what_cut_the_list_and_what_was_not_read() -> None:
-    until = datetime(2026, 3, 5, 10, 0, 1, tzinfo=UTC)
-    pending = RepositoryWalk(workspace="acme", repository="pending", heads=[], complete=True)
-    billing = listing().repositories[0]
+    until = datetime(2026, 3, 5, 10, 0, 1, tzinfo=UTC).isoformat()
+    pending = SourceWalk(workspace="acme", source="pending", heads=[], complete=True)
+    billing = listing().sources[0]
 
     whole = summarize_commits(listing())
     by_limit = summarize_commits(
-        listing(commit(), truncated=True, cut_by="limit", next_until=until)
+        listing(commit(), truncated=True, cut_by="limit", next_cursor=until)
     )
     by_walk = summarize_commits(
         listing(
             truncated=True,
             cut_by="walk_limit",
-            next_until=until,
-            repositories=[billing, pending],
+            next_cursor=until,
+            sources=[billing, pending],
         )
     )
 
@@ -433,12 +433,12 @@ def test_the_summary_says_what_cut_the_list_and_what_was_not_read() -> None:
     assert by_limit.split("\n\n")[:2] == [
         f"1 commit. {TEXT_NOTICE}",
         "The list is cut at its limit: older commits may match too. To continue, call again with"
-        " until 2026-03-05T10:00:01+00:00 and the other arguments as they were.",
+        " cursor 2026-03-05T10:00:01+00:00 and the other arguments as they were.",
     ]
     assert by_walk.split("\n\n") == [
         "0 commits.",
         "The service read as many commits of a repository as it reads in one call: older commits"
-        " may match too. To continue, call again with until 2026-03-05T10:00:01+00:00 and the"
+        " may match too. To continue, call again with cursor 2026-03-05T10:00:01+00:00 and the"
         " other arguments as they were.",
         "No synced commit yet, so nothing was read of: acme/pending.",
     ]
@@ -448,14 +448,12 @@ def test_the_tool_says_what_it_reads_and_that_nothing_is_stored() -> None:
     tool = LIST_COMMITS_TOOL
 
     assert (tool.name, tool.scope, tool.read_only) == ("list_commits", "read", True)
-    for phrase in ("never stored", "pinned commit", "next_until", "no search by meaning"):
+    for phrase in ("never stored", "pinned commit", "next_cursor", "no search by meaning"):
         assert phrase in tool.description
     schema = tool.definition().output_schema
     assert schema is not None
     assert next(iter(schema["properties"])) == "data_notice"
-    assert {"commits", "truncated", "cut_by", "next_until", "repositories"} <= set(
-        schema["properties"]
-    )
+    assert {"items", "truncated", "cut_by", "next_cursor", "sources"} <= set(schema["properties"])
 
 
 # --- The tool and the route without a database ---------------------------------------------------
