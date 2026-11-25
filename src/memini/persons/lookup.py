@@ -19,11 +19,17 @@ A reference is one of:
   workspace the first kind that names someone gives the person; an alias names one person per kind,
   so a reference gives at most one person per workspace.
 
+The author of a commit is not a reference a caller chose but an identity a repository holds: a
+name and a mail address. :func:`resolve_git_authors` gives the canonical person of each, by the
+address (an ``email`` alias) and else by the name as a ``git_author`` alias. It only reads: a commit
+makes no person and no alias.
+
 Every read goes through the caller's :class:`~memini.auth.ReadFilter`; a person, alias or
 workspace it may not read gives nothing, as one that does not exist.
 """
 
 from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 from typing import Final
 from uuid import UUID
 
@@ -31,10 +37,24 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow
 
 from memini.auth import ReadFilter
-from memini.persons.identities import identity_of, normalize_chat_user_id, normalize_name
+from memini.persons.identities import (
+    identity_of,
+    normalize_chat_user_id,
+    normalize_email,
+    normalize_name,
+)
 from memini.persons.model import AliasKind
 
-__all__ = ["ME", "PersonRef", "alias_keys", "member_ids", "parse_person_ref", "resolve_persons"]
+__all__ = [
+    "ME",
+    "AuthorPerson",
+    "PersonRef",
+    "alias_keys",
+    "member_ids",
+    "parse_person_ref",
+    "resolve_git_authors",
+    "resolve_persons",
+]
 
 type Conn = AsyncConnection[TupleRow]
 
@@ -156,6 +176,66 @@ async def resolve_persons(
             seen.add((ref, workspace_id))
             add([(workspace_id, root)])
     return {workspace_id: frozenset(roots) for workspace_id, roots in found.items()}
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorPerson:
+    """The canonical person a commit author resolves to."""
+
+    id: UUID
+    display_name: str
+
+
+_BY_AUTHOR: Final = sql.SQL("""
+SELECT k.ref, p.id, p.display_name
+FROM unnest(%s::int[], %s::int[], %s::text[], %s::text[]) AS k (ref, rank, kind, key)
+JOIN alias a ON a.kind = k.kind AND a.normalized_value = k.key
+JOIN person p ON p.id = person_root(a.person_id)
+WHERE a.workspace_id = %s AND {aliases} AND {persons}
+ORDER BY k.ref, k.rank
+""")
+
+
+async def resolve_git_authors(
+    conn: Conn, access: ReadFilter, workspace_id: UUID, authors: Collection[tuple[str, str]]
+) -> dict[tuple[str, str], AuthorPerson]:
+    """The canonical person of each commit author, ``(name, mail address)`` as git shows them,
+    that the workspace ``workspace_id`` knows.
+
+    An author resolves by the address, an ``email`` alias, the deterministic key; else by the
+    name, as a ``git_author`` alias only. A display name seen in a chat or a meeting is not taken
+    for a commit author: a name is matched as the kind it was stored as (see
+    :data:`~memini.persons.AliasKind`), and one person's git name is added with
+    ``memini person alias add``. An author that no alias names is left out. Runs one statement,
+    in the caller's transaction if one is open; it writes nothing.
+    """
+    known = sorted(set(authors))
+    keyed: list[tuple[int, int, AliasKind, str]] = []
+    for number, (name, address) in enumerate(known):
+        email = normalize_email(address)
+        if email is not None:
+            keyed.append((number, 0, "email", email))
+        git_name = normalize_name(name)
+        if git_name is not None:
+            keyed.append((number, 1, "git_author", git_name))
+    if not keyed:
+        return {}
+    cur = await conn.execute(
+        _BY_AUTHOR.format(aliases=_scope(access, "a"), persons=_scope(access, "p")),
+        (
+            [entry[0] for entry in keyed],
+            [entry[1] for entry in keyed],
+            [entry[2] for entry in keyed],
+            [entry[3] for entry in keyed],
+            workspace_id,
+        ),
+    )
+    rows: list[tuple[int, UUID, str]] = [(row[0], row[1], row[2]) for row in await cur.fetchall()]
+    found: dict[tuple[str, str], AuthorPerson] = {}
+    for number, person_id, display_name in rows:
+        # Per author, the first key that names someone: rows come in that order.
+        found.setdefault(known[number], AuthorPerson(person_id, display_name))
+    return found
 
 
 _MEMBERS: Final = """

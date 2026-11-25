@@ -632,6 +632,9 @@ def test_git_settings_default_to_the_safe_choice() -> None:
     assert settings.git_https_token_hosts == ()
     assert settings.git_ssh_key_path is None
     assert settings.git_ssh_known_hosts_path is None
+    assert settings.git_log_max_commits == 100
+    assert settings.git_log_max_walk == 2000
+    assert settings.git_log_timeout == 10
 
 
 @pytest.mark.parametrize(
@@ -666,9 +669,14 @@ def test_git_settings_from_the_environment(tmp_path: Path) -> None:
             "MEMINI_GIT_HTTPS_TOKEN_HOSTS": "Git.Example.test,code.example.test",
             "MEMINI_GIT_SSH_KEY_PATH": "/run/secrets/git_ssh_key",
             "MEMINI_GIT_SSH_KNOWN_HOSTS_PATH": "/etc/memini/known_hosts",
+            "MEMINI_GIT_LOG_MAX_COMMITS": "50",
+            "MEMINI_GIT_LOG_MAX_WALK": "500",
+            "MEMINI_GIT_LOG_TIMEOUT": "2.5",
         }
     )
 
+    assert (settings.git_log_max_commits, settings.git_log_max_walk) == (50, 500)
+    assert settings.git_log_timeout == 2.5
     assert settings.git_egress_proxy == "http://git-proxy:3128"
     assert settings.git_allowed_origins == (
         "https://git.example.test:443",

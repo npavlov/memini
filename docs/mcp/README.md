@@ -109,6 +109,7 @@ tools your token can call.
 | [`search_code`](search_code.md) | Search code | `read` |
 | [`read_source`](read_source.md) | Read source | `read` |
 | [`get_symbol`](get_symbol.md) | Get symbol | `read` |
+| [`list_commits`](list_commits.md) | List commits | `read` |
 | [`list_meetings`](list_meetings.md) | List meetings | `read` |
 | [`get_meeting`](get_meeting.md) | Get a meeting | `read` |
 | [`list_messages`](list_messages.md) | List messages | `read` |
