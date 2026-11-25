@@ -1643,7 +1643,16 @@ the pin and `checked_until` (the database time before the fetch), so a small cha
 nothing (principle 7). A larger one commits batch by batch and marks the pin partial first: a
 failure leaves the old pin, every record agrees with its chunks, and the next sync lists the ref in
 full and embeds nothing twice. One big transaction was not chosen: a first sync embeds for minutes
-to hours, and a failure at its end would throw all of that away. A stale index blocks the sync:
+to hours, and a failure at its end would throw all of that away. While the files are written, the
+run report says how far it is (`details.progress`, decided 2026-11-25, S18): the files the sync
+writes, those read, chunked and embedded so far, those committed, and the batch it is at. It is
+saved from the run's own connection every few seconds, outside the sync's transactions, so a
+person sees a first sync move, which the counts alone, written per committed batch, did not show;
+a batch that rolls back takes its files out of the processed ones again. What a source would index
+is counted before a sync with `POST …/sources/{source}/preview`: the tree of a ref in the mirror,
+asked file by file the question the sync asks (its rules, or rules to try), by extension and
+top-level folder. Binary files and forgotten ones count as kept, since only reading them tells.
+A stale index blocks the sync:
 after the fetch, a workspace whose fingerprint differs refuses it with the message that names
 `memini reindex`, no record changes and the pin stays; the rebuild reads code from the fetched
 mirror, and the next sync catches up from the pin. Writing records without their chunks meanwhile

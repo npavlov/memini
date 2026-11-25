@@ -11,6 +11,7 @@
 | ``GET …/sources/{source}/streams`` | read | its streams with lag, last run and queued sync |
 | ``POST …/sources/{source}/sync`` | admin | enqueue a sync of its streams (202) |
 | ``POST …/sources/{source}/prune`` | admin | apply its filters to its stored records |
+| ``POST …/sources/{source}/preview`` | read | count what a git source would index |
 
 A token limited to one workspace sees and changes nothing in another: such a workspace answers
 404, as one that does not exist. Errors are translated by :mod:`memini.api.admin_errors`.
@@ -47,7 +48,9 @@ from memini.executors.source import (
     StdioEndpoint,
 )
 from memini.filters import MAX_FILTER_PATTERN_LENGTH, MAX_FILTER_PATTERNS, SourceFilters
-from memini.git import GitOptions, MirrorManager
+from memini.git import GitError, GitOptions, MirrorManager, RevisionNotFound
+from memini.gitsync.preview import Preview, preview_ref
+from memini.gitsync.rules import FileRules
 from memini.index import IndexMismatchError
 from memini.ingest import PayloadIndexer
 from memini.query import QueryServices
@@ -730,6 +733,67 @@ class SyncRequest(BaseModel):
     )
 
 
+class PreviewRequest(BaseModel):
+    """Rules to try: each one left out is the source's own."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ref: str | None = Field(
+        default=None,
+        min_length=6,
+        max_length=MAX_REF_LENGTH,
+        pattern=r"^refs/[^\s]+$",
+        description="The ref to look at, such as refs/heads/main: one the mirror holds. Left out:"
+        " the source's first tracked ref.",
+    )
+    include: _Patterns | None = Field(default=None, description=_PATTERNS)
+    exclude: _Patterns | None = Field(default=None, description=_PATTERNS)
+    builtin_excludes: bool | None = Field(default=None, description=_BUILTIN_EXCLUDES)
+
+
+class PreviewGroupInfo(BaseModel):
+    key: str = Field(
+        description="An extension in lower case with its dot (.go), (none) for a name without"
+        " one; or a top-level folder, (root) for files at the top. … sums the groups past the"
+        " first 50."
+    )
+    tracked: int = Field(description="Regular files of the group in the tree.")
+    indexed: int = Field(description="Of those, the files the rules keep.")
+
+
+class PreviewInfo(BaseModel):
+    """What a sync with these rules would index at the ref. Binary files and files forgotten by
+    hand are counted as kept: the sync finds them when it reads them."""
+
+    ref: str
+    commit: str
+    tracked: int = Field(description="Regular files of the tree.")
+    indexed: int = Field(description="Files the rules keep.")
+    skipped: dict[str, int] = Field(
+        description="Entries left out, by reason: excluded, too_large, not_a_file, bad_path."
+    )
+    by_extension: list[PreviewGroupInfo] = Field(description="Most files first.")
+    by_folder: list[PreviewGroupInfo] = Field(description="Most files first.")
+
+    @classmethod
+    def of(cls, preview: Preview) -> "PreviewInfo":
+        return cls(
+            ref=preview.ref,
+            commit=preview.commit,
+            tracked=preview.tracked,
+            indexed=preview.indexed,
+            skipped={str(reason): count for reason, count in preview.skipped.items()},
+            by_extension=[
+                PreviewGroupInfo(key=g.key, tracked=g.tracked, indexed=g.indexed)
+                for g in preview.by_extension
+            ],
+            by_folder=[
+                PreviewGroupInfo(key=g.key, tracked=g.tracked, indexed=g.indexed)
+                for g in preview.by_folder
+            ],
+        )
+
+
 class SyncJob(BaseModel):
     stream: str = Field(description="The stream's key.")
     job_id: UUID
@@ -954,6 +1018,68 @@ def build_sources_router() -> APIRouter:
                 SyncJob(stream=job.stream, job_id=job.job_id, created=job.created) for job in jobs
             ]
         )
+
+    @router.post("/{source}/preview", summary="Preview what a git source indexes")
+    async def preview_source(
+        workspace: str,
+        source: str,
+        access: ReadAccess,
+        options: GitSettings,
+        conn: Connection,
+        body: PreviewRequest | None = None,
+    ) -> PreviewInfo:
+        """Count what a sync would index at a ref, with the source's rules or with the ones in the
+        body, by extension and by top-level folder, from the source's mirror. Writes nothing; the
+        rules are not saved (``PATCH`` saves them). 409 ``not_syncable`` for a source that is not
+        git, 409 ``not_fetched`` before its first fetch, 404 for a ref the mirror lacks."""
+        request = body or PreviewRequest()
+        with admin_errors():
+            found = await sources.get_source(conn, access, workspace, source)
+            if found.git is None:
+                raise sources.NotSyncableError
+            config = found.git
+            include = (
+                config.include
+                if request.include is None
+                else sources.check_patterns("include", request.include)
+            )
+            exclude = (
+                config.exclude
+                if request.exclude is None
+                else sources.check_patterns("exclude", request.exclude)
+            )
+        ref = request.ref or (found.refs[0] if found.refs else None)
+        if ref is None:
+            raise ApiError(409, "no_refs", "The source tracks no ref; name one in ref.")
+        builtin = request.builtin_excludes
+        if builtin is None:
+            builtin = config.builtin_excludes
+        rules = FileRules(
+            sources.GitConfig(
+                location=config.location,
+                include=include,
+                exclude=exclude,
+                builtin_excludes=builtin,
+            ),
+            options.max_blob_size,
+        )
+        mirrors = MirrorManager(options)
+        mirror = mirrors.find(found.id)
+        if mirror is None:
+            raise ApiError(
+                409,
+                "not_fetched",
+                "The source has no mirror yet: its first sync fetches it. Try again then.",
+            )
+        try:
+            return PreviewInfo.of(await preview_ref(mirrors, mirror, ref, rules))
+        except RevisionNotFound:
+            raise ApiError(404, "not_found", "No such ref in the source's mirror.") from None
+        except GitError as error:
+            log.warning("the preview of a source failed: %s", error)
+            raise ApiError(
+                503, "git_failed", "git could not list the ref; the server log says why."
+            ) from None
 
     @router.post("/{source}/prune", summary="Apply a source's filters to its stored records")
     async def prune_source(

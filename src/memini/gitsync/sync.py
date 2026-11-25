@@ -72,7 +72,7 @@ from collections import Counter
 from collections.abc import AsyncGenerator, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
@@ -81,6 +81,7 @@ from psycopg import AsyncConnection, pq
 from psycopg.abc import QueryNoTemplate
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
+from pydantic import JsonValue
 
 from memini.chunking import FileChunks, chunk_file, chunk_markdown
 from memini.embeddings import Embedder
@@ -500,6 +501,58 @@ class _Tally:
         self.index += counts
 
 
+class _Progress:
+    """The ``progress`` detail of the run report while the files are written: how many files the
+    sync writes, how many it has read, chunked and embedded (``files_processed``), and how many of
+    those have committed (``files_committed``; a batch that rolls back takes its files out of
+    ``files_processed`` again). It is saved through the run's own connection, outside the sync's
+    transactions, at most every few seconds (:meth:`memini.runs.Run.save_progress_if_due`)."""
+
+    def __init__(self, total: int, batches: int) -> None:
+        self.run = current_run()
+        self.value: dict[str, JsonValue] = {
+            "files_total": total,
+            "files_processed": 0,
+            "files_committed": 0,
+            "batches": batches,
+            "batch": 0,
+            "started_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        }
+
+    def _set(self, **changes: int) -> None:
+        self.value.update(changes)
+        if self.run is not None:
+            self.run.detail("progress", self.value)
+
+    async def start(self) -> None:
+        self._set()
+        if self.run is not None:
+            await self.run.save_progress()
+
+    async def batch(self, number: int) -> None:
+        self._set(batch=number)
+
+    async def file_done(self) -> None:
+        self._set(files_processed=_int(self.value["files_processed"]) + 1)
+        if self.run is not None:
+            await self.run.save_progress_if_due()
+
+    async def committed(self, files: int) -> None:
+        self._set(
+            files_committed=_int(self.value["files_committed"]) + files,
+            files_processed=_int(self.value["files_committed"]) + files,
+        )
+        if self.run is not None:
+            await self.run.save_progress_if_due()
+
+    async def rolled_back(self) -> None:
+        self._set(files_processed=_int(self.value["files_committed"]))
+
+
+def _int(value: JsonValue) -> int:
+    return value if isinstance(value, int) else 0
+
+
 async def _apply(
     conn: Conn,
     mirrors: MirrorManager,
@@ -519,63 +572,75 @@ async def _apply(
     batches = list(_batches(plan.writes, limits)) or [[]]
     expected = None if stream.cursor is None else Jsonb(stream.cursor)
     previous = read_pin(stream.cursor)
+    progress = _Progress(len(plan.writes), len(batches) if plan.writes else 0)
+    await progress.start()
     for number, batch in enumerate(batches, start=1):
         last = number == len(batches)
+        if batch:
+            await progress.batch(number)
         prepared = await _prepare(mirrors, mirror, batch) if batch else []
         step = _Tally()
-        async with conn.transaction():
-            binary: list[str] = []
-            for file, chunks in prepared:
-                if chunks.fallback == "binary":
-                    step.binary += 1
-                    if file.live:
-                        binary.append(file.record_id)
-                    continue
-                await conn.execute(
-                    _UPSERT_RECORD,
-                    (
-                        file.record_id,
-                        source.workspace_id,
-                        source.owner_id,
-                        source.id,
-                        stream.id,
-                        file.kind,
-                        code_external_id(stream.key, file.path),
-                        file.oid,
-                        occurred_at[file.path],
-                    ),
-                )
-                step.index += await index_record(
-                    conn, embedder, record_id=file.record_id, path=file.path, chunks=chunks
-                )
-                if file.live:
-                    step.changed += 1
-                else:
-                    step.added += 1
-            if binary:
-                step.tombstoned(await _tombstone(conn, _TOMBSTONE, (binary,)))
-            if last:
-                if plan.tombstones:
-                    step.tombstoned(await _tombstone(conn, _TOMBSTONE, (list(plan.tombstones),)))
-                step.tombstoned(await _tombstone(conn, _UNTRACKED, (source.id,)))
-                if plan.relinks:
+        try:
+            async with conn.transaction():
+                binary: list[str] = []
+                for file, chunks in prepared:
+                    if chunks.fallback == "binary":
+                        step.binary += 1
+                        if file.live:
+                            binary.append(file.record_id)
+                        await progress.file_done()
+                        continue
                     await conn.execute(
-                        "UPDATE record SET stream_id = %s WHERE id = ANY(%s)",
-                        (stream.id, plan.relinks),
+                        _UPSERT_RECORD,
+                        (
+                            file.record_id,
+                            source.workspace_id,
+                            source.owner_id,
+                            source.id,
+                            stream.id,
+                            file.kind,
+                            code_external_id(stream.key, file.path),
+                            file.oid,
+                            occurred_at[file.path],
+                        ),
                     )
-                cur = await conn.execute(
-                    _MOVE_PIN, (Jsonb(pin.to_json()), checked_until, stream.id, expected)
-                )
-                if cur.rowcount != 1:
-                    raise StreamChangedError(f"stream {stream.id} changed while it synced")
-            elif previous is not None and not previous.partial:
-                # Records past the pin are about to commit: if the sync stops before the pin moves,
-                # the next one must compare everything, not diff from the pin.
-                marked = Pin(previous.commit, previous.rules, partial=True).to_json()
-                cur = await conn.execute(_MOVE_CURSOR, (Jsonb(marked), stream.id, expected))
-                if cur.rowcount != 1:
-                    raise StreamChangedError(f"stream {stream.id} changed while it synced")
-                expected, previous = Jsonb(marked), read_pin(marked)
+                    step.index += await index_record(
+                        conn, embedder, record_id=file.record_id, path=file.path, chunks=chunks
+                    )
+                    if file.live:
+                        step.changed += 1
+                    else:
+                        step.added += 1
+                    await progress.file_done()
+                if binary:
+                    step.tombstoned(await _tombstone(conn, _TOMBSTONE, (binary,)))
+                if last:
+                    if plan.tombstones:
+                        gone = list(plan.tombstones)
+                        step.tombstoned(await _tombstone(conn, _TOMBSTONE, (gone,)))
+                    step.tombstoned(await _tombstone(conn, _UNTRACKED, (source.id,)))
+                    if plan.relinks:
+                        await conn.execute(
+                            "UPDATE record SET stream_id = %s WHERE id = ANY(%s)",
+                            (stream.id, plan.relinks),
+                        )
+                    cur = await conn.execute(
+                        _MOVE_PIN, (Jsonb(pin.to_json()), checked_until, stream.id, expected)
+                    )
+                    if cur.rowcount != 1:
+                        raise StreamChangedError(f"stream {stream.id} changed while it synced")
+                elif previous is not None and not previous.partial:
+                    # Records past the pin are about to commit: if the sync stops before the pin
+                    # moves, the next one must compare everything, not diff from the pin.
+                    marked = Pin(previous.commit, previous.rules, partial=True).to_json()
+                    cur = await conn.execute(_MOVE_CURSOR, (Jsonb(marked), stream.id, expected))
+                    if cur.rowcount != 1:
+                        raise StreamChangedError(f"stream {stream.id} changed while it synced")
+                    expected, previous = Jsonb(marked), read_pin(marked)
+        except BaseException:
+            await progress.rolled_back()
+            raise
+        await progress.committed(len(batch))
         # The batch has committed: only now do its counts go to the run report.
         tally.added += step.added
         tally.changed += step.changed

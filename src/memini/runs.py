@@ -354,6 +354,11 @@ class Run:
             except Exception:
                 log.warning("could not save the progress of the run", exc_info=True)
 
+    async def save_progress_if_due(self) -> None:
+        """:meth:`save_progress` when the progress interval has passed since the last save: for a
+        job that reports how far it is many times a second, such as a sync per file."""
+        await self._save_progress_if_due()
+
     async def _save_progress_if_due(self) -> None:
         interval = self._progress_interval
         if interval is not None and time.monotonic() - self._last_save >= interval:

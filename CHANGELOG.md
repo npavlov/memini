@@ -7,6 +7,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- See how far a git sync is while it runs: its run report carries `details.progress`, the files
+  it writes, those read, chunked and embedded so far, and those committed, saved every few seconds
+  (`GET /v1/runs/{id}`).
+- Preview what a git source indexes before a sync spends time on it:
+  `POST /v1/workspaces/{workspace}/sources/{source}/preview` counts the files of a ref that the
+  source's rules, or rules to try, keep, by extension and by top-level folder.
+
 ### Changed
 
 - The server launcher, and the desktop app that carries it, install and start the image of
