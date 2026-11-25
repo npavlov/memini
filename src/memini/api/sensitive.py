@@ -99,7 +99,7 @@ def build_sensitive_router() -> APIRouter:
     router = APIRouter(prefix="/workspaces/{workspace}/records", tags=["records"])
 
     @router.put("/sensitive", summary="Mark a record sensitive, or clear its mark")
-    async def mark(
+    async def mark_record_sensitive(
         workspace: str, body: MarkRequest, access: AdminAccess, conn: Connection
     ) -> MarkedInfo:
         """Mark one record sensitive, or clear its mark. Its content, chunks and vectors stay;
@@ -127,7 +127,7 @@ def build_sensitive_router() -> APIRouter:
         return MarkedInfo.of(marked)
 
     @router.get("/sensitive", summary="List the records marked sensitive")
-    async def listing(
+    async def list_sensitive_records(
         workspace: str,
         access: AdminAccess,
         conn: Connection,

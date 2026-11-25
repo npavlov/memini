@@ -350,9 +350,13 @@ async def test_no_model_step_is_queued_for_a_sensitive_record(env: Env) -> None:
 async def test_the_export_leaves_sensitive_records_out_unless_asked(env: Env) -> None:
     await send(env, sensitive_thread("pay/1"), thread("garden/1", text=PLAIN))
 
-    async def exported(**options: bool) -> list[Json]:
+    async def exported(*, include_sensitive: bool = False) -> list[Json]:
+        # The push source is private, as a new source is; its records need include_private.
         lines = [
-            json.loads(line) async for line in export_workspace(env.db, "owner", "acme", **options)
+            json.loads(line)
+            async for line in export_workspace(
+                env.db, "owner", "acme", include_private=True, include_sensitive=include_sensitive
+            )
         ]
         return [line for line in lines if line["type"] == "record"]
 

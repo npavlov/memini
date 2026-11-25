@@ -465,6 +465,8 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "/v1/tokens",
         "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{run_id}",
         "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{run_id}/next",
+        # An admin listing of marked records: names only, through the admin's write access.
+        "/v1/workspaces/{workspace}/records/sensitive",
     }
     path_values = {
         "workspace": "alpha",
@@ -510,6 +512,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "retract_decision",
         "extract",
         "forget",
+        "mark_record_sensitive",
         "put_project",
         "link_decision_domains",
         "unlink_decision_domain",
