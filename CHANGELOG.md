@@ -7,6 +7,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The first setup in the desktop app says that Docker is downloading the application, the
+  database and the search model (about 2 GB) while no service exists yet, instead of pointing to
+  an empty list of services for minutes.
+- A folder whose path holds `$` is mounted at that path: the launcher writes it as `$$`, which
+  Compose reads as one `$`.
+
 ## [0.2.0-rc.1] - 2026-11-25
 
 ### Added

@@ -8,6 +8,7 @@ import type { LauncherStatus } from "./launcher";
 import { removeServer } from "./launcher-api";
 import {
   DOCKER_INSTALL_PAGE,
+  DOWNLOADING,
   NOT_STARTED,
   busyReason,
   dockerAdvice,
@@ -130,11 +131,17 @@ describe("setupSteps", () => {
     expect(setupSteps(NOT_STARTED).map((step) => step.state)).toEqual(["waiting", "waiting", "waiting"]);
   });
 
-  it("shows the steps before the current one as done and says what the current one does", () => {
+  it("shows the steps before the current one as done and says the start is downloading", () => {
     const steps = setupSteps({ at: "server", failure: null });
 
     expect(steps.map((step) => step.state)).toEqual(["done", "running", "waiting"]);
-    expect(steps[1]?.detail).toContain("downloads the application");
+    expect(steps[1]?.detail).toBe(DOWNLOADING);
+  });
+
+  it("points to the services once the launcher lists any", () => {
+    const steps = setupSteps({ at: "server", failure: null }, true);
+
+    expect(steps[1]?.detail).toContain("the list below shows how far each one is");
   });
 
   it("shows a step that did not pass as failed, with the reason", () => {

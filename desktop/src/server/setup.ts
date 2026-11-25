@@ -84,7 +84,7 @@ const TITLES: Readonly<Record<SetupStepId, string>> = {
 
 const RUNNING: Readonly<Record<SetupStepId, string>> = {
   docker: "Asking Docker…",
-  server: "The first start downloads the application, the database and the search model. This can take a long time; the services below show how far it is.",
+  server: "The services are starting; the list below shows how far each one is.",
   token: "The token goes from the server straight to the system keychain.",
 };
 
@@ -106,12 +106,27 @@ function stateOf(step: SetupStepId, progress: SetupProgress): StepState {
   return progress.failure === null ? "running" : "failed";
 }
 
-/** The three steps with their state, for the list the setup shows. */
-export function setupSteps(progress: SetupProgress): readonly SetupStep[] {
+/**
+ * What the start says while Docker still downloads the images: no container exists yet, so the
+ * list of services is empty for minutes and the setup would look stuck.
+ */
+export const DOWNLOADING =
+  "Downloading the application, the database and the search model, about 2 GB on the first start. No service shows below until the download is done; this can take several minutes.";
+
+function runningText(id: SetupStepId, servicesSeen: boolean): string {
+  return id === "server" && !servicesSeen ? DOWNLOADING : RUNNING[id];
+}
+
+/**
+ * The three steps with their state, for the list the setup shows. `servicesSeen` says whether
+ * the launcher lists any service yet; before that, the start is downloading.
+ */
+export function setupSteps(progress: SetupProgress, servicesSeen = false): readonly SetupStep[] {
   return SETUP_STEPS.map((id) => {
     const state = stateOf(id, progress);
     const failed = state === "failed" ? progress.failure : null;
-    return { id, title: TITLES[id], state, detail: state === "running" ? RUNNING[id] : failed };
+    const detail = state === "running" ? runningText(id, servicesSeen) : failed;
+    return { id, title: TITLES[id], state, detail };
   });
 }
 

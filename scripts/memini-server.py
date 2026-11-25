@@ -594,7 +594,8 @@ def save_local_repos(directory: Path, repos: list[dict[str, str]]) -> None:
         "volumes": [
             {
                 "type": "bind",
-                "source": repo["path"],
+                # Compose interpolates $ in values: $$ is a literal $.
+                "source": repo["path"].replace("$", "$$"),
                 "target": f"{LOCAL_ROOT}/{repo['name']}",
                 "read_only": True,
                 "bind": {"create_host_path": False},

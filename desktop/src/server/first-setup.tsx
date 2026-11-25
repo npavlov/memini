@@ -27,6 +27,8 @@ export interface FirstSetupProps {
   readonly onView: (view: ConnectionsView) => void;
   /** Tells the screen that the setup runs, so it shows the services as they come up. */
   readonly onRunning: (running: boolean) => void;
+  /** The launcher lists services already: before that, the first start is downloading. */
+  readonly servicesSeen: boolean;
 }
 
 /**
@@ -34,7 +36,8 @@ export interface FirstSetupProps {
  * admin token created and stored in the keychain, and this computer made a connection. The token
  * never comes to this window.
  */
-export function FirstSetup({ disabled, onView, onRunning }: FirstSetupProps): ReactElement {
+export function FirstSetup(props: FirstSetupProps): ReactElement {
+  const { disabled, onView, onRunning, servicesSeen } = props;
   const backend = useBackend();
   const [progress, setProgress] = useState<SetupProgress>(NOT_STARTED);
   const [stopped, setStopped] = useState<Stopped>(NOT_STOPPED);
@@ -61,7 +64,7 @@ export function FirstSetup({ disabled, onView, onRunning }: FirstSetupProps): Re
         One step installs the server with Docker, starts it, creates its first admin token and
         connects this app to it. No terminal is needed.
       </Text>
-      <StepList steps={setupSteps(progress)} />
+      <StepList steps={setupSteps(progress, servicesSeen)} />
       {stopped.docker === null ? null : <DockerHelp advice={stopped.docker} />}
       {stopped.tokenExists ? <TokenExists disabled={!idle} onForce={() => setup.run(true)} /> : null}
       <ErrorNotice error={setup.error} />
