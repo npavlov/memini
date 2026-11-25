@@ -7,6 +7,7 @@ results (:mod:`memini.query`).
 | ``GET /search/code`` | ``search_code`` | code search: semantic, exact, regex, symbol |
 | ``GET /symbols`` | ``get_symbol`` | definitions of a symbol, with location and code |
 | ``GET …/files/{path}`` | ``read_source`` | a file, lines of it, or a directory |
+| ``GET /commits`` | ``list_commits`` | commit history, read from the mirrors on demand |
 
 ``…`` is ``/workspaces/{workspace}/sources/{source}``: the repository is a git source.
 
@@ -19,7 +20,8 @@ listing comes back for a directory path.
 
 Errors are those of :mod:`memini.query.service`, in the API's error shape: 422 for a query, path,
 ref or range that is not valid, a regular expression that runs past ``search_timeout``
-(``search_timeout``) or a file over the size limit; 404 ``not_found`` for anything the token may
+(``search_timeout``), a history walk that runs past ``git_log_timeout`` (``commits_timeout``) or
+a file over the size limit; 404 ``not_found`` for anything the token may
 not read or that does not exist; 409 ``not_synced`` for a repository without a mirror yet; 503 for
 a stale index (``index_mismatch``, the message names ``memini reindex``) or missing embeddings.
 """
@@ -33,6 +35,8 @@ from memini.api.database import Connection
 from memini.api.errors import ApiError
 from memini.query import (
     CodeSearchArguments,
+    CommitList,
+    ListCommitsArguments,
     QueryError,
     QueryServices,
     ReadSourceArguments,
@@ -43,6 +47,7 @@ from memini.query import (
     SymbolArguments,
     SymbolResult,
     run_get_symbol,
+    run_list_commits,
     run_read_source,
     run_search,
     run_search_code,
@@ -142,6 +147,23 @@ def build_query_router() -> APIRouter:
         )
         try:
             return await run_read_source(conn, services, access, read)
+        except QueryError as error:
+            raise _api_error(error) from None
+
+    @router.get("/commits", summary="List commits")
+    async def list_commits(
+        arguments: Annotated[ListCommitsArguments, Query()],
+        access: ReadAccess,
+        services: Services,
+        conn: Connection,
+    ) -> CommitList:
+        """Who changed what, the MCP ``list_commits`` tool: the history of the repositories the
+        token may read, newest first, read from their mirrors when asked and never stored. A list
+        cut by a bound is ``truncated`` and gives ``next_until``, the ``until`` of the call that
+        continues it. 422 ``commits_timeout`` for walks past the time limit: narrow the
+        question."""
+        try:
+            return await run_list_commits(conn, services, access, arguments)
         except QueryError as error:
             raise _api_error(error) from None
 

@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- See who changed what with `list_commits` over MCP and `GET /v1/commits`: commits by
+  repository, path, author, period and message text, newest first, each with its author, the
+  person the author resolves to and the changed paths. History is read from the repository
+  mirror on demand and never stored. [Tool reference](docs/mcp/list_commits.md).
+
 ## [0.1.0] - 2026-11-22
 
 ### Fixed
