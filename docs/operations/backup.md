@@ -93,7 +93,7 @@ old key as long as you keep those archives, and restore them with it in
    those of a newer Memini.
 5. Bring the mirrors back: each git source clones its repository on its next sync, by its schedule
    if it has one, or now with `memini sync --wait WORKSPACE SOURCE` (the script prints one line per
-   git source). Until then search answers from the database, while `read_source` of a file answers
+   git source). Until then search answers from the database, while `get_file` of a file answers
    that the repository is not synced yet. The sync goes on from the pinned commit: only files
    changed since the backup are read and embedded.
 

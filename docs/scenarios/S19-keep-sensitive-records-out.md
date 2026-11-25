@@ -25,7 +25,7 @@ A record can be marked sensitive. It stays stored and indexed; nothing is delete
   push never clears a mark. `GET` on the same route (`memini sensitive list`) lists the marked
   records with their reasons and no content.
 - **Default.** Every read leaves a marked record out: `search` in every mode, `search_code`,
-  `get_symbol`, `list_messages`, `list_meetings`, the decisions whose every piece of evidence is a
+  `search_code` in mode `symbol`, `list_messages`, `list_meetings`, the decisions whose every piece of evidence is a
   marked record, and the export. `get_thread` and `get_meeting` answer 404 `sensitive_record`, so the
   reader knows it is there. A decision with other evidence too shows the marked one as
   `record_state: sensitive`, with its reference only.

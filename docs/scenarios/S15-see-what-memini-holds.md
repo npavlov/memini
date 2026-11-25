@@ -21,7 +21,7 @@ The Data screen of the desktop app, in two parts. Both only read.
   streams, records, records not indexed, schedule and freshness. It reads `GET /v1/status` and
   `GET /v1/workspaces/{workspace}/sources`, so a source without a stream is listed too. Chunks are
   counted per workspace: no route counts them per source.
-- **The read tools, by hand.** `search`, `search_code`, `get_symbol`, `read_source`,
+- **The read tools, by hand.** `search`, `search_code`, `search_code` in mode `symbol`, `get_file`,
   `list_decisions`, `get_decision`, `list_meetings`, `get_meeting`, `list_messages`, `get_thread`,
   and `list_commits` once the server has it. The form of a tool is built from the arguments the
   server publishes in `GET /openapi.json`, so a new filter appears without a change of the app, and

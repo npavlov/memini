@@ -1,4 +1,4 @@
-# `read_source`
+# `get_file`
 
 Read a file, a range of its lines, or a directory listing from a repository the token may read. By default at the pinned commit of the repository's default tracked branch, the commit search results are at; ref takes a branch or tag name, a full ref or a full commit id. path is relative to the repository root (empty for the root); absolute paths, '..' and control characters are refused. Lines are 1-based and inclusive, at most 2000 lines and 100000 characters per call: when truncated, continue from end_line + 1. A binary file or one over the size limit returns no content; a symlink returns its target, not followed. The result carries the commit, its time, a locator repo@sha:path#Lstart-Lend, the definitions in the lines read, and context: the project, service and domains the path belongs to by the catalog.
 
@@ -19,7 +19,7 @@ Send these parameters to `tools/call`.
 
 ```json
 {
-  "name": "read_source",
+  "name": "get_file",
   "arguments": {
     "repository": "harbour-code",
     "path": "src/berth_hold.py"

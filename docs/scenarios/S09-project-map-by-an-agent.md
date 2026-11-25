@@ -15,7 +15,7 @@ A new user has connected repositories and does not want to write the catalog by 
 ## Answer
 
 The agent reads `catalog_guide`, lists the repositories that have no service with `get_catalog`,
-reads READMEs and top directories with `read_source`, and sends the project with `put_project`. The
+reads READMEs and top directories with `get_file`, and sends the project with `put_project`. The
 answer reports masks that match nothing, overlaps between subdomains and the share of files in no
 domain, so the agent corrects itself.
 
@@ -35,4 +35,4 @@ changes nothing the second time; a person's edit is not overwritten by an older 
 - [S2](S02-code-for-a-domain.md): Which code is responsible for domain X?
 - [S12](S12-see-and-edit-the-project-map.md): See the project map and correct it
 - [S13](S13-links-between-projects.md): How is project A connected to project B?
-- Tool reference: [read_source](../mcp/read_source.md)
+- Tool reference: [get_file](../mcp/get_file.md)

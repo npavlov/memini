@@ -47,7 +47,7 @@ Create a workspace, import one example email conversation and find who proposed 
 
 ## Use Memini
 
-- Locate an implementation by symbol and open its file at the indexed commit. [Code search](docs/mcp/search_code.md) · [Read source](docs/mcp/read_source.md)
+- Locate an implementation by symbol and open its file at the indexed commit. [Code search](docs/mcp/search_code.md) · [Get a file](docs/mcp/get_file.md)
 - Find who agreed to a change, read the evidence, and follow later decisions that replaced it. [Decision history](docs/mcp/get_decision.md)
 - Find messages addressed to a person or meetings they attended. [Messages](docs/mcp/list_messages.md) · [Meetings](docs/mcp/list_meetings.md)
 - Map what code belongs to: projects, domains and the services behind them, and how projects use each other. Search inside one domain across repositories. [Catalog](docs/mcp/get_catalog.md) · [Instruction for an agent](docs/mcp/catalog_guide.md)

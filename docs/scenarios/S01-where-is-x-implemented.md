@@ -15,7 +15,7 @@ An engineer needs code that lives in several repositories, not all of them check
 ## Answer
 
 `search_code` by meaning, by a substring or by a regular expression; filters `repositories`,
-`paths`, `languages`. `get_symbol` for a definition by name. `read_source` to open the file at the
+`paths`, `languages`. `search_code` in mode `symbol` for a definition by name. `get_file` to open the file at the
 commit of the hit. Each hit carries a locator `repo@sha:path#Lstart-Lend` and the text of the chunk.
 
 ## Data
@@ -37,5 +37,5 @@ Definitions are recognised for twenty languages; see S10.
 - [S10](S10-definitions-in-my-language.md): Find a definition in my language
 - [S2](S02-code-for-a-domain.md): Which code is responsible for domain X?
 - Tool reference: [search_code](../mcp/search_code.md)
-- Tool reference: [get_symbol](../mcp/get_symbol.md)
-- Tool reference: [read_source](../mcp/read_source.md)
+- Tool reference: [search_code in mode symbol](../mcp/search_code.md)
+- Tool reference: [get_file](../mcp/get_file.md)
