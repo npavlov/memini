@@ -88,10 +88,10 @@ def test_a_mask_is_read_inside_the_root_of_its_service(
 
 
 def test_the_expressions_of_a_root_are_anchored_and_escaped() -> None:
-    assert glob_regex("src/*.py", root="a/b") == r"^a/b/src/[^/]*.py(?:/.*)?$"
-    assert glob_regex("*.py", root="a/b") == r"^a/b/(?:.*/)?[^/]*.py(?:/.*)?$"
+    assert glob_regex("src/*.py", root="a/b") == r"^a/b/src/[^/]*\u002epy(?:/.*)?$"
+    assert glob_regex("*.py", root="a/b") == r"^a/b/(?:.*/)?[^/]*\u002epy(?:/.*)?$"
     assert globs_regex(("x", "y/z"), root="r") == "(?:^r/(?:.*/)?x(?:/.*)?$)|(?:^r/y/z(?:/.*)?$)"
-    assert directory_regex("a b/c.d") == r"^a b/c.d(?:/.*)?$"
+    assert directory_regex("a b/c.d") == r"^a\u0020b/c\u002ed(?:/.*)?$"
     below = path_matcher(directory_regex("web/booking"))
     assert below("web/booking") is True
     assert below("web/booking/form.ts") is True
