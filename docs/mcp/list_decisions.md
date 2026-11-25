@@ -28,7 +28,7 @@ Send these parameters to `tools/call`.
       "harbor"
     ],
     "domains": [
-      "fees"
+      "berths"
     ],
     "limit": 5
   }
