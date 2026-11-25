@@ -1,0 +1,231 @@
+{
+  "chunker_version": 3,
+  "language": "dart",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "a2d031f4c1c0551352d556dad37ea65dbdf751616b60303be773128caaa6aa78",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 11],
+      "bytes": [0, 213],
+      "content_hash": "b67234da650611026c4fa1cbb65d9068a9c676f81bfc1349f31b97ec5e93b6a0",
+      "text": [
+        "garden.dart: maxBeds, Thirsty, Soil",
+        "// garden.dart is a synthetic fixture for the chunker tests.",
+        "import 'dart:math';",
+        "",
+        "const int maxBeds = 12;",
+        "",
+        "/// Something that needs water.",
+        "abstract class Thirsty {",
+        "  int litres();",
+        "}",
+        "",
+        "enum Soil { sand, clay, loam }"
+      ]
+    },
+    {
+      "key": "Weeding#0",
+      "id": "57843e5f7b6dc57868f3b92eb32365faaa5714a6b6acc3f5f12b955a7d25babf",
+      "kind": "class",
+      "symbol": "Weeding",
+      "lines": [13, 19],
+      "bytes": [215, 285],
+      "content_hash": "e6fae3cd721eabda171286180cde52dc2d29c2bd5d592805a622ef7781a646ba",
+      "text": [
+        "garden.dart: Weeding",
+        "mixin Weeding {",
+        "  int weeds = 0;",
+        "",
+        "  void weed() {",
+        "    weeds = 0;",
+        "  }",
+        "}"
+      ]
+    },
+    {
+      "key": "Garden#0",
+      "id": "1ada5f0c15ef28402c5abb9a08eb30fcfe79ad353b252875bc7868251008f451",
+      "kind": "class",
+      "symbol": "Garden",
+      "lines": [21, 33],
+      "bytes": [287, 552],
+      "content_hash": "a00dff0c01ca96a4416c3424848b2e050a9ecbb4669d916a3f012b559a660753",
+      "text": [
+        "garden.dart: Garden",
+        "class Garden with Weeding implements Thirsty {",
+        "  final List<String> beds;",
+        "",
+        "  Garden(this.beds);",
+        "",
+        "  /// Litres for one evening.",
+        "  @override",
+        "  int litres() {",
+        "    return beds.length * 3;",
+        "  }",
+        "",
+        "  String largest() => beds.reduce((a, b) => a.length >= b.length ? a : b);",
+        "}"
+      ]
+    },
+    {
+      "key": "Garden#0+0",
+      "id": "2041228bd341bccfc8c53620cd86520ca86e425d7e0eb0461e9ddf58a18df716",
+      "kind": "code",
+      "symbol": null,
+      "lines": [35, 37],
+      "bytes": [554, 630],
+      "content_hash": "42d7d323e43496c497f7466ea4b880dfb9fbdc466ebebacfdcdd44475085069c",
+      "text": [
+        "garden.dart",
+        "extension Harvest on Garden {",
+        "  int baskets() => max(1, beds.length ~/ 2);",
+        "}"
+      ]
+    },
+    {
+      "key": "rainfall#0",
+      "id": "a15924413852252f06ac22800d6b8e4fcaf34f2456b0fae58ad96e197edb53e9",
+      "kind": "function",
+      "symbol": "rainfall",
+      "lines": [39, 45],
+      "bytes": [632, 747],
+      "content_hash": "3dd4439585b78e783d2cb8d7d547ad0b3ede839e5401ffaff688b3f47dd31897",
+      "text": [
+        "garden.dart: rainfall",
+        "int rainfall(List<int> days) {",
+        "  var total = 0;",
+        "  for (final day in days) {",
+        "    total += day;",
+        "  }",
+        "  return total;",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "maxBeds",
+      "name": "maxBeds",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [4, 4],
+      "bytes": [92, 104],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Thirsty",
+      "name": "Thirsty",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [7, 9],
+      "bytes": [139, 181],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Thirsty.litres",
+      "name": "litres",
+      "kind": "method",
+      "parent": "Thirsty",
+      "ordinal": 0,
+      "lines": [8, 8],
+      "bytes": [166, 178],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Soil",
+      "name": "Soil",
+      "kind": "enum",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [11, 11],
+      "bytes": [183, 213],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Weeding",
+      "name": "Weeding",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [13, 19],
+      "bytes": [215, 285],
+      "chunk": "Weeding#0"
+    },
+    {
+      "qualified_name": "Weeding.weed",
+      "name": "weed",
+      "kind": "method",
+      "parent": "Weeding",
+      "ordinal": 0,
+      "lines": [16, 18],
+      "bytes": [251, 283],
+      "chunk": "Weeding#0"
+    },
+    {
+      "qualified_name": "Garden",
+      "name": "Garden",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [21, 33],
+      "bytes": [287, 552],
+      "chunk": "Garden#0"
+    },
+    {
+      "qualified_name": "Garden.Garden",
+      "name": "Garden",
+      "kind": "method",
+      "parent": "Garden",
+      "ordinal": 0,
+      "lines": [24, 24],
+      "bytes": [364, 381],
+      "chunk": "Garden#0"
+    },
+    {
+      "qualified_name": "Garden.litres",
+      "name": "litres",
+      "kind": "method",
+      "parent": "Garden",
+      "ordinal": 0,
+      "lines": [27, 30],
+      "bytes": [416, 474],
+      "chunk": "Garden#0"
+    },
+    {
+      "qualified_name": "Garden.largest",
+      "name": "largest",
+      "kind": "method",
+      "parent": "Garden",
+      "ordinal": 0,
+      "lines": [32, 32],
+      "bytes": [478, 550],
+      "chunk": "Garden#0"
+    },
+    {
+      "qualified_name": "Garden.baskets",
+      "name": "baskets",
+      "kind": "method",
+      "parent": "Garden",
+      "ordinal": 0,
+      "lines": [36, 36],
+      "bytes": [586, 628],
+      "chunk": "Garden#0+0"
+    },
+    {
+      "qualified_name": "rainfall",
+      "name": "rainfall",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [39, 45],
+      "bytes": [632, 747],
+      "chunk": "rainfall#0"
+    }
+  ]
+}

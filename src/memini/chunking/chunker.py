@@ -210,7 +210,12 @@ class _Builder:
         return self.spec
 
     def _register(
-        self, found_name: tuple[str, ...], kind: SymbolKind, span: Node, scope: str | None
+        self,
+        found_name: tuple[str, ...],
+        kind: SymbolKind,
+        span: Node,
+        scope: str | None,
+        end: Node | None = None,
     ) -> _Sym:
         parts = [scope, *found_name] if scope else list(found_name)
         qualified = ".".join(parts)
@@ -231,9 +236,9 @@ class _Builder:
             parent=".".join(parts[:-1]) or None,
             ordinal=ordinal,
             first_row=start.start_point.row,
-            last_row=_rows(span)[1],
+            last_row=_rows(end or span)[1],
             start_byte=start.start_byte,
-            end_byte=span.end_byte,
+            end_byte=(end or span).end_byte,
         )
         self.symbols.append(sym)
         return sym
@@ -257,7 +262,11 @@ class _Builder:
                 bodies: list[tuple[list[Node], str, Level]] = []
                 for definition in found:
                     sym = self._register(
-                        definition.name_path, definition.kind, definition.span, node_scope
+                        definition.name_path,
+                        definition.kind,
+                        definition.span,
+                        node_scope,
+                        definition.end,
                     )
                     if definition.body is not None:
                         bodies.append(
@@ -266,10 +275,21 @@ class _Builder:
                 for children, body_scope, body_level in reversed(bodies):
                     stack.extend((child, body_scope, body_level) for child in reversed(children))
                 continue
-            body = language.anonymous_container(node)
-            child_level: Level = "local" if body is None else "class"
+            body, child_level = self._inner(node, node_level)
             children = (node if body is None else body).named_children
             stack.extend((child, node_scope, child_level) for child in reversed(children))
+
+    def _inner(self, node: Node, level: Level) -> tuple[Node | None, Level]:
+        """The body of a node that holds members without defining a symbol, and their level;
+        ``(None, "local")`` for any other node, whose children are local."""
+        language = self._spec()
+        body = language.anonymous_container(node)
+        if body is not None:
+            return body, "class"
+        body = language.transparent(node)
+        if body is not None:
+            return body, level
+        return None, "local"
 
     # Units -------------------------------------------------------------------------------------
 
@@ -331,7 +351,7 @@ class _Builder:
         language = self._spec()
         first, last = _rows(child)
         found = language.classify(child, level)
-        syms = [self._register(f.name_path, f.kind, f.span, scope) for f in found]
+        syms = [self._register(f.name_path, f.kind, f.span, scope, f.end) for f in found]
         unit = _Unit(first, last, syms)
         for definition, sym in zip(found, syms, strict=True):
             if definition.body is None:
@@ -343,16 +363,16 @@ class _Builder:
                 self._find(children, sym.qualified, definition.body_level)
         if found:
             return [unit]
-        body = language.anonymous_container(child)
+        body, inner_level = self._inner(child, level)
         if body is None:
             self._find(child.named_children, scope, "local")
             return [unit]
         if not self._big(first, last):
             before = len(self.symbols)
-            self._find(body.named_children, scope, "class")
+            self._find(body.named_children, scope, inner_level)
             unit.names = [s.qualified for s in self.symbols[before:] if s.parent == scope]
             return [unit]
-        members = self._members(body.named_children, scope, "class")
+        members = self._members(body.named_children, scope, inner_level)
         if not members:
             return [unit]
         # Spliced into the enclosing body: the opening line goes with the first member, the

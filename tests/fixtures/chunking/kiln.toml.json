@@ -1,5 +1,5 @@
 {
-  "chunker_version": 2,
+  "chunker_version": 3,
   "language": null,
   "fallback": "unknown_language",
   "syntax_errors": false,

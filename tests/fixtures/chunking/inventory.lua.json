@@ -1,0 +1,135 @@
+{
+  "chunker_version": 3,
+  "language": "lua",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "Inventory#0",
+      "id": "f3982b17a4068ce11dbf73b145c5569dfbf040928c1e3efaa25dec220dd44749",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 12],
+      "bytes": [0, 253],
+      "content_hash": "7510af7820a67fd1ed14be2eede9a5cf6194fc8467b4de31e4593b30abe9b822",
+      "text": [
+        "inventory.lua: Inventory, MAX_ITEMS, clamp",
+        "-- inventory.lua is a synthetic fixture for the chunker tests.",
+        "local Inventory = {}",
+        "Inventory.__index = Inventory",
+        "",
+        "local MAX_ITEMS = 40",
+        "",
+        "local function clamp(value, low, high)",
+        "  if value < low then",
+        "    return low",
+        "  end",
+        "  return math.min(value, high)",
+        "end"
+      ]
+    },
+    {
+      "key": "Inventory.new#0",
+      "id": "0675075fe48b6d0dc44a1b5854459b51dccb7782eeb61a07f14d5f30d6c9da42",
+      "kind": "function",
+      "symbol": "Inventory.new",
+      "lines": [14, 20],
+      "bytes": [255, 411],
+      "content_hash": "7333486d844fdd64933d751817e2555469633ba2e94eb4217cb784651798baca",
+      "text": [
+        "inventory.lua: Inventory.new",
+        "-- A new, empty inventory.",
+        "function Inventory.new(owner)",
+        "  local self = setmetatable({}, Inventory)",
+        "  self.owner = owner",
+        "  self.items = {}",
+        "  return self",
+        "end"
+      ]
+    },
+    {
+      "key": "Inventory.add#0",
+      "id": "d43bc2e77504a4e2de6d122e6d61b08817db5810f694052f458ac23d4dc69d87",
+      "kind": "group",
+      "symbol": null,
+      "lines": [22, 31],
+      "bytes": [413, 635],
+      "content_hash": "a4fcb43a93300d71ae1b65457845673080c74a5b75fa87c32fc40a4c2a2ac8da",
+      "text": [
+        "inventory.lua: Inventory.add, Inventory.count",
+        "function Inventory:add(name, count)",
+        "  local current = self.items[name] or 0",
+        "  self.items[name] = clamp(current + count, 0, MAX_ITEMS)",
+        "end",
+        "",
+        "function Inventory:count(name)",
+        "  return self.items[name] or 0",
+        "end",
+        "",
+        "return Inventory"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "Inventory",
+      "name": "Inventory",
+      "kind": "variable",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [2, 2],
+      "bytes": [63, 83],
+      "chunk": "Inventory#0"
+    },
+    {
+      "qualified_name": "MAX_ITEMS",
+      "name": "MAX_ITEMS",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [5, 5],
+      "bytes": [115, 135],
+      "chunk": "Inventory#0"
+    },
+    {
+      "qualified_name": "clamp",
+      "name": "clamp",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [7, 12],
+      "bytes": [137, 253],
+      "chunk": "Inventory#0"
+    },
+    {
+      "qualified_name": "Inventory.new",
+      "name": "new",
+      "kind": "function",
+      "parent": "Inventory",
+      "ordinal": 0,
+      "lines": [15, 20],
+      "bytes": [282, 411],
+      "chunk": "Inventory.new#0"
+    },
+    {
+      "qualified_name": "Inventory.add",
+      "name": "add",
+      "kind": "method",
+      "parent": "Inventory",
+      "ordinal": 0,
+      "lines": [22, 25],
+      "bytes": [413, 550],
+      "chunk": "Inventory.add#0"
+    },
+    {
+      "qualified_name": "Inventory.count",
+      "name": "count",
+      "kind": "method",
+      "parent": "Inventory",
+      "ordinal": 0,
+      "lines": [27, 29],
+      "bytes": [552, 617],
+      "chunk": "Inventory.add#0"
+    }
+  ]
+}
