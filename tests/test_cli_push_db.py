@@ -224,16 +224,16 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         # Read back as they were sent: texts, names and times verbatim.
         chat = read("threads", chat_thread()["external_id"])
         assert chat["channel"] == "release"
-        assert [m["text"] for m in chat["messages"]] == [
-            m["text"] for m in chat_thread()["payload"]["messages"]
+        assert [m["text"] for m in chat["items"]] == [
+            m["text"] for m in chat_thread()["payload"]["items"]
         ]
-        assert chat["messages"][1]["mentions"] == ["Lev Primerov"]
+        assert chat["items"][1]["mentions"] == ["Lev Primerov"]
         mail_back = read("threads", mail["external_id"])
         assert mail_back["title"] == "Retention of the archive bucket"
-        sent = mail["payload"]["messages"]
-        assert [
-            (m["author"], m["recipients"], m["cc"], m["text"]) for m in mail_back["messages"]
-        ] == [(m["author"], m["recipients"], m["cc"], m["text"]) for m in sent]
+        sent = mail["payload"]["items"]
+        assert [(m["author"], m["recipients"], m["cc"], m["text"]) for m in mail_back["items"]] == [
+            (m["author"], m["recipients"], m["cc"], m["text"]) for m in sent
+        ]
         notes = read("meetings", meeting["external_id"], include_transcript="true")
         assert notes["title"] == "Platform weekly"
         assert notes["participants"] == meeting["payload"]["participants"]
@@ -252,7 +252,7 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         updated = ok(push(edited))
         assert "stored 1 (inserted 0, updated 1, revived 0), deleted 0, unchanged 0" in updated.out
         chat = read("threads", chat_thread()["external_id"])
-        assert [m["text"] for m in chat["messages"]] == [
+        assert [m["text"] for m in chat["items"]] == [
             "Выпускаем 2.4 в четверг или ждём исправления экспорта?",
             "Ждём исправления, выпускаем в понедельник.",
             "Agreed, Monday.",
@@ -279,7 +279,7 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         guide = ok(push("--json", str(EXAMPLES / "thread.json")))
         summary = json.loads(guide.out)
         assert (summary["stream"], summary["counts"]["inserted"]) == ("chat/platform", 1)
-        assert len(summary["runs"]) == 1
+        assert len(summary["items"]) == 1
         assert summary["rejected"] == []
         monkeypatch.setenv("MEMINI_TOKEN_FILE", str(admin_file))
         assert "chat/platform" in ok(cli("streams", "acme", "inbox")).out

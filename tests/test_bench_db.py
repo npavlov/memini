@@ -123,7 +123,7 @@ def test_a_smoke_run_measures_every_step_and_mode(
     assert corpus["code_files"] == 2
     assert corpus["documents"] == 1
     assert corpus["threads"] == 6
-    assert corpus["meetings"] == 2
+    assert corpus["items"] == 2
     assert corpus["records"] == 3 + 8
     assert corpus["chunks"] == corpus["code_chunks"] + corpus["message_chunks"]
     assert [phase["name"] for phase in report["phases"]] == [

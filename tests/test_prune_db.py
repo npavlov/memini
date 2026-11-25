@@ -152,7 +152,7 @@ async def records(env: Env) -> dict[str, tuple[bool, dict[str, Any]]]:
 
 async def authors(env: Env, external_id: str) -> list[str]:
     _, payload = (await records(env))[external_id]
-    return [m["author"] for m in payload["messages"]]
+    return [m["author"] for m in payload["items"]]
 
 
 async def chunks(env: Env) -> dict[str, list[str]]:

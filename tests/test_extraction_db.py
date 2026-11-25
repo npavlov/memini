@@ -81,7 +81,7 @@ _BLOCK = re.compile(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>",
 
 def data_lines(body: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The JSON lines of the data block of a request's user message."""
-    found = _BLOCK.search(body["messages"][-1]["content"])
+    found = _BLOCK.search(body["items"][-1]["content"])
     assert found is not None
     return [json.loads(line) for line in found.group(2).split("\n")]
 
@@ -361,7 +361,7 @@ async def test_the_prompt_holds_the_record_only_inside_the_data_block(
     [body] = [
         b for b in fake.bodies() if b["response_format"]["json_schema"]["name"] == "decisions"
     ]
-    system, user = (message["content"] for message in body["messages"])
+    system, user = (message["content"] for message in body["items"])
     found = _BLOCK.search(user)
     assert found is not None
     outside = user[: found.start()] + user[found.end() :]

@@ -225,11 +225,9 @@ def check_messages(key: Json, messages: list[Json]) -> None:
     for expected in cast("list[Json]", key["expect"]):
         ref = RecordRef.of(expected)
         returned = {
-            m["message_id"]
-            for m in messages
-            if RecordRef(m["source"], m["kind"], m["external_id"]) == ref
+            m["id"] for m in messages if RecordRef(m["source"], m["kind"], m["external_id"]) == ref
         }
-        assert set(expected["messages"]) <= returned, (key["id"], ref, returned)
+        assert set(expected["items"]) <= returned, (key["id"], ref, returned)
     for message in messages:
         assert set(message["roles"]) & {"recipient", "mention"}, message["locator"]
         assert message["anchor"] == f"msg-{message['message_id']}"
@@ -255,21 +253,21 @@ async def test_the_m2_check_over_mcp_and_http(world: World) -> None:
             result = ok(await client.call_tool("list_meetings", {"query": key["text"]}))
             assert [p["person_id"] for p in result["persons"]] == [str(world.persons[me()])]
             assert result["persons"][0]["is_me"] is True
-            check_meetings(key, result["meetings"])
+            check_meetings(key, result["items"])
         for key in cast("list[Json]", labels["messages_to_me"]):
             result = ok(await client.call_tool("list_messages", {"query": key["text"]}))
-            check_messages(key, result["messages"])
+            check_messages(key, result["items"])
 
     # ... and over HTTP.
     async with http_client(app, token) as http:
         for key in cast("list[Json]", labels["meetings_attended"]):
             response = await http.get("/v1/meetings", params={"query": key["text"]})
             assert response.status_code == 200, response.text
-            check_meetings(key, response.json()["meetings"])
+            check_meetings(key, response.json()["items"])
         for key in cast("list[Json]", labels["messages_to_me"]):
             response = await http.get("/v1/messages", params={"query": key["text"]})
             assert response.status_code == 200, response.text
-            check_messages(key, response.json()["messages"])
+            check_messages(key, response.json()["items"])
 
 
 async def test_records_past_retention_go_and_the_tools_stop_returning_them(world: World) -> None:
@@ -306,9 +304,9 @@ async def test_records_past_retention_go_and_the_tools_stop_returning_them(world
 
     app = world.app()
     async with mcp_client(app, await world.token("read")) as client:
-        meetings = ok(await client.call_tool("list_meetings", {"limit": 100}))["meetings"]
-        messages = ok(await client.call_tool("list_messages", {"limit": 100}))["messages"]
-        cbor = ok(await client.call_tool("list_meetings", {"query": "CBOR"}))["meetings"]
+        meetings = ok(await client.call_tool("list_meetings", {"limit": 100}))["items"]
+        messages = ok(await client.call_tool("list_messages", {"limit": 100}))["items"]
+        cbor = ok(await client.call_tool("list_meetings", {"query": "CBOR"}))["items"]
     assert not refs(meetings) & expired
     assert not refs(messages) & expired
     assert refs(cbor) == {RecordRef("meetings", "meeting", "notes-0930-weekly-sync")}
@@ -336,8 +334,8 @@ async def test_list_meetings_without_a_query_is_newest_first_and_follows_merges(
     app = world.app()
     async with mcp_client(app, await world.token("read")) as client:
         result = ok(await client.call_tool("list_meetings", {}))
-        assert [refs([m]).pop() for m in result["meetings"]] == [ref for _, ref in attended]
-        first = result["meetings"][0]
+        assert [refs([m]).pop() for m in result["items"]] == [ref for _, ref in attended]
+        first = result["items"][0]
         assert first["external_id"] == "notes-0930-weekly-sync"  # hers only through the merge
         assert first["anchor"] is None
         assert first["snippet"] is None
@@ -348,7 +346,7 @@ async def test_list_meetings_without_a_query_is_newest_first_and_follows_merges(
         # The person ingest made of "Мира Кастелан" stands for Mira now: its canonical person.
         by_merged = ok(await client.call_tool("list_meetings", {"person": str(world.merged[me()])}))
         assert by_merged["persons"] == result["persons"]
-        assert by_merged["meetings"] == result["meetings"]
+        assert by_merged["items"] == result["items"]
 
         # Another person, by alias; a time window on the start.
         lev = ok(
@@ -363,7 +361,7 @@ async def test_list_meetings_without_a_query_is_newest_first_and_follows_merges(
         )
         assert [p["person_id"] for p in lev["persons"]] == [str(world.persons["lev"])]
         assert lev["persons"][0]["is_me"] is False
-        assert [m["external_id"] for m in lev["meetings"]] == [
+        assert [m["external_id"] for m in lev["items"]] == [
             "notes-0930-weekly-sync",
             "notes-0911-firmware-review",
         ]
@@ -376,7 +374,7 @@ async def test_list_meetings_without_a_query_is_newest_first_and_follows_merges(
 async def test_list_messages_by_role_and_time(world: World) -> None:
     app = world.app()
     async with mcp_client(app, await world.token("read")) as client:
-        to_me = ok(await client.call_tool("list_messages", {"limit": 100}))["messages"]
+        to_me = ok(await client.call_tool("list_messages", {"limit": 100}))["items"]
         times = [m["sent_at"] for m in to_me]
         assert times == sorted(times, reverse=True)
         expected = {
@@ -385,11 +383,11 @@ async def test_list_messages_by_role_and_time(world: World) -> None:
             if ref.kind == "thread" and not record.deleted
             for message_id in messages_to_mira(record.payload)
         }
-        assert {(refs([m]).pop(), m["message_id"]) for m in to_me} == expected
+        assert {(refs([m]).pop(), m["id"]) for m in to_me} == expected
 
         mentions = ok(
             await client.call_tool("list_messages", {"roles": ["mention"], "limit": 100})
-        )["messages"]
+        )["items"]
         assert mentions
         assert all(m["roles"] == ["mention"] for m in mentions)
         assert all("U01MIRA" in m["mentions"] for m in mentions)
@@ -405,7 +403,7 @@ async def test_list_messages_by_role_and_time(world: World) -> None:
                     "limit": 100,
                 },
             )
-        )["messages"]
+        )["items"]
         assert from_lev
         for message in from_lev:
             assert message["author"] == "U03LEV"
@@ -422,7 +420,7 @@ def messages_to_mira(payload: Json) -> list[str]:
     mira = cast("list[Json]", next(p for p in people()["people"] if p["key"] == me())["aliases"])
     names = {str(alias["value"]) for alias in mira}
     found: list[str] = []
-    for message in cast("list[Json]", payload["messages"]):
+    for message in cast("list[Json]", payload["items"]):
         named = [
             *message.get("recipients", []),
             *message.get("cc", []),
@@ -440,7 +438,7 @@ async def test_get_meeting_and_get_thread(world: World) -> None:
     app = world.app()
     token = await world.token("read")
     async with mcp_client(app, token) as client:
-        meeting = ok(await client.call_tool("get_meeting", {"record_id": world.record_id(sync)}))
+        meeting = ok(await client.call_tool("get_meeting", {"id": world.record_id(sync)}))
         assert meeting["transcript"] is None
         assert meeting["segments"] > 0
         assert meeting["summary"]
@@ -462,7 +460,7 @@ async def test_get_meeting_and_get_thread(world: World) -> None:
         assert full["record_id"] == meeting["record_id"]
         assert [s["anchor"] for s in full["transcript"]][:1] == ["seg-s01"]
         assert "include_transcript" in text(
-            await client.call_tool("get_meeting", {"record_id": world.record_id(sync)})
+            await client.call_tool("get_meeting", {"id": world.record_id(sync)})
         )
 
         got = ok(
@@ -471,16 +469,16 @@ async def test_get_meeting_and_get_thread(world: World) -> None:
             )
         )
         payload = final_records()[thread].payload
-        assert [m["message_id"] for m in got["messages"]] == [m["id"] for m in payload["messages"]]
-        first = got["messages"][0]
+        assert [m["id"] for m in got["items"]] == [m["id"] for m in payload["items"]]
+        first = got["items"][0]
         assert first["anchor"] == "msg-1788858900.000100"
         assert first["locator"] == f"chat:{thread.external_id}#msg-1788858900.000100"
-        assert first["link"] == payload["messages"][0]["url"]
+        assert first["link"] == payload["items"][0]["url"]
         roles = {p["person_id"]: p["roles"] for p in got["persons"]}
         assert roles[str(world.persons[me()])] == ["author", "mention"]
 
         assert "use get_thread" in refused(
-            await client.call_tool("get_meeting", {"record_id": world.record_id(thread)})
+            await client.call_tool("get_meeting", {"id": world.record_id(thread)})
         )
         assert (
             refused(
@@ -490,7 +488,7 @@ async def test_get_meeting_and_get_thread(world: World) -> None:
         )
         deleted = RecordRef("meetings", "meeting", "notes-0929-quick-call")
         assert (
-            refused(await client.call_tool("get_meeting", {"record_id": world.record_id(deleted)}))
+            refused(await client.call_tool("get_meeting", {"id": world.record_id(deleted)}))
             == "No such meeting."
         )
 
@@ -563,7 +561,7 @@ async def test_the_persons_filter_of_search(world: World) -> None:
                 "search",
                 {"query": "CBOR", "mode": "lexical", "persons": ["me"], "kinds": ["meeting"]},
             )
-        )["hits"]
+        )["items"]
         assert {hit["record_id"] for hit in hits} == {r for r in mine if r in meeting_ids(world)}
 
 
@@ -612,7 +610,7 @@ async def test_add_document_stores_an_indexed_document(world: World) -> None:
             await client.call_tool(
                 "search", {"query": "berth fees December", "mode": "lexical", "sources": ["docs"]}
             )
-        )["hits"]
+        )["items"]
         assert added["record_id"] in {hit["record_id"] for hit in hits}
         summary = text(await client.call_tool("put_document", document))
         assert summary.startswith(f"Document {added['locator']} in {WORKSPACE}/docs:")

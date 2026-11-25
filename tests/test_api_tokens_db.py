@@ -123,7 +123,7 @@ async def test_an_admin_creates_a_token_shown_once(
     listed = ok(await client.get("/v1/tokens", headers=admin))
     assert token not in str(listed)
     assert token[15:] not in str(listed)
-    assert "token" not in listed["tokens"][-1]
+    assert "token" not in listed["items"][-1]
 
 
 async def test_a_token_is_limited_to_a_workspace_and_expires(
@@ -241,7 +241,7 @@ async def test_a_workspace_limited_admin_sees_and_revokes_only_its_workspace_tok
     in_beta = await new_token(client, admin, workspace="beta", name="beta agent")
     everywhere = await new_token(client, admin, name="everywhere")
 
-    seen = ok(await client.get("/v1/tokens", headers=alpha_admin))["tokens"]
+    seen = ok(await client.get("/v1/tokens", headers=alpha_admin))["items"]
     beta = await client.delete(f"/v1/tokens/{in_beta['id']}", headers=alpha_admin)
     every = await client.delete(f"/v1/tokens/{everywhere['id']}", headers=alpha_admin)
     alpha = await client.delete(f"/v1/tokens/{in_alpha['id']}", headers=alpha_admin)
@@ -261,7 +261,7 @@ async def test_another_principals_tokens_are_not_seen(
     stranger = await ensure_principal(db, "someone-else")
     theirs = await create_token(db, owner_id=stranger, name="theirs", scopes=["read"])
 
-    listed = ok(await client.get("/v1/tokens", headers=admin))["tokens"]
+    listed = ok(await client.get("/v1/tokens", headers=admin))["items"]
     revoked = await client.delete(f"/v1/tokens/{theirs.info.id}", headers=admin)
 
     assert "theirs" not in {t["name"] for t in listed}
@@ -278,7 +278,7 @@ async def test_list_shows_tokens_oldest_first_with_their_status(
     second = await new_token(client, admin, name="second")
     ok(await client.delete(f"/v1/tokens/{first['id']}", headers=admin))
 
-    tokens = ok(await client.get("/v1/tokens", headers=admin))["tokens"]
+    tokens = ok(await client.get("/v1/tokens", headers=admin))["items"]
 
     assert [t["name"] for t in tokens] == ["test agent", "first", "second"]
     assert [t["status"] for t in tokens] == ["active", "revoked", "active"]

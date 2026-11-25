@@ -645,19 +645,19 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
     beta_run = await run(beta_id, "git_sync", source_id=uuid.UUID(site["id"]))
 
     listed = ok(await client.get("/v1/workspaces/alpha/runs", headers=admin))
-    assert [r["id"] for r in listed["runs"]] == [str(reindex_run), str(dev_run), str(main_run)]
-    assert listed["next_before"] is None
-    newest = listed["runs"][1]
+    assert [r["id"] for r in listed["items"]] == [str(reindex_run), str(dev_run), str(main_run)]
+    assert listed["next_cursor"] is None
+    newest = listed["items"][1]
     assert (newest["kind"], newest["status"], newest["source"], newest["stream"]) == (
         "git_sync",
         "succeeded",
         "app",
         "refs/heads/dev",
     )
-    assert listed["runs"][0]["source"] is None
+    assert listed["items"][0]["source"] is None
 
     of_source = ok(await client.get("/v1/workspaces/alpha/runs?source=app", headers=admin))
-    assert [r["id"] for r in of_source["runs"]] == [str(dev_run), str(main_run)]
+    assert [r["id"] for r in of_source["items"]] == [str(dev_run), str(main_run)]
     of_stream = ok(
         await client.get(
             "/v1/workspaces/alpha/runs",
@@ -665,7 +665,7 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
             headers=admin,
         )
     )
-    assert [r["id"] for r in of_stream["runs"]] == [str(main_run)]
+    assert [r["id"] for r in of_stream["items"]] == [str(main_run)]
     refused(
         await client.get("/v1/workspaces/alpha/runs?stream=refs/heads/main", headers=admin),
         422,
@@ -688,10 +688,10 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
     params: dict[str, Any] = {"limit": 2}
     while True:
         page = ok(await client.get("/v1/workspaces/alpha/runs", params=params, headers=admin))
-        pages.append(",".join(r["id"] for r in page["runs"]))
-        if page["next_before"] is None:
+        pages.append(",".join(r["id"] for r in page["items"]))
+        if page["next_cursor"] is None:
             break
-        params["before"] = page["next_before"]
+        params["before"] = page["next_cursor"]
     assert pages == [f"{reindex_run},{dev_run}", str(main_run)]
     refused(
         await client.get("/v1/workspaces/alpha/runs?before=not-a-cursor", headers=admin),

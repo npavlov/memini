@@ -148,7 +148,7 @@ def tool_text(result: CallToolResult) -> str:
 
 
 def hit_ids(body: Mapping[str, Any]) -> set[str]:
-    return {str(hit["record_id"]) for hit in body["hits"]}
+    return {str(hit["record_id"]) for hit in body["items"]}
 
 
 # --- Marking -------------------------------------------------------------------------------------
