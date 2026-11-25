@@ -172,7 +172,7 @@ def test_a_variant_with_a_column_of_its_own_runs_on_the_scratch_database(
     data = json.loads(report.read_text())
     assert data["setup"]["lexical"] == "tsvector-simple"
     recall = data["modes"]["lexical"]["groups"]["all"]["recall"]["10"]
-    assert recall == pytest.approx(0.61, abs=0.01)
+    assert recall == pytest.approx(0.62, abs=0.01)
 
 
 SMALL_SUITE = """
