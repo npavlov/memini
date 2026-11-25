@@ -904,3 +904,58 @@ th .text {
     animation: none;
   }
 }
+
+
+/* Progress: a bar that fills from the start, its words under it. A total not known yet shows a
+   bar that slides, and stands still for those who ask for less motion. */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.progress-track {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-chip);
+  background: var(--idle-soft);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: var(--radius-chip);
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.progress-unknown .progress-fill {
+  width: 30%;
+  animation: progress-slide 1.6s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    transition: none;
+  }
+  .progress-unknown .progress-fill {
+    animation: none;
+  }
+}
+
+.progress-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-small);
+}

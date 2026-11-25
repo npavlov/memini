@@ -25,7 +25,7 @@ import { AddRepository } from "./add-repository";
 import { LocalFolders } from "./local-folders";
 import { isHandle } from "./repositories";
 import { createWorkspace, listWorkspaces } from "./repositories-api";
-import { SourceTable } from "./source-table";
+import { CodebaseList } from "./codebase-list";
 
 export interface RepositoriesScreenProps {
   readonly connection: Connection;
@@ -33,15 +33,15 @@ export interface RepositoriesScreenProps {
 }
 
 /**
- * Add a repository without a terminal (S17): a folder of this computer, given to the local
- * server by the launcher, or a remote by its address; then the server follows it. Needs a token
- * with the admin scope.
+ * The code bases of a workspace (S17, S18): add a folder of this computer, given to the local
+ * server by the launcher, or a remote by its address; choose what each indexes; see how far each
+ * sync is. Needs a token with the admin scope.
  */
 export function RepositoriesScreen({ connection, info }: RepositoriesScreenProps): ReactElement {
   return (
     <Screen
-      title="Repositories"
-      lead="The repositories the server follows: add a folder of this computer or a remote by its address, and see how far each has synced. Needs a token with the admin scope."
+      title="Codebases"
+      lead="The code the server follows and indexes: add a folder of this computer or a repository at an address, choose what it indexes, and see how far each sync is. Needs a token with the admin scope."
     >
       {connection.hasToken ? (
         <Workspaces connection={connection} info={info} />
@@ -82,9 +82,9 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
     <>
       <Panel title="Workspace">
         {names.length === 0 ? (
-          <Text>A repository goes into a workspace. This server has none yet: create one.</Text>
+          <Text>A code base goes into a workspace. This server has none yet: create one.</Text>
         ) : (
-          <Field label="Repositories of" hint="Each workspace has its own sources and its own project map.">
+          <Field label="Code bases of" hint="Each workspace has its own code bases and its own project map.">
             <Select
               value={workspace ?? ""}
               options={names.map((name) => ({ value: name, label: name }))}
@@ -103,7 +103,7 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
       </Panel>
       {workspace === null ? (
         <EmptyState title="No workspace yet">
-          <Text>Create a workspace above, then add its repositories.</Text>
+          <Text>Create a workspace above, then add its code bases.</Text>
         </EmptyState>
       ) : (
         <>
@@ -126,11 +126,11 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
                   setAdding(true);
                 }}
               >
-                Add a repository
+                Add a code base
               </Button>
             </Actions>
           )}
-          <SourceTable key={`${workspace}:${String(round)}`} connection={connection} workspace={workspace} />
+          <CodebaseList key={`${workspace}:${String(round)}`} connection={connection} workspace={workspace} />
         </>
       )}
       {local ? <LocalFolders key={String(round)} onChanged={changed} /> : null}

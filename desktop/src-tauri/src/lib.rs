@@ -83,6 +83,9 @@ pub fn run() {
             commands::repositories::api_source_streams,
             commands::repositories::api_source_sync,
             commands::repositories::api_source_delete,
+            commands::repositories::api_source_update,
+            commands::repositories::api_source_preview,
+            commands::repositories::api_run,
         ])
         .run(tauri::generate_context!())
         .expect("the Memini desktop app could not start");

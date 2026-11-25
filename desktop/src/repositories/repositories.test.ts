@@ -83,13 +83,28 @@ describe("parseGitSources and parseRefStates", () => {
   it("keeps the git sources of a workspace", () => {
     const sources = parseGitSources({
       sources: [
-        { name: "app", kind: "git", location: "/srv/local/app", refs: ["refs/heads/main"], schedule_seconds: 3600 },
+        {
+          name: "app",
+          kind: "git",
+          location: "/srv/local/app",
+          refs: ["refs/heads/main"],
+          schedule_seconds: 3600,
+          include: [],
+          exclude: ["**/*_test.go"],
+        },
         { name: "chat", kind: "push", location: null, refs: [], schedule_seconds: null },
       ],
     });
 
     expect(sources).toEqual([
-      { name: "app", location: "/srv/local/app", refs: ["refs/heads/main"], scheduleSeconds: 3600 },
+      {
+        name: "app",
+        location: "/srv/local/app",
+        refs: ["refs/heads/main"],
+        scheduleSeconds: 3600,
+        exclude: ["**/*_test.go"],
+        include: [],
+      },
     ]);
   });
 
@@ -114,6 +129,28 @@ describe("parseGitSources and parseRefStates", () => {
       ["good", "synced"],
     ]);
     expect(states[2]?.detail).toContain("MEMINI_GIT_LOCAL_ROOTS");
+  });
+
+  it("names the run of a sync that runs, and when the last one finished", () => {
+    const states = parseRefStates({
+      streams: [
+        {
+          key: "refs/heads/main",
+          pending_sync: { status: "running", last_error: null },
+          last_run: { id: "01a2-run", status: "running", error: null, finished_at: null },
+        },
+        {
+          key: "refs/heads/done",
+          pending_sync: null,
+          last_run: { id: "01a1-run", status: "succeeded", error: null, finished_at: "2026-11-25T20:14:00Z" },
+        },
+      ],
+    });
+
+    expect(states.map((state) => [state.running, state.runId, state.finishedAt])).toEqual([
+      [true, "01a2-run", null],
+      [false, "01a1-run", "2026-11-25T20:14:00Z"],
+    ]);
   });
 });
 
@@ -210,6 +247,7 @@ describe("the commands", () => {
       location: " /srv/local/app ",
       ref: " trunk ",
       scheduleSeconds: 3600,
+      exclude: ["**/*_test.go"],
     });
 
     expect(backend.calls).toEqual([
@@ -223,6 +261,7 @@ describe("the commands", () => {
             location: "/srv/local/app",
             refs: ["trunk"],
             schedule_seconds: 3600,
+            exclude: ["**/*_test.go"],
           },
         },
       },

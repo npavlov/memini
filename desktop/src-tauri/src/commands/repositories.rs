@@ -146,6 +146,9 @@ pub struct NewGitSource {
     pub refs: Vec<String>,
     #[serde(default)]
     pub schedule_seconds: Option<u32>,
+    /// Path globs of files to leave out, such as tests and data (scenario S18).
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }
 
 /// `POST /v1/workspaces/{workspace}/sources` with a git source. Needs the admin scope.
@@ -163,6 +166,7 @@ pub async fn api_source_create(
         "location": source.location,
         "refs": source.refs,
         "schedule_seconds": source.schedule_seconds,
+        "exclude": source.exclude,
     });
     let segments = ["v1", "workspaces", source.workspace.as_str(), "sources"];
     inner
@@ -210,6 +214,135 @@ pub async fn api_source_delete(
     source_call(&state, &id, &source, Method::DELETE, None).await
 }
 
+/// A change of the schedule: off (only when asked) or every so many seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ScheduleChange {
+    Off,
+    Every { seconds: u32 },
+}
+
+/// What a code base indexes and when it syncs (scenario S18). A field left out stays as it is;
+/// `include` and `exclude` replace the whole list.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SourceChanges {
+    #[serde(default)]
+    pub include: Option<Vec<String>>,
+    #[serde(default)]
+    pub exclude: Option<Vec<String>>,
+    #[serde(default)]
+    pub builtin_excludes: Option<bool>,
+    #[serde(default)]
+    pub schedule: Option<ScheduleChange>,
+}
+
+impl SourceChanges {
+    /// The body of the request: only the fields that change, an explicit null for a schedule
+    /// switched off.
+    fn body(&self) -> Value {
+        let mut body = serde_json::Map::new();
+        if let Some(include) = &self.include {
+            body.insert("include".to_owned(), json!(include));
+        }
+        if let Some(exclude) = &self.exclude {
+            body.insert("exclude".to_owned(), json!(exclude));
+        }
+        if let Some(builtin) = self.builtin_excludes {
+            body.insert("builtin_excludes".to_owned(), json!(builtin));
+        }
+        match self.schedule {
+            Some(ScheduleChange::Off) => {
+                body.insert("schedule_seconds".to_owned(), Value::Null);
+            }
+            Some(ScheduleChange::Every { seconds }) => {
+                body.insert("schedule_seconds".to_owned(), json!(seconds));
+            }
+            None => {}
+        }
+        Value::Object(body)
+    }
+}
+
+/// `PATCH /v1/workspaces/{workspace}/sources/{source}`: what a code base indexes and when it
+/// syncs. Needs the admin scope. A changed scope makes the next sync list the ref again.
+#[tauri::command]
+pub async fn api_source_update(
+    state: State<'_, AppState>,
+    id: String,
+    source: SourceRef,
+    changes: SourceChanges,
+) -> AppResult<Value> {
+    source_body_call(&state, &id, &source, Method::PATCH, None, &changes.body()).await
+}
+
+/// `POST /v1/workspaces/{workspace}/sources/{source}/preview`: what a sync would index with the
+/// source's rules, or with the ones given, which are not saved.
+#[tauri::command]
+pub async fn api_source_preview(
+    state: State<'_, AppState>,
+    id: String,
+    source: SourceRef,
+    rules: SourceChanges,
+) -> AppResult<Value> {
+    let preview = SourceChanges {
+        schedule: None,
+        ..rules
+    };
+    source_body_call(
+        &state,
+        &id,
+        &source,
+        Method::POST,
+        Some("preview"),
+        &preview.body(),
+    )
+    .await
+}
+
+/// `GET /v1/runs/{run}`: one run with its report, which tells how far a sync is.
+#[tauri::command]
+pub async fn api_run(state: State<'_, AppState>, id: String, run: String) -> AppResult<Value> {
+    if run.is_empty() || run.len() > 64 || !run.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        return Err(AppError::invalid("That is not the id of a run."));
+    }
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    inner
+        .http
+        .call(
+            &target,
+            Some(&token),
+            Method::GET,
+            &["v1", "runs", run.as_str()],
+            None,
+        )
+        .await
+}
+
+async fn source_body_call(
+    state: &State<'_, AppState>,
+    id: &str,
+    source: &SourceRef,
+    method: Method,
+    tail: Option<&str>,
+    body: &Value,
+) -> AppResult<Value> {
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, id).await?;
+    let mut segments = vec![
+        "v1",
+        "workspaces",
+        source.workspace.as_str(),
+        "sources",
+        source.source.as_str(),
+    ];
+    segments.extend(tail);
+    inner
+        .http
+        .call(&target, Some(&token), method, &segments, Some(body))
+        .await
+}
+
 async fn source_call(
     state: &State<'_, AppState>,
     id: &str,
@@ -233,4 +366,28 @@ async fn source_call(
         .await?;
     // A deletion answers 204 without a body.
     Ok(interpret(&raw, &target.place())?.unwrap_or(Value::Null))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_change_sends_only_what_changes() {
+        let changes: SourceChanges =
+            serde_json::from_str(r#"{"exclude": ["**/*_test.go"]}"#).expect("a change");
+        assert_eq!(changes.body(), json!({"exclude": ["**/*_test.go"]}));
+    }
+
+    #[test]
+    fn a_schedule_switched_off_is_an_explicit_null() {
+        let off: SourceChanges =
+            serde_json::from_str(r#"{"schedule": {"kind": "off"}}"#).expect("a change");
+        assert_eq!(off.body(), json!({"schedule_seconds": null}));
+        let every: SourceChanges =
+            serde_json::from_str(r#"{"schedule": {"kind": "every", "seconds": 3600}}"#)
+                .expect("a change");
+        assert_eq!(every.body(), json!({"schedule_seconds": 3600}));
+        assert_eq!(SourceChanges::default().body(), json!({}));
+    }
 }

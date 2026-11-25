@@ -31,7 +31,10 @@ import {
   sourceProblem,
   suggestName,
 } from "./repositories";
+import { DEFAULT_PRESETS, excludeOf } from "./codebases";
 import { addFolder, addSource } from "./repositories-api";
+import { ScopeChooser, customGlobs } from "./scope-chooser";
+import type { Scope } from "./scope-chooser";
 
 export interface AddRepositoryProps {
   readonly connection: Connection;
@@ -54,7 +57,7 @@ export function AddRepository(props: AddRepositoryProps): ReactElement {
   ];
   return (
     <Panel
-      title={`Add a repository to ${props.workspace}`}
+      title={`Add a code base to ${props.workspace}`}
       actions={<Button onClick={props.onCancel}>Cancel</Button>}
     >
       <Tabs
@@ -78,10 +81,18 @@ interface Common {
 
 const START: Common = { name: "", ref: "", schedule: "3600" };
 
+/** Tests, generated code, data and assets are left out of a new code base unless the user says. */
+const START_SCOPE: Scope = { presets: DEFAULT_PRESETS, custom: "" };
+
+function excludeOfScope(scope: Scope): readonly string[] {
+  return excludeOf(scope.presets, customGlobs(scope));
+}
+
 function FolderForm({ connection, info, workspace, onAdded }: AddRepositoryProps): ReactElement {
   const backend = useBackend();
   const [path, setPath] = useState("");
   const [form, setForm] = useState<Common>(START);
+  const [scope, setScope] = useState<Scope>(START_SCOPE);
   const [warning, setWarning] = useState<string | null>(null);
   const add = useCallback(async (): Promise<void> => {
     setWarning(null);
@@ -102,12 +113,14 @@ function FolderForm({ connection, info, workspace, onAdded }: AddRepositoryProps
       location: repo.location,
       ref,
       scheduleSeconds: readSchedule(form.schedule),
+      exclude: excludeOfScope(scope),
     });
     setWarning(answer.warning);
     setPath("");
     setForm(START);
+    setScope(START_SCOPE);
     onAdded();
-  }, [backend, connection.id, form, onAdded, path, workspace]);
+  }, [backend, connection.id, form, onAdded, path, scope, workspace]);
   const adding = useAction(add);
   const named = form.name === "" || sourceProblem(form.name, "main") === null;
   const ready = path.trim().startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path.trim());
@@ -132,6 +145,7 @@ function FolderForm({ connection, info, workspace, onAdded }: AddRepositoryProps
         </Notice>
       ) : null}
       <SourceFields form={form} onChange={setForm} refHint="Empty: the branch checked out in the folder." />
+      <ScopeChooser scope={scope} onChange={setScope} />
       {named ? null : <Text tone="hint">{sourceProblem(form.name, "main")}</Text>}
       {warning === null ? null : <Notice tone="info" title={warning} />}
       <ErrorNotice error={adding.error} />
@@ -148,6 +162,7 @@ function RemoteForm({ connection, workspace, local, onAdded }: AddRepositoryProp
   const backend = useBackend();
   const [location, setLocation] = useState("");
   const [form, setForm] = useState<Common>({ ...START, ref: "main" });
+  const [scope, setScope] = useState<Scope>(START_SCOPE);
   const name = form.name === "" ? suggestName(location) : form.name;
   const problem = remoteProblem({ location, name, ref: form.ref });
   const add = useCallback(async (): Promise<void> => {
@@ -157,11 +172,13 @@ function RemoteForm({ connection, workspace, local, onAdded }: AddRepositoryProp
       location,
       ref: form.ref,
       scheduleSeconds: readSchedule(form.schedule),
+      exclude: excludeOfScope(scope),
     });
     setLocation("");
     setForm({ ...START, ref: "main" });
+    setScope(START_SCOPE);
     onAdded();
-  }, [backend, connection.id, form, location, name, onAdded, workspace]);
+  }, [backend, connection.id, form, location, name, onAdded, scope, workspace]);
   const adding = useAction(add);
   return (
     <Form onSubmit={() => (problem === null ? adding.run() : undefined)}>
@@ -191,6 +208,7 @@ function RemoteForm({ connection, workspace, local, onAdded }: AddRepositoryProp
         onChange={setForm}
         refHint="The branch to follow."
       />
+      <ScopeChooser scope={scope} onChange={setScope} />
       {location === "" || problem === null ? null : <Text tone="hint">{problem}</Text>}
       <ErrorNotice error={adding.error} />
       <Actions>

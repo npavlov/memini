@@ -3,6 +3,8 @@
 
 import type { Backend } from "../ipc/backend";
 import { parseWorkspaceNames } from "../tokens/tokens";
+import { parsePreview, parseRunProgress } from "./codebases";
+import type { Preview, SyncProgress } from "./codebases";
 import { parseGitAccess, parseGitSources, parseRefStates, parseReposAnswer } from "./repositories";
 import type { GitAccess, GitSource, RefState, ReposAnswer, SecretSource } from "./repositories";
 
@@ -75,6 +77,8 @@ export interface NewSource {
   readonly location: string;
   readonly ref: string;
   readonly scheduleSeconds: number | null;
+  /** Globs of files left out from the start (scenario S18). */
+  readonly exclude: readonly string[];
 }
 
 /** Adds a git source and asks for its first sync at once. */
@@ -87,6 +91,7 @@ export async function addSource(backend: Backend, id: string, source: NewSource)
       location: source.location.trim(),
       refs: [source.ref.trim()],
       schedule_seconds: source.scheduleSeconds,
+      exclude: source.exclude,
     },
   });
   await syncSource(backend, id, source.workspace, source.name);
@@ -117,4 +122,61 @@ export async function deleteSource(
   source: string,
 ): Promise<void> {
   await backend.invoke("api_source_delete", { id, source: { workspace, source } });
+}
+
+/** What a code base indexes and when it syncs; a field left out stays as it is. */
+export interface SourceChanges {
+  readonly exclude?: readonly string[];
+  readonly include?: readonly string[];
+  /** Off: only when asked; a number: every so many seconds. */
+  readonly schedule?: "off" | number;
+}
+
+function changesBody(changes: SourceChanges): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (changes.exclude !== undefined) {
+    body["exclude"] = changes.exclude;
+  }
+  if (changes.include !== undefined) {
+    body["include"] = changes.include;
+  }
+  if (changes.schedule === "off") {
+    body["schedule"] = { kind: "off" };
+  } else if (changes.schedule !== undefined) {
+    body["schedule"] = { kind: "every", seconds: changes.schedule };
+  }
+  return body;
+}
+
+/** Changes the scope or the schedule of a code base. A new scope lists the repository again. */
+export async function updateSource(
+  backend: Backend,
+  id: string,
+  workspace: string,
+  source: string,
+  changes: SourceChanges,
+): Promise<void> {
+  await backend.invoke("api_source_update", {
+    id,
+    source: { workspace, source },
+    changes: changesBody(changes),
+  });
+}
+
+/** What a sync would index with `rules`, or with the code base's own when none are given. */
+export async function previewSource(
+  backend: Backend,
+  id: string,
+  workspace: string,
+  source: string,
+  rules: SourceChanges,
+): Promise<Preview> {
+  return parsePreview(
+    await backend.invoke("api_source_preview", { id, source: { workspace, source }, rules: changesBody(rules) }),
+  );
+}
+
+/** How far a running sync is, from its run; null before it says. */
+export async function readSyncProgress(backend: Backend, id: string, run: string): Promise<SyncProgress | null> {
+  return parseRunProgress(await backend.invoke("api_run", { id, run }));
 }

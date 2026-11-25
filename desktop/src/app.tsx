@@ -29,7 +29,7 @@ const SCREENS = [
   { id: "server", label: "Server" },
   { id: "mcp", label: "MCP" },
   { id: "tokens", label: "Tokens" },
-  { id: "repos", label: "Repositories" },
+  { id: "repos", label: "Codebases" },
   { id: "data", label: "Data" },
   { id: "map", label: "Project map" },
 ] as const;

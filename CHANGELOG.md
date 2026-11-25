@@ -18,6 +18,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Limit how much of the computer the search model of a managed server uses while it indexes:
   `memini-server indexing set half|background|full`, half the cores by default. The desktop app
   sets it on the Server screen. [Limit the cores](docs/install.md#limit-the-cores-the-search-model-uses).
+- The desktop app's Repositories tab is now **Codebases**: each code base is a card with a
+  progress bar of its sync (files done of all, time left), its schedule with Pause and Resume, and
+  what it indexes. Adding a code base leaves out tests, generated code, data files and assets by
+  default, for the common languages; **What it indexes** previews what a sync keeps and saves a
+  new scope. **Copy task for an agent**, there and on the Project map, gives a connected agent
+  what to read and how to write the project map.
 
 ### Changed
 
