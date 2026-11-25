@@ -33,7 +33,9 @@ runs:
    through :func:`memini.knowledge.record_extraction`, in one transaction, with the extraction
    row even when nothing was found. If another job retired a candidate in the meantime
    (:class:`~memini.knowledge.NotActiveError`), step 4 runs again on fresh candidates, up to
-   :data:`STORE_ATTEMPTS` times.
+   :data:`STORE_ATTEMPTS` times. When items were stored, an ``assign_domains`` job of the
+   record follows (:mod:`memini.decisions.assign`): the domains of the catalog they belong to,
+   where nothing else says.
 
 Every count goes to the run report of the job (:func:`memini.runs.current_run`), with the LLM
 tokens, which the gate's endpoint records.
@@ -85,7 +87,7 @@ from memini.extraction.model import (
     RecordRef,
 )
 from memini.extraction.reextract import earlier_items
-from memini.jobs import EXTRACT_KIND, Handler, Job
+from memini.jobs import EXTRACT_KIND, Handler, Job, enqueue_record_assignment
 from memini.knowledge import (
     EvidenceRef,
     NewItem,
@@ -451,6 +453,16 @@ async def _run(
         if vectors is not None and stored.created:
             kept = zip(stored.item_ids, (item.statement for item in plan.items), strict=True)
             await vectors.store.store(conn, workspace_id, list(kept), vectors.embedded)
+        if stored.created and stored.item_ids:
+            # The domains of the new items (memini.decisions.assign): a job of its own, after
+            # this one, in the queue of the record's source.
+            await enqueue_record_assignment(
+                conn,
+                workspace_id=workspace_id,
+                owner_id=access.owner_id,
+                source_id=record.source_id,
+                record_id=record_id,
+            )
         outcome.duplicates = plan.duplicates
         outcome.replaces, outcome.answers = plan.replaces, plan.answers
         outcome.dropped = plan.dropped

@@ -22,6 +22,9 @@ enforces the rule:
 | the item, or an item it would supersede, is not active | 409 | ``not_active`` |
 | a link that breaks a rule: cycle, relation, order, manual | 409 | ``supersession_refused`` |
 | any other refusal of the journal's triggers | 409 | ``journal_refused`` |
+| a project or domain that is not a name, or more domains than allowed | 422 | ``invalid_place`` |
+| a project or domain the workspace's catalog does not hold | 422 | ``unknown_place`` |
+| unlinking a domain that is not a link (it came by push, default or code) | 409 | ``not_a_link`` |
 
 A token limited to one workspace changes nothing outside it: a workspace, record, person or item
 elsewhere is not found, as on every other write route.
@@ -37,7 +40,10 @@ from psycopg.rows import TupleRow
 
 from memini import knowledge
 from memini.auth import WriteAccess
-from memini.decisions.model import DecisionItem, EvidenceArgument, NewDecision
+from memini.decisions import context
+from memini.decisions.model import DecisionItem, DomainLinkBody, EvidenceArgument, NewDecision
+from memini.knowledge.reader import load_item
+from memini.search.catalog import load_code_maps
 from memini.workspaces import NotFoundError, get_writable_workspace
 
 __all__ = [
@@ -46,9 +52,11 @@ __all__ = [
     "DecisionError",
     "decision_errors",
     "run_close",
+    "run_link_domains",
     "run_record_decision",
     "run_retract",
     "run_supersede",
+    "run_unlink_domain",
 ]
 
 type Conn = AsyncConnection[TupleRow]
@@ -98,6 +106,16 @@ def decision_errors(*, not_active: str = _LINK_ACTIVE_CONSTRAINT) -> Generator[N
     except knowledge.InvalidItemError as error:
         raise DecisionError(
             422, "invalid_item", f"The item is not valid: {error.field}: {error.reason}."
+        ) from None
+    except context.UnknownPlaceError as error:
+        raise DecisionError(
+            422,
+            "unknown_place",
+            f"Not in the catalog: {error.field}: {error.reason}; get_catalog lists the names.",
+        ) from None
+    except context.PlaceError as error:
+        raise DecisionError(
+            422, "invalid_place", f"Not a project or domain: {error.field}: {error.reason}."
         ) from None
     except NotFoundError as error:
         raise DecisionError(404, "not_found", f"No such {error.what}.") from None
@@ -186,19 +204,117 @@ async def _resolve_evidence(
 # --- The operations ------------------------------------------------------------------------------
 
 
+async def _places(
+    conn: Conn,
+    access: WriteAccess,
+    workspace_id: UUID,
+    project: str | None,
+    domains: Sequence[str],
+) -> list[tuple[str, str | None]]:
+    """``project`` and ``domains`` as the catalog of the workspace holds them."""
+    if project is None and not domains:
+        return []
+    catalog = (await load_code_maps(conn, access, [workspace_id]))[workspace_id]
+    return context.resolve_places(context.CatalogNames.of(catalog), project, domains)
+
+
+async def _with_context(conn: Conn, access: WriteAccess, item: knowledge.Item) -> DecisionItem:
+    found = await context.load_contexts(conn, access, [item.workspace_id], item_ids=[item.id])
+    return DecisionItem.of(item, found.context(item.id))
+
+
 async def run_record_decision(
-    conn: Conn, access: WriteAccess, workspace: str, decision: NewDecision
+    conn: Conn,
+    access: WriteAccess,
+    workspace: str,
+    decision: NewDecision,
+    *,
+    token_id: UUID | None = None,
 ) -> DecisionItem:
     """Record ``decision`` by hand in ``workspace`` (by name), with its evidence and participants,
-    and link the items it supersedes. The new item is active and manual."""
+    and link the items it supersedes. The new item is active and manual. Its ``project`` and
+    ``domains`` are linked by hand (origin ``manual``, :mod:`memini.decisions.context`) in the
+    same transaction; ``token_id`` is the token of the request, kept with the links."""
     with decision_errors():
         async with conn.transaction():
             found = await get_writable_workspace(conn, access, workspace)
+            places = await _places(conn, access, found.id, decision.project, decision.domains)
             evidence = await _resolve_evidence(conn, access, found.id, decision.evidence)
             item = await knowledge.record_item(
                 conn, access, found.id, decision.to_new_item(evidence)
             )
-    return DecisionItem.of(item)
+            await context.add_links(
+                conn,
+                access,
+                workspace_id=found.id,
+                item_id=item.id,
+                places=places,
+                origin="manual",
+                token_id=token_id,
+            )
+            result = await _with_context(conn, access, item)
+    return result
+
+
+async def run_link_domains(
+    conn: Conn,
+    access: WriteAccess,
+    workspace: str,
+    item_id: UUID,
+    body: DomainLinkBody,
+    *,
+    token_id: UUID | None = None,
+) -> DecisionItem:
+    """Link the stored item ``item_id`` of ``workspace`` by hand to a project or to domains of
+    the catalog. Outside the journal: the item itself does not change, whatever its status."""
+    with decision_errors():
+        async with conn.transaction():
+            found = await get_writable_workspace(conn, access, workspace)
+            await _ensure_in_workspace(conn, access, workspace, item_id)
+            places = await _places(conn, access, found.id, body.project, body.domains)
+            await context.add_links(
+                conn,
+                access,
+                workspace_id=found.id,
+                item_id=item_id,
+                places=places,
+                origin="manual",
+                token_id=token_id,
+            )
+            item = await load_item(conn, access, item_id)
+            result = await _with_context(conn, access, item)
+    return result
+
+
+async def run_unlink_domain(
+    conn: Conn,
+    access: WriteAccess,
+    workspace: str,
+    item_id: UUID,
+    *,
+    project: str,
+    domain: str | None,
+) -> DecisionItem:
+    """Remove the item's link to ``domain`` of ``project`` (``None``: to the project itself),
+    made by hand or by the model. A domain the item has by its record (push, default) or its code
+    is not a link: 409 ``not_a_link``."""
+    with decision_errors():
+        async with conn.transaction():
+            found = await get_writable_workspace(conn, access, workspace)
+            await _ensure_in_workspace(conn, access, workspace, item_id)
+            removed = await context.remove_link(
+                conn, access, workspace_id=found.id, item_id=item_id, project=project, domain=domain
+            )
+            if removed is None:
+                raise DecisionError(
+                    409,
+                    "not_a_link",
+                    "The item has no link to that project or domain: what it has by its record"
+                    " (push, default) or its code is changed there, not here.",
+                )
+            item = await load_item(conn, access, item_id)
+            result = await _with_context(conn, access, item)
+    return result
 
 
 async def _ensure_in_workspace(

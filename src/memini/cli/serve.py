@@ -44,6 +44,7 @@ from memini.cli.common import EXIT_OK, CommandError, require_migrated
 from memini.config import Settings
 from memini.credentials import Keyring
 from memini.db import Pool, connect, database_check, migrate, open_pool
+from memini.decisions.assign import assign_handler
 from memini.embeddings import Embedder, EmbeddingsNotConfiguredError, create_embedder
 from memini.executors.service import MCP_SYNC, ServiceOptions, mcp_sync_handler
 from memini.extraction.job import extract_handler, extraction_enabled
@@ -51,6 +52,7 @@ from memini.git import GitOptions, MirrorManager
 from memini.gitsync import GIT_SYNC, git_sync_handler, mirrors_unusable
 from memini.ingest import PayloadIndexer
 from memini.jobs import (
+    ASSIGN_DOMAINS_KIND,
     DEFAULT_RETENTION_INTERVAL,
     EXTRACT_KIND,
     SYNC_KINDS,
@@ -125,6 +127,7 @@ async def job_handlers(
     when an LLM provider is configured, with an LLM gate of its own that is closed at the end;
     ingest enqueues its jobs only then. It finds candidates by statement vectors too when an
     embedding provider is configured and ``extraction_candidate_retriever`` is ``hybrid``.
+    ``assign_domains`` (:mod:`memini.decisions.assign`) is there with it, on the same gate.
     ``git_sync`` (:mod:`memini.gitsync`) is
     there when an embedding provider is configured and
     mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
@@ -157,6 +160,7 @@ async def job_handlers(
                 candidates=settings.extraction_candidates,
                 embedder=embedder if hybrid else None,
             )
+            handlers[ASSIGN_DOMAINS_KIND] = assign_handler(pool, gate)
         else:
             log.info("decisions are not extracted: no LLM provider is configured")
         if embedder is not None:

@@ -133,6 +133,21 @@ class RecordBody(BaseModel):
         strict=True,
         description="true: the record was deleted at the source; send kind and external_id only.",
     )
+    project: str | None = Field(
+        default=None,
+        max_length=63,
+        description="The project of the workspace's catalog the record belongs to, by name,"
+        " when the sender knows it: one mailbox or chat holds several projects. Its decisions"
+        " are listed under it. Left out: the default of the source or stream, if any. Not part"
+        " of the content: the record is replaced whole, so a record sent again without it loses"
+        " it.",
+    )
+    domains: list[str] = Field(
+        default_factory=list[str],
+        max_length=16,
+        description="Domains of the project the record belongs to: domain or domain/subdomain,"
+        " as get_catalog names them. Needs project.",
+    )
 
     def to_record(self) -> ingest.RecordIn:
         return ingest.RecordIn(
@@ -142,6 +157,8 @@ class RecordBody(BaseModel):
             payload=self.payload,
             external_url=self.external_url,
             deleted=self.deleted,
+            project=self.project,
+            domains=tuple(self.domains),
         )
 
 

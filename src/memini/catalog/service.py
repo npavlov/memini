@@ -76,6 +76,7 @@ from memini.catalog.model import (
 )
 from memini.catalog.report import domain_code, languages, project_report
 from memini.catalog.store import Author, StoredCode, StoredDomain, StoredProject
+from memini.decisions.reads import domain_decisions
 from memini.redaction import RedactionKind, redact_text
 from memini.search.catalog import CodeArea, domain_address, load_code_maps
 from memini.search.errors import InvalidSearchError
@@ -525,7 +526,8 @@ async def run_get_catalog(
 async def run_get_domain(
     conn: Conn, access: ReadFilter, arguments: GetDomainArguments
 ) -> DomainDetail:
-    """``get_domain``: a domain or subdomain with its code and what each mask matches now."""
+    """``get_domain``: a domain or subdomain with its code and what each mask matches now, and
+    its active decisions (:func:`memini.decisions.reads.domain_decisions`)."""
     address = tuple(arguments.domain.split("/"))
     with catalog_errors():
         async with conn.transaction():
@@ -548,6 +550,13 @@ async def run_get_domain(
                 if area.project == project.name and area.domain == address[0]
             ]
             files = await store.source_files(conn, access, {area.service.source_id for area in own})
+            decisions, total = await domain_decisions(
+                conn,
+                access,
+                workspace_id=workspace.id,
+                project=project.name,
+                domain="/".join(address),
+            )
 
     def areas(of: tuple[str, ...]) -> list[CodeArea]:
         wanted = domain_address(of[0], of[1] if len(of) > 1 else None)
@@ -587,6 +596,8 @@ async def run_get_domain(
         updated_at=domain.stamp.at,
         updated_by=domain.stamp.by,
         updated_token=domain.stamp.token,
+        decisions=decisions,
+        decisions_total=total,
     )
 
 

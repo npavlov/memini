@@ -68,6 +68,11 @@ class RecordIn:
     payload: Mapping[str, Any] | None = None
     external_url: str | None = None
     deleted: bool = False
+    project: str | None = None
+    """The project of the catalog the record belongs to, by name, as whoever pushes it knows it
+    (:mod:`memini.ingest.catalog`); ``None``: the source's or stream's default, if any."""
+    domains: Sequence[str] = ()
+    """Domains of ``project`` the record belongs to: ``domain`` or ``domain/subdomain``."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -143,6 +148,9 @@ class PreparedRecord:
     normalized_text: str
     """The redacted payload as plain text (:func:`memini.payloads.normalize`), redacted again
     (:func:`memini.redaction.redact_text`)."""
+    project: str | None = None
+    """The project the record was pushed with, checked; see :class:`RecordIn`."""
+    domains: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

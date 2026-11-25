@@ -6,8 +6,8 @@
 
 ## Who and pain
 
-A team lead wants the current decisions of one business area, newest first. Today the answer is the
-best matches by words, across everything.
+A team lead wants the current decisions of one business area, newest first. Without a domain
+filter the answer is the best matches by words, across everything.
 
 ## Question
 
@@ -17,9 +17,9 @@ best matches by words, across everything.
 
 `list_decisions(domains=[...], limit=5)` without a query: newest first, complete for the decisions
 that have a domain. `get_domain` includes the domain's active decisions. Each decision carries
-`context` with its project and domains and how each link was made (`link`, `model`, `source`,
-`code`). The answer counts the project's decisions that have no domain, so the caller knows the list
-may be incomplete.
+`context` with its project and domains and how each came (`push`, `default`, `manual`, `code`,
+`model`). The answer counts the project's decisions that have no domain (`without_domain`), so the
+caller knows the list may be incomplete.
 
 ## Data
 
@@ -27,20 +27,23 @@ Decisions as in S4, plus a project and domains for each. One mailbox or chat hol
 several projects, so they are set per record (a thread, a meeting), not per source, and a decision
 inherits them from the record its evidence is in. They arrive, in this order: whoever pushes the
 record gives them in it; a source or a stream may carry a default; whoever records a decision with
-`record_decision` gives `domains`; code evidence is matched against the path masks; otherwise the
-`assign_domains` job has a model read the statement and the cited messages and pick from the catalog
-of the workspace. A project or domain that already came is never changed by the model: a person or a
-stronger model set it. Mail of two companies in one mailbox is split by whoever pushes it: a
-workspace is the isolation boundary, and nothing inside Memini routes across it.
+`record_decision` gives `domains`, or links it later; code evidence is matched against the path
+masks; otherwise the `assign_domains` job has a model read the statement and the cited messages and
+pick from the catalog of the workspace. A project or domain that already came is never changed by
+the model: a person or a stronger model set it. Mail of two companies in one mailbox is split by
+whoever pushes it: a workspace is the isolation boundary, and nothing inside Memini routes across
+it.
 
 ## Check
 
-A fixture for the filters and the count; a labelled synthetic set for `assign_domains` that reports
-accuracy and how often the model answers "none".
+`tests/test_decision_domains_db.py` for the filters, the order, the count, the links and the job on
+a fake model; `eval/domains` for `assign_domains`: a labelled synthetic set that reports accuracy
+and how often the model answers "none", against a baseline.
 
 ## Notes
 
-Today S4 answers by words only, ranked by the match.
+Partial: the baseline of the recommended local model is not recorded yet (`eval/domains/README.md`),
+and `search` does not apply a project or domain filter to the decisions it returns.
 
 ## See also
 

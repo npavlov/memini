@@ -29,6 +29,10 @@ thread needs ``messages``, each with ``author``, ``sent_at`` and ``text``; a mee
 (recipients, mentions, participants, summary, action items, transcript, the ids of messages and
 segments) are checked when present; other fields are kept and not checked.
 
+**Project and domains.** A record may name the project and domains of the catalog it belongs to
+(:mod:`memini.ingest.catalog`): checked as names, kept beside the record, not in its payload or
+content hash. A tombstone names none.
+
 **Normalized text.** The parsed payload, redacted, is rendered as the record's plain text
 (:func:`memini.payloads.normalize`), redacted again and stored as ``normalized_text`` with the
 payload.
@@ -44,6 +48,7 @@ from datetime import datetime, timedelta
 from typing import Any, Final
 from urllib.parse import urlsplit
 
+from memini.ingest.catalog import check_place
 from memini.ingest.model import (
     INGESTIBLE_KINDS,
     Batch,
@@ -329,7 +334,12 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
                 field, f"the kind and external id of records[{first}] again; send each once"
             )
         if item.deleted:
-            if item.payload is not None or item.occurred_at is not None:
+            if (
+                item.payload is not None
+                or item.occurred_at is not None
+                or item.project is not None
+                or item.domains
+            ):
                 raise InvalidBatchError(
                     field, "a tombstone has a kind and an external id, no payload or time"
                 )
@@ -339,6 +349,7 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
         if not isinstance(item.payload, Mapping):
             raise InvalidBatchError(f"{field}.payload", "a JSON object")
         external_url = _external_url(item.external_url, f"{field}.external_url")
+        project, domains = check_place(item.project, item.domains, field)
 
         # --- Redaction (memini.redaction, principle 11) ------------------------------------
         # Secrets and card numbers go here, before anything is stored or derived. Everything
@@ -376,6 +387,8 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
                 payload=payload,
                 content_hash=content_hash(payload),
                 normalized_text=normalized_text,
+                project=project,
+                domains=domains,
             )
         )
     return PreparedBatch(

@@ -167,6 +167,8 @@ Every record has the same fields; what is inside `payload` depends on `kind`.
 | `external_id` | the record's id in its source, at most 1024 bytes: a channel and the root message's id, a mail thread's first Message-ID, a meeting's id, a page's path. With the source and the kind it makes the record's id. |
 | `occurred_at` | when it happened, with a zone (`2026-11-02T09:31:00Z`): a thread's latest message, a meeting's start, a document's last change |
 | `external_url` | optional: an `http` or `https` link to it in its source |
+| `project` | optional: the project of the workspace's catalog it belongs to, by name, when the sender knows it; left out, the default of its source or stream |
+| `domains` | optional, with `project`: the domains of the project it belongs to, `domain` or `domain/subdomain` |
 | `payload` | the content, a JSON object (below) |
 
 **Updates are upserts.** A record pushed again with the same `kind` and `external_id` replaces the

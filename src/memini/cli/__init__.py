@@ -59,6 +59,8 @@ below the API::
                 [--json PATH] [--keep]
     memini eval decisions [--set DIR ...] [--extractor NAME] [--baseline PATH [--write-baseline]]
                           [--margin M] [--json PATH]
+    memini eval domains [--set PATH] [--assigner NAME] [--baseline PATH [--write-baseline]]
+                        [--margin M] [--json PATH]
     memini credentials set --workspace <name> --source <name> --kind {api_key,oauth}  < secret
     memini credentials list [--workspace <name>]
     memini credentials delete --workspace <name> --source <name>
@@ -160,6 +162,7 @@ from memini.cli import (
     decisions,
     evaluate,
     evaluate_decisions,
+    evaluate_domains,
     export,
     extract,
     forget,
@@ -577,6 +580,15 @@ def build_parser() -> argparse.ArgumentParser:
             "decisions",
             help=evaluate_decisions.HELP,
             description=evaluate_decisions.DESCRIPTION,
+        )
+    )
+    evaluate_domains.configure_parser(
+        commands.add_operator_subcommand(
+            evals.add_parser,
+            "eval",
+            "domains",
+            help=evaluate_domains.HELP,
+            description=evaluate_domains.DESCRIPTION,
         )
     )
     credentials.configure_parser(

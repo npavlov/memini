@@ -326,6 +326,9 @@ class ItemFilters:
     """Rank statements matching query words before applying the limit."""
     sources: tuple[str, ...] | None = None
     repositories: tuple[str, ...] | None = None
+    item_ids: tuple[UUID, ...] | None = None
+    """Only these items: what a filter computed outside the journal chose (the projects and
+    domains of :mod:`memini.decisions.context`)."""
 
     def __post_init__(self) -> None:
         if not 1 <= self.limit <= MAX_LIST_LIMIT:

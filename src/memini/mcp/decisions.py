@@ -130,6 +130,14 @@ def summarize_item(item: DecisionItem) -> str:
         lines.append(f"{link.item_id} {link.relation} it.")
     if item.participants:
         lines.append(f"Participants: {', '.join(str(p.person_id) for p in item.participants)}.")
+    if item.context is not None and item.context.project is not None:
+        domains = ", ".join(
+            f"{inline(d.project)}/{inline(d.domain)} ({d.via})" for d in item.context.domains
+        )
+        lines.append(
+            f"Project {inline(item.context.project)} ({item.context.project_via});"
+            f" domains: {domains or 'none'}."
+        )
     lines.append("Evidence:")
     for evidence in item.evidence:
         source = evidence.source or f"source {evidence.source_id}"
@@ -167,6 +175,8 @@ RECORD_DECISION_TOOL = Tool(
         "active items it replaces (relation replaces) or open questions a decision answers "
         "(answers): to correct an extracted item, record the correction with supersedes. An item "
         "recorded by hand is never superseded by extraction, so it survives a re-extraction. "
+        "project and domains (domain or domain/subdomain, as get_catalog names them) link it to "
+        "the catalog by hand. "
         f"{_APPEND_ONLY} {_ON_REQUEST} Returns the new item."
     ),
     arguments=RecordDecisionArguments,
@@ -238,6 +248,16 @@ DECISION_WRITE_TOOLS: Sequence[Tool[Any, Any]] = (
 """The decision write tools, in the order ``tools/list`` shows them."""
 
 
+def _summarize_list(result: DecisionList) -> str:
+    text = "\n\n".join(map(summarize_item, result.items)) or "No decisions."
+    if result.without_domain:
+        counts = "; ".join(
+            f"{inline(each.project)}: {each.items}" for each in result.without_domain
+        )
+        text += f"\n\nItems without a domain, not listed by domain: {counts}."
+    return text
+
+
 def _read_run[A: BaseModel, R: BaseModel](
     run: Callable[[Conn, ReadFilter, A], Awaitable[R]],
 ) -> Callable[[ToolCall, A], Awaitable[R]]:
@@ -259,13 +279,17 @@ DECISION_READ_TOOLS: Sequence[Tool[Any, Any]] = (
         name="list_decisions",
         title="List decisions",
         description=(
-            "Read active decisions and open questions. Set history to include earlier states. "
-            "Filter by workspace, statement words, participant ids and decision time."
+            "Read active decisions and open questions, newest first unless a query ranks them. "
+            "Set history to include earlier states. Filter by workspace, statement words, "
+            "participant ids, decision time, and projects and domains of the catalog (a domain "
+            "includes its subdomains). Each item carries its context: its project and domains "
+            "and how each came (push, default, manual, code, model). With projects or domains, "
+            "without_domain counts the project's items that no domain holds."
         ),
         arguments=ListDecisionsArguments,
         result=DecisionList,
         run=_read_run(run_list_decisions),
-        summarize=lambda result: "\n\n".join(map(summarize_item, result.items)) or "No decisions.",
+        summarize=_summarize_list,
     ),
     Tool(
         name="get_decision",

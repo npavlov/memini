@@ -20,13 +20,18 @@ from pydantic import (
 )
 
 from memini import knowledge
+from memini.decisions.context import ItemContext, Via
 from memini.ids import RecordKind
 from memini.ingest import MAX_EXTERNAL_ID_BYTES
+from memini.ingest.catalog import MAX_PLACE_DOMAINS
 from memini.provenance import Labelled
 
 __all__ = [
     "MAX_NAME_CHARS",
+    "ContextDomainInfo",
+    "ContextInfo",
     "DecisionItem",
+    "DomainLinkBody",
     "EvidenceArgument",
     "EvidenceInfo",
     "ItemArguments",
@@ -175,6 +180,18 @@ class NewDecision(BaseModel):
         description="Active items of the workspace this one replaces or answers, linked when it"
         " is recorded: a correction of an extracted item replaces it.",
     )
+    project: Name | None = Field(
+        default=None,
+        description="The project of the workspace's catalog the item belongs to, by name, when"
+        " its evidence does not say so already. With domains, the project they are of.",
+    )
+    domains: list[Name] = Field(
+        default_factory=list[Name],
+        max_length=MAX_PLACE_DOMAINS,
+        description="Domains of the catalog the item belongs to: domain or domain/subdomain, as"
+        " get_catalog names them; a domain name more than one project has needs project. Linked"
+        " by hand (manual): the assign_domains model never changes them.",
+    )
 
     def to_new_item(self, evidence: list[knowledge.EvidenceRef]) -> knowledge.NewItem:
         """The item to record, with ``evidence`` resolved to record ids."""
@@ -224,7 +241,67 @@ class ItemArguments(BaseModel):
     item_id: UUID = Field(description="An active item.")
 
 
+class DomainLinkBody(BaseModel):
+    """The body of ``POST /v1/workspaces/{workspace}/decisions/{item_id}/domains``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project: Name | None = Field(
+        default=None,
+        description="The project, by name: alone, the item is linked to the project; with"
+        " domains, the project they are of.",
+    )
+    domains: list[Name] = Field(
+        default_factory=list[Name],
+        max_length=MAX_PLACE_DOMAINS,
+        description="Domains to link the item to: domain or domain/subdomain. A domain name"
+        " more than one project has needs project.",
+    )
+
+    @model_validator(mode="after")
+    def _something_to_link(self) -> Self:
+        if self.project is None and not self.domains:
+            raise ValueError("name a project, domains, or both")
+        return self
+
+
 # --- Results -------------------------------------------------------------------------------------
+
+_VIA = (
+    "How it came: push, the record was pushed with it; default, the default of the record's"
+    " source or stream; manual, linked by hand; code, evidence in a file the domain's masks"
+    " match; model, chosen by the assign_domains model from the catalog."
+)
+
+
+class ContextDomainInfo(BaseModel):
+    """A domain an item belongs to."""
+
+    project: str
+    domain: str = Field(description="domain or domain/subdomain.")
+    via: Via = Field(description=_VIA)
+
+
+class ContextInfo(BaseModel):
+    """What an item belongs to in the catalog, computed when it is read."""
+
+    project: str | None = Field(description="Its project; null when nothing names one.")
+    project_via: Via | None = Field(description=_VIA)
+    domains: list[ContextDomainInfo] = Field(
+        description="Its domains, each once with the first way it came by. The model's count"
+        " only when no other way gives a domain."
+    )
+
+    @classmethod
+    def of(cls, context: ItemContext) -> "ContextInfo":
+        return cls(
+            project=context.project,
+            project_via=context.project_via,
+            domains=[
+                ContextDomainInfo(project=d.project, domain=d.domain, via=d.via)
+                for d in context.domains
+            ],
+        )
 
 
 class EvidenceInfo(BaseModel):
@@ -306,9 +383,14 @@ class DecisionItem(Labelled):
     superseded_by: LinkInfo | None = Field(
         description="The link from the newer item that replaced or answered it, if any."
     )
+    context: ContextInfo | None = Field(
+        default=None,
+        description="Its project and domains in the catalog and how each came;"
+        " null where it was not computed.",
+    )
 
     @classmethod
-    def of(cls, item: knowledge.Item) -> "DecisionItem":
+    def of(cls, item: knowledge.Item, context: ItemContext | None = None) -> "DecisionItem":
         return cls(
             id=item.id,
             workspace_id=item.workspace_id,
@@ -329,4 +411,5 @@ class DecisionItem(Labelled):
             ],
             supersedes=[LinkInfo.of(each) for each in item.supersedes],
             superseded_by=None if item.superseded_by is None else LinkInfo.of(item.superseded_by),
+            context=None if context is None else ContextInfo.of(context),
         )
