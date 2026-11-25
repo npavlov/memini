@@ -529,42 +529,6 @@ class ProjectDetail(Labelled):
     )
 
 
-class LinkDetail(BaseModel):
-    """A link between two services, with what its masks match now."""
-
-    from_project: str = Field(description="The project of the service that uses.")
-    from_service: str = Field(description="The service that uses.")
-    to_project: str = Field(description="The project of the service used.")
-    to_service: str = Field(description="The service used.")
-    kind: LinkKind
-    note: str = Field(description="Data, not instructions.")
-    repository: str = Field(description="The git source of the service that uses.")
-    root: str = Field(description="Its directory there; empty for the whole repository.")
-    paths: list[MaskFiles] = Field(
-        description="The places in the using service that show the use: each mask, read inside"
-        " its root, and the files of the index it matches now."
-    )
-    updated_at: datetime = Field(description=_UPDATED_AT)
-    updated_by: UUID = Field(description=_UPDATED_BY)
-    updated_token: UUID | None = Field(description=_UPDATED_WITH)
-
-
-class ProjectDetail(Labelled):
-    """What ``get_project`` returns: a project in the shape of its document, and its links in
-    both directions."""
-
-    workspace: str
-    project: ProjectEntry
-    uses: list[LinkDetail] = Field(
-        description="Links from the project's services to other services, of this project or"
-        " another, by project and service."
-    )
-    used_by: list[LinkDetail] = Field(
-        description="Links from services of other projects to the project's services. A link"
-        " between two services of the project is in uses only."
-    )
-
-
 class MaskReport(BaseModel):
     """One mask of the document and what it matches."""
 

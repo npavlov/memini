@@ -9,7 +9,8 @@ the project's decisions without a domain is right; get_domain lists the domain's
 returns the decisions of the projects and domains named, subdomains included, the same over HTTP
 and MCP; a link made by hand survives a run of assign_domains again, and an answer, "none"
 included, is not asked again until the catalog changes; a source with llm_policy none is skipped
-and counted; the journal tables and their triggers do not change. The library's rules are in test_decision_context.py.
+and counted; the journal tables and their triggers do not change. The library's rules are in
+test_decision_context.py.
 
 Every record, name and statement here is synthetic.
 """
