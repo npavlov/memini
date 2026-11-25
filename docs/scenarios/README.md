@@ -22,8 +22,8 @@ Each scenario is one file with the same parts:
 | Data | What must be in the base to answer, who puts it there and by which path. |
 | Check | The eval question or acceptance test that proves the answer. |
 
-Status is `works` (in 0.1.0), `partial`, `planned` (with its issue) or `to confirm` (the owner has
-not confirmed the pain). Names of tools, filters and tables under a planned scenario are working
+Status is `works` (in a release), `ready` (in `main`, ships with the next release), `partial`,
+`planned` (with its issue) or `to confirm` (the owner has not confirmed the pain). Names of tools, filters and tables under a planned scenario are working
 names: nothing planned is in the code yet.
 
 ## People
@@ -43,25 +43,25 @@ pain.
 | Id | Question | Who | Status | Issue |
 |---|---|---|---|---|
 | [S1](S01-where-is-x-implemented.md) | Where and how is X implemented? | Engineer | works |  |
-| [S7](S07-who-changed-what.md) | Who changed what? | Team lead, engineer | planned | memini-qpk.4 |
+| [S7](S07-who-changed-what.md) | Who changed what? | Team lead, engineer | ready | memini-qpk.4 |
 | [S10](S10-definitions-in-my-language.md) | Find a definition in my language | Engineer on another stack | partial | memini-qpk.2 |
 
 ### Catalog: what code and conversations belong to
 
 | Id | Question | Who | Status | Issue |
 |---|---|---|---|---|
-| [S2](S02-code-for-a-domain.md) | Which code is responsible for domain X? | Engineer, team lead | planned | memini-qpk.1 |
-| [S3](S03-what-code-belongs-to.md) | What does this piece of code belong to? | Engineer | planned | memini-qpk.1 |
-| [S8](S08-several-companies-and-projects.md) | Several companies, several projects each | Freelancer | partial | memini-qpk.1 |
-| [S9](S09-project-map-by-an-agent.md) | The project map without drawing it by hand | New user | planned | memini-qpk.1 |
-| [S13](S13-links-between-projects.md) | How is project A connected to project B? | Team lead, engineer | partial | memini-qpk.8 |
+| [S2](S02-code-for-a-domain.md) | Which code is responsible for domain X? | Engineer, team lead | ready | memini-qpk.1 |
+| [S3](S03-what-code-belongs-to.md) | What does this piece of code belong to? | Engineer | ready | memini-qpk.1 |
+| [S8](S08-several-companies-and-projects.md) | Several companies, several projects each | Freelancer | ready | memini-qpk.1 |
+| [S9](S09-project-map-by-an-agent.md) | The project map without drawing it by hand | New user | ready | memini-qpk.1 |
+| [S13](S13-links-between-projects.md) | How is project A connected to project B? | Team lead, engineer | ready | memini-qpk.8 |
 
 ### Decisions
 
 | Id | Question | Who | Status | Issue |
 |---|---|---|---|---|
 | [S4](S04-what-was-decided.md) | What was decided about X? | Team lead | works |  |
-| [S5](S05-latest-decisions-of-a-domain.md) | What are the latest decisions about domain X? | Team lead | planned | memini-qpk.6 |
+| [S5](S05-latest-decisions-of-a-domain.md) | What are the latest decisions about domain X? | Team lead | ready | memini-qpk.6 |
 
 ### My context
 
@@ -73,10 +73,10 @@ pain.
 
 | Id | Question | Who | Status | Issue |
 |---|---|---|---|---|
-| [S11](S11-run-without-a-terminal.md) | Run Memini without a terminal | Operator | planned | memini-qpk.5 |
-| [S12](S12-see-and-edit-the-project-map.md) | See the project map and correct it | Team lead | planned | memini-qpk.5 |
-| [S15](S15-see-what-memini-holds.md) | See what Memini holds and try its tools | Operator, team lead | planned | memini-qpk.9 |
-| [S16](S16-connect-agents-in-one-click.md) | Connect my agent clients in one click | Operator, engineer | planned | memini-qpk.11 |
+| [S11](S11-run-without-a-terminal.md) | Run Memini without a terminal | Operator | ready | memini-qpk.5 |
+| [S12](S12-see-and-edit-the-project-map.md) | See the project map and correct it | Team lead | ready | memini-qpk.5 |
+| [S15](S15-see-what-memini-holds.md) | See what Memini holds and try its tools | Operator, team lead | ready | memini-qpk.9 |
+| [S16](S16-connect-agents-in-one-click.md) | Connect my agent clients in one click | Operator, engineer | ready | memini-qpk.11 |
 
 ## Tools and filters the scenarios need
 

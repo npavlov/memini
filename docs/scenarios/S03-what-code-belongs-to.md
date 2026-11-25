@@ -2,7 +2,7 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Catalog: what code and conversations belong to | Engineer | planned | memini-qpk.1 |
+| Catalog: what code and conversations belong to | Engineer | ready | memini-qpk.1 |
 
 ## Who and pain
 

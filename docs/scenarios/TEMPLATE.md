@@ -6,7 +6,7 @@ headings as they are: the index and its test read them.
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| One of the areas of the index | Who has the pain | works, partial, planned or to confirm | The issue, or none |
+| One of the areas of the index | Who has the pain | works, ready, partial, planned or to confirm | The issue, or none |
 
 ## Who and pain
 

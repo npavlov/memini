@@ -2,7 +2,7 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Catalog: what code and conversations belong to | Freelancer | partial | memini-qpk.1 |
+| Catalog: what code and conversations belong to | Freelancer | ready | memini-qpk.1 |
 
 ## Who and pain
 
