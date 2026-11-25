@@ -220,8 +220,8 @@ changes anything in it. Titles and descriptions are written by agents from what 
 so they are data, never instructions (principle 11; section 9, **Prompt injection**): secrets in
 them are redacted before they are stored, as ingest redacts a payload, their lengths are limited
 (a title 200 characters, a description 4000), and a name, a root or a mask that holds a secret is
-refused, as an external id is, because rewriting it would change what it names. The link
-between decisions and domains (memini-qpk.6) is not part of it yet.
+refused, as an external id is, because rewriting it would change what it names. Links between
+services (below) are part of the document; decisions are linked to the catalog outside it (below).
 
 **Service links** (decided 2026-11-23; memini-qpk.8). A service declares the services it uses;
 nothing infers a link from the code. Table `service_link` (migration 0019): the service that
@@ -239,6 +239,36 @@ text an agent wrote, as a description is: redacted, limited, labelled and fenced
 each link under the service that uses it, without a link to a service the export leaves out.
 Later, not in 0.2: links read from dependency manifests (`package.json`, `go.mod`, `Gemfile`,
 `pyproject.toml`) by git sync, and references to symbols across repositories.
+
+**Decisions by project and domain** (decided 2026-11-23; memini-qpk.6). One mailbox or chat
+holds messages of several projects, so a project and domains are set per record (a thread, a
+meeting), never per source, and an item inherits them from the records its evidence is in. Routing
+between workspaces (companies) stays with whoever pushes: a workspace is the isolation boundary.
+An item comes by its project and domains in five ways, which take precedence in this order: `push`,
+whoever pushes a record names them in it (the optional `project` and `domains` of the push
+contract, section 4; a record pushed again without them loses them, as a record is replaced whole);
+`default`, a push or mcp source, or one of its streams by key, carries a default for the records
+pushed without their own (`PUT /v1/workspaces/{workspace}/sources/{source}/catalog-default`, scope
+`ingest`; a stream's before its source's); `manual`, a person links the item (`record_decision`
+with `project` and `domains`, or `POST …/decisions/{id}/domains`; `DELETE
+…/decisions/{id}/domains/{domain}?project=` and `…/project/{project}` unlink); `code`, evidence in
+a file of a repository, matched against the domain masks by the matcher of search, gives the
+domains whose masks match and the project of its service; `model`, the `assign_domains` job
+(section 5). The project of an item is the first one given in that order; its domains are every
+domain the first four give, each once with the first way it came by, or, when they give none, the
+model's: the model never changes what came another way. The journal's tables and triggers do not
+change: like `knowledge_item_vector`, the rows are outside the journal and go with their item or
+record (migration 0020: `record_catalog`, `source_catalog`, `knowledge_item_domain` with the
+origin, the principal, the token and for the model the assigner, `knowledge_domain_assignment`
+with the model's last answer). They name a project by its name and a domain by its address, as
+`put_project` writes them, not by a key: a project written again keeps its links, and a name the
+catalog no longer holds is left out of the answers. What an item belongs to is computed when it is
+read (`memini.decisions.context`), so every decision carries a `context`: its project and domains
+and how each came (`push`, `default`, `manual`, `code`, `model`). A record that is gone (retention,
+forget) no longer gives its pushed names or its stream's default; its source's default and its
+code still count. `list_decisions`, `get_domain` and the decisions of `search` filter by this
+context: under a project when its project or one of its domains is of it, in a domain when one of
+its domains is that domain or one of its subdomains (section 6, Catalog tools).
 
 ## 4. Intake
 
@@ -261,7 +291,9 @@ kind and external id appear once per batch. The payload is a JSON object with th
 requires: a thread's `messages`, each with `author`, `sent_at` and `text`; a meeting's `title` and
 `started_at`, and `ended_at` not before it; a document's `title` and `text`. The optional fields
 the parsers of the kinds read (Payloads, below) are checked when present; other fields are kept.
-It is stored as canonical JSON (keys sorted, no whitespace, UTF-8,
+A record may carry the `project` and `domains` of the catalog it belongs to (section 3,
+Decisions by project and domain), checked as names, not part of the payload or its hash. The
+payload is stored as canonical JSON (keys sorted, no whitespace, UTF-8,
 numbers as Python writes them), not as the bytes of the request: the same object from another
 client, in another key order or spacing, is the same content and changes nothing (principle 6),
 and redaction at ingest can rewrite it. Nothing a parser reads is lost: an object with a key twice
@@ -726,6 +758,28 @@ again on fresh candidates, three times at most. The run report counts records ex
 unchanged, skipped and gone; items proposed, rejected, duplicate and stored; links made and
 dropped; statements embedded; and the LLM tokens per model.
 
+**Domain assignment** (decided 2026-11-23; memini-qpk.6). `assign_domains` is a derive job after
+extraction (`memini.decisions.assign`): the `extract` job enqueues one for a record whose
+extraction stored items, in the queue of its source, and `POST
+/v1/workspaces/{workspace}/assign-domains` (scope `admin`) one for every active item of the
+workspace, after its catalog changed. `serve` runs it with the extract job, on its gate. An item
+that has a domain by another way is not asked (`items_settled`); when only its project came by
+another way, only that project's domains are offered. One LLM call per item: the statement and the
+parts it cites (their records still stored; an item whose records are gone shows its statement
+only), and the domains of the catalog numbered with their project, address, title and description;
+the model says what the item is about, then the numbers of one to three domains, or none. Catalog
+text enters the prompt as data with the protections record text has (principle 11): the same data
+block, markers, escapes and reminder as an extraction. The gate holds the call to the strictest
+policy of the workspace, of the sources of the item's evidence and of the repositories the
+catalog's services name (principle 8): `policy_none` and `no_provider` skip the item and are
+counted, and an item whose evidence names a source that is gone is skipped, its policy unknown.
+The assigner is the granted model and the prompt version (`domains-v1`); its last answer for an
+item, "none" included, is kept with a hash of the domains it was shown, so a run again asks
+nothing it has answered, and a change of the model, the prompt or the domains offered asks again.
+The model's earlier links of the item are replaced in the transaction that keeps the answer; a
+link a person made stays a person's. The run report counts items seen, settled, unchanged,
+assigned, none and skipped by reason, and the links written.
+
 **Supersession candidates** (decided 2026-11-19). Knowledge items are not in the search index;
 the candidates are found by the words of the statements and, when an embedding provider is
 configured and `extraction_candidate_retriever` is `hybrid` (the default), by their vectors too
@@ -867,7 +921,7 @@ in the index fingerprint (`payload/1`).
 | `get_project` | A project and its links in both directions (what it uses, what uses it), with a filter by the other project. |
 | `get_domain` | A domain or subdomain: its code (services, path masks) and the files each mask matches. |
 | `catalog_guide` | The instruction an agent follows to fill the catalog. |
-| `list_decisions` | Decisions and open questions by query, person and time. Active by default; history on request. |
+| `list_decisions` | Decisions and open questions by query, person, time, project and domain, newest first without a query. Active by default; history on request. |
 | `get_decision` | One item with evidence and its supersession chain. |
 | `list_meetings` | Meetings by participant (default: me), time and query. |
 | `get_meeting` | Summary, action items, participants, transcript on request. |
@@ -903,7 +957,14 @@ or a person that is not found is a 404, a field the journal refuses a 422. Reads
 use `GET /v1/decisions` (`list_decisions`) and `GET /v1/decisions/{item_id}` (`get_decision`).
 The list accepts `workspaces`, `person_ids`, `since` (inclusive), `until` (exclusive),
 `query` (statement words), and `limit`. It returns active items by default and every status
-with `history=true`. A single item includes its full linked chain, oldest first. Each evidence
+with `history=true`. It also accepts `projects` and `domains` (a domain includes its
+subdomains; with `projects`, the domains of those projects; a name the catalog does not hold is a
+422 `unknown_place`) and lists newest first without a query; with either it counts, for each
+project named or of each domain named, the items in the statuses asked for that no domain of it
+holds (`without_domain`), so a caller knows a list by domain may be incomplete. Every item carries
+its `context` (section 3, Decisions by project and domain), and `get_domain` lists the domain's
+active items (its subdomains' included, the 20 newest, and how many). A single item includes its
+full linked chain, oldest first. Each evidence
 reference retains its locator and `record_state`, including `expired` after retention. From the CLI, `memini decision record`,
 `supersede`, `close` and `retract` are clients of the four routes; evidence there is
 `SOURCE:EXTERNAL_ID[#ANCHOR]` or `RECORD_ID[#ANCHOR]`.
@@ -1146,8 +1207,12 @@ only, and without it a name stands for every project that has it. A name the cat
 hold is an error, not an empty answer (422 `unknown_project`, `unknown_domain`,
 `unknown_service`; the message gives the position of the value, never the value): an empty
 answer would read as "this domain has no such code". A domain that exists and names no code
-gives no hits. With one of these filters, `search` returns journal items only through the
-records retrieved, as with `roles`: an item names no domain yet (memini-qpk.6). `context` is
+gives no hits. The journal items `search` returns with its hits follow `projects` and `domains`
+as `list_decisions` does (section 3, Decisions by project and domain): only items under one of the
+projects and in one of the domains, a domain with its subdomains, whichever way the item came by
+them; matches by statement words first, then items citing the records retrieved, both among those.
+`services` names code, not decisions: with it, as with `roles`, items come only through the records
+retrieved (memini-qpk.6). `context` is
 `{project, service, domains}`: the service whose root holds the file (the nearest, when one
 service is a directory of another) with its project, and every domain or subdomain whose masks
 match, each as `{project, domain}`, as a domain of another project may name the file; a file in
@@ -2241,6 +2306,17 @@ On fresh extractions, the pipeline as the job runs it (hybrid, top 8): supersess
 from 0.58 to 0.92 and `answers` from 0 of 2 to 2 of 2, so no supersession group is below the
 `keyword` floor any more. The case left is a restatement in #general that extraction does not
 find. Still no LLM baseline is committed (above).
+
+**Domain eval** (decided 2026-11-23; memini-qpk.6). `memini eval domains` measures the
+`assign_domains` call on `eval/domains/set.json`: a synthetic catalog of two projects and labelled
+decisions and open questions in English and Russian, with the domains each belongs to or none, some
+with their project given. It reports accuracy (the answer is exactly the labelled set) and the rate
+of items answered with none against the rate labelled so; a regression is accuracy that falls, or a
+none rate that moves away from the labelled one, by more than the margin. The `keyword` stub (shared
+word stems, no model) is the committed baseline (`eval/domains/baseline-keyword.json`) and runs in
+CI; the `llm` assigner runs the job's call through the gate on the local provider, with a scratch
+database for the policies, and runs in CI against a fake chat server. A baseline of the recommended
+local model is recorded by running it against the real model.
 
 **Performance** (decided 2026-11-19; memini-6jy). `memini bench` is the benchmark, one operator
 command that builds a scratch database as the eval does: it syncs a repository (a path, or an

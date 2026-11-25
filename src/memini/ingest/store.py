@@ -16,6 +16,7 @@ from memini.auth import WriteAccess
 from memini.ids import record_id
 from memini.index import IndexCounts, delete_record_chunks
 from memini.index.writer import RUN_COUNTS
+from memini.ingest.catalog import write_record_catalog
 from memini.ingest.checkpoint import advance_checkpoint
 from memini.ingest.filtering import filter_batch, read_source_filters
 from memini.ingest.model import (
@@ -173,6 +174,8 @@ class _Tally:
     """Persons, aliases and links the batch's records made; reported after it commits."""
     extractions: int = 0
     """Extraction jobs the batch enqueued (or found queued) for its threads and meetings."""
+    placed: int = 0
+    """Rows of record_catalog the batch wrote or deleted: projects and domains pushed."""
 
 
 async def _tombstone(conn: Conn, tally: _Tally, source_id: UUID, ids: Sequence[str]) -> int:
@@ -334,6 +337,17 @@ async def _store(
                 records=written,
             )
 
+        # The catalog hook (memini.ingest.catalog): the project and domains each stored record
+        # was pushed with, as a diff, also for a record whose row was not written again.
+        tally.placed = await write_record_catalog(
+            conn,
+            workspace_id=target.workspace_id,
+            owner_id=access.owner_id,
+            source_id=target.source_id,
+            records=[item for item in batch.records if ids[item.index] not in forgotten],
+            ids=ids,
+        )
+
         if extract:
             # The extraction hook (memini.jobs.extraction): a job for each thread and meeting whose
             # content is new or changed, visible to workers when the batch commits.
@@ -400,6 +414,8 @@ def _count(run: Run | None, tally: _Tally, batch: PreparedBatch) -> None:
         ("extractions_enqueued", tally.extractions),
     ):
         run.count(name, value)
+    if tally.placed:
+        run.count("record_places_written", tally.placed)
 
 
 async def _store_once(

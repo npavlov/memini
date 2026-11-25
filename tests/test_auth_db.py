@@ -511,6 +511,12 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "extract",
         "forget",
         "put_project",
+        "link_decision_domains",
+        "unlink_decision_domain",
+        "unlink_decision_project",
+        "put_source_default",
+        "delete_source_default",
+        "assign_domains",
     }
     public_or_service = {"/healthz", "/readyz", "/version", "/metrics", "/openapi.json", "/mcp"}
     # The service's own text, the same for every token: it reads no row to filter.

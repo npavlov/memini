@@ -1,0 +1,199 @@
+{
+  "name": "harbour",
+  "about": "Synthetic, written by hand: a harbour workspace with two projects. Every name, place and statement is invented.",
+  "catalog": [
+    {
+      "project": "port",
+      "title": "Port operations",
+      "domains": [
+        {
+          "domain": "fees",
+          "title": "Fees",
+          "description": "What a call at the harbour costs: rates, discounts, taxes and the invoices of harbour fees."
+        },
+        {
+          "domain": "fees/berth",
+          "title": "Berth fees",
+          "description": "What mooring at a berth costs, by the length of the ship and the time it stays."
+        },
+        {
+          "domain": "fees/pilot",
+          "title": "Pilot fees",
+          "description": "What pilotage costs, by draught, and who is billed for it."
+        },
+        {
+          "domain": "bookings",
+          "title": "Bookings",
+          "description": "Reserving berths online: the booking form, booking windows and cancellations."
+        },
+        {
+          "domain": "water",
+          "title": "Water levels",
+          "description": "Tides, tide tables, tide gauges and high water warnings."
+        }
+      ]
+    },
+    {
+      "project": "fleet",
+      "title": "Tug fleet",
+      "domains": [
+        {
+          "domain": "maintenance",
+          "title": "Maintenance",
+          "description": "Engines, hulls, repairs, inspections and spare parts of the tugs."
+        },
+        {
+          "domain": "crew",
+          "title": "Crew",
+          "description": "Rosters, shifts and duty hours of the tug crews."
+        },
+        {
+          "domain": "fuel",
+          "title": "Fuel",
+          "description": "Buying fuel and bunkering the tugs and the pilot boats."
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "d01",
+      "statement": "Berth fees are charged per started hour from 1 May.",
+      "said": [{"from": "Ann Example", "text": "From May we charge berths per started hour, not per day."}],
+      "expected": ["port:fees/berth"]
+    },
+    {
+      "id": "d02",
+      "statement": "The pilot fee doubles for ships with a draught over nine metres.",
+      "expected": ["port:fees/pilot"]
+    },
+    {
+      "id": "d03",
+      "statement": "Every harbour fee is shown with its tax on the invoice.",
+      "expected": ["port:fees"]
+    },
+    {
+      "id": "d04",
+      "statement": "The online booking form asks for the length of the ship before the dates.",
+      "expected": ["port:bookings"]
+    },
+    {
+      "id": "d05",
+      "statement": "Tide tables are published a week ahead instead of a day ahead.",
+      "expected": ["port:water"]
+    },
+    {
+      "id": "d06",
+      "statement": "Tug engines get an oil change every 250 running hours.",
+      "expected": ["fleet:maintenance"]
+    },
+    {
+      "id": "d07",
+      "statement": "Night shifts on the tugs last at most ten hours.",
+      "said": [{"from": "Bo Sample", "text": "No crew shift at night longer than ten hours, agreed."}],
+      "expected": ["fleet:crew"]
+    },
+    {
+      "id": "d08",
+      "statement": "Bunkering moves to the supplier on the north quay from June.",
+      "expected": ["fleet:fuel"]
+    },
+    {
+      "id": "d09",
+      "statement": "The weekly team call moves to Thursday mornings.",
+      "expected": []
+    },
+    {
+      "id": "d10",
+      "kind": "open_question",
+      "statement": "Who keeps the notes of the retrospective?",
+      "expected": []
+    },
+    {
+      "id": "d11",
+      "kind": "open_question",
+      "statement": "Does a booking cancelled less than a day ahead still pay the berth fee?",
+      "expected": ["port:bookings", "port:fees/berth"]
+    },
+    {
+      "id": "d12",
+      "statement": "Divers inspect the hulls of the tugs twice a year.",
+      "expected": ["fleet:maintenance"]
+    },
+    {
+      "id": "d13",
+      "statement": "The canteen gets a new coffee machine.",
+      "expected": []
+    },
+    {
+      "id": "d14",
+      "statement": "Crew members swap shifts through the roster only.",
+      "expected": ["fleet:crew"]
+    },
+    {
+      "id": "d15",
+      "statement": "Fuel for the pilot boats is bought in bulk every quarter.",
+      "expected": ["fleet:fuel"]
+    },
+    {
+      "id": "d16",
+      "statement": "High water warnings go out by text message two hours ahead.",
+      "expected": ["port:water"]
+    },
+    {
+      "id": "d17",
+      "statement": "Berths can be booked ninety days in advance.",
+      "expected": ["port:bookings"]
+    },
+    {
+      "id": "d18",
+      "statement": "Every new colleague gets a laptop with the VPN set up.",
+      "expected": []
+    },
+    {
+      "id": "d19",
+      "statement": "The fleet manager approves every tug repair above 5000.",
+      "expected": ["fleet:maintenance"]
+    },
+    {
+      "id": "d20",
+      "project": "port",
+      "statement": "Regular callers get a discount on every harbour fee.",
+      "expected": ["port:fees"]
+    },
+    {
+      "id": "d21",
+      "project": "fleet",
+      "statement": "Spare propellers are ordered from one supplier only.",
+      "expected": ["fleet:maintenance"]
+    },
+    {
+      "id": "d22",
+      "statement": "Pilot fees are billed to the agent of the ship, not to its owner.",
+      "expected": ["port:fees/pilot"]
+    },
+    {
+      "id": "d23",
+      "statement": "Expense reports are due on the fifth of each month.",
+      "expected": []
+    },
+    {
+      "id": "d24",
+      "kind": "open_question",
+      "statement": "Should the readings of the tide gauges be kept for ten years?",
+      "expected": ["port:water"]
+    },
+    {
+      "id": "d25",
+      "language": "ru",
+      "statement": "Стоянка у причала оплачивается за каждый начатый час.",
+      "expected": ["port:fees/berth"]
+    },
+    {
+      "id": "d26",
+      "language": "ru",
+      "statement": "Планёрку перенесли на пятницу.",
+      "expected": []
+    }
+  ]
+}

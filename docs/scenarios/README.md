@@ -61,7 +61,7 @@ pain.
 | Id | Question | Who | Status | Issue |
 |---|---|---|---|---|
 | [S4](S04-what-was-decided.md) | What was decided about X? | Team lead | works |  |
-| [S5](S05-latest-decisions-of-a-domain.md) | What are the latest decisions about domain X? | Team lead | partial | memini-qpk.6 |
+| [S5](S05-latest-decisions-of-a-domain.md) | What are the latest decisions about domain X? | Team lead | planned | memini-qpk.6 |
 
 ### My context
 
@@ -85,7 +85,7 @@ asks for it. A filter no scenario asks for is not built.
 | Tool | In 0.1.0 | Planned | Scenarios |
 |---|---|---|---|
 | `search_code` | `query`, `mode` (semantic, exact, regex, symbol), `repositories`, `paths`, `languages` | `projects`, `domains`, `services` | [S1](S01-where-is-x-implemented.md), [S2](S02-code-for-a-domain.md), [S8](S08-several-companies-and-projects.md) |
-| `search` | `query`, `kinds`, `sources`, `repositories`, `persons`, `roles`, `since`, `until`, `mode` | `projects`, `domains`, `services` | [S1](S01-where-is-x-implemented.md), [S4](S04-what-was-decided.md), [S2](S02-code-for-a-domain.md), [S8](S08-several-companies-and-projects.md) |
+| `search` | `query`, `kinds`, `sources`, `repositories`, `persons`, `roles`, `since`, `until`, `mode` | `projects`, `domains`, `services` | [S1](S01-where-is-x-implemented.md), [S4](S04-what-was-decided.md), [S5](S05-latest-decisions-of-a-domain.md), [S2](S02-code-for-a-domain.md), [S8](S08-several-companies-and-projects.md) |
 | `get_symbol` | `name`, `match`, `repositories`, `paths`, `languages` |  | [S1](S01-where-is-x-implemented.md), [S10](S10-definitions-in-my-language.md) |
 | `read_source` | `repository`, `path`, `ref`, `start_line`, `end_line` | `context` in the answer | [S1](S01-where-is-x-implemented.md), [S3](S03-what-code-belongs-to.md), [S9](S09-project-map-by-an-agent.md) |
 | `list_decisions` | `query`, `persons`, `since`, `until`, `history`, `limit` | `projects`, `domains`; newest first without a query | [S4](S04-what-was-decided.md), [S5](S05-latest-decisions-of-a-domain.md) |
