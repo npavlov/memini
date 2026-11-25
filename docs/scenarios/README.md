@@ -61,7 +61,7 @@ pain.
 | Id | Question | Who | Status | Issue |
 |---|---|---|---|---|
 | [S4](S04-what-was-decided.md) | What was decided about X? | Team lead | works |  |
-| [S5](S05-latest-decisions-of-a-domain.md) | What are the latest decisions about domain X? | Team lead | partial | memini-qpk.6 |
+| [S5](S05-latest-decisions-of-a-domain.md) | What are the latest decisions about domain X? | Team lead | planned | memini-qpk.6 |
 
 ### My context
 

@@ -2,7 +2,7 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Decisions | Team lead | partial | memini-qpk.6 |
+| Decisions | Team lead | planned | memini-qpk.6 |
 
 ## Who and pain
 
@@ -45,7 +45,9 @@ decisions of `search` by domain over HTTP and MCP, and the job on a fake model; 
 
 ## Notes
 
-Partial: the baseline of the recommended local model is not recorded yet (`eval/domains/README.md`).
+The model step chooses the right domains for 24 of 26 labelled items with `qwen3:4b-instruct`
+(`eval/domains/baseline-qwen3.json`); its errors give a domain to an item that has none. The set
+holds two Russian items only.
 
 ## See also
 
