@@ -1,4 +1,12 @@
-"""Stream workspace records and decision history to stdout as JSON Lines."""
+"""Stream workspace records, decision history and the catalog to stdout as JSON Lines.
+
+A line is a ``record``, a ``knowledge_item`` or a ``project``. A project line is the project of
+the catalog as its document (requirements, section 3, Catalog): its services, and its domains
+with their subdomains and code, with the version and who changed each entry last and when. The
+catalog is authored data, so the export holds it whole; nothing in it is derived. Without
+``--include-private``, a service over a private source is left out, with the code entries that
+name it, as the records of that source are.
+"""
 
 import argparse
 import base64
@@ -11,6 +19,7 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow, dict_row
 
 from memini.auth import WriteAccess
+from memini.catalog.store import Stamp, StoredCode, StoredDomain, read_projects
 from memini.cli.common import EXIT_OK, CommandError, require_migrated
 from memini.config import Settings
 from memini.db import connect
@@ -84,6 +93,78 @@ async def _journal(
         condition = sql.SQL("{} AND i.id > %(after)s").format(_VISIBLE)
 
 
+def _stamp(stamp: Stamp) -> dict[str, Any]:
+    return {
+        "updated_at": stamp.at.isoformat(),
+        "updated_by": str(stamp.by),
+        "updated_token": None if stamp.token is None else str(stamp.token),
+    }
+
+
+def _domain_row(domain: StoredDomain, code: list[StoredCode]) -> dict[str, Any]:
+    return {
+        "name": domain.name,
+        "title": domain.title,
+        "description": domain.description,
+        "code": [
+            {
+                "project": each.project,
+                "service": each.service,
+                "paths": list(each.paths),
+                **_stamp(each.stamp),
+            }
+            for each in code
+            if each.domain_id == domain.id
+        ],
+        **_stamp(domain.stamp),
+    }
+
+
+async def _projects(
+    conn: Conn, workspace: UUID, owner: UUID, private: bool
+) -> AsyncIterator[dict[str, Any]]:
+    """The projects of the catalog, by name, each as its document."""
+    cursor = await conn.execute(
+        "SELECT s.id FROM service s JOIN source src ON src.id = s.source_id"
+        " WHERE s.workspace_id = %s AND (%s OR src.visibility = 'workspace')",
+        (workspace, private),
+    )
+    visible = {row[0] for row in await cursor.fetchall()}
+    access = WriteAccess(owner, frozenset({workspace}))
+    for project in await read_projects(conn, access, workspace):
+        code = [each for each in project.code if each.service_id in visible]
+        yield {
+            "name": project.name,
+            "title": project.title,
+            "description": project.description,
+            "version": project.version,
+            **_stamp(project.stamp),
+            "services": [
+                {
+                    "name": service.name,
+                    "description": service.description,
+                    "repository": service.repository,
+                    "root": service.root,
+                    **_stamp(service.stamp),
+                }
+                for service in project.services
+                if service.id in visible
+            ],
+            "domains": [
+                {
+                    **_domain_row(domain, code),
+                    "subdomains": [
+                        _domain_row(part, code)
+                        for part in project.domains
+                        if part.parent_id == domain.id
+                    ],
+                }
+                for domain in project.domains
+                if domain.parent_id is None
+            ],
+        }
+
+
 async def export_workspace(
     conn: Conn, principal: str, name: str, *, include_private: bool = False
 ) -> AsyncIterator[str]:
@@ -101,6 +182,7 @@ async def export_workspace(
         for kind, rows in [
             ("record", _records(conn, workspace_id, include_private)),
             ("knowledge_item", _journal(conn, workspace_id, owner_id, include_private)),
+            ("project", _projects(conn, workspace_id, owner_id, include_private)),
         ]:
             async for row in rows:
                 yield json.dumps({"type": kind, "workspace": name, **row}, allow_nan=False)

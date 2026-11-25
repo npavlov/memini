@@ -3,9 +3,15 @@
 Pure functions, no database. Every value they produce is sent as a query parameter, never spliced
 into SQL text; the escaping here is about the pattern languages (regular expressions, LIKE), so a
 glob or a substring means what it says.
+
+The path globs are one dialect with one matcher: :func:`glob_regex` makes the regular expression
+Postgres evaluates (``path ~ regex``: the ``paths`` filter of search, the masks of the catalog),
+and :func:`path_matcher` evaluates that same expression in Python (what a file belongs to), so
+the two cannot disagree about a path.
 """
 
 import re
+from collections.abc import Callable
 from typing import Final
 
 from memini.search.errors import InvalidSearchError
@@ -13,11 +19,13 @@ from memini.search.errors import InvalidSearchError
 __all__ = [
     "MAX_GLOB_CHARS",
     "MAX_LEXICAL_TERMS",
+    "directory_regex",
     "glob_regex",
     "globs_regex",
     "lexical_terms",
     "like_pattern",
     "line_mode",
+    "path_matcher",
 ]
 
 MAX_GLOB_CHARS: Final = 512
@@ -38,8 +46,18 @@ def _literal(char: str) -> str:
     return f"\\u{point:04x}" if point <= 0xFFFF else f"\\U{point:08x}"
 
 
-def glob_regex(glob: str) -> str:
+def _literals(path: str) -> str:
+    """``path`` as a regular expression that matches exactly it, ``/`` as it is."""
+    return "".join("/" if char == "/" else _literal(char) for char in path)
+
+
+def glob_regex(glob: str, *, root: str = "") -> str:
     """A path glob as an anchored Postgres regular expression over a path.
+
+    With ``root``, a directory of the repository (``services/billing``, no slash at either end),
+    the glob is read inside that directory: ``src/*.py`` matches ``services/billing/src/a.py``,
+    and ``*.py`` every Python file below the directory, at any depth. Every character of ``root``
+    stands for itself.
 
     The rules, close to those of ``.gitignore``:
 
@@ -94,14 +112,40 @@ def glob_regex(glob: str) -> str:
         else:
             parts.append(_literal(char))
         i += 1
-    return ("^" if rooted else "(?:^|/)") + "".join(parts) + "(?:/.*)?$"
+    if root:
+        start = f"^{_literals(root)}/" + ("" if rooted else "(?:.*/)?")
+    else:
+        start = "^" if rooted else "(?:^|/)"
+    return start + "".join(parts) + "(?:/.*)?$"
 
 
-def globs_regex(globs: tuple[str, ...]) -> str:
-    """One regular expression that matches a path when any of ``globs`` does."""
+def globs_regex(globs: tuple[str, ...], *, root: str = "") -> str:
+    """One regular expression that matches a path when any of ``globs`` does; ``root`` as for
+    :func:`glob_regex`."""
     if len(globs) == 1:
-        return glob_regex(globs[0])
-    return "|".join(f"(?:{glob_regex(glob)})" for glob in globs)
+        return glob_regex(globs[0], root=root)
+    return "|".join(f"(?:{glob_regex(glob, root=root)})" for glob in globs)
+
+
+def directory_regex(directory: str) -> str:
+    """A regular expression that matches the directory ``directory`` (no slash at either end) and
+    every path below it; every character of it stands for itself."""
+    return f"^{_literals(directory)}(?:/.*)?$"
+
+
+def path_matcher(regex: str) -> Callable[[str], bool]:
+    """Whether a path matches ``regex``, an expression made by :func:`glob_regex`,
+    :func:`globs_regex` or :func:`directory_regex`, with the answer Postgres gives for
+    ``path ~ regex``.
+
+    Those expressions hold only what Python's ``re`` reads as Postgres does (``^``, ``(?:…)``,
+    ``|``, ``[^/]``, ``.*``, ``\\uXXXX``), but for two defaults, set here to Postgres's: ``.``
+    matches a line break too, and ``$`` only the very end of the path, not the place before a
+    final line break. A literal ``$`` never stands in them (it is written as its code point), so
+    every ``$`` is the anchor.
+    """
+    compiled = re.compile(regex.replace("$", r"\Z"), re.DOTALL)
+    return lambda path: compiled.search(path) is not None
 
 
 def like_pattern(text: str) -> str:

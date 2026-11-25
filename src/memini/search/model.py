@@ -108,6 +108,19 @@ def _names(filter_name: str, values: Sequence[str | UUID] | None) -> tuple[str |
     return tuple(dict.fromkeys(values))
 
 
+def _catalog_names(filter_name: str, values: Sequence[str] | None) -> tuple[str, ...] | None:
+    """Names of the catalog: strings only, each once, in order."""
+    if values is None or len(values) == 0:
+        return None
+    if isinstance(values, str):
+        raise InvalidSearchError(f"the {filter_name} filter takes a list of names, not one string")
+    _check_count(filter_name, values)
+    for value in values:
+        if not isinstance(value, str) or value == "":  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise InvalidSearchError(f"the {filter_name} filter takes names")
+    return tuple(dict.fromkeys(values))
+
+
 def _check_count(filter_name: str, values: Sequence[object]) -> None:
     if len(values) > MAX_FILTER_VALUES:
         raise InvalidSearchError(
@@ -172,8 +185,21 @@ class SearchFilters:
     roles: tuple[Role, ...] | None = None
     """With ``persons``: only records where one of them has one of these roles: ``author``,
     ``recipient``, ``mention``, ``participant``. Default: any role."""
+    projects: tuple[str, ...] | None = None
+    """Projects of the catalog, by name: the code of their services and of their domains
+    (:mod:`memini.search.catalog`). With ``domains`` or ``services``, the projects those names
+    are looked up in. Unlike a source name, a name the catalog does not hold is an error
+    (:class:`~memini.search.errors.UnknownNameError`)."""
+    domains: tuple[str, ...] | None = None
+    """Domains of the catalog: ``domain``, which includes its subdomains, or
+    ``domain/subdomain``. Only files of repositories match: the catalog names code."""
+    services: tuple[str, ...] | None = None
+    """Services of the catalog, by name: a repository, or one directory of it."""
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "projects", _catalog_names("projects", self.projects))
+        object.__setattr__(self, "domains", _catalog_names("domains", self.domains))
+        object.__setattr__(self, "services", _catalog_names("services", self.services))
         object.__setattr__(self, "workspaces", _names("workspaces", self.workspaces))
         object.__setattr__(self, "sources", _names("sources", self.sources))
         object.__setattr__(self, "repositories", _names("repositories", self.repositories))
@@ -194,6 +220,11 @@ class SearchFilters:
                 raise InvalidSearchError(f"{name} needs a time zone")
         if self.since is not None and self.until is not None and self.since >= self.until:
             raise InvalidSearchError("since must be before until")
+
+    @property
+    def names_code(self) -> bool:
+        """Whether a filter of the catalog is given: ``projects``, ``domains`` or ``services``."""
+        return not (self.projects is None and self.domains is None and self.services is None)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

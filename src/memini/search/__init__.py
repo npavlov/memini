@@ -13,6 +13,8 @@ One entry point, transport-free, for the MCP tools and the HTTP API::
   :class:`Hit`, and the :class:`Reranker` hook.
 - :mod:`memini.search.retrieval`: the SQL of each retriever. :mod:`memini.search.fusion`:
   reciprocal rank fusion. :mod:`memini.search.patterns`: globs, LIKE patterns, line-mode regexes.
+- :mod:`memini.search.catalog`: the ``projects``, ``domains`` and ``services`` filters as sources
+  and path masks, and what a file belongs to; both computed from the catalog at query time.
 
 Modes: ``hybrid`` (dense and lexical, fused; the default), ``dense``, ``lexical``, ``exact``,
 ``regex``, ``symbol``. The ``search_code`` tool's "semantic" mode is ``hybrid`` limited to code
@@ -25,6 +27,7 @@ from memini.search.errors import (
     InvalidSearchError,
     SearchError,
     SearchTimeoutError,
+    UnknownNameError,
     UnsupportedFilterError,
 )
 from memini.search.fusion import Fused, reciprocal_rank_fusion
@@ -63,6 +66,7 @@ __all__ = [
     "SourceKind",
     "SymbolDefinition",
     "SymbolMatch",
+    "UnknownNameError",
     "UnsupportedFilterError",
     "glob_regex",
     "pinned_commit",

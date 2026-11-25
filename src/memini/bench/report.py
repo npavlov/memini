@@ -134,6 +134,10 @@ class SearchTiming:
     errors: int
     candidates: int
     """``search_candidates`` (the dense and lexical candidates of hybrid; also ef_search)."""
+    filter: str = ""
+    """What the searches were narrowed to; empty for none. ``domain: …``: a small directory of
+    the repository declared as a domain of the catalog, searched with the ``domains`` filter:
+    the chunks it selects and their share of the index."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,13 +296,14 @@ def format_report(report: BenchReport) -> str:
         lines.append("Search latency (memini.search.search, end to end, ms)")
         lines.append(
             f"  {'mode':<8} {'conc':>4} {'cand':>4} {'n':>5} {'p50':>8} {'p95':>8} {'p99':>8}"
-            f" {'max':>8} {'qps':>8} {'errors':>6}"
+            f" {'max':>8} {'qps':>8} {'errors':>6}  filter"
         )
         for t in report.search:
             lines.append(
                 f"  {t.mode:<8} {t.concurrency:>4} {t.candidates:>4} {t.latency.count:>5}"
                 f" {_ms(t.latency.p50):>8} {_ms(t.latency.p95):>8} {_ms(t.latency.p99):>8}"
                 f" {_ms(t.latency.max):>8} {t.queries_per_second:>8,.1f} {t.errors:>6}"
+                f"  {t.filter or 'none'}"
             )
 
     lines.append("")

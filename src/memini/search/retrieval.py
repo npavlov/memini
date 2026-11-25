@@ -48,6 +48,7 @@ from memini.embeddings import Vector
 from memini.gitsync.model import read_pin
 from memini.ids import RecordKind
 from memini.index import VectorIndex
+from memini.search.catalog import SourcePaths
 from memini.search.model import (
     Hit,
     SearchFilters,
@@ -127,6 +128,11 @@ class ChunkScope:
     person_ids: tuple[UUID, ...] | None = None
     """The persons the ``persons`` filter names, resolved: each canonical person and everyone
     merged into it, whose links (``record_person``) count; ``None`` for no such filter."""
+    code_groups: tuple[tuple[SourcePaths, ...], ...] = ()
+    """The ``projects``, ``domains`` and ``services`` filters, resolved from the catalog
+    (:func:`memini.search.catalog.code_groups`): one group per filter given, each a set of
+    sources with a regular expression over paths. A chunk passes when it is in one member of
+    every group; an empty group (a domain that names no code) lets nothing through."""
 
 
 def _c(column: str) -> sql.Identifier:
@@ -153,6 +159,20 @@ def chunk_conditions(scope: ChunkScope, param: Params) -> sql.Composable:
         parts.append(sql.SQL("c.language = ANY({})").format(param(list(filters.languages))))
     if filters.paths:
         parts.append(sql.SQL("c.path ~ {}").format(param(globs_regex(filters.paths))))
+    for group in scope.code_groups:
+        # (source, path masks) pairs, any of them. The source comes first: the index on
+        # (source_id, path) of migration 0018 reads a small domain without the rest.
+        members = [
+            sql.SQL("c.source_id = {}").format(param(member.source_id))
+            if member.regex is None
+            else sql.SQL("(c.source_id = {} AND c.path ~ {})").format(
+                param(member.source_id), param(member.regex)
+            )
+            for member in group
+        ]
+        parts.append(
+            sql.SQL("({})").format(sql.SQL(" OR ").join(members)) if members else sql.SQL("FALSE")
+        )
     if filters.since is not None:
         parts.append(sql.SQL("r.occurred_at >= {}").format(param(filters.since)))
     if filters.until is not None:
