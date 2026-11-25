@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The desktop app's window no longer scrolls as a whole: a selection dragged past the edge or a
+  focused element moved the side bar and the status bar out of the window. Only the screen
+  scrolls.
+- The Repositories screen opens the form to add a repository, and the one to create a workspace,
+  on a click, instead of showing them all the time.
+
 - The first setup in the desktop app says that Docker is downloading the application, the
   database and the search model (about 2 GB) while no service exists yet, instead of pointing to
   an empty list of services for minutes.
