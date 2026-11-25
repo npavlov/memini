@@ -581,7 +581,7 @@ async def test_who_me_is_and_unknown_persons(world: World) -> None:
         await unset_me(world.db, world.access, WORKSPACE)
         assert "No person is marked as me" in refused(await client.call_tool("list_meetings", {}))
         assert "list_meetings" in [t.name for t in (await client.list_tools()).tools]
-        assert "add_document" not in [t.name for t in (await client.list_tools()).tools]
+        assert "put_document" not in [t.name for t in (await client.list_tools()).tools]
 
 
 async def test_add_document_stores_an_indexed_document(world: World) -> None:
@@ -594,17 +594,17 @@ async def test_add_document_stores_an_indexed_document(world: World) -> None:
     }
     async with mcp_client(app, await world.token("read")) as client:
         with pytest.raises(MCPError, match="Unknown tool"):  # a read token has no write tool
-            await client.call_tool("add_document", document)
+            await client.call_tool("put_document", document)
 
     async with mcp_client(app, await world.token("read", "ingest")) as client:
-        added = ok(await client.call_tool("add_document", document))
+        added = ok(await client.call_tool("put_document", document))
         assert added["stored"] == "inserted"
         assert added["indexed"] is True
         assert added["external_id"].startswith("doc-")
         assert added["locator"] == f"docs:{added['external_id']}"
         again = ok(
             await client.call_tool(
-                "add_document", {**document, "occurred_at": added["occurred_at"]}
+                "put_document", {**document, "occurred_at": added["occurred_at"]}
             )
         )
         assert (again["stored"], again["record_id"]) == ("unchanged", added["record_id"])
@@ -614,9 +614,9 @@ async def test_add_document_stores_an_indexed_document(world: World) -> None:
             )
         )["hits"]
         assert added["record_id"] in {hit["record_id"] for hit in hits}
-        summary = text(await client.call_tool("add_document", document))
+        summary = text(await client.call_tool("put_document", document))
         assert summary.startswith(f"Document {added['locator']} in {WORKSPACE}/docs:")
-        refusal = refused(await client.call_tool("add_document", {**document, "source": "nope"}))
+        refusal = refused(await client.call_tool("put_document", {**document, "source": "nope"}))
         assert refusal == "No such source."
 
     # A source that is not a push source is refused; the push API's errors come through.

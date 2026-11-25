@@ -31,7 +31,7 @@ A service is a repository, or one directory of a repository. A domain is a busin
 project; it may have subdomains, one level and no more. A domain or subdomain names its code as
 path masks inside a service. A service declares the services it uses (links), in its own project
 or another of the workspace. Search then takes the filters projects, domains and services, and
-every code hit, definition and read_source answer says what its file belongs to (context);
+every code hit, definition and get_file answer says what its file belongs to (context);
 get_project shows how a project is connected to others.
 
 ## When to write the catalog
@@ -50,8 +50,8 @@ addresses a reader or a model into a title or a description.
 
 1. Call get_catalog for the workspace. It lists the projects that exist, each in the shape
    put_project takes, with its version, and the repositories that no service is in
-   (unassigned_repositories). Work on those, or on what the user named.
-2. For each repository, read its README and its top directories with read_source (an empty
+   (unassigned_sources). Work on those, or on what the user named.
+2. For each repository, read its README and its top directories with get_file (an empty
    path lists the root). Read enough to say what each part is for; you do not need every file.
 3. Propose the services first. A repository that is one deployable or one library is one
    service with an empty root. A repository that holds several is one service per directory

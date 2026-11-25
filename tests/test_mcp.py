@@ -63,7 +63,7 @@ MODES = pytest.mark.parametrize("mode", ["legacy", "auto"])
 TOOL_NAMES = [
     "search",
     "search_code",
-    "read_source",
+    "get_file",
     "get_symbol",
     "list_commits",
     "get_catalog",
@@ -79,7 +79,7 @@ TOOL_NAMES = [
     "status",
 ]
 WRITE_TOOL_NAMES = [
-    "add_document",
+    "put_document",
     "record_decision",
     "supersede_decision",
     "close_decision",
@@ -501,7 +501,7 @@ def test_the_summary_names_the_streams_that_are_behind() -> None:
     def stream(key: str, lag: float | None, run: StreamRun | None) -> StreamStatus:
         return StreamStatus(
             source="code",
-            source_kind="git",
+            source_kind="repository",
             key=key,
             schedule_seconds=900.0,
             checked_until=None,
@@ -552,7 +552,7 @@ def test_the_summary_names_the_streams_missing_at_the_source() -> None:
     )
     gone = StreamStatus(
         source="code",
-        source_kind="git",
+        source_kind="repository",
         key="refs/heads/gone",
         schedule_seconds=None,
         checked_until=as_of,
@@ -597,7 +597,7 @@ def test_the_summary_names_failures_unindexed_records_and_stale_indexes() -> Non
     )
     failing = StreamStatus(
         source="code",
-        source_kind="git",
+        source_kind="repository",
         key="refs/heads/main",
         schedule_seconds=900.0,
         checked_until=as_of,

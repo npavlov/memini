@@ -20,7 +20,7 @@ as soon as more of it arrives: 413 ``content_too_large``. More records than
 stored: 413 ``payload_too_large``. An object with a key twice in the body: 422 ``duplicate_key``.
 A body not of the shape: 422 ``validation_error``, with the fields. A batch the contract refuses
 (a payload without the fields of its kind, a window that ends in the future …): 422
-``invalid_batch``, whose message names the field and why, never a value. A git source: 409
+``invalid_batch``, whose message names the field and why, never a value. A repository: 409
 ``not_ingestible``. A complete window that starts after the stream's checkpoint: 409
 ``window_gap``. Another batch in the way: 409 ``ingest_conflict``; sending the batch again is safe.
 

@@ -694,11 +694,17 @@ def _run_info(row: Sequence[Any], report: Mapping[str, Any] | None = None) -> Ru
 
 # The workspace, and the source and stream when they are asked for, in one round trip.
 _SCOPE: Final = sql.SQL("""
-SELECT w.id, s.id, st.id
-FROM workspace w
-LEFT JOIN source s ON s.workspace_id = w.id AND s.name = %(source)s AND {source_readable}
-LEFT JOIN stream st ON st.source_id = s.id AND st.key = %(stream)s AND {stream_readable}
-WHERE w.name = %(workspace)s AND {workspace_readable}
+SELECT w.id FROM workspace w WHERE w.name = %(workspace)s AND {workspace_readable}
+""")
+
+_SOURCES: Final = sql.SQL("""
+SELECT s.id, s.name FROM source s
+WHERE s.workspace_id = %(workspace_id)s AND s.name = ANY(%(names)s) AND {readable}
+""")
+
+_STREAMS: Final = sql.SQL("""
+SELECT st.id, st.key FROM stream st
+WHERE st.source_id = ANY(%(sources)s) AND st.key = ANY(%(keys)s) AND {readable}
 """)
 
 _RUNS: Final = sql.SQL("""
@@ -727,55 +733,73 @@ async def list_runs(
     access: ReadFilter,
     workspace: str,
     *,
-    source: str | None = None,
-    stream: str | None = None,
+    sources: Sequence[str] | None = None,
+    streams: Sequence[str] | None = None,
     limit: int = DEFAULT_RUN_PAGE,
     before: RunCursor | None = None,
 ) -> RunPage:
     """The runs of the workspace ``workspace``, newest first, a page at a time.
 
     Args:
-        source: only the runs of the source of this name.
-        stream: only the runs of the stream with this key (``refs/heads/main``); needs ``source``.
+        sources: only the runs of the sources of these names.
+        streams: only the runs of the streams with these keys (``refs/heads/main``) in
+            ``sources``, which they need.
         limit: runs per page, 1 to :data:`MAX_RUN_PAGE`.
         before: the ``next`` of the previous page.
 
     Raises:
-        ValueError: ``stream`` without ``source``, or ``limit`` out of range.
-        NotFoundError: no such workspace, source or stream that ``access`` may read.
+        ValueError: ``streams`` without ``sources``, or ``limit`` out of range.
+        NotFoundError: no such workspace, or a source or stream named that ``access`` may not
+            read or that does not exist.
     """
-    if stream is not None and source is None:
-        raise ValueError("a stream is named within its source: pass source with stream")
+    if streams is not None and sources is None:
+        raise ValueError("a stream is named within its source: pass sources with streams")
     if not 1 <= limit <= MAX_RUN_PAGE:
         raise ValueError(f"limit is from 1 to {MAX_RUN_PAGE}")
     scope = _SCOPE.format(
-        source_readable=_readable(access, "s", source="id"),
-        stream_readable=_readable(access, "st"),
         workspace_readable=access.where(
             workspace_id=sql.Identifier("w", "id"), owner_id=sql.Identifier("w", "owner_id")
         ),
     )
-    cur = await conn.execute(scope, {"workspace": workspace, "source": source, "stream": stream})
+    cur = await conn.execute(scope, {"workspace": workspace})
     row = await cur.fetchone()
     if row is None:
         raise NotFoundError("workspace")
-    workspace_id, source_id, stream_id = row
-    if source is not None and source_id is None:
-        raise NotFoundError("source")
-    if stream is not None and stream_id is None:
-        raise NotFoundError("stream")
+    workspace_id = row[0]
+    source_ids: list[uuid.UUID] | None = None
+    if sources is not None:
+        names = list(dict.fromkeys(sources))
+        cur = await conn.execute(
+            _SOURCES.format(readable=_readable(access, "s", source="id")),
+            {"workspace_id": workspace_id, "names": names},
+        )
+        found = await cur.fetchall()
+        if len(found) < len(names):
+            raise NotFoundError("source")
+        source_ids = [each[0] for each in found]
+    stream_ids: list[uuid.UUID] | None = None
+    if streams is not None:
+        keys = list(dict.fromkeys(streams))
+        cur = await conn.execute(
+            _STREAMS.format(readable=_readable(access, "st")),
+            {"sources": source_ids, "keys": keys},
+        )
+        found = await cur.fetchall()
+        if {each[1] for each in found} != set(keys):
+            raise NotFoundError("stream")
+        stream_ids = [each[0] for each in found]
 
     conditions: list[sql.Composable] = [
         sql.SQL("r.workspace_id = %(workspace_id)s"),
         _readable(access, "r"),
     ]
     params: dict[str, Any] = {"workspace_id": workspace_id, "limit": limit + 1}
-    if source_id is not None:
-        conditions.append(sql.SQL("r.source_id = %(source_id)s"))
-        params["source_id"] = source_id
-    if stream_id is not None:
-        conditions.append(sql.SQL("r.stream_id = %(stream_id)s"))
-        params["stream_id"] = stream_id
+    if source_ids is not None:
+        conditions.append(sql.SQL("r.source_id = ANY(%(source_ids)s)"))
+        params["source_ids"] = source_ids
+    if stream_ids is not None:
+        conditions.append(sql.SQL("r.stream_id = ANY(%(stream_ids)s)"))
+        params["stream_ids"] = stream_ids
     if before is not None:
         conditions.append(sql.SQL("(r.started_at, r.id) < (%(before_at)s, %(before_id)s)"))
         params["before_at"] = before.started_at

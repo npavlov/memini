@@ -505,7 +505,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "remove_alias",
         "merge_person",
         "split_person",
-        "add_document",
+        "put_document",
         "record_decision",
         "supersede_decision",
         "close_decision",
@@ -553,7 +553,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "status": {},
         "search": query_values["/v1/search"],
         "search_code": query_values["/v1/search/code"],
-        "read_source": {"workspace": "alpha", "repository": "source"},
+        "get_file": {"workspace": "alpha", "repository": "source"},
         "get_symbol": {"name": "sample"},
         "list_commits": {},
         "list_meetings": {},
@@ -572,7 +572,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "close_decision",
         "retract_decision",
         "supersede_decision",
-        "add_document",
+        "put_document",
         "put_project",
     }
     assert {tool.name for tool in TOOLS if not tool.read_only} == writes

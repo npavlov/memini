@@ -7,7 +7,7 @@
 2. Creates a scratch database on the configured Postgres server (``memini_eval_`` and 12 random
    hex digits, from ``template0``) and migrates it. The user's database is only connected to for
    ``CREATE DATABASE``; nothing in it is read or written. The role needs ``CREATEDB``.
-3. Adds the suite's workspaces and one git source per repository, and syncs each through the
+3. Adds the suite's workspaces and one repository per repository, and syncs each through the
    service's own path (:func:`memini.gitsync.run_git_sync`: mirror, file rules, chunkers, index
    writer) with the embedder given. The mirrors live in the temporary directory, and only it is
    an allowed local root: no setting of the user's git connector is used.

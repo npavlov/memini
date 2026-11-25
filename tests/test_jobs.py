@@ -79,7 +79,7 @@ async def _scalar(conn: Conn, query: Any, params: Any = None) -> Any:
 
 
 async def _add_source(
-    conn: Conn, workspace: uuid.UUID, owner: uuid.UUID, kind: str = "git"
+    conn: Conn, workspace: uuid.UUID, owner: uuid.UUID, kind: str = "repository"
 ) -> uuid.UUID:
     return await _scalar(
         conn,

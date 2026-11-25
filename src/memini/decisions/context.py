@@ -403,7 +403,7 @@ def item_context(
             default = default or defaults.get((each.source_id, None))
             if default is not None:
                 add(*default, "default")
-        if each.source_kind == "git":
+        if each.source_kind == "repository":
             # A file of a repository is '<full ref>:<path>' (memini.gitsync.model).
             ref, separator, path = each.external_id.partition(":")
             if not separator or not ref.startswith("refs/") or not path:

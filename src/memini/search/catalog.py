@@ -1,7 +1,7 @@
 """The catalog as search reads it: which code a project, a domain or a service names, and what a
 file belongs to.
 
-The catalog (:mod:`memini.catalog`; requirements, section 3) says that a service is a git source,
+The catalog (:mod:`memini.catalog`; requirements, section 3) says that a service is a repository,
 whole or one directory of it, and that a domain or subdomain names code inside a service by path
 masks. Nothing of that is stored on chunks or records: membership is computed here, from the
 masks, when a question is asked. So a change of the catalog changes the answers at once, without
@@ -91,7 +91,7 @@ def domain_address(domain: str, subdomain: str | None) -> str:
 
 @dataclass(frozen=True, slots=True)
 class ServiceArea:
-    """A service: a git source, whole or one directory of it."""
+    """A service: a repository, whole or one directory of it."""
 
     project: str
     name: str

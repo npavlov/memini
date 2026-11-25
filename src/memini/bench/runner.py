@@ -6,7 +6,7 @@
    hex digits, from ``template0``) and migrates it, as the retrieval eval does
    (:mod:`memini.evaluation.runner`). The user's database is only connected to for ``CREATE
    DATABASE``. The role needs ``CREATEDB``.
-2. The repository (when one is given) as a git source of one workspace: the mirror is created from
+2. The repository (when one is given) as a repository of one workspace: the mirror is created from
    it (``mirror fetch``); every selected file is read from the mirror and chunked in a pass of its
    own, timed apart (``read`` and ``chunk``); then the service's own sync
    (:func:`memini.gitsync.run_git_sync`) reads, chunks, embeds and writes everything again
@@ -397,7 +397,7 @@ async def _index_repository(
         ),
         options=options,
     )
-    if source.git is None:  # pragma: no cover - create_git_source makes a git source
+    if source.git is None:  # pragma: no cover - create_git_source makes a repository
         raise RuntimeError("the repository source has no git configuration")
     say(f"mirroring {repository.origin} {repository.ref}")
     started = time.perf_counter()

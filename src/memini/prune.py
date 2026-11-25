@@ -27,7 +27,7 @@ the pages before it stay pruned, and the run report counts them. Each prune writ
 ``messages_pruned``, ``records_unchanged``, ``records_unreadable`` (a payload the parser of its
 kind no longer reads: left alone), ``records_not_indexed`` and the index counts.
 
-A git source is refused (:class:`NotPrunableError`): its include and exclude rules select files,
+A repository is refused (:class:`NotPrunableError`): its include and exclude rules select files,
 and its next sync applies a change of them.
 """
 
@@ -69,7 +69,7 @@ DEFAULT_PAGE_SIZE: Final = 100
 
 
 class NotPrunableError(Exception):
-    """The source's kind has no filters to prune by: a git source selects files by its path
+    """The source's kind has no filters to prune by: a repository selects files by its path
     rules, and its next sync applies them."""
 
     def __init__(self, kind: str) -> None:
@@ -313,7 +313,7 @@ async def prune_source(
     Raises:
         ValueError: ``conn`` has a transaction open, or ``page_size`` is not positive.
         NotFoundError: no such workspace or source that ``access`` may change.
-        NotPrunableError: the source is a git source.
+        NotPrunableError: the source is a repository.
         PruneConflictError: another writer got in the way; the pages before stay pruned, and
             running the prune again is safe.
         Exception: whatever ``indexer`` raises, the page it was called for rolled back: the

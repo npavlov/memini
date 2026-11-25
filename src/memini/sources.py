@@ -25,7 +25,7 @@ a stream key of the recipe (a channel id, a mailbox query), which must match its
 ``stream.key_pattern``; the schedule is set on all streams at once, as for git. Its credential is
 its row in the credential store (``memini credentials set``), never part of the config.
 
-A **git source** is:
+A **repository** is:
 
 - ``source.config``, a JSON object of the shape :class:`GitConfig` reads and writes::
 
@@ -63,7 +63,7 @@ Transactions: every write runs in a transaction of its own, or in a savepoint wh
 one open, so a refused write leaves the caller's connection usable.
 
 Deleting a source deletes its streams, runs, jobs and records (the foreign keys cascade) and the
-mirror of a git source, in the request: under the source's advisory lock, which a worker holds
+mirror of a repository, in the request: under the source's advisory lock, which a worker holds
 while it runs a job of the source, so no job writes the mirror while it is removed and none starts
 until the deletion commits. While a job of the source runs, the deletion is refused
 (:class:`SourceBusyError`) rather than made to wait for a fetch that may take minutes.
@@ -163,7 +163,7 @@ __all__ = [
 
 type Conn = AsyncConnection[TupleRow]
 
-SourceKind = Literal["git", "push", "mcp"]
+SourceKind = Literal["repository", "push", "mcp"]
 Visibility = Literal["private", "workspace"]
 LlmPolicy = Literal["none", "local", "cloud"]
 RunStatus = Literal["running", "succeeded", "partial", "failed", "cancelled"]
@@ -284,7 +284,7 @@ def _class_end(component: str, start: int) -> int | None:
 
 @dataclass(frozen=True, slots=True)
 class GitConfig:
-    """``source.config`` of a git source. See the module for each setting."""
+    """``source.config`` of a repository. See the module for each setting."""
 
     location: str
     include: tuple[str, ...] = ()
@@ -333,7 +333,7 @@ def _strings(value: object) -> tuple[str, ...]:
 
 
 def check_location(location: str, options: GitOptions) -> str:
-    """The location of a git source as it is stored, or :class:`InvalidSourceError`.
+    """The location of a repository as it is stored, or :class:`InvalidSourceError`.
 
     Checked with the rules the mirror enforces at every fetch (:func:`memini.git.parse_remote`):
     https and ssh remotes; plain http and local paths only when the settings allow them; never a
@@ -381,7 +381,7 @@ def check_refs(refs: Sequence[str]) -> tuple[str, ...]:
         raise TypeError("refs is a sequence of ref names, not one string")
     keys = sorted({check_ref(ref) for ref in refs})
     if not keys:
-        raise InvalidSourceError("refs", "a git source tracks at least one ref")
+        raise InvalidSourceError("refs", "a repository tracks at least one ref")
     if len(keys) > MAX_REFS:
         raise InvalidSourceError("refs", f"a source tracks at most {MAX_REFS} refs")
     return tuple(keys)
@@ -587,7 +587,7 @@ class Source:
     name: str
     kind: SourceKind
     git: GitConfig | None
-    """The configuration of a git source; ``None`` for other kinds."""
+    """The configuration of a repository; ``None`` for other kinds."""
     refs: tuple[str, ...]
     """The keys of the source's streams, sorted: for git, the tracked refs."""
     schedule: timedelta | None
@@ -699,7 +699,7 @@ def _source(row: Sequence[Any]) -> Source:
         owner_id=owner_id,
         name=name,
         kind=kind,
-        git=GitConfig.from_json(config) if kind == "git" else None,
+        git=GitConfig.from_json(config) if kind == "repository" else None,
         refs=tuple(refs),
         schedule=schedule,
         visibility=visibility,
@@ -707,7 +707,7 @@ def _source(row: Sequence[Any]) -> Source:
         llm_policy=llm_policy,
         created_at=created_at,
         updated_at=updated_at,
-        filters=None if kind == "git" else SourceFilters.from_json(config.get("filters")),
+        filters=None if kind == "repository" else SourceFilters.from_json(config.get("filters")),
         mcp=McpConfig.from_json(config) if kind == "mcp" else None,
     )
 
@@ -875,7 +875,7 @@ async def _add_streams(
 async def create_git_source(
     conn: Conn, access: WriteAccess, workspace: str, new: NewGitSource, *, options: GitOptions
 ) -> Source:
-    """Add a git source and one stream per tracked ref to the workspace ``workspace``.
+    """Add a repository and one stream per tracked ref to the workspace ``workspace``.
 
     The location is checked (:func:`check_location`), not fetched. The source's mirror is created
     by its first sync.
@@ -902,7 +902,7 @@ async def create_git_source(
             found = await get_writable_workspace(conn, access, workspace)
             cur = await conn.execute(
                 "INSERT INTO source (workspace_id, owner_id, name, kind, config, visibility,"
-                " retention_days, llm_policy) VALUES (%s, %s, %s, 'git', %s, %s, %s, %s)"
+                " retention_days, llm_policy) VALUES (%s, %s, %s, 'repository', %s, %s, %s, %s)"
                 " RETURNING id",
                 (
                     found.id,
@@ -1153,7 +1153,7 @@ async def update_source(
             if git is None and (not isinstance(refs, Unset) or rules_changed):
                 raise InvalidSourceError(
                     "refs" if not isinstance(refs, Unset) else "include",
-                    f"refs and path rules are settings of git sources, not of {source.kind}",
+                    f"refs and path rules are settings of repositories, not of {source.kind}",
                 )
             mcp_only = [
                 setting
@@ -1170,7 +1170,7 @@ async def update_source(
             if git is not None and not isinstance(filters, Unset):
                 raise InvalidSourceError(
                     "filters",
-                    "filters are settings of push and mcp sources; a git source selects files by"
+                    "filters are settings of push and mcp sources; a repository selects files by"
                     " include and exclude",
                 )
             if source.kind == "push" and schedule is not None and not isinstance(schedule, Unset):
@@ -1280,7 +1280,7 @@ async def delete_source(
             " SET LOCAL idle_in_transaction_session_timeout TO DEFAULT"
         )
         await conn.execute("DELETE FROM source WHERE id = %s", (source.id,))
-        if source.kind == "git":
+        if source.kind == "repository":
             try:
                 await mirrors.remove(source.id)
             except MirrorBusy:

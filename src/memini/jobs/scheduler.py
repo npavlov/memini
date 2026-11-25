@@ -48,7 +48,7 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-SYNC_KINDS: Final[Mapping[str, str]] = {"git": "git_sync", "mcp": "mcp_sync"}
+SYNC_KINDS: Final[Mapping[str, str]] = {"repository": "git_sync", "mcp": "mcp_sync"}
 """Job kind of a stream sync, by the kind of the stream's source. Push sources are not synced."""
 
 RETENTION_KIND: Final = "retention"

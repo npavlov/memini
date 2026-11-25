@@ -4,7 +4,7 @@
 One function per tool, for the MCP tools (:mod:`memini.mcp.comms`) and the HTTP routes
 (:mod:`memini.api.comms`) alike. The reads (:func:`run_list_meetings`, :func:`run_get_meeting`,
 :func:`run_list_messages`, :func:`run_get_thread`) take the caller's
-:class:`~memini.auth.ReadFilter`; the write (:func:`run_add_document`) its
+:class:`~memini.auth.ReadFilter`; the write (:func:`run_put_document`) its
 :class:`~memini.auth.WriteAccess` with the ``ingest`` scope. Each takes a connection with no
 transaction open and leaves it idle.
 
@@ -39,8 +39,8 @@ Refusals, beyond those of search (:func:`memini.query.query_errors`):
 | a record named by source and external id in two workspaces | 422 | ``ambiguous_record`` |
 | a record of another kind (``get_meeting`` of a thread) | 422 | ``wrong_kind`` |
 | a payload the parser of this version does not read | 409 | ``unreadable_record`` |
-| ``add_document`` into a source that is not a push source | 409 | ``not_ingestible`` |
-| ``add_document``: the errors of the push API (:mod:`memini.api.ingest`) | 413, 422, 409, 503 | |
+| ``put_document`` into a source that is not a push source | 409 | ``not_ingestible`` |
+| ``put_document``: the errors of the push API (:mod:`memini.api.ingest`) | 413, 422, 409, 503 | |
 """
 
 import logging
@@ -59,8 +59,6 @@ from memini import ingest
 from memini.auth import ReadFilter, WriteAccess
 from memini.comms.model import (
     ActionItemInfo,
-    AddDocumentArguments,
-    AddedDocument,
     GetMeetingArguments,
     GetThreadArguments,
     ListedMeeting,
@@ -73,6 +71,8 @@ from memini.comms.model import (
     MessageList,
     MessageRole,
     PersonInfo,
+    PutDocumentArguments,
+    PutDocumentResult,
     RecordArguments,
     RecordPerson,
     SegmentInfo,
@@ -86,18 +86,20 @@ from memini.payloads import Meeting, Message, PayloadError, Thread, load_payload
 from memini.persons import ME, member_ids, parse_person_ref, resolve_persons
 from memini.query import QueryError, QueryServices, query_errors
 from memini.search import MAX_LIMIT, Hit, SearchFilters, SearchQuery, search
+from memini.search.catalog import catalog_groups, load_code_maps
 from memini.search.model import source_kind
-from memini.sensitivity import sensitive_message
+from memini.search.retrieval import RECORD_ROW, Params, linked_records
+from memini.sensitivity import sensitive_message, sensitive_records
 
 __all__ = [
     "DOCUMENT_ID_DOMAIN",
     "NOT_INDEXED_NOTE",
     "document_external_id",
-    "run_add_document",
     "run_get_meeting",
     "run_get_thread",
     "run_list_meetings",
     "run_list_messages",
+    "run_put_document",
 ]
 
 type Conn = AsyncConnection[TupleRow]
@@ -105,7 +107,7 @@ type Conn = AsyncConnection[TupleRow]
 log = logging.getLogger(__name__)
 
 DOCUMENT_ID_DOMAIN: Final = "memini.document.v1"
-"""Domain tag of the external id ``add_document`` derives from a title and a text."""
+"""Domain tag of the external id ``put_document`` derives from a title and a text."""
 
 NOT_INDEXED_NOTE: Final = (
     "No embedding provider is configured, so the document was stored without chunks and search"
@@ -147,6 +149,66 @@ def _record_scope(access: ReadFilter, alias: str = "r") -> sql.Composable:
     )
 
 
+_RECORD_SOURCES: Final = sql.SQL(
+    "SELECT s.id FROM source s WHERE s.workspace_id = ANY(%s) AND s.kind <> 'repository' AND {}"
+)
+
+
+async def _catalog_filter(
+    conn: Conn,
+    access: ReadFilter,
+    workspace_ids: Collection[UUID],
+    projects: Sequence[str] | None,
+    domains: Sequence[str] | None,
+) -> tuple[sql.Composable, dict[str, Any]]:
+    """The condition on ``record r`` of the ``projects`` and ``domains`` filters, with its
+    parameters: the record is linked to them as search links a record other than code
+    (:func:`memini.search.retrieval.linked_records`). ``TRUE`` without them.
+
+    Raises:
+        QueryError: a name no catalog of the workspaces read holds (``unknown_project``,
+            ``unknown_domain``).
+    """
+    if projects is None and domains is None:
+        return sql.SQL("TRUE"), {}
+    spaces = list(workspace_ids)
+    scope = access.where(
+        workspace_id=sql.Identifier("s", "workspace_id"),
+        owner_id=sql.Identifier("s", "owner_id"),
+        source_id=sql.Identifier("s", "id"),
+    )
+    cur = await conn.execute(_RECORD_SOURCES.format(scope), (spaces,))
+    sources = [row[0] for row in await cur.fetchall()]
+    with query_errors():
+        groups = catalog_groups(
+            await load_code_maps(conn, access, spaces),
+            projects=projects,
+            domains=domains,
+            sources=sources,
+        )
+    param = Params()
+    parts = [
+        sql.SQL("FALSE")
+        if group.records is None
+        else linked_records(group.records, param, RECORD_ROW)
+        for group in groups
+    ]
+    return sql.SQL("({})").format(sql.SQL(" AND ").join(parts)), param.values
+
+
+def _wide(access: ReadFilter) -> ReadFilter:
+    """The filter a listing reads with: every record, sensitive ones too, which it then takes out
+    and counts (``left_out``) unless the caller asked for them."""
+    return access if access.include_sensitive else replace(access, include_sensitive=True)
+
+
+async def _sensitive(conn: Conn, access: ReadFilter, record_ids: Sequence[str]) -> frozenset[str]:
+    """The records of ``record_ids`` the caller did not ask for: those marked sensitive."""
+    if access.include_sensitive:
+        return frozenset()
+    return await sensitive_records(conn, record_ids)
+
+
 async def _workspaces(
     conn: Conn, access: ReadFilter, names: Sequence[str] | None
 ) -> dict[UUID, str]:
@@ -173,15 +235,15 @@ ORDER BY p.workspace_id, p.display_name, p.id
 
 
 async def _whose(
-    conn: Conn, access: ReadFilter, person: str, workspaces: Sequence[str] | None
+    conn: Conn, access: ReadFilter, persons: Sequence[str], workspaces: Sequence[str] | None
 ) -> _Whose:
-    """The persons ``person`` names in the workspaces read; see the module."""
+    """The persons ``persons`` name in the workspaces read; see the module."""
     readable = await _workspaces(conn, access, workspaces)
-    ref = parse_person_ref(person)
-    found = await resolve_persons(conn, access, readable, [ref])
+    refs = [parse_person_ref(person) for person in persons]
+    found = await resolve_persons(conn, access, readable, refs)
     roots = tuple(sorted(root for each in found.values() for root in each))
     if not roots:
-        if ref == ME:
+        if all(ref == ME for ref in refs):
             raise QueryError(
                 404,
                 "no_me",
@@ -192,13 +254,13 @@ async def _whose(
     cur = await conn.execute(
         _PERSONS.format(access=_scope(access, "p")), (access.principal.principal_id, list(roots))
     )
-    persons = [
-        PersonInfo(person_id=row[0], workspace=readable[row[1]], display_name=row[2], is_me=row[3])
+    resolved = [
+        PersonInfo(id=row[0], workspace=readable[row[1]], display_name=row[2], is_me=row[3])
         for row in await cur.fetchall()
     ]
     return _Whose(
         workspaces={workspace_id: readable[workspace_id] for workspace_id in found},
-        persons=persons,
+        persons=resolved,
         roots=roots,
         members=await member_ids(conn, roots),
     )
@@ -227,17 +289,19 @@ class _Record:
         place = "" if anchor is None else f"#{anchor}"
         return f"{self.source}:{self.external_id}{place}"
 
-    def fields(self) -> dict[str, Any]:
-        """The fields every result of the record carries."""
+    def source_fields(self) -> dict[str, Any]:
+        """Where the record comes from: what a message of it carries with its own id and time."""
         return {
             "workspace": self.workspace,
             "source": self.source,
             "source_kind": source_kind(self.source_kind),
-            "record_id": self.id,
             "external_id": self.external_id,
             "url": self.external_url,
-            "occurred_at": self.occurred_at,
         }
+
+    def fields(self) -> dict[str, Any]:
+        """The fields every result of the record carries: its own id and time too."""
+        return self.source_fields() | {"id": self.id, "occurred_at": self.occurred_at}
 
 
 _RECORD_COLUMNS: Final = sql.SQL(
@@ -334,6 +398,7 @@ WHERE r.kind = 'meeting' AND r.deleted_at IS NULL AND {access}
   AND (%(since)s::timestamptz IS NULL OR r.occurred_at >= %(since)s)
   AND (%(until)s::timestamptz IS NULL OR r.occurred_at < %(until)s)
   AND (%(sources)s::text[] IS NULL OR s.name = ANY(%(sources)s))
+  AND {catalog}
 ORDER BY r.occurred_at DESC, r.id
 LIMIT %(limit)s
 """)
@@ -363,13 +428,20 @@ def _listed_meeting(record: _Record, hit: Hit | None) -> ListedMeeting:
 async def run_list_meetings(
     conn: Conn, services: QueryServices, access: ReadFilter, arguments: ListMeetingsArguments
 ) -> MeetingList:
-    """``list_meetings``: the meetings of a person (default: me), by time and topic."""
+    """``list_meetings``: the meetings of persons (default: me), by time, topic and catalog."""
+    wide = _wide(access)
     async with conn.transaction():
-        whose = await _whose(conn, access, arguments.person, arguments.workspaces)
+        whose = await _whose(conn, wide, arguments.persons, arguments.workspaces)
     if arguments.query is None:
         async with conn.transaction():
+            catalog, catalog_params = await _catalog_filter(
+                conn, wide, whose.workspaces, arguments.projects, arguments.domains
+            )
             query = _MEETINGS.format(
-                columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_record_scope(access)
+                columns=_RECORD_COLUMNS,
+                from_=_RECORD_FROM,
+                access=_record_scope(wide),
+                catalog=catalog,
             )
             cur = await conn.execute(
                 query,
@@ -380,39 +452,42 @@ async def run_list_meetings(
                     "until": arguments.until,
                     "sources": arguments.sources,
                     "limit": arguments.limit,
-                },
+                }
+                | catalog_params,
             )
             rows = await cur.fetchall()
-        meetings = [_listed_meeting(_record(row), None) for row in rows]
-        return MeetingList(persons=whose.persons, meetings=meetings)
-
-    hits = await _matches(
-        conn,
-        services,
-        access,
-        arguments.query,
-        SearchFilters(
-            workspaces=tuple(whose.workspaces),
-            sources=None if arguments.sources is None else tuple(arguments.sources),
-            kinds=("meeting",),
-            persons=whose.roots,
-            roles=("participant",),
-            since=arguments.since,
-            until=arguments.until,
-        ),
+        listed = [(_record(row), None) for row in rows]
+    else:
+        hits = await _matches(
+            conn,
+            services,
+            wide,
+            arguments.query,
+            SearchFilters(
+                workspaces=tuple(whose.workspaces),
+                sources=None if arguments.sources is None else tuple(arguments.sources),
+                kinds=("meeting",),
+                persons=whose.roots,
+                roles=("participant",),
+                since=arguments.since,
+                until=arguments.until,
+                projects=None if arguments.projects is None else tuple(arguments.projects),
+                domains=None if arguments.domains is None else tuple(arguments.domains),
+            ),
+        )
+        best: dict[str, Hit] = {}
+        for hit in hits:
+            best.setdefault(hit.record_id, hit)
+        chosen = list(best.items())[: arguments.limit]
+        async with conn.transaction():
+            records = await _records(conn, wide, [record_id for record_id, _ in chosen])
+        listed = [(records[record_id], hit) for record_id, hit in chosen if record_id in records]
+    hidden = await _sensitive(conn, access, [record.id for record, _ in listed])
+    return MeetingList(
+        persons=whose.persons,
+        items=[_listed_meeting(record, hit) for record, hit in listed if record.id not in hidden],
+        left_out=sum(record.id in hidden for record, _ in listed),
     )
-    best: dict[str, Hit] = {}
-    for hit in hits:
-        best.setdefault(hit.record_id, hit)
-    chosen = list(best.items())[: arguments.limit]
-    async with conn.transaction():
-        records = await _records(conn, access, [record_id for record_id, _ in chosen])
-    meetings = [
-        _listed_meeting(records[record_id], hit)
-        for record_id, hit in chosen
-        if record_id in records
-    ]
-    return MeetingList(persons=whose.persons, meetings=meetings)
 
 
 # --- list_messages -------------------------------------------------------------------------------
@@ -430,6 +505,7 @@ WHERE rp.person_id = ANY(%(persons)s) AND rp.role = ANY(%(roles)s)
   AND (%(until)s::timestamptz IS NULL OR rp.occurred_at < %(until)s)
   AND (%(sources)s::text[] IS NULL OR s.name = ANY(%(sources)s))
   AND (%(records)s::text[] IS NULL OR rp.record_id = ANY(%(records)s))
+  AND {catalog}
 GROUP BY rp.record_id, rp.anchor
 ORDER BY at DESC, rp.record_id, rp.anchor
 LIMIT %(limit)s
@@ -455,10 +531,14 @@ async def _message_links(
     records: Sequence[str] | None,
     limit: int | None,
 ) -> list[_Link]:
-    query = _MESSAGE_LINKS.format(access=_record_scope(access))
+    catalog, catalog_params = await _catalog_filter(
+        conn, access, whose.workspaces, arguments.projects, arguments.domains
+    )
+    query = _MESSAGE_LINKS.format(access=_record_scope(access), catalog=catalog)
     cur = await conn.execute(
         query,
-        {
+        catalog_params
+        | {
             "persons": list(whose.members),
             "roles": list(roles),
             "workspaces": list(whose.workspaces),
@@ -479,12 +559,12 @@ def _message_info(record: _Record, message: Message, *, chars: int | None = None
     text, truncated = (message.text, False) if chars is None else _cut(message.text, chars)
     anchor = f"msg-{message.id}"
     return {
-        "message_id": message.id,
+        "id": message.id,
         "anchor": anchor,
         "locator": record.locator(anchor),
         "link": message.url or record.external_url,
         "author": message.author,
-        "sent_at": message.sent_at,
+        "occurred_at": message.sent_at,
         "recipients": list(message.recipients),
         "cc": list(message.cc),
         "mentions": list(message.mentions),
@@ -536,8 +616,9 @@ def _listed_message(
     score: float | None,
 ) -> ListedMessage:
     return ListedMessage(
-        **record.fields(),
+        **record.source_fields(),
         **_message_info(record, message, chars=chars),
+        record_id=record.id,
         title=thread.title,
         channel=thread.channel,
         roles=list(roles),
@@ -557,18 +638,19 @@ def _overlaps(hit: Hit, first: int, last: int) -> bool:
 async def run_list_messages(
     conn: Conn, services: QueryServices, access: ReadFilter, arguments: ListMessagesArguments
 ) -> MessageList:
-    """``list_messages``: messages to, mentioning or from a person (default: to or mentioning
-    me), by source, time and topic; one result per message."""
+    """``list_messages``: messages to, mentioning or from persons (default: to or mentioning
+    me), by source, time, topic and catalog; one result per message."""
     roles = tuple(dict.fromkeys(arguments.roles))
     chars = services.search_options.snippet_chars
+    wide = _wide(access)
     async with conn.transaction():
-        whose = await _whose(conn, access, arguments.person, arguments.workspaces)
+        whose = await _whose(conn, wide, arguments.persons, arguments.workspaces)
     if arguments.query is None:
         async with conn.transaction():
             links = await _message_links(
-                conn, access, whose, roles, arguments, records=None, limit=arguments.limit
+                conn, wide, whose, roles, arguments, records=None, limit=arguments.limit
             )
-            threads = _Threads(await _records(conn, access, {link.record_id for link in links}))
+            threads = _Threads(await _records(conn, wide, {link.record_id for link in links}))
         messages: list[ListedMessage] = []
         for link in links:
             found = threads.message(link.record_id, link.message_id)
@@ -578,12 +660,12 @@ async def run_list_messages(
                 messages.append(
                     _listed_message(record, thread, message, link.roles, chars=chars, score=None)
                 )
-        return MessageList(persons=whose.persons, messages=messages)
+        return await _message_list(conn, access, whose, messages)
 
     hits = await _matches(
         conn,
         services,
-        access,
+        wide,
         arguments.query,
         SearchFilters(
             workspaces=tuple(whose.workspaces),
@@ -594,18 +676,20 @@ async def run_list_messages(
             # A thread's time is its latest message, so a thread before `since` holds no message
             # after it; `until` cannot narrow threads, whose earlier messages may be in range.
             since=arguments.since,
+            projects=None if arguments.projects is None else tuple(arguments.projects),
+            domains=None if arguments.domains is None else tuple(arguments.domains),
         ),
     )
     by_record: dict[str, list[tuple[int, Hit]]] = {}
     for rank, hit in enumerate(hits):
         by_record.setdefault(hit.record_id, []).append((rank, hit))
     if not by_record:
-        return MessageList(persons=whose.persons, messages=[])
+        return MessageList(persons=whose.persons, items=[])
     async with conn.transaction():
         links = await _message_links(
-            conn, access, whose, roles, arguments, records=list(by_record), limit=None
+            conn, wide, whose, roles, arguments, records=list(by_record), limit=None
         )
-        threads = _Threads(await _records(conn, access, {link.record_id for link in links}))
+        threads = _Threads(await _records(conn, wide, {link.record_id for link in links}))
     ranked: list[tuple[int, datetime, str, ListedMessage]] = []
     for link in links:
         found = threads.message(link.record_id, link.message_id)
@@ -623,8 +707,20 @@ async def run_list_messages(
         listed = _listed_message(record, thread, message, link.roles, chars=chars, score=hit.score)
         ranked.append((rank, message.sent_at, message.id, listed))
     ranked.sort(key=lambda entry: (entry[0], entry[1], entry[2]))
+    return await _message_list(
+        conn, access, whose, [entry[3] for entry in ranked[: arguments.limit]]
+    )
+
+
+async def _message_list(
+    conn: Conn, access: ReadFilter, whose: _Whose, messages: Sequence[ListedMessage]
+) -> MessageList:
+    """The listing, without the messages of threads the caller did not ask for, counted."""
+    hidden = await _sensitive(conn, access, [message.record_id for message in messages])
     return MessageList(
-        persons=whose.persons, messages=[entry[3] for entry in ranked[: arguments.limit]]
+        persons=whose.persons,
+        items=[message for message in messages if message.record_id not in hidden],
+        left_out=sum(message.record_id in hidden for message in messages),
     )
 
 
@@ -633,26 +729,14 @@ async def run_list_messages(
 _BY_ID: Final = sql.SQL(
     "SELECT {columns} FROM {from_} WHERE r.id = %(id)s AND r.deleted_at IS NULL AND {access}"
 )
-_BY_REFERENCE: Final = sql.SQL(
-    "SELECT {columns} FROM {from_} WHERE s.name = %(source)s AND r.external_id = %(external_id)s"
-    " AND r.kind = %(kind)s AND r.deleted_at IS NULL"
-    " AND (%(workspace)s::text IS NULL OR w.name = %(workspace)s) AND {access}"
-    " ORDER BY w.name LIMIT 2"
-)
 
 _KIND_TOOLS: Final = {"meeting": "get_meeting", "thread": "get_thread"}
 
 
 async def _find(conn: Conn, access: ReadFilter, arguments: RecordArguments, kind: str) -> _Record:
     """The live record the arguments name, of ``kind``; see the module for the refusals."""
-    template = _BY_REFERENCE if arguments.record_id is None else _BY_ID
-    params = {
-        "id": arguments.record_id,
-        "source": arguments.source,
-        "external_id": arguments.external_id,
-        "kind": kind,
-        "workspace": arguments.workspace,
-    }
+    template = _BY_ID
+    params = {"id": arguments.id}
     query = template.format(
         columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_record_scope(access)
     )
@@ -667,15 +751,9 @@ async def _find(conn: Conn, access: ReadFilter, arguments: RecordArguments, kind
         )
         cur = await conn.execute(marked, params)
         if await cur.fetchall():
-            raise QueryError(404, "sensitive_record", sensitive_message(kind))
+            raise QueryError(403, "sensitive_record", sensitive_message(kind))
     if not rows:
         raise QueryError(404, "not_found", f"No such {kind}.")
-    if len(rows) > 1:
-        raise QueryError(
-            422,
-            "ambiguous_record",
-            f"Two workspaces have such a {kind}: name its workspace, or pass its record_id.",
-        )
     record = _record(rows[0])
     if record.kind != kind:
         other = _KIND_TOOLS.get(record.kind)
@@ -712,7 +790,7 @@ async def _record_persons(conn: Conn, access: ReadFilter, record: _Record) -> li
     )
     return [
         RecordPerson(
-            person_id=row[0],
+            id=row[0],
             workspace=record.workspace,
             display_name=row[1],
             roles=row[2],
@@ -785,11 +863,11 @@ async def run_get_thread(
     )
 
 
-# --- add_document --------------------------------------------------------------------------------
+# --- put_document --------------------------------------------------------------------------------
 
 
 def document_external_id(title: str, text: str) -> str:
-    """The external id ``add_document`` gives a document without one: ``doc-`` and 16 hex
+    """The external id ``put_document`` gives a document without one: ``doc-`` and 16 hex
     digits of a hash of its title and text, so the same document sent again is the same record
     and another text another one."""
     return "doc-" + hash_fields(DOCUMENT_ID_DOMAIN, title.encode(), text.encode())[:16]
@@ -844,15 +922,15 @@ def _stored_as(result: ingest.IngestResult) -> StoredAs:
     return "unchanged"
 
 
-async def run_add_document(
+async def run_put_document(
     conn: Conn,
     services: QueryServices,
     access: WriteAccess,
-    arguments: AddDocumentArguments,
+    arguments: PutDocumentArguments,
     *,
     runs: AsyncConnectionPool[Any] | AsyncConnection[Any] | None = None,
-) -> AddedDocument:
-    """``add_document``: store one document record in a push source through
+) -> PutDocumentResult:
+    """``put_document``: store one document record in a push source through
     :func:`memini.ingest.ingest`, with its redaction, filters, persons and indexing (with the
     service's embedder, when one is configured). ``runs`` is where the ingest run is recorded."""
     external_id = arguments.external_id or document_external_id(arguments.title, arguments.text)
@@ -869,7 +947,7 @@ async def run_add_document(
         raise QueryError(
             409,
             "not_ingestible",
-            f"add_document writes to push sources; this is a {row[0]} source, which its own"
+            f"put_document writes to push sources; this is a {row[0]} source, which its own"
             " sync fills.",
         )
     record = ingest.RecordIn(
@@ -892,10 +970,10 @@ async def run_add_document(
             runs=runs,
             indexer=indexer,
         )
-    return AddedDocument(
+    return PutDocumentResult(
+        id=record_id(result.source_id, "document", external_id),
         workspace=arguments.workspace,
         source=arguments.source,
-        record_id=record_id(result.source_id, "document", external_id),
         external_id=external_id,
         locator=f"{arguments.source}:{external_id}",
         url=arguments.url,

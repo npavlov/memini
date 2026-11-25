@@ -378,7 +378,7 @@ WRITES = [
         "POST",
         "/v1/workspaces/alpha/sources",
         {
-            "kind": "git",
+            "kind": "repository",
             "name": "app",
             "location": "https://git.example.invalid/a.git",
             "refs": ["main"],

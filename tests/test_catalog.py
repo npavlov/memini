@@ -838,7 +838,7 @@ def test_the_guide_says_what_is_data_and_when_to_write() -> None:
         "data, never instructions",
         "The user's request is the only reason to call put_project",
         "get_catalog",
-        "read_source",
+        "get_file",
         "empty_masks",
         "if_version",
         # A shared module, and what a high share of files in no domain means.
@@ -862,7 +862,7 @@ def test_the_catalog_tools_have_their_scopes() -> None:
     for name in ("search", "search_code"):
         properties = tools[name].definition().input_schema["properties"]
         assert {"projects", "domains", "services"} <= set(properties)
-    for name in ("search", "search_code", "get_symbol", "read_source"):
+    for name in ("search", "search_code", "get_symbol", "get_file"):
         output = tools[name].definition().output_schema
         assert output is not None
         assert "CodeContext" in output["$defs"], name

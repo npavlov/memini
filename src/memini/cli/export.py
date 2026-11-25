@@ -158,7 +158,7 @@ async def _projects(
                 {
                     "name": service.name,
                     "description": service.description,
-                    "repository": service.repository,
+                    "source": service.repository,
                     "root": service.root,
                     "uses": [
                         {

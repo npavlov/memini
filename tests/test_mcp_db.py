@@ -179,7 +179,7 @@ async def insert_run(
 @pytest.fixture
 async def streams(db: Conn, world: World) -> None:
     """alpha: one current git stream, one never checked. beta: a push stream far behind."""
-    code = await insert_source(db, world, world.alpha, "code", "git")
+    code = await insert_source(db, world, world.alpha, "code", "repository")
     main = await insert_stream(
         db,
         world,
@@ -250,7 +250,7 @@ async def test_status_reports_every_stream_the_token_may_read(
 
     dev, main = alpha["streams"]  # by source, then key
     assert main["source"] == "code"
-    assert main["source_kind"] == "git"
+    assert main["source_kind"] == "repository"
     assert main["key"] == "refs/heads/main"
     assert main["schedule_seconds"] == 900.0
     assert 300.0 <= main["lag_seconds"] < 360.0
@@ -349,7 +349,7 @@ async def test_with_no_streams_the_base_is_current(app: FastAPI, db: Conn, world
 async def test_streams_without_a_schedule_do_not_count(
     app: FastAPI, db: Conn, world: World
 ) -> None:
-    code = await insert_source(db, world, world.alpha, "code", "git")
+    code = await insert_source(db, world, world.alpha, "code", "repository")
     await insert_stream(
         db, world, world.alpha, code, "refs/heads/main", checked_ago="2 minutes", schedule="1 hour"
     )
@@ -398,7 +398,7 @@ async def test_a_database_token_lists_the_tools(app: FastAPI, db: Conn, world: W
     assert [tool.name for tool in listed.tools] == [
         "search",
         "search_code",
-        "read_source",
+        "get_file",
         "get_symbol",
         "list_commits",
         "get_catalog",

@@ -54,16 +54,16 @@ def runs_command(args: argparse.Namespace, api: Api) -> int:
     body = api.get(
         f"v1/workspaces/{segment(workspace)}/runs",
         {
-            "source": args.source,
-            "stream": args.stream,
+            "sources": args.source,
+            "streams": args.stream,
             "limit": args.limit,
-            "before": args.before,
+            "cursor": args.cursor,
         },
     )
     if args.json:
         print_json(body)
         return EXIT_OK
-    found = [as_mapping(run) for run in as_list(body.get("runs"))]
+    found = [as_mapping(run) for run in as_list(body.get("items"))]
     if not found:
         message("no runs")
         return EXIT_OK
@@ -83,14 +83,14 @@ def runs_command(args: argparse.Namespace, api: Api) -> int:
             for run in found
         ),
     )
-    more = body.get("next_before")
+    more = body.get("next_cursor")
     if isinstance(more, str):
-        message(f"more runs: add --before {more}")
+        message(f"more runs: add --cursor {more}")
     return EXIT_OK
 
 
 def run_command(args: argparse.Namespace, api: Api) -> int:
-    run_id: UUID = args.run_id
+    run_id: UUID = args.id
     run = api.get(f"v1/runs/{run_id}")
     if args.json:
         print_json(run)
@@ -175,9 +175,18 @@ def add_commands(commands: Commands) -> None:
         " work the service did, with their status.",
     )
     runs.add_argument("workspace", type=parse_workspace_name, help="the workspace's name")
-    runs.add_argument("--source", type=parse_source_name, help="only runs of this source")
     runs.add_argument(
-        "--stream", metavar="KEY", help="only runs of this stream (refs/heads/main); needs --source"
+        "--source",
+        action="append",
+        type=parse_source_name,
+        metavar="NAME",
+        help="only runs of this source; repeat for more",
+    )
+    runs.add_argument(
+        "--stream",
+        action="append",
+        metavar="KEY",
+        help="only runs of this stream (refs/heads/main); needs --source; repeat for more",
     )
     runs.add_argument(
         "--limit",
@@ -185,7 +194,7 @@ def add_commands(commands: Commands) -> None:
         default=DEFAULT_RUN_PAGE,
         help=f"runs per page, 1 to {MAX_RUN_PAGE} (default {DEFAULT_RUN_PAGE})",
     )
-    runs.add_argument("--before", metavar="CURSOR", help="the next page, as the last page said")
+    runs.add_argument("--cursor", metavar="CURSOR", help="the next page, as the last page said")
     runs.add_argument("--json", action="store_true", help="print the API's JSON answer")
     runs.set_defaults(client=runs_command)
 
@@ -194,6 +203,6 @@ def add_commands(commands: Commands) -> None:
         help="show a run with its report",
         description="Show one run with its report: steps and their durations, counts, LLM use.",
     )
-    run.add_argument("run_id", metavar="run-id", type=UUID, help="the run's id, as `runs` shows")
+    run.add_argument("id", type=UUID, help="the run's id, as `runs` shows")
     run.add_argument("--json", action="store_true", help="print the API's JSON answer")
     run.set_defaults(client=run_command)

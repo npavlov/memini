@@ -1,4 +1,4 @@
-"""The ``git_sync`` job: fetch the mirror of a git source, then sync the streams the job names.
+"""The ``git_sync`` job: fetch the mirror of a repository, then sync the streams the job names.
 
 One job syncs one stream, the job's ``stream_id``, as the scheduler and a triggered sync enqueue
 it; a job without a stream syncs every stream of its source, one after the other. The worker runs
@@ -49,7 +49,7 @@ from memini.sources import GitConfig
 
 __all__ = ["GIT_SYNC", "git_sync_handler", "mirrors_unusable", "run_git_sync"]
 
-GIT_SYNC: Final = SYNC_KINDS["git"]
+GIT_SYNC: Final = SYNC_KINDS["repository"]
 """The job kind of a git sync: ``git_sync``."""
 
 
@@ -100,7 +100,7 @@ async def run_git_sync(
 
     Raises:
         LookupError: the job's source or stream does not exist.
-        ValueError: the source is not a git source, or has no location.
+        ValueError: the source is not a repository, or has no location.
         RemoteNotAllowed, GitError: the fetch failed; nothing else ran.
         IndexMismatchError: the workspace's index is out of date; no record changed.
         RevisionNotFound: a tracked ref names no commit (a tag of a tree or blob). A ref that
@@ -113,7 +113,7 @@ async def run_git_sync(
     async with pool.connection() as conn, conn.transaction():
         source, streams, checked_until, retention = await _load(conn, job.source_id, job.stream_id)
     if not source.config.location:
-        raise ValueError(f"git source {source.id} has no location")
+        raise ValueError(f"repository {source.id} has no location")
 
     run = current_run()
     if run is None:
@@ -160,8 +160,8 @@ async def _load(
     if row is None:
         raise LookupError(f"no source {source_id}")
     workspace_id, owner_id, kind, config, now, retention = row
-    if kind != "git":
-        raise ValueError(f"source {source_id} is a {kind} source, not a git source")
+    if kind != "repository":
+        raise ValueError(f"source {source_id} is a {kind} source, not a repository")
     if stream_id is None:
         cur = await conn.execute(
             "SELECT id, key, cursor FROM stream WHERE source_id = %s ORDER BY key", (source_id,)

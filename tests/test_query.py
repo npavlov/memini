@@ -137,7 +137,7 @@ def hit(**changes: Any) -> Hit:
         "workspace": "acme",
         "source_id": uuid.uuid4(),
         "source": "shop",
-        "source_kind": "git",
+        "source_kind": "repository",
         "record_kind": "code_file",
         "external_id": "refs/heads/main:src/lamp.py",
         "external_url": None,
@@ -161,7 +161,7 @@ def test_a_code_hit_carries_repository_ref_commit_and_locator() -> None:
     found = SearchHit.of(hit())
     assert (found.repository, found.ref, found.commit) == ("shop", "refs/heads/main", SHA)
     assert found.locator == f"shop@{SHA}:src/lamp.py#L4-L19"
-    assert (found.kind, found.source_kind, found.occurred_at) == ("code_file", "git", WHEN)
+    assert (found.kind, found.source_kind, found.occurred_at) == ("code_file", "repository", WHEN)
     # No place inside the file but its lines: no anchor, no link, the commit's time.
     assert (found.anchor, found.link, found.url, found.at) == (None, None, None, WHEN)
     unpinned = SearchHit.of(hit(commit=None))
@@ -486,7 +486,7 @@ async def http_client(app: FastAPI, token: str) -> AsyncGenerator[httpx2.AsyncCl
         ("search", {"query": "lamp"}),
         ("search_code", {"query": "lamp", "mode": "exact"}),
         ("get_symbol", {"name": "Lamp"}),
-        ("read_source", {"repository": "shop"}),
+        ("get_file", {"repository": "shop"}),
     ],
 )
 async def test_without_a_database_the_tools_say_so(

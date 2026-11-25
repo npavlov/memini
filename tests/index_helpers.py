@@ -120,9 +120,9 @@ async def make_scope(conn: Conn) -> Scope:
         owner=owner,
         acme=acme.id,
         other=other.id,
-        repo=await add_source(acme.id, "greenhouse", "git"),
-        fork=await add_source(acme.id, "greenhouse-fork", "git"),
-        other_repo=await add_source(other.id, "greenhouse", "git"),
+        repo=await add_source(acme.id, "greenhouse", "repository"),
+        fork=await add_source(acme.id, "greenhouse-fork", "repository"),
+        other_repo=await add_source(other.id, "greenhouse", "repository"),
         notes=await add_source(acme.id, "notes", "push"),
     )
 

@@ -365,7 +365,7 @@ def hit(**changes: object) -> Hit:
         "workspace": "acme",
         "source_id": uuid.uuid4(),
         "source": "greenhouse",
-        "source_kind": "git",
+        "source_kind": "repository",
         "record_kind": "code_file",
         "external_id": "main:src/greenhouse.py",
         "external_url": None,

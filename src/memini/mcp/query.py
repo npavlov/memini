@@ -1,5 +1,4 @@
-"""The query tools: ``search``, ``search_code``, ``get_symbol``, ``read_source`` and
-``list_commits``.
+"""The query tools: ``search``, ``search_code``, ``get_file`` and ``list_commits``.
 
 Each tool authorizes the read (:func:`~memini.auth.authorization.authorize_read`), borrows a
 connection from the pool and calls its function in :mod:`memini.query.service`, which the HTTP
@@ -32,19 +31,16 @@ from memini.query import (
     CodeSearchArguments,
     CommitInfo,
     CommitList,
+    GetFileArguments,
     ListCommitsArguments,
     QueryError,
     QueryServices,
-    ReadSourceArguments,
     SearchArguments,
     SearchHit,
     SearchResult,
     SourceRead,
-    SymbolArguments,
-    SymbolResult,
-    run_get_symbol,
+    run_get_file,
     run_list_commits,
-    run_read_source,
     run_search,
     run_search_code,
 )
@@ -52,16 +48,14 @@ from memini.query.model import GeneralSearchResult
 from memini.query.reader import DEFAULT_READ_LIMITS
 
 __all__ = [
-    "GET_SYMBOL_TOOL",
+    "GET_FILE_TOOL",
     "LIST_COMMITS_TOOL",
     "QUERY_TOOLS",
-    "READ_SOURCE_TOOL",
     "SEARCH_CODE_TOOL",
     "SEARCH_TOOL",
     "summarize_commits",
     "summarize_read",
     "summarize_search",
-    "summarize_symbols",
 ]
 
 type Conn = AsyncConnection[TupleRow]
@@ -124,8 +118,8 @@ def _hit(number: int, hit: SearchHit) -> str:
         f"{hit.kind} in {hit.workspace}/{hit.source} ({hit.source_kind})",
         _time(hit.occurred_at),
     ]
-    if hit.at != hit.occurred_at:
-        details.append(f"chunk at {_time(hit.at)}")
+    if hit.chunk_occurred_at != hit.occurred_at:
+        details.append(f"chunk at {_time(hit.chunk_occurred_at)}")
     if hit.definition is not None:
         details.append(f"defines {hit.definition.kind} {inline(hit.definition.qualified_name)}")
     elif hit.symbol:
@@ -147,30 +141,24 @@ def _hit(number: int, hit: SearchHit) -> str:
 
 
 def summarize_search(result: SearchResult) -> str:
-    """The text content of a ``search`` or ``search_code`` result: every hit with its snippet."""
-    lines = [_head(len(result.hits), "hit", "hits")]
-    lines += [_hit(number, hit) for number, hit in enumerate(result.hits, start=1)]
+    """The text content of a ``search`` or ``search_code`` result: every hit with its snippet, and
+    how many hits of sensitive records were left out."""
+    lines = [_head(len(result.items), "hit", "hits")]
+    if result.left_out:
+        lines.append(_left_out(result.left_out, "hit", "hits"))
+    lines += [_hit(number, hit) for number, hit in enumerate(result.items, start=1)]
     if isinstance(result, GeneralSearchResult) and result.decisions:
         lines.append(f"{len(result.decisions)} matching journal items.")
         lines.extend(summarize_item(item) for item in result.decisions)
     return "\n\n".join(lines)
 
 
-def summarize_symbols(result: SymbolResult) -> str:
-    """The text content of a ``get_symbol`` result: every definition with its code."""
-    parts = [_head(len(result.definitions), "definition", "definitions")]
-    for number, found in enumerate(result.definitions, start=1):
-        cut = "; snippet cut short" if found.truncated else ""
-        start = (
-            f"; snippet from line {found.snippet_start_line}" if found.snippet_start_line else ""
-        )
-        belongs = "".join(f"{line}\n" for line in _belongs(found.context))
-        parts.append(
-            f"{number}. {found.kind} {inline(found.qualified_name)} at {inline(found.locator)}\n"
-            f"in {found.workspace}/{found.repository}, {_time(found.occurred_at)}{start}{cut}\n"
-            f"{belongs}{fenced(found.snippet, found.language or '')}"
-        )
-    return "\n\n".join(parts)
+def _left_out(count: int, one: str, many: str) -> str:
+    """The line that says how many results of records marked sensitive were left out."""
+    return (
+        f"{_count(count, one, many)} of records marked sensitive left out: ask with"
+        " include_sensitive and a token with the sensitive scope to read them."
+    )
 
 
 def _symbol_spans(read: SourceRead) -> str:
@@ -182,7 +170,7 @@ def _symbol_spans(read: SourceRead) -> str:
 
 
 def summarize_read(read: SourceRead) -> str:
-    """The text content of a ``read_source`` result: what was read, then the file's lines, a
+    """The text content of a ``get_file`` result: what was read, then the file's lines, a
     directory's entries (one a line: name, kind, size) or a symlink's target in a fenced
     block."""
     at = f"{'pinned commit' if read.pinned else 'commit'} of {_time(read.occurred_at)}"
@@ -223,7 +211,7 @@ def summarize_read(read: SourceRead) -> str:
 
 def _commit(number: int, commit: CommitInfo) -> str:
     details = [
-        f"commit in {commit.workspace}/{commit.repository} ({commit.source_kind})",
+        f"commit in {commit.workspace}/{commit.source} ({commit.source_kind})",
         f"committed {_time(commit.occurred_at)}",
     ]
     if commit.authored_at != commit.occurred_at:
@@ -253,32 +241,31 @@ def _commit(number: int, commit: CommitInfo) -> str:
 def summarize_commits(result: CommitList) -> str:
     """The text content of a ``list_commits`` result: what cut the list and how to continue, the
     repositories nothing was read of, then every commit with its author, message and paths."""
-    parts = [_head(len(result.commits), "commit", "commits")]
-    if result.next_until is not None:
+    parts = [_head(len(result.items), "commit", "commits")]
+    if result.next_cursor is not None:
         cause = (
             "The service read as many commits of a repository as it reads in one call"
             if result.cut_by == "walk_limit"
             else "The list is cut at its limit"
         )
         parts.append(
-            f"{cause}: older commits may match too. To continue, call again with until"
-            f" {_time(result.next_until)} and the other arguments as they were."
+            f"{cause}: older commits may match too. To continue, call again with cursor"
+            f" {inline(result.next_cursor)} and the other arguments as they were."
         )
-    unread = [
-        f"{walk.workspace}/{walk.repository}" for walk in result.repositories if not walk.heads
-    ]
+    unread = [f"{walk.workspace}/{walk.source}" for walk in result.sources if not walk.heads]
     if unread:
         parts.append(f"No synced commit yet, so nothing was read of: {', '.join(unread)}.")
-    parts += [_commit(number, commit) for number, commit in enumerate(result.commits, start=1)]
+    parts += [_commit(number, commit) for number, commit in enumerate(result.items, start=1)]
     return "\n\n".join(parts)
 
 
 # --- The tools -----------------------------------------------------------------------------------
 
 _RESULT_NOTE = (
-    "Each hit carries its source kind, workspace and source, locator (repo@sha:path#Lstart-Lend"
-    " for code; source:external_id#anchor otherwise), occurred_at (the record's time, which since"
-    " and until filter on), and the chunk's text as snippet."
+    "Each hit carries its id (the chunk's), source kind, workspace and source, locator"
+    " (repo@sha:path#Lstart-Lend for code; source:external_id#anchor otherwise), occurred_at (the"
+    " record's time, which since and until filter on), and the chunk's text as snippet. left_out"
+    " counts the hits of records marked sensitive that were left out of items."
 )
 
 _CATALOG_NOTE = (
@@ -300,9 +287,9 @@ _SEARCH_CATALOG_NOTE = (
 _ANCHOR_NOTE = (
     "A hit of a thread, a meeting or a document also carries anchor, its place in the record "
     "(msg-<id>, seg-<id>, summary/<heading trail>, action-items, a heading trail), link (the "
-    "message's URL, else the record's) and at (when the chunk's content happened: its first "
-    "message, its transcript window). record_id with anchor is an evidence reference: to cite the "
-    "hit in record_decision, pass both as they are."
+    "message's URL, else the record's) and chunk_occurred_at (when the chunk's content happened: "
+    "its first message, its transcript window). record_id with anchor is an evidence reference: "
+    "to cite the hit in record_decision, pass both as they are."
 )
 
 SEARCH_TOOL = Tool(
@@ -311,12 +298,12 @@ SEARCH_TOOL = Tool(
     description=(
         "Search everything the token may read: code, message threads, meetings and documents. "
         "Ranks chunks by meaning and by words (mode hybrid, the default; dense: meaning only; "
-        "lexical: words only). Filters: workspaces, sources, repositories, kinds (code_file, "
-        "thread, meeting, document, decision, open_question), since and until (ISO 8601), "
-        "persons (records that name them: 'me', a person id, or an alias such as a mail address, "
-        "a chat user id or a display name; merged persons count as one) and roles (with persons: "
-        "author, recipient, mention, participant). Active items matching statement words or "
-        "citing retrieved records are in decisions. Use get_decision for their full history. "
+        "lexical: words only). Filters: workspaces, sources, kinds (code_file, thread, meeting, "
+        "document, decision, open_question), since and until (ISO 8601), persons (records that "
+        "name them: 'me', a person id, or an alias such as a mail address, a chat user id or a "
+        "display name; merged persons count as one) and roles (with persons: author, recipient, "
+        "mention, participant). Active items matching statement words or citing retrieved "
+        "records are in decisions. Use get_decision for their full history. "
         f"{_SEARCH_CATALOG_NOTE} "
         "With projects or domains, decisions holds only items under those projects and in those "
         "domains, as list_decisions reads them; with services, only items citing retrieved "
@@ -335,15 +322,18 @@ SEARCH_CODE_TOOL = Tool(
     name="search_code",
     title="Search code",
     description=(
-        "Search the code of the git repositories the token may read. Modes: semantic (the "
-        "default: a question or identifiers, by meaning and by words), exact (a substring), regex "
-        "(a Postgres regular expression, matched line by line like grep), symbol (definitions by "
-        "name, e.g. on, or qualified name, e.g. Lamp.on). Filters: repositories, workspaces, "
-        "paths (globs with .gitignore rules, e.g. src/**/*.py), "
-        f"languages ({', '.join(LANGUAGES)}). case_sensitive applies to exact, regex and symbol. "
+        "Search the code of the repositories the token may read. Modes: semantic (the default: a "
+        "question or identifiers, by meaning and by words), exact (a substring), regex (a "
+        "Postgres regular expression, matched line by line like grep), symbol (definitions by "
+        "name, e.g. on, or qualified name, e.g. Lamp.on: names from the outermost definition, "
+        "joined by '.' in every language; whole names first), symbol_prefix (definitions whose "
+        "name starts with it). Filters: workspaces, sources (repositories), paths (globs with "
+        f".gitignore rules, e.g. src/**/*.py), languages ({', '.join(LANGUAGES)}). "
+        "case_sensitive applies to exact, regex, symbol and symbol_prefix. "
         f"{_CATALOG_NOTE} "
-        f"{_RESULT_NOTE} Hits also carry the ref, the commit, the symbol, and for exact and regex "
-        "the line of the first match. Read more of a file with read_source."
+        f"{_RESULT_NOTE} Hits also carry the ref, the commit, the symbol, for exact and regex "
+        "the line of the first match, and for symbol and symbol_prefix the definition: its kind, "
+        "parent and lines. Read more of a file with get_file."
     ),
     arguments=CodeSearchArguments,
     result=SearchResult,
@@ -351,42 +341,26 @@ SEARCH_CODE_TOOL = Tool(
     summarize=summarize_search,
 )
 
-GET_SYMBOL_TOOL = Tool(
-    name="get_symbol",
-    title="Get symbol",
+GET_FILE_TOOL = Tool(
+    name="get_file",
+    title="Get a file",
     description=(
-        "Find where a symbol is defined in code: by name (on) or qualified name (Lamp.on: names "
-        "from the outermost definition, joined by '.' in every language), whole or as a prefix. "
-        "Each definition carries its kind, parent, location as repo@sha:path#Lstart-Lend, ref, "
-        "commit, occurred_at (the commit's time), the code that defines it as snippet, and "
-        "context: the project, service and domains its file belongs to by the catalog. "
-        "Filters: repositories, workspaces, paths, languages."
+        "Read a file, a range of its lines, or a directory listing from a repository (source) "
+        "the token may read. By default at the pinned commit of the repository's default "
+        "tracked branch, the commit search results are at; ref takes a branch or tag name, a "
+        "full ref or a full commit id. path is relative to the repository root (empty for the "
+        "root); absolute paths, '..' and control characters are refused. Lines are 1-based and "
+        f"inclusive, at most {DEFAULT_READ_LIMITS.max_lines} lines and "
+        f"{DEFAULT_READ_LIMITS.max_chars} characters per call: when truncated, continue from "
+        "end_line + 1. A binary file or one over the size limit returns no content; a symlink "
+        "returns its target, not followed; a file marked sensitive is refused unless asked "
+        "with include_sensitive. The result carries the commit, its time, a locator "
+        "repo@sha:path#Lstart-Lend, the definitions in the lines read, and context: the "
+        "project, service and domains the path belongs to by the catalog."
     ),
-    arguments=SymbolArguments,
-    result=SymbolResult,
-    run=_tool_run(run_get_symbol),
-    summarize=summarize_symbols,
-)
-
-READ_SOURCE_TOOL = Tool(
-    name="read_source",
-    title="Read source",
-    description=(
-        "Read a file, a range of its lines, or a directory listing from a repository the token "
-        "may read. By default at the pinned commit of the repository's default tracked branch, "
-        "the commit search results are at; ref takes a branch or tag name, a full ref or a full "
-        "commit id. path is relative to the repository root (empty for the root); absolute paths, "
-        "'..' and control characters are refused. Lines are 1-based and inclusive, at most "
-        f"{DEFAULT_READ_LIMITS.max_lines} lines and {DEFAULT_READ_LIMITS.max_chars} characters "
-        "per call: when truncated, continue from end_line + 1. A binary file or one over the "
-        "size limit returns no content; a symlink returns its target, not followed. The result "
-        "carries the commit, its time, a locator repo@sha:path#Lstart-Lend, the definitions "
-        "in the lines read, and context: the project, service and domains the path belongs to "
-        "by the catalog."
-    ),
-    arguments=ReadSourceArguments,
+    arguments=GetFileArguments,
     result=SourceRead,
-    run=_tool_run(run_read_source),
+    run=_tool_run(run_get_file),
     summarize=summarize_read,
 )
 
@@ -394,21 +368,21 @@ LIST_COMMITS_TOOL = Tool(
     name="list_commits",
     title="List commits",
     description=(
-        "Who changed what, and when: the commit history of the git repositories the token may "
-        "read, newest first, read from the service's mirror when asked and never stored. Each "
+        "Who changed what, and when: the commit history of the repositories the token may read, "
+        "newest first, read from the service's mirror when asked and never stored. Each "
         "repository is walked from its pinned commit, the one search results are at. Filters: "
-        "repositories, workspaces, paths (globs with .gitignore rules, e.g. src/fees/** or "
-        "src/fees/calc.py: commits that changed such a path, listed with those paths), author "
-        "(text in the author's name or mail address), since and until (ISO 8601 with a time "
-        "zone, on the committer time), text (words in the message, as written; there is no "
-        "search by meaning over messages). Each commit carries its workspace and repository, "
-        "sha and short_sha, a locator repo@sha, occurred_at (the committer time) and "
-        "authored_at, the author as git shows it and the person the author resolves to "
-        "(person_id), subject, body, parents, and the changed paths with their status. A list "
-        "cut by a bound says so (truncated, cut_by) and gives next_until: pass it as until to "
-        "continue. A walk that runs past the service's time limit is an error: narrow it with "
-        "repositories, paths, since or until. Read a file as a commit left it with read_source "
-        "and the sha as ref."
+        "workspaces, sources (repositories), paths (globs with .gitignore rules, e.g. "
+        "src/fees/** or src/fees/calc.py: commits that changed such a path, listed with those "
+        "paths), persons ('me' or a person id: their mail addresses and author names; or text "
+        "the author's name or mail address holds), since and until (ISO 8601 with a time zone, "
+        "on the committer time), query (words in the message, as written; there is no search "
+        "by meaning over messages). Each commit carries its workspace and source, sha and "
+        "short_sha, a locator repo@sha, occurred_at (the committer time) and authored_at, the "
+        "author as git shows it and the person the author resolves to (person_id), subject, "
+        "body, parents, and the changed paths with their status. A list cut by a bound says so "
+        "(truncated, cut_by) and gives next_cursor: pass it as cursor to continue. A walk that "
+        "runs past the service's time limit is an error: narrow it with sources, paths, since "
+        "or until. Read a file as a commit left it with get_file and the sha as ref."
     ),
     arguments=ListCommitsArguments,
     result=CommitList,
@@ -419,8 +393,7 @@ LIST_COMMITS_TOOL = Tool(
 QUERY_TOOLS: Sequence[Tool[Any, Any]] = (
     SEARCH_TOOL,
     SEARCH_CODE_TOOL,
-    READ_SOURCE_TOOL,
-    GET_SYMBOL_TOOL,
+    GET_FILE_TOOL,
     LIST_COMMITS_TOOL,
 )
 """The query tools, in the order ``tools/list`` shows them."""

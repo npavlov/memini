@@ -68,7 +68,7 @@ from memini.knowledge import (
     list_items,
     record_item,
 )
-from memini.query import NotSyncedError, read_source
+from memini.query import NotSyncedError, get_file
 from memini.runs import wait_for_run_writes
 from memini.search import Mode, SearchFilters, SearchQuery, search
 from memini.sources import NewGitSource, NewPushSource, create_git_source, create_push_source
@@ -533,7 +533,7 @@ async def test_a_sync_after_a_restore_clones_the_mirror_and_goes_on_from_the_pin
     ):
         # No mirror: search answers from the database, reading a file waits for the next sync.
         with pytest.raises(NotSyncedError):
-            await read_source(
+            await get_file(
                 db, backup.reader, mirrors, repository="greenhouse", path="src/greenhouse.py"
             )
         old = await stream_pin(db, backup.git.source, MAIN)
@@ -552,7 +552,7 @@ async def test_a_sync_after_a_restore_clones_the_mirror_and_goes_on_from_the_pin
         new = await stream_pin(db, backup.git.source, MAIN)
         assert new is not None
         assert new.commit == head != old.commit
-        read = await read_source(
+        read = await get_file(
             db, backup.reader, mirrors, repository="greenhouse", path="src/greenhouse.py"
         )
         assert read.commit == head

@@ -93,7 +93,7 @@ class StoredService:
     description: str
     source_id: UUID
     repository: str
-    """The name of the git source."""
+    """The name of the repository."""
     root: str
     stamp: Stamp
 
@@ -141,7 +141,7 @@ class StoredLink:
     """Read inside the root of the service that uses."""
     stamp: Stamp
     source_id: UUID
-    """The git source of the service that uses."""
+    """The repository of the service that uses."""
     repository: str
     root: str
     """The root of the service that uses."""
@@ -178,7 +178,7 @@ class StoredProject:
 
 @dataclass(frozen=True, slots=True)
 class Repository:
-    """A git source with its tracked refs."""
+    """A repository with its tracked refs."""
 
     id: UUID
     name: str
@@ -372,24 +372,24 @@ async def read_projects(
 async def git_sources(
     conn: Conn, access: Access, workspace_id: UUID, names: Collection[str]
 ) -> dict[str, UUID]:
-    """The git sources of the workspace among ``names`` that ``access`` reaches, by name."""
+    """The repositories of the workspace among ``names`` that ``access`` reaches, by name."""
     if not names:
         return {}
     query = sql.SQL(
         "SELECT s.name, s.id FROM source s"
-        " WHERE s.workspace_id = %s AND s.kind = 'git' AND s.name = ANY(%s) AND {}"
+        " WHERE s.workspace_id = %s AND s.kind = 'repository' AND s.name = ANY(%s) AND {}"
     ).format(_where(access, "s", source="id"))
     cur = await conn.execute(query, (workspace_id, sorted(names)))
     return {row[0]: row[1] for row in await cur.fetchall()}
 
 
 async def repositories(conn: Conn, access: ReadFilter, workspace_id: UUID) -> list[Repository]:
-    """Every git source of the workspace that ``access`` reads, by name, with its tracked refs
+    """Every repository of the workspace that ``access`` reads, by name, with its tracked refs
     and the commit each is pinned at."""
     query = sql.SQL(
         "SELECT s.id, s.name, st.key, st.cursor FROM source s"
         " LEFT JOIN stream st ON st.source_id = s.id AND {streams}"
-        " WHERE s.workspace_id = %s AND s.kind = 'git' AND {sources}"
+        " WHERE s.workspace_id = %s AND s.kind = 'repository' AND {sources}"
         " ORDER BY s.name, st.key"
     ).format(
         streams=_where(access, "st", source="source_id"), sources=_where(access, "s", source="id")
@@ -411,7 +411,7 @@ async def repositories(conn: Conn, access: ReadFilter, workspace_id: UUID) -> li
 async def source_files(
     conn: Conn, access: ReadFilter, source_ids: Collection[UUID]
 ) -> dict[UUID, list[str]]:
-    """The paths of the files the index holds of each git source of ``source_ids``, sorted; see
+    """The paths of the files the index holds of each repository of ``source_ids``, sorted; see
     the module. A source without files, or out of reach, has none."""
     found: dict[UUID, list[str]] = {each: [] for each in source_ids}
     if not found:

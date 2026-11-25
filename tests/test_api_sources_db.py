@@ -119,7 +119,7 @@ async def new_workspace(client: httpx2.AsyncClient, headers: dict[str, str], nam
 async def new_source(
     client: httpx2.AsyncClient, headers: dict[str, str], workspace: str, **body: Any
 ) -> httpx2.Response:
-    payload: Json = {"kind": "git", "name": "site", "location": REMOTE, "refs": ["main"], **body}
+    payload: Json = {"kind": "repository", "name": "site", "location": REMOTE, "refs": ["main"], **body}
     return await client.post(f"/v1/workspaces/{workspace}/sources", json=payload, headers=headers)
 
 
@@ -168,7 +168,7 @@ async def test_an_admin_creates_two_workspaces_and_a_git_source_in_each(
         201,
     )
     assert local["workspace"] == "alpha"
-    assert local["kind"] == "git"
+    assert local["kind"] == "repository"
     assert local["location"] == os.path.realpath(repos / "app")
     assert local["refs"] == ["refs/heads/main", "refs/tags/v1"]
     assert local["schedule_seconds"] == 3600
@@ -357,7 +357,7 @@ async def test_invalid_settings_are_refused_without_echoing_them(
     error = refused(response, 422, "validation_error")
     # The body is one of the kinds of source, so the kind is part of the location.
     assert error["details"] == [
-        {"location": ["body", "git", "location"], "type": "string_too_long"}
+        {"location": ["body", "repository", "location"], "type": "string_too_long"}
     ]
     assert SECRET not in response.text
 

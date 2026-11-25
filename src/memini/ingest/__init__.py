@@ -14,7 +14,7 @@ numbers in a payload, its external URL and the window's cursor are redacted
 hashed (:mod:`memini.ingest.validate`). The limits (:class:`IngestLimits`) are the number of
 items and the stored size of a payload. A refused batch touches nothing.
 
-**Target.** The source must be a push or mcp source the caller may change; a git source is
+**Target.** The source must be a push or mcp source the caller may change; a repository is
 refused, its records come from its mirror. The stream the batch names is created on first use,
 in a transaction of its own, so that the batch's run can name it.
 

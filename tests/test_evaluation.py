@@ -311,7 +311,7 @@ def hit(
         workspace="garden",
         source_id=uuid.UUID(int=2),
         source=source,
-        source_kind="git",
+        source_kind="repository",
         record_kind="code_file",
         external_id=f"refs/heads/main:{path}",
         external_url=None,

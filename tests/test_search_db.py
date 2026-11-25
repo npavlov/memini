@@ -706,7 +706,7 @@ async def test_the_repositories_filter_takes_git_sources_only(
         filters=SearchFilters(sources=("greenhouse", "notes"), repositories=("greenhouse-fork",)),
     )
 
-    assert {(h.repository, h.source_kind) for h in fork} == {("greenhouse-fork", "git")}
+    assert {(h.repository, h.source_kind) for h in fork} == {("greenhouse-fork", "repository")}
     assert notes == []
     assert both == []  # the two filters apply together
 
@@ -1039,7 +1039,7 @@ async def test_a_code_hit_carries_its_source_kind_time_and_place(
     assert hit.chunk_id == water.id
     assert hit.record_id == corpus.records["greenhouse"]
     assert (hit.workspace_id, hit.workspace) == (corpus.scope.acme, "acme")
-    assert (hit.source_id, hit.source, hit.source_kind) == (corpus.scope.repo, "greenhouse", "git")
+    assert (hit.source_id, hit.source, hit.source_kind) == (corpus.scope.repo, "greenhouse", "repository")
     assert (hit.record_kind, hit.chunk_kind, hit.language) == ("code_file", "function", "python")
     assert (hit.path, hit.symbol, hit.start_line, hit.end_line) == (
         PATH,

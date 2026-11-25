@@ -379,7 +379,7 @@ SOURCE: Json = {
     "id": "0193-s",
     "workspace": "acme",
     "name": "shop",
-    "kind": "git",
+    "kind": "repository",
     "location": "https://git.example.invalid/team/shop.git",
     "refs": ["refs/heads/main", "refs/tags/v1"],
     "schedule_seconds": 5400.0,
@@ -422,7 +422,7 @@ def test_source_add_sends_the_settings_and_shows_the_source(
     assert service.last.method == "POST"
     assert service.last.url.path == "/v1/workspaces/acme/sources"
     assert json.loads(service.last.content) == {
-        "kind": "git",
+        "kind": "repository",
         "name": "shop",
         "location": "https://git.example.invalid/team/shop.git",
         "refs": ["main", "refs/tags/v1"],

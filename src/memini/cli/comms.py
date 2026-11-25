@@ -9,6 +9,7 @@ as it is. Needs the ``read`` scope.
 """
 
 import argparse
+from collections.abc import Mapping
 from typing import Final, get_args
 
 from memini.cli.arguments import Commands, parse_source_name, parse_workspace_name
@@ -37,15 +38,27 @@ def _limit(value: str) -> int:
 
 def _params(args: argparse.Namespace) -> dict[str, str | int | list[str] | None]:
     return {
-        "person": args.person,
+        "persons": args.person,
         "query": args.query,
         "since": None if args.since is None else args.since.isoformat(),
         "until": None if args.until is None else args.until.isoformat(),
         "workspaces": args.workspace,
         "sources": args.source,
+        "projects": args.project,
+        "domains": args.domain,
         "limit": args.limit,
         "include_sensitive": "true" if args.include_sensitive else None,
     }
+
+
+def _left_out(body: Mapping[str, object], what: str) -> None:
+    """Say how many results of records marked sensitive the service left out."""
+    left_out = body.get("left_out")
+    if isinstance(left_out, int) and left_out:
+        message(
+            f"{left_out} {what} marked sensitive left out; --include-sensitive reads them, with a"
+            " token that has the sensitive scope"
+        )
 
 
 def _print_text(value: object, *, cut: bool = False) -> None:
@@ -61,7 +74,8 @@ def meetings_command(args: argparse.Namespace, api: Api) -> int:
     if args.json:
         print_json(body)
         return EXIT_OK
-    meetings = [as_mapping(meeting) for meeting in as_list(body.get("meetings"))]
+    meetings = [as_mapping(meeting) for meeting in as_list(body.get("items"))]
+    _left_out(body, "meetings")
     if not meetings:
         message("no meetings")
         return EXIT_OK
@@ -91,7 +105,8 @@ def messages_command(args: argparse.Namespace, api: Api) -> int:
     if args.json:
         print_json(body)
         return EXIT_OK
-    messages = [as_mapping(each) for each in as_list(body.get("messages"))]
+    messages = [as_mapping(each) for each in as_list(body.get("items"))]
+    _left_out(body, "messages")
     if not messages:
         message("no messages")
         return EXIT_OK
@@ -101,7 +116,7 @@ def messages_command(args: argparse.Namespace, api: Api) -> int:
         place = f"{text(each.get('workspace'))}/{text(each.get('source'))}"
         print(
             f"{text(each.get('locator'))}  (message from {text(each.get('author'))}, {place},"
-            f" {when(each.get('sent_at'))}; {text(each.get('roles'))})"
+            f" {when(each.get('occurred_at'))}; {text(each.get('roles'))})"
         )
         thread = " · ".join(
             part for part in (each.get("channel"), each.get("title")) if isinstance(part, str)
@@ -121,9 +136,10 @@ def _common(parser: argparse.ArgumentParser, what: str) -> None:
     )
     parser.add_argument(
         "--person",
-        default="me",
+        action="append",
+        metavar="PERSON",
         help="whose: me (default), a person id, or an alias (a mail address, a chat user id, a"
-        " display name)",
+        " display name); repeat for more",
     )
     parser.add_argument(
         "--since", type=parse_time, metavar="TIME", help="from this time on (ISO 8601, with Z)"
@@ -147,6 +163,18 @@ def _common(parser: argparse.ArgumentParser, what: str) -> None:
         type=parse_source_name,
         metavar="NAME",
         help="only this source; repeat for more",
+    )
+    parser.add_argument(
+        "--project",
+        action="append",
+        metavar="NAME",
+        help=f"only {what} linked to this project of the catalog; repeat for more",
+    )
+    parser.add_argument(
+        "--domain",
+        action="append",
+        metavar="NAME",
+        help=f"only {what} linked to this domain (domain or domain/subdomain); repeat for more",
     )
     parser.add_argument(
         "--limit",

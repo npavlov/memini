@@ -686,7 +686,7 @@ async def test_a_search_of_a_subdomain_returns_only_its_files_across_both_reposi
     assert places(semantic) <= PILOT
     assert general["hits"]
     assert places(general) <= BERTH
-    assert all(hit["source_kind"] == "git" for hit in general["hits"])
+    assert all(hit["source_kind"] == "repository" for hit in general["hits"])
     assert general["decisions"] == []
 
 
@@ -750,7 +750,7 @@ async def test_a_hit_says_what_its_file_belongs_to(world: World) -> None:
 async def test_read_source_says_what_the_path_belongs_to(world: World) -> None:
     async def read(client: Client, repository: str, path: str) -> CallToolResult:
         return await client.call_tool(
-            "read_source", {"workspace": "harbor", "repository": repository, "path": path}
+            "get_file", {"workspace": "harbor", "repository": repository, "path": path}
         )
 
     async with mcp_client(world.app(), await world.token("read", "ingest")) as client:
@@ -1752,7 +1752,7 @@ async def test_the_database_keeps_two_levels_one_workspace_and_git_sources(
         async def git_source(workspace: uuid.UUID, name: str) -> uuid.UUID:
             found: uuid.UUID = await one(
                 "INSERT INTO source (workspace_id, owner_id, name, kind)"
-                " VALUES (%s, %s, %s, 'git') RETURNING id",
+                " VALUES (%s, %s, %s, 'repository') RETURNING id",
                 workspace,
                 owner,
                 name,

@@ -204,7 +204,7 @@ def summarize_catalog(result: Catalog) -> str:
     lines = [
         f"Catalog of workspace {inline(result.workspace)}: "
         f"{_count(len(result.projects), 'project', 'projects')}, "
-        f"{_count(len(result.unassigned_repositories), 'repository', 'repositories')}"
+        f"{_count(len(result.unassigned_sources), 'repository', 'repositories')}"
         f" without a service.{f' {TEXT_NOTICE}' if result.projects else ''}"
     ]
     for project in result.projects:
@@ -217,7 +217,7 @@ def summarize_catalog(result: Catalog) -> str:
         lines += _texts(project.title, project.description)
         for service in project.services:
             lines.append(
-                f"Service {inline(service.name)}: {_where(service.repository, service.root)};"
+                f"Service {inline(service.name)}: {_where(service.source, service.root)};"
                 f" {_files(service.files)}{_languages(service.languages)};"
                 f" refs: {_refs(service.refs)}."
             )
@@ -227,12 +227,12 @@ def summarize_catalog(result: Catalog) -> str:
             lines += _domain("Domain", domain)
             for part in domain.subdomains:
                 lines += _domain("Subdomain", part)
-    if result.unassigned_repositories:
+    if result.unassigned_sources:
         lines.append("\nRepositories without a service:")
         lines += [
-            f"- {inline(each.repository)}: {_files(each.files)}{_languages(each.languages)};"
+            f"- {inline(each.source)}: {_files(each.files)}{_languages(each.languages)};"
             f" refs: {_refs(each.refs)}"
-            for each in result.unassigned_repositories
+            for each in result.unassigned_sources
         ]
     return "\n".join(lines)
 
@@ -244,7 +244,7 @@ def _link(link: LinkDetail) -> list[str]:
         f" changed {_time(link.updated_at)}"
     ]
     lines += [
-        f"  {inline(mask.path)} in {_where(link.repository, link.root)}: {_files(mask.files)}"
+        f"  {inline(mask.path)} in {_where(link.source, link.root)}: {_files(mask.files)}"
         for mask in link.paths
     ]
     if link.note:
@@ -267,7 +267,7 @@ def summarize_project(result: ProjectDetail) -> str:
     lines += _texts(project.title, project.description)
     for service in project.services:
         lines.append(
-            f"Service {inline(service.name)}: {_where(service.repository, service.root)};"
+            f"Service {inline(service.name)}: {_where(service.source, service.root)};"
             f" {_files(service.files)}{_languages(service.languages)}."
         )
         lines += _texts(None, service.description)
@@ -289,7 +289,7 @@ def _domain_code(code: Sequence[DomainCode]) -> list[str]:
     for entry in code:
         lines.append(
             f"Code in service {inline(entry.service)} of project {inline(entry.project)}"
-            f" ({_where(entry.repository, entry.root)}): {_files(entry.files)}."
+            f" ({_where(entry.source, entry.root)}): {_files(entry.files)}."
         )
         lines += [f"- {inline(mask.path)}: {_files(mask.files)}" for mask in entry.paths]
     return lines or ["No code."]
@@ -356,7 +356,7 @@ def summarize_put(result: PutProjectResult) -> str:
         lines.append("Files two domains both name:")
         lines += [
             f"- {inline(overlap.domains[0])} and {inline(overlap.domains[1])} in repository"
-            f" {inline(overlap.repository)}: {_files(overlap.files)}, e.g. "
+            f" {inline(overlap.source)}: {_files(overlap.files)}, e.g. "
             + ", ".join(inline(path) for path in overlap.examples)
             for overlap in result.overlaps
         ]
@@ -367,7 +367,7 @@ def summarize_put(result: PutProjectResult) -> str:
             else f" ({service.unassigned_share:.0%} of its files)"
         )
         lines.append(
-            f"Service {inline(service.service)} (repository {inline(service.repository)}):"
+            f"Service {inline(service.service)} (repository {inline(service.source)}):"
             f" {_files(service.files)}, {service.unassigned} in no domain{share}."
         )
     if result.empty_link_masks:
@@ -413,7 +413,7 @@ GET_PROJECT_TOOL = Tool(
         "link names both services and their projects, its kind (library, http, queue, other), "
         "a note, and the places in the using service's code that show the use (path masks, "
         "with the files each matches now). Links are declared in put_project, not read from the "
-        "code. other_project keeps only the links between this project and that one. "
+        "code. linked_projects keeps only the links between this project and those. "
         f"{_DATA_NOTE}"
     ),
     arguments=GetProjectArguments,

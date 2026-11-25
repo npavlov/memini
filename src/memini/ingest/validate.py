@@ -229,7 +229,7 @@ def _kind(value: str, field: str) -> IngestKind:
             return kind
     if value == "code_file":
         raise InvalidBatchError(
-            field, "code_file records come from git sources; one of thread, meeting, document"
+            field, "code_file records come from repositories; one of thread, meeting, document"
         )
     raise InvalidBatchError(field, "one of thread, meeting, document")
 

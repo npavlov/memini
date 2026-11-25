@@ -6,19 +6,17 @@ with the same arguments; they need a token with the ``ingest`` scope. Every item
 manual: extraction never supersedes or answers it. Usage::
 
     memini decision record <workspace> --statement TEXT [--kind decision|open_question]
-                           [--decided-at TIME] --evidence REFERENCE [--evidence ...]
+                           [--occurred-at TIME] --evidence REFERENCE [--evidence ...]
                            [--participant PERSON_ID ...] [--supersedes ITEM_ID[:RELATION] ...]
-    memini decision supersede <workspace> <item-id> --supersedes ITEM_ID[:RELATION] [...]
-    memini decision close <workspace> <item-id>
-    memini decision retract <workspace> <item-id>
+    memini decision supersede <workspace> <id> --supersedes ITEM_ID[:RELATION] [...]
+    memini decision close <workspace> <id>
+    memini decision retract <workspace> <id>
 
-A piece of evidence names a record and where in it: ``SOURCE:EXTERNAL_ID[#ANCHOR]``, the source by
-name and the record's id in it as search results give them, or ``RECORD_ID[#ANCHOR]``, the record's
-64-character id. The first ``#`` starts the anchor, which may hold more of them
-(``repo:refs/heads/main:src/pump.py#<commit>#L12-L30``); an external id with a ``#`` in it, or one
-the source has records of two kinds under, is named by its record id instead. ``--supersedes``
-takes an earlier item's id, with ``:replaces`` (the default: it becomes superseded) or ``:answers``
-(a decision answers an open question, which becomes closed). ``--decided-at`` is ISO 8601 with a
+A piece of evidence names a record and where in it: ``RECORD_ID[#ANCHOR]``, the record's
+64-character id as results give it. The first ``#`` starts the anchor, which may hold more of them
+(``<record id>#<commit>#L12-L30``). ``--supersedes`` takes an earlier item's id, with
+``:replaces`` (the default: it becomes superseded) or ``:answers`` (a decision answers an open
+question, which becomes closed). ``--occurred-at``, when it was said or asked, is ISO 8601 with a
 zone offset or ``Z``; it defaults to now.
 
 Each command prints the item as the service answers it: its fields, evidence, participants and
@@ -35,7 +33,7 @@ from datetime import UTC, datetime
 from typing import Any, Final
 from uuid import UUID
 
-from memini.cli.arguments import Commands, parse_source_name, parse_workspace_name
+from memini.cli.arguments import Commands, parse_workspace_name
 from memini.cli.client import Api, Json, segment
 from memini.cli.common import EXIT_OK
 from memini.cli.output import NONE, as_list, as_mapping, print_fields, print_json, text, timestamp
@@ -53,8 +51,7 @@ __all__ = [
 
 _RECORD_ID: Final = re.compile(r"[0-9a-f]{64}")
 _EVIDENCE_FORM: Final = (
-    "evidence is SOURCE:EXTERNAL_ID or a RECORD_ID (64 hex characters), optionally followed by"
-    " #ANCHOR"
+    "evidence is a RECORD_ID (64 hex characters), optionally followed by #ANCHOR"
 )
 
 
@@ -72,21 +69,13 @@ def item_path(workspace: str, item_id: UUID, action: str) -> str:
 
 
 def parse_evidence(value: str) -> Json:
-    """``SOURCE:EXTERNAL_ID[#ANCHOR]`` or ``RECORD_ID[#ANCHOR]`` as an evidence argument of the
-    API."""
+    """``RECORD_ID[#ANCHOR]`` as an evidence argument of the API."""
     reference, has_anchor, anchor = value.partition("#")
     if has_anchor and not anchor:
         raise argparse.ArgumentTypeError("an anchor after '#' is not empty")
-    source, has_source, external_id = reference.partition(":")
-    evidence: Json
-    if has_source:
-        if not external_id:
-            raise argparse.ArgumentTypeError(f"no external id after the source; {_EVIDENCE_FORM}")
-        evidence = {"source": parse_source_name(source), "external_id": external_id}
-    elif _RECORD_ID.fullmatch(reference.lower()):
-        evidence = {"record_id": reference.lower()}
-    else:
+    if not _RECORD_ID.fullmatch(reference.lower()):
         raise argparse.ArgumentTypeError(_EVIDENCE_FORM)
+    evidence: Json = {"record_id": reference.lower()}
     if has_anchor:
         evidence["anchor"] = anchor
     return evidence
@@ -125,12 +114,12 @@ def parse_time(value: str) -> datetime:
 
 
 def record_command(args: argparse.Namespace, api: Api) -> int:
-    decided_at: datetime = args.decided_at or datetime.now(UTC)
+    occurred_at: datetime = args.occurred_at or datetime.now(UTC)
     participants: list[UUID] = args.participant or []
     body: Json = {
         "kind": args.kind,
         "statement": args.statement,
-        "decided_at": decided_at.isoformat(),
+        "occurred_at": occurred_at.isoformat(),
         "evidence": args.evidence,
         "participants": [str(person) for person in participants],
         "supersedes": args.supersedes or [],
@@ -140,15 +129,15 @@ def record_command(args: argparse.Namespace, api: Api) -> int:
 
 def supersede_command(args: argparse.Namespace, api: Api) -> int:
     body: Json = {"supersedes": args.supersedes}
-    return _show(args, api.post(item_path(args.workspace, args.item_id, "supersede"), body))
+    return _show(args, api.post(item_path(args.workspace, args.id, "supersede"), body))
 
 
 def close_command(args: argparse.Namespace, api: Api) -> int:
-    return _show(args, api.post(item_path(args.workspace, args.item_id, "close")))
+    return _show(args, api.post(item_path(args.workspace, args.id, "close")))
 
 
 def retract_command(args: argparse.Namespace, api: Api) -> int:
-    return _show(args, api.post(item_path(args.workspace, args.item_id, "retract")))
+    return _show(args, api.post(item_path(args.workspace, args.id, "retract")))
 
 
 def _show(args: argparse.Namespace, item: Json) -> int:
@@ -171,8 +160,8 @@ def print_item(item: Mapping[str, Any]) -> None:
         ("kind", text(item.get("kind"))),
         ("status", text(item.get("status"))),
         ("statement", text(item.get("statement"))),
-        ("decided", timestamp(item.get("decided_at"))),
-        ("recorded", timestamp(item.get("recorded_at"))),
+        ("occurred", timestamp(item.get("occurred_at"))),
+        ("created", timestamp(item.get("created_at"))),
     ]
     if item.get("invalidated_at") is not None:
         fields.append(("invalidated", timestamp(item.get("invalidated_at"))))
@@ -199,17 +188,17 @@ def print_item(item: Mapping[str, Any]) -> None:
 
 
 def _evidence(evidence: Mapping[str, Any]) -> str:
-    """A piece of evidence in the form ``--evidence`` takes, with the record's kind and state."""
-    source = evidence.get("source")
-    if source is None:  # the source is gone: its record id is what is left to name it by
-        reference = text(evidence.get("record_id"))
-    else:
-        reference = f"{text(source)}:{text(evidence.get('external_id'))}"
+    """A piece of evidence in the form ``--evidence`` takes, with the record's kind, source,
+    external id and state."""
+    reference = text(evidence.get("record_id"))
     anchor = evidence.get("anchor")
     if anchor is not None:
         reference += f"#{text(anchor)}"
+    source = evidence.get("source")
+    where = "" if source is None else f"{text(source)}:{text(evidence.get('external_id'))}, "
     return (
-        f"{reference}  ({text(evidence.get('record_kind'))}, {text(evidence.get('record_state'))})"
+        f"{reference}  ({where}{text(evidence.get('record_kind'))},"
+        f" {text(evidence.get('record_state'))})"
     )
 
 
@@ -225,7 +214,7 @@ def _lines(name: str, values: Sequence[str]) -> list[tuple[str, str]]:
 
 def _item_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("workspace", type=parse_workspace_name, help="the workspace's name")
-    parser.add_argument("item_id", metavar="item-id", type=UUID, help="the item's id")
+    parser.add_argument("id", metavar="id", type=UUID, help="the item's id")
 
 
 def _supersedes_option(parser: argparse.ArgumentParser, *, required: bool) -> None:
@@ -281,7 +270,7 @@ def add_commands(commands: Commands) -> None:
         help="decision (the default) or open_question",
     )
     record.add_argument(
-        "--decided-at",
+        "--occurred-at",
         type=parse_time,
         metavar="TIME",
         help="when it was said or asked, as the evidence shows: ISO 8601 with a zone offset or Z,"
@@ -293,8 +282,8 @@ def add_commands(commands: Commands) -> None:
         required=True,
         type=parse_evidence,
         metavar="REFERENCE",
-        help="SOURCE:EXTERNAL_ID[#ANCHOR] or RECORD_ID[#ANCHOR]: a record of the workspace the"
-        " item comes from; repeat for more",
+        help="RECORD_ID[#ANCHOR]: a record of the workspace the item comes from, by the id"
+        " results give it; repeat for more",
     )
     record.add_argument(
         "--participant",

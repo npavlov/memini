@@ -91,15 +91,15 @@ async def _record(
 async def _supersede(
     conn: Conn, access: WriteAccess, arguments: SupersedeArguments
 ) -> DecisionItem:
-    return await run_supersede(conn, access, arguments.item_id, arguments.to_refs())
+    return await run_supersede(conn, access, arguments.id, arguments.to_refs())
 
 
 async def _close(conn: Conn, access: WriteAccess, arguments: ItemArguments) -> DecisionItem:
-    return await run_close(conn, access, arguments.item_id)
+    return await run_close(conn, access, arguments.id)
 
 
 async def _retract(conn: Conn, access: WriteAccess, arguments: ItemArguments) -> DecisionItem:
-    return await run_retract(conn, access, arguments.item_id)
+    return await run_retract(conn, access, arguments.id)
 
 
 # --- Text summaries ------------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def summarize_item(item: DecisionItem) -> str:
     lines = [
         f"{_KINDS[item.kind]} {item.id} in workspace {inline(item.workspace)}: {status}. "
         f"{TEXT_NOTICE}",
-        f"Said {_time(item.decided_at)}; recorded {_time(item.recorded_at)} {by}.",
+        f"Said {_time(item.occurred_at)}; recorded {_time(item.created_at)} {by}.",
     ]
     lines += [f"It {link.relation} {link.supersedes_id}." for link in item.supersedes]
     if item.superseded_by is not None:
@@ -168,10 +168,11 @@ RECORD_DECISION_TOOL = Tool(
     title="Record a decision",
     description=(
         "Record a decision or an open question by hand in a workspace, with its evidence: one or "
-        "more records it comes from, each by record_id or by source and external_id (as search "
-        "results give them), with an anchor (the message of a thread, the commit of a code file): "
-        "a search hit's record_id and anchor cite the place it found as they are. "
-        "An item without evidence is not stored. Participants are person ids. supersedes links "
+        "more records it comes from, each by record_id (a search hit's record_id, a thread's, "
+        "meeting's or document's id), with an anchor (the message of a thread, the commit of a "
+        "code file): a search hit's record_id and anchor cite the place it found as they are. "
+        "occurred_at is when it was said or asked. An item without evidence is not stored. "
+        "Participants are person ids. supersedes links "
         "active items it replaces (relation replaces) or open questions a decision answers "
         "(answers): to correct an extracted item, record the correction with supersedes. An item "
         "recorded by hand is never superseded by extraction, so it survives a re-extraction. "
@@ -250,6 +251,11 @@ DECISION_WRITE_TOOLS: Sequence[Tool[Any, Any]] = (
 
 def _summarize_list(result: DecisionList) -> str:
     text = "\n\n".join(map(summarize_item, result.items)) or "No decisions."
+    if result.left_out:
+        text += (
+            f"\n\n{result.left_out} items whose evidence is all marked sensitive left out: ask"
+            " with include_sensitive and a token with the sensitive scope to read them."
+        )
     if result.without_domain:
         counts = "; ".join(
             f"{inline(each.project)}: {each.items}" for each in result.without_domain
@@ -280,11 +286,13 @@ DECISION_READ_TOOLS: Sequence[Tool[Any, Any]] = (
         title="List decisions",
         description=(
             "Read active decisions and open questions, newest first unless a query ranks them. "
-            "Set history to include earlier states. Filter by workspace, statement words, "
-            "participant ids, decision time, and projects and domains of the catalog (a domain "
-            "includes its subdomains). Each item carries its context: its project and domains "
-            "and how each came (push, default, manual, code, model). With projects or domains, "
-            "without_domain counts the project's items that no domain holds."
+            "Set history to include earlier states. Filters: workspaces, query (statement "
+            "words), persons (participants: 'me', a person id or an alias), since and until (on "
+            "occurred_at, when it was said), and projects and domains of the catalog (a domain "
+            "includes its subdomains). Each item carries its id, occurred_at, created_at and "
+            "context: its project and domains and how each came (push, default, manual, code, "
+            "model). With projects or domains, without_domain counts the project's items that no "
+            "domain holds. left_out counts the items whose evidence is all marked sensitive."
         ),
         arguments=ListDecisionsArguments,
         result=DecisionList,
@@ -295,7 +303,8 @@ DECISION_READ_TOOLS: Sequence[Tool[Any, Any]] = (
         name="get_decision",
         title="Get a decision",
         description=(
-            "Read an item and its supersession chain with evidence links and raw record states."
+            "Read an item by its id, and its supersession chain with evidence links and raw "
+            "record states."
         ),
         arguments=GetDecisionArguments,
         result=DecisionChain,

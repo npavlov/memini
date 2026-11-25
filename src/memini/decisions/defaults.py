@@ -10,7 +10,7 @@ workspace's catalog when the default is set, and compared with it again whenever
 Routes (:mod:`memini.api.decisions`): ``GET``, ``PUT`` and ``DELETE``
 ``/v1/workspaces/{workspace}/sources/{source}/catalog-default``; the writes need the ``ingest``
 scope. Errors are :class:`~memini.decisions.DecisionError`: 404 ``not_found`` for a workspace or
-source out of reach (or a git source: its code has the catalog's masks), 422 ``invalid_place`` or
+source out of reach (or a repository: its code has the catalog's masks), 422 ``invalid_place`` or
 ``unknown_place`` for the names.
 """
 

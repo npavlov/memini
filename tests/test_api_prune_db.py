@@ -94,7 +94,7 @@ async def setup(client: httpx2.AsyncClient, admin: dict[str, str], **filters: An
         await client.post(
             SOURCES,
             json={
-                "kind": "git",
+                "kind": "repository",
                 "name": "repo",
                 "location": "https://git.example.invalid/team/repo.git",
                 "refs": ["main"],

@@ -58,7 +58,7 @@ def mail(pushed: tuple[str, tuple[str, ...]] | None = None, stream: str | None =
 
 
 def code(path: str) -> EvidenceFacts:
-    return EvidenceFacts(QUAY, "git", "code_file", f"refs/heads/main:{path}", None, None)
+    return EvidenceFacts(QUAY, "repository", "code_file", f"refs/heads/main:{path}", None, None)
 
 
 def context(

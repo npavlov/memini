@@ -113,7 +113,7 @@ def a_status() -> Json:
     )
     code = StreamStatus(
         source="code",
-        source_kind="git",
+        source_kind="repository",
         key="refs/heads/main",
         schedule_seconds=900.0,
         checked_until=AS_OF,

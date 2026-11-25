@@ -1,4 +1,4 @@
-"""Bare mirrors of git sources: the raw store of code (requirements, section 3).
+"""Bare mirrors of repositories: the raw store of code (requirements, section 3).
 
 Layout under the mirror directory (``git_mirror_dir``)::
 
@@ -333,7 +333,7 @@ def _encode(text: str) -> bytes:
 
 
 class MirrorManager:
-    """Creates, fetches and reads the bare mirrors of git sources under one directory."""
+    """Creates, fetches and reads the bare mirrors of repositories under one directory."""
 
     def __init__(self, options: GitOptions, environ: Mapping[str, str] | None = None) -> None:
         self._options = options

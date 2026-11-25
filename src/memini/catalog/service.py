@@ -425,7 +425,7 @@ def normalize(
             where=where,
             name=_handle(f"{where}.name", "service", each.name),
             description=_description(f"{where}.description", each.description, counts),
-            repository=each.repository,
+            repository=each.source,
             root=_root(f"{where}.root", each.root),
         )
         if service.name in services:
@@ -561,7 +561,7 @@ def _project_entry(
             ServiceEntry(
                 name=service.name,
                 description=service.description,
-                repository=service.repository,
+                source=service.repository,
                 root=service.root,
                 refs=refs.get(service.source_id, []),
                 files=len(below),
@@ -617,9 +617,9 @@ async def run_get_catalog(
     return Catalog(
         workspace=workspace.name,
         projects=entries,
-        unassigned_repositories=[
+        unassigned_sources=[
             RepositoryInfo(
-                repository=each.name,
+                source=each.name,
                 refs=refs[each.id],
                 files=len(files[each.id]),
                 languages=languages(files[each.id]),
@@ -728,8 +728,8 @@ async def run_get_project(
     conn: Conn, access: ReadFilter, arguments: GetProjectArguments
 ) -> ProjectDetail:
     """``get_project``: a project in the shape of its document, and its links in both
-    directions, each mask with the files it matches now; with ``other_project``, only the links
-    whose other end is in that project (the project itself: the links between its own
+    directions, each mask with the files it matches now; with ``linked_projects``, only the links
+    whose other end is in one of those projects (the project itself: the links between its own
     services)."""
     with catalog_errors():
         async with conn.transaction():
@@ -738,18 +738,18 @@ async def run_get_project(
             if not found:
                 raise NotFoundError("project")
             project = found[0]
-            other_id: UUID | None = None
-            if arguments.other_project is not None:
-                other = await store.read_projects(
-                    conn, access, workspace.id, name=arguments.other_project
-                )
-                if not other:
-                    raise NotFoundError("project")
-                other_id = other[0].id
+            linked: set[UUID] | None = None
+            if arguments.linked_projects is not None:
+                linked = set()
+                for name in dict.fromkeys(arguments.linked_projects):
+                    other = await store.read_projects(conn, access, workspace.id, name=name)
+                    if not other:
+                        raise NotFoundError("project")
+                    linked.add(other[0].id)
             links = [
                 link
                 for link in await store.read_links(conn, access, workspace.id, [project.id])
-                if other_id is None or _other_end(link, project.id) == other_id
+                if linked is None or _other_end(link, project.id) in linked
             ]
             repositories = await store.repositories(conn, access, workspace.id)
             wanted = {service.source_id for service in project.services}
@@ -765,7 +765,7 @@ async def run_get_project(
             to_service=link.to_service,
             kind=link.kind,
             note=link.note,
-            repository=link.repository,
+            source=link.repository,
             root=link.root,
             paths=_mask_files(link.root, link.paths, below),
             updated_at=link.stamp.at,

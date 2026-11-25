@@ -18,6 +18,7 @@ from memini.cli.decisions import print_item
 from memini.cli.output import as_list, as_mapping, print_json, text, when
 from memini.ids import RecordKind
 from memini.knowledge import ITEM_KINDS
+from memini.persons import Role
 from memini.query.model import CodeMode, SearchMode
 from memini.search.model import DEFAULT_LIMIT, MAX_LIMIT
 
@@ -27,7 +28,7 @@ SNIPPET_LINES: Final = 6
 """Lines of a hit's snippet printed; the rest is cut, ``--json`` has all of it."""
 
 _CODE_ONLY: Final = ("path", "language")
-_EVERYTHING_ONLY: Final = ("kind", "source")
+_EVERYTHING_ONLY: Final = ("kind", "person", "role")
 
 
 def _limit(value: str) -> int:
@@ -55,19 +56,28 @@ def search_command(args: argparse.Namespace, api: Api) -> int:
         "limit": args.limit,
         "mode": mode,
         "workspaces": args.workspace,
-        "repositories": args.repository,
+        "sources": args.source,
+        "projects": args.project,
+        "domains": args.domain,
+        "services": args.service,
         "include_sensitive": "true" if args.include_sensitive else None,
     }
     if code:
         params |= {"paths": args.path, "languages": args.language}
     else:
-        params |= {"kinds": args.kind, "sources": args.source}
+        params |= {"kinds": args.kind, "persons": args.person, "roles": args.role}
     body = api.get("v1/search/code" if code else "v1/search", params)
     if args.json:
         print_json(body)
         return EXIT_OK
-    hits = [as_mapping(hit) for hit in as_list(body.get("hits"))]
+    hits = [as_mapping(hit) for hit in as_list(body.get("items"))]
     decisions = as_list(body.get("decisions"))
+    left_out = body.get("left_out")
+    if isinstance(left_out, int) and left_out:
+        message(
+            f"{left_out} hits of records marked sensitive left out; --include-sensitive reads"
+            " them, with a token that has the sensitive scope"
+        )
     if not hits and not decisions:
         message("no hits")
         return EXIT_OK
@@ -100,7 +110,7 @@ def add_commands(commands: Commands) -> None:
         help="search everything, or code with --code",
         description="Search the records the token may read, as the MCP tools search and"
         " search_code do. Modes: hybrid (default), dense, lexical; with --code: semantic"
-        " (default), exact, regex, symbol.",
+        " (default), exact, regex, symbol, symbol_prefix.",
     )
     search.add_argument("query", help="a question or keywords; with --code also a name or regex")
     search.add_argument("--code", action="store_true", help="search code (search_code)")
@@ -120,18 +130,42 @@ def add_commands(commands: Commands) -> None:
         help="only this workspace; repeat for more",
     )
     search.add_argument(
-        "--repository",
-        action="append",
-        type=parse_source_name,
-        metavar="NAME",
-        help="only this repository (git source); repeat for more",
-    )
-    search.add_argument(
         "--source",
         action="append",
         type=parse_source_name,
         metavar="NAME",
-        help="only this source; repeat for more (not with --code)",
+        help="only this source; with --code a repository; repeat for more",
+    )
+    search.add_argument(
+        "--project",
+        action="append",
+        metavar="NAME",
+        help="only results of this project of the catalog; repeat for more",
+    )
+    search.add_argument(
+        "--domain",
+        action="append",
+        metavar="NAME",
+        help="only results of this domain (domain or domain/subdomain); repeat for more",
+    )
+    search.add_argument(
+        "--service",
+        action="append",
+        metavar="NAME",
+        help="only code of this service of the catalog; repeat for more",
+    )
+    search.add_argument(
+        "--person",
+        action="append",
+        metavar="PERSON",
+        help="only records that name this person: me, a person id or an alias; repeat for more"
+        " (not with --code)",
+    )
+    search.add_argument(
+        "--role",
+        action="append",
+        choices=get_args(Role),
+        help="with --person: what the person is in the record; repeat for more (not with --code)",
     )
     search.add_argument(
         "--kind",

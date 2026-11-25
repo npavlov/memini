@@ -176,7 +176,7 @@ def chunk_conditions(scope: ChunkScope, param: Params) -> sql.Composable:
             for member in group.code
         ]
         if group.records is not None:
-            members.append(_linked(group.records, param))
+            members.append(linked_records(group.records, param))
         parts.append(
             sql.SQL("({})").format(sql.SQL(" OR ").join(members)) if members else sql.SQL("FALSE")
         )
@@ -199,25 +199,51 @@ def chunk_conditions(scope: ChunkScope, param: Params) -> sql.Composable:
     return sql.SQL(" AND ").join(parts)
 
 
-# The links of the record of ``chunk c``, ``record r``: what it was pushed with, else the default
-# of its stream, else of its source; at most one row (memini.decisions.context, the same order).
-# Each is one lookup: record_catalog by its key, source_catalog by its key (source_id,
-# stream_key), stream by its key.
-_PLACE: Final = sql.SQL(
-    "SELECT rc.project, rc.domains FROM record_catalog rc WHERE rc.record_id = c.record_id"
-    " UNION ALL (SELECT d.project, d.domains FROM source_catalog d"
-    " WHERE d.source_id = c.source_id"
-    " AND (d.stream_key IS NULL"
-    " OR d.stream_key = (SELECT st.key FROM stream st WHERE st.id = r.stream_id))"
-    " AND NOT EXISTS (SELECT 1 FROM record_catalog rc WHERE rc.record_id = c.record_id)"
-    " ORDER BY d.stream_key NULLS LAST LIMIT 1)"
+@dataclass(frozen=True, slots=True)
+class RecordColumns:
+    """Where a statement holds the record a catalog link is tested for: its id, source and
+    workspace, and the ``record r`` its stream is read from."""
+
+    record_id: sql.Composable
+    source_id: sql.Composable
+    workspace_id: sql.Composable
+
+
+CHUNK_RECORD: Final = RecordColumns(
+    record_id=sql.SQL("c.record_id"),
+    source_id=sql.SQL("c.source_id"),
+    workspace_id=sql.SQL("c.workspace_id"),
 )
+"""The record of ``chunk c`` joined with ``record r``."""
 
-_WORKSPACE_KEY: Final = sql.SQL("c.workspace_id::text")
+RECORD_ROW: Final = RecordColumns(
+    record_id=sql.SQL("r.id"),
+    source_id=sql.SQL("r.source_id"),
+    workspace_id=sql.SQL("r.workspace_id"),
+)
+"""The ``record r`` itself, in a listing that reads records without their chunks."""
 
 
-def _linked(places: RecordPlaces, param: Params) -> sql.Composable:
-    """Whether the record of ``chunk c`` is linked to what ``places`` names
+def _place(row: RecordColumns) -> sql.Composable:
+    """The links of the record ``row``: what it was pushed with, else the default of its stream,
+    else of its source; at most one row (memini.decisions.context, the same order). Each is one
+    lookup: record_catalog by its key, source_catalog by its key (source_id, stream_key), stream
+    by its key."""
+    return sql.SQL(
+        "SELECT rc.project, rc.domains FROM record_catalog rc WHERE rc.record_id = {record}"
+        " UNION ALL (SELECT d.project, d.domains FROM source_catalog d"
+        " WHERE d.source_id = {source}"
+        " AND (d.stream_key IS NULL"
+        " OR d.stream_key = (SELECT st.key FROM stream st WHERE st.id = r.stream_id))"
+        " AND NOT EXISTS (SELECT 1 FROM record_catalog rc WHERE rc.record_id = {record})"
+        " ORDER BY d.stream_key NULLS LAST LIMIT 1)"
+    ).format(record=row.record_id, source=row.source_id)
+
+
+def linked_records(
+    places: RecordPlaces, param: Params, row: RecordColumns = CHUNK_RECORD
+) -> sql.Composable:
+    """Whether the record ``row`` is linked to what ``places`` names
     (:mod:`memini.search.catalog`, Records other than code).
 
     Its links are compared as :func:`memini.search.catalog.place_key` makes them. The domains of
@@ -230,7 +256,7 @@ def _linked(places: RecordPlaces, param: Params) -> sql.Composable:
         return sql.SQL("FALSE")
     names = param(list(places.names))
     known = param(list(places.known))
-    ws = _WORKSPACE_KEY
+    ws = sql.SQL("{}::text").format(row.workspace_id)
     if places.level == "domain":
         held = sql.SQL("k.held && {}::text[]").format(names)
         model = sql.SQL(
@@ -243,7 +269,7 @@ def _linked(places: RecordPlaces, param: Params) -> sql.Composable:
             " AND {ws} || ':' || l.project || ':' || l.domain = ANY({known}::text[])"
         ).format(ws=ws, names=names, known=known)
     return sql.SQL(
-        "(c.source_id = ANY({sources}) AND EXISTS ("
+        "({source} = ANY({sources}) AND EXISTS ("
         "SELECT 1 FROM (SELECT 1) AS one LEFT JOIN LATERAL ({place}) AS p ON TRUE"
         " CROSS JOIN LATERAL (SELECT ARRAY("
         "SELECT {ws} || ':' || p.project || ':' || a.address"
@@ -252,10 +278,13 @@ def _linked(places: RecordPlaces, param: Params) -> sql.Composable:
         "SELECT 1 FROM knowledge_evidence e"
         " JOIN knowledge_item i ON i.id = e.item_id AND i.status <> 'retracted'"
         " JOIN knowledge_item_domain l ON l.item_id = e.item_id AND l.origin = 'model'"
-        " WHERE e.record_id = c.record_id AND e.workspace_id = c.workspace_id AND {model}))))"
+        " WHERE e.record_id = {record} AND e.workspace_id = {workspace} AND {model}))))"
     ).format(
+        source=row.source_id,
+        record=row.record_id,
+        workspace=row.workspace_id,
         sources=param(list(places.sources)),
-        place=_PLACE,
+        place=_place(row),
         ws=ws,
         held=held,
         known=known,
@@ -515,7 +544,7 @@ def pinned_commit(kind: SourceKind, cursor: object) -> str | None:
     then some records are already past the pin and the commit of a given file is unknown. This is
     the only place search reads a pin.
     """
-    if kind != "git":
+    if kind != "repository":
         return None
     pin = read_pin(cursor)
     if pin is None or pin.partial:
@@ -635,7 +664,7 @@ async def chunk_rows(
             anchor=row[20],
             chunk_url=row[21],
             chunk_occurred_at=row[22],
-            commit=pinned_commit(kind, row[10]) if kind == "git" else None,
+            commit=pinned_commit(kind, row[10]) if kind == "repository" else None,
             chunk_kind=row[11],
             language=row[12],
             path=row[13],

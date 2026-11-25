@@ -120,7 +120,7 @@ async def setup(client: httpx2.AsyncClient, admin: dict[str, str]) -> Json:
         await client.post(
             "/v1/workspaces/alpha/sources",
             json={
-                "kind": "git",
+                "kind": "repository",
                 "name": "repo",
                 "location": "https://git.example.invalid/team/repo.git",
                 "refs": ["main"],

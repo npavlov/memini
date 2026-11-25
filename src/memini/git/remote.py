@@ -1,4 +1,4 @@
-"""Where a git source lives: parse it, check it against the allowlist, before any process starts.
+"""Where a repository lives: parse it, check it against the allowlist, before any process starts.
 
 Accepted forms, with the transport each one uses:
 

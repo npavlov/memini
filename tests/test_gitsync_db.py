@@ -51,7 +51,7 @@ from memini.index import (
 )
 from memini.jobs import Job, execute_job
 from memini.mcp.status import summarize_status
-from memini.query import read_source
+from memini.query import get_file
 from memini.runs import wait_for_run_writes
 from memini.search import SearchFilters, SearchQuery, search
 from memini.sources import (
@@ -1139,7 +1139,7 @@ async def test_a_branch_deleted_at_the_remote_is_tombstoned_and_comes_back_with_
     }
     assert listed == {DEV: True, MAIN: False}
     # Reading the source without a ref falls back to a ref that is there.
-    read = await read_source(env.db, reader(env), env.mirrors, repository="shop", path="src/app.py")
+    read = await get_file(env.db, reader(env), env.mirrors, repository="shop", path="src/app.py")
     assert (read.ref, read.pinned) == (MAIN, True)
 
     # Synced again while gone: nothing more to do, the marker stays.
@@ -1332,7 +1332,7 @@ async def test_a_readme_section_is_found_by_search_as_a_document(env: Env) -> No
     )
 
     top = hits[0]
-    assert (top.record_kind, top.source_kind, top.chunk_kind) == ("document", "git", "group")
+    assert (top.record_kind, top.source_kind, top.chunk_kind) == ("document", "repository", "group")
     assert (top.path, top.header, top.language, top.symbol) == ("README.md", OOLONG, None, None)
     assert (top.start_line, top.end_line, top.commit) == (17, 25, head)
     assert top.locator == f"shop@{head}:README.md#L17-L25"

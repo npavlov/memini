@@ -41,13 +41,13 @@ __all__ = [
 type Conn = AsyncConnection[TupleRow]
 
 IngestKind = Literal["thread", "meeting", "document"]
-"""Kinds of record a batch may hold. ``code_file`` records come from git sources only."""
+"""Kinds of record a batch may hold. ``code_file`` records come from repositories only."""
 
 INGESTIBLE_KINDS: Final[tuple[IngestKind, ...]] = get_args(IngestKind)
 
 INGESTIBLE_SOURCE_KINDS: Final[frozenset[str]] = frozenset({"push", "mcp"})
 """Kinds of source that take batches: push sources from clients, mcp sources from their recipe's
-executors (M3). A git source's records come from its mirror, so a batch for one is refused."""
+executors (M3). A repository's records come from its mirror, so a batch for one is refused."""
 
 
 # --- Input ---------------------------------------------------------------------------------------
@@ -296,7 +296,7 @@ class BatchTooLargeError(InvalidBatchError):
 
 
 class NotIngestibleError(Exception):
-    """The source's kind takes no batches: a git source's records come from its mirror."""
+    """The source's kind takes no batches: a repository's records come from its mirror."""
 
     def __init__(self, kind: str) -> None:
         super().__init__(f"{kind} sources take no batches of records")

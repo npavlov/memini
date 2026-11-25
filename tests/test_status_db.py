@@ -164,7 +164,7 @@ async def insert_git_stream(
     )
     source_id = await scalar(
         db,
-        "INSERT INTO source (workspace_id, owner_id, name, kind) VALUES (%s, %s, 'code', 'git')"
+        "INSERT INTO source (workspace_id, owner_id, name, kind) VALUES (%s, %s, 'code', 'repository')"
         " RETURNING id",
         workspace_id,
         owner,

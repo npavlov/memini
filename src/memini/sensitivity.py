@@ -15,6 +15,7 @@ no content. A push can mark a record as it stores it (``"sensitive": true`` on t
 never clears a mark.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Final
@@ -38,6 +39,7 @@ __all__ = [
     "list_sensitive",
     "mark_record",
     "sensitive_message",
+    "sensitive_records",
 ]
 
 type Conn = AsyncConnection[TupleRow]
@@ -55,6 +57,16 @@ def sensitive_message(kind: str) -> str:
         f"The {kind} is marked sensitive and is left out of answers. Ask with include_sensitive"
         " and a token with the sensitive scope to read it."
     )
+
+
+async def sensitive_records(conn: Conn, record_ids: Sequence[str]) -> frozenset[str]:
+    """Which of ``record_ids`` are marked sensitive. Reads the mark only, nothing else."""
+    if not record_ids:
+        return frozenset()
+    cur = await conn.execute(
+        "SELECT id FROM record WHERE id = ANY(%s) AND sensitive", (list(dict.fromkeys(record_ids)),)
+    )
+    return frozenset(row[0] for row in await cur.fetchall())
 
 
 def hidden_items(access: ReadFilter | WriteAccess, alias: str = "i") -> sql.Composable:

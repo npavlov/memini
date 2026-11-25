@@ -143,62 +143,13 @@ def decision_errors(*, not_active: str = _LINK_ACTIVE_CONSTRAINT) -> Generator[N
 
 # --- Evidence ------------------------------------------------------------------------------------
 
-_BY_REFERENCE: Final = sql.SQL("""
-SELECT e.n, r.id
-FROM unnest(%s::int[], %s::text[], %s::text[], %s::text[]) AS e (n, source, external_id, kind)
-JOIN source s ON s.workspace_id = %s AND s.name = e.source
-JOIN record r ON r.workspace_id = s.workspace_id AND r.source_id = s.id
-             AND r.external_id = e.external_id AND (e.kind IS NULL OR r.kind = e.kind)
-WHERE {access}
-ORDER BY e.n, r.id
-""")
 
-
-async def _resolve_evidence(
-    conn: Conn, access: WriteAccess, workspace_id: UUID, evidence: Sequence[EvidenceArgument]
-) -> list[knowledge.EvidenceRef]:
-    """Each piece of evidence with its record id: the one given, or the record of that source,
-    external id (and kind) in the workspace. Whether a record id names a record of the workspace
-    is checked when the item is recorded."""
-    by_reference = [(n, each) for n, each in enumerate(evidence) if each.record_id is None]
-    found: dict[int, list[str]] = {}
-    if by_reference:
-        query = _BY_REFERENCE.format(
-            access=access.where(
-                workspace_id=sql.Identifier("r", "workspace_id"),
-                owner_id=sql.Identifier("r", "owner_id"),
-                source_id=sql.Identifier("r", "source_id"),
-            )
-        )
-        cur = await conn.execute(
-            query,
-            (
-                [n for n, _ in by_reference],
-                [each.source for _, each in by_reference],
-                [each.external_id for _, each in by_reference],
-                [each.record_kind for _, each in by_reference],
-                workspace_id,
-            ),
-        )
-        for n, record_id in await cur.fetchall():
-            found.setdefault(n, []).append(record_id)
-    refs: list[knowledge.EvidenceRef] = []
-    for n, each in enumerate(evidence):
-        if each.record_id is not None:
-            refs.append(knowledge.EvidenceRef(record_id=each.record_id, anchor=each.anchor))
-            continue
-        record_ids = found.get(n, [])
-        if not record_ids:
-            raise DecisionError(404, "not_found", f"No such record (evidence {n}).")
-        if len(record_ids) > 1:
-            raise DecisionError(
-                422,
-                "ambiguous_record",
-                f"The source has records of more than one kind under that external id"
-                f" (evidence {n}); name its record_kind.",
-            )
-        refs.append(knowledge.EvidenceRef(record_id=record_ids[0], anchor=each.anchor))
-    return refs
+def _resolve_evidence(evidence: Sequence[EvidenceArgument]) -> list[knowledge.EvidenceRef]:
+    """Each piece of evidence as the journal keeps it. Whether a record id names a record of the
+    workspace is checked when the item is recorded."""
+    return [
+        knowledge.EvidenceRef(record_id=each.record_id, anchor=each.anchor) for each in evidence
+    ]
 
 
 # --- The operations ------------------------------------------------------------------------------
@@ -239,7 +190,7 @@ async def run_record_decision(
         async with conn.transaction():
             found = await get_writable_workspace(conn, access, workspace)
             places = await _places(conn, access, found.id, decision.project, decision.domains)
-            evidence = await _resolve_evidence(conn, access, found.id, decision.evidence)
+            evidence = _resolve_evidence(decision.evidence)
             item = await knowledge.record_item(
                 conn, access, found.id, decision.to_new_item(evidence)
             )
