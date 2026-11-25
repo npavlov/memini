@@ -36,12 +36,9 @@ that case: the stub, and a model, may name both `port:fees` and `port:fees/berth
 ## The recommended local model
 
 `baseline-qwen3.json` is the report of `qwen3:4b-instruct` (the extractor's model) through Ollama,
-recorded on 2026-11-25 with prompt `domains-v1` on the 26 items of that day: accuracy 0.92 (24 of
-26), no item left without its
-domain, and two items labelled none given a domain (a none rate of 0.15 for 0.23 labelled). Both
-runs gave the same answers. English items 0.96; the two Russian items 0.5, too few to judge. It
-predates prompt `domains-v2` (a subdomain implies its domain) and item `d27`, and needs a run again
-with the model. To
-record it again, run the `llm` assigner above with
+recorded on 2026-11-25 with prompt `domains-v2` on the 27 items: accuracy 0.93 (25 of 27), no item
+left without its domain, and two items labelled none given a domain (a none rate of 0.15 for 0.22
+labelled). The answers repeat from run to run. English items 0.96; the two Russian items 0.5, too
+few to judge. To record it again, run the `llm` assigner above with
 `--baseline eval/domains/baseline-qwen3.json --write-baseline`. A change of the prompt
 (`PROMPT_VERSION` in `memini.decisions.assign`) is compared with that baseline before it is merged.
