@@ -378,9 +378,10 @@ def test_the_search_tools_describe_anchor_link_and_at() -> None:
     schema = SEARCH_TOOL.definition().output_schema
     assert schema is not None
     properties = schema["$defs"]["SearchHit"]["properties"]
-    assert {"locator", "anchor", "link", "occurred_at", "at", "url", "record_id"} <= set(properties)
+    wanted = {"id", "locator", "anchor", "link", "occurred_at", "chunk_occurred_at", "url"}
+    assert wanted | {"record_id"} <= set(properties)
     assert "record_decision" in properties["anchor"]["description"]
-    assert properties["at"]["format"] == "date-time"
+    assert properties["chunk_occurred_at"]["format"] == "date-time"
     assert "record_decision" in SEARCH_TOOL.description
     assert "source:external_id#anchor" in SEARCH_TOOL.description
     assert "source:external_id#anchor" in SEARCH_CODE_TOOL.description
@@ -389,7 +390,7 @@ def test_the_search_tools_describe_anchor_link_and_at() -> None:
 def read(**changes: Any) -> SourceRead:
     values: dict[str, Any] = {
         "workspace": "acme",
-        "repository": "shop",
+        "source": "shop",
         "ref": "refs/heads/main",
         "commit": SHA,
         "pinned": True,
@@ -515,7 +516,7 @@ async def test_without_a_database_the_routes_answer_503(settings: Settings) -> N
         responses = [
             await http.get("/v1/search", params={"query": "lamp"}),
             await http.get("/v1/search/code", params={"query": "lamp"}),
-            await http.get("/v1/symbols", params={"name": "Lamp"}),
+            await http.get("/v1/search/code", params={"query": "Lamp", "mode": "symbol"}),
             await http.get("/v1/workspaces/acme/sources/shop/files/src/lamp.py"),
         ]
 

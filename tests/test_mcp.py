@@ -537,9 +537,9 @@ def test_the_summary_names_the_streams_that_are_behind() -> None:
         "Current: no.",
         "Database: reachable, schema version 2 (this version expects 2).",
         "Workspaces: 1; streams: 3; behind or never checked: 2.",
-        "- alpha/code (git) refs/heads/dev: lag 2h, schedule 15m, "
+        "- alpha/code (repository) refs/heads/dev: lag 2h, schedule 15m, "
         "last run failed at 2026-01-02T03:04:05+00:00",
-        "- alpha/code (git) refs/heads/new: never checked, schedule 15m, no run yet",
+        "- alpha/code (repository) refs/heads/new: never checked, schedule 15m, no run yet",
         "Index: No index.",
     ]
 
@@ -578,7 +578,7 @@ def test_the_summary_names_the_streams_missing_at_the_source() -> None:
 
     assert summarize_status(result).splitlines()[3:] == [
         "Workspaces: 1; streams: 1; behind or never checked: 0; missing at the source: 1.",
-        "- alpha/code (git) refs/heads/gone: missing at the source, lag 30s, "
+        "- alpha/code (repository) refs/heads/gone: missing at the source, lag 30s, "
         "last run succeeded at 2026-01-02T03:04:05+00:00",
         "Index: No index.",
     ]
@@ -648,7 +648,7 @@ def test_the_summary_names_failures_unindexed_records_and_stale_indexes() -> Non
 
     assert summarize_status(result).splitlines()[3:] == [
         "Workspaces: 1; streams: 2; behind or never checked: 2.",
-        "- alpha/code (git) refs/heads/main: lag 60s, schedule 15m, last run failed at"
+        "- alpha/code (repository) refs/heads/main: lag 60s, schedule 15m, last run failed at"
         " 2026-01-02T03:04:05+00:00; failed 3 times in a row: GitCommandError: git fetch failed"
         " (exit 128); index stale",
         "- alpha/notes (push) inbox: lag 60s, no run yet; 4 records not indexed; index stale",

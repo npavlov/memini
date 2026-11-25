@@ -72,14 +72,15 @@ def test_every_argument_is_optional_and_the_list_is_bounded() -> None:
     arguments = ListCommitsArguments()
 
     assert arguments.model_dump() == {
-        "repositories": None,
         "workspaces": None,
+        "sources": None,
         "paths": None,
-        "author": None,
+        "persons": None,
+        "query": None,
         "since": None,
         "until": None,
-        "text": None,
         "limit": 20,
+        "cursor": None,
     }
     assert ListCommitsArguments(limit=1000).limit == 1000
     for limit in (0, 1001):
@@ -96,11 +97,14 @@ def test_every_argument_is_optional_and_the_list_is_bounded() -> None:
         {"ref": "main"},
         {"since": "2026-03-01T00:00:00"},
         {"until": "yesterday"},
-        {"author": ""},
-        {"text": "x" * 1001},
+        {"persons": [""]},
+        {"query": "x" * 1001},
+        {"author": "bo"},
+        {"text": "fee"},
+        {"repositories": ["billing"]},
         {"paths": [""]},
         {"paths": ["x" * 513]},
-        {"repositories": ["r"] * 65},
+        {"sources": ["r"] * 65},
     ],
 )
 def test_arguments_that_are_refused(arguments: dict[str, Any]) -> None:
@@ -120,9 +124,9 @@ async def test_filters_are_checked_before_anything_is_read() -> None:
     assert await refused(since=day, until=day) == "since must be before until"
     assert await refused(since=datetime(2026, 3, 1)) == "since needs a time zone"
     assert await refused(limit=0) == "limit is 1 or more"
-    assert await refused(author="  ") == "the author filter is empty"
-    assert await refused(text="\n") == "the text filter is empty"
-    assert await refused(text="x" * 1001) == "the text filter is longer than 1000 characters"
+    assert await refused(authors=["  "]) == "the persons filter is empty"
+    assert await refused(query="\n") == "the query filter is empty"
+    assert await refused(query="x" * 1001) == "the query filter is longer than 1000 characters"
 
 
 # --- Path masks ----------------------------------------------------------------------------------
@@ -335,7 +339,7 @@ def commit(**fields: Any) -> CommitInfo:
     when = datetime(2026, 3, 3, 10, tzinfo=UTC)
     values: dict[str, Any] = {
         "workspace": "acme",
-        "repository": "billing",
+        "source": "billing",
         "sha": SHA,
         "short_sha": SHA[:7],
         "locator": f"billing@{SHA}",
@@ -494,10 +498,10 @@ async def test_without_a_database_the_tool_and_the_route_say_so(settings: Settin
     authenticator = FakeAuthenticator()
     app = create_app(settings, authenticator=authenticator)
     async with http_client(app, authenticator.issue("read")) as http:
-        route = await http.get("/v1/commits", params={"repositories": "billing"})
+        route = await http.get("/v1/commits", params={"sources": "billing"})
         transport = streamable_http_client(f"{BASE_URL}{MCP_PATH}", http_client=http)
         async with Client(transport, mode="legacy") as client:
-            result = await client.call_tool("list_commits", {"repositories": ["billing"]})
+            result = await client.call_tool("list_commits", {"sources": ["billing"]})
 
     assert route.status_code == 503, route.text
     assert route.json()["error"]["code"] == "unavailable"

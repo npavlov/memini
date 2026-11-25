@@ -355,7 +355,7 @@ def test_workspace_create_and_list(cli: Callable[..., Run], service: FakeService
         ok({"id": "0193-a", "name": "alpha", "created_at": "2026-11-18T16:02:59Z"}, 201),
         ok(
             {
-                "workspaces": [
+                "items": [
                     {"id": "0193-a", "name": "alpha", "created_at": "2026-11-18T16:02:59Z"},
                     {"id": "0193-b", "name": "beta", "created_at": "2026-11-18T17:00:00+00:00"},
                 ]
@@ -383,8 +383,8 @@ SOURCE: Json = {
     "location": "https://git.example.invalid/team/shop.git",
     "refs": ["refs/heads/main", "refs/tags/v1"],
     "schedule_seconds": 5400.0,
-    "include": ["src/**"],
-    "exclude": [],
+    "include_paths": ["src/**"],
+    "exclude_paths": [],
     "builtin_excludes": True,
     "visibility": "private",
     "retention_days": None,
@@ -427,8 +427,8 @@ def test_source_add_sends_the_settings_and_shows_the_source(
         "location": "https://git.example.invalid/team/shop.git",
         "refs": ["main", "refs/tags/v1"],
         "schedule_seconds": 5400,
-        "include": ["src/**"],
-        "exclude": [],
+        "include_paths": ["src/**"],
+        "exclude_paths": [],
         "builtin_excludes": True,
         "llm_policy": "none",
     }
@@ -450,7 +450,7 @@ def test_source_add_push_sends_no_git_settings(
         "location": None,
         "refs": list[str](),
         "schedule_seconds": None,
-        "include": list[str](),
+        "include_paths": list[str](),
         "builtin_excludes": None,
     }
     service.answer(ok(push, 201))
@@ -515,7 +515,7 @@ def test_source_edit_sends_only_what_changes(cli: Callable[..., Run], service: F
     assert service.last.method == "PATCH"
     assert json.loads(service.last.content) == {
         "schedule_seconds": None,
-        "exclude": [],
+        "exclude_paths": [],
         "builtin_excludes": False,
         "retention_days": 30,
     }
@@ -538,7 +538,7 @@ PUSH: Json = {
     "location": None,
     "refs": list[str](),
     "schedule_seconds": None,
-    "include": list[str](),
+    "include_paths": list[str](),
     "builtin_excludes": None,
     "filters": {
         "allow_channels": [],
@@ -685,7 +685,7 @@ MCP_SOURCE: Json = {
     "location": None,
     "refs": ["C0042", "C0043"],
     "schedule_seconds": 900.0,
-    "include": [],
+    "include_paths": [],
     "builtin_excludes": None,
     "filters": {
         "allow_channels": [],
@@ -965,7 +965,7 @@ def test_sync_wait_says_why_a_sync_may_not_start(
     assert result.code == EXIT_OK
     assert result.err.count("still queued after") == 1
     assert (
-        "refs/heads/main: still queued after 0s, not started; a git source syncs only while an"
+        "refs/heads/main: still queued after 0s, not started; a repository syncs only while an"
         " embedding provider is set (MEMINI_EMBEDDING_PROVIDER)" in result.err
     )
     assert result.out.splitlines()[-1] == f"refs/heads/main: run {RUN_ID} succeeded"
@@ -1075,7 +1075,7 @@ def test_runs_lists_runs_and_the_next_page(cli: Callable[..., Run], service: Fak
 
     result = cli("runs", "acme", "--source", "shop", "--limit", "1")
 
-    assert service.last.url.params.multi_items() == [("source", "shop"), ("limit", "1")]
+    assert service.last.url.params.multi_items() == [("sources", "shop"), ("limit", "1")]
     header, row = result.out.splitlines()
     assert header.split() == [
         "ID",
@@ -1200,7 +1200,7 @@ def test_meetings_prints_each_meeting_with_its_passage(
 
     assert service.last.url.path == "/v1/meetings"
     assert service.last.url.params.multi_items() == [
-        ("person", "me"),
+        ("persons", "me"),
         ("query", "release"),
         ("since", "2026-03-01T00:00:00+00:00"),
         ("sources", "notes"),
@@ -1235,7 +1235,7 @@ def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: Fak
 
     assert service.last.url.path == "/v1/messages"
     assert service.last.url.params.multi_items() == [
-        ("person", "bo@example.test"),
+        ("persons", "bo@example.test"),
         ("limit", "5"),
         ("roles", "author"),
     ]

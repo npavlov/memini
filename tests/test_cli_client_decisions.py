@@ -377,7 +377,7 @@ NOT_ACTIVE = (
             "memini: No such record (evidence 0). (not_found, HTTP 404, request ",
         ),
         (
-            ("record", "alpha", "--statement", " ", "--evidence", "chat:g/1#m1"),
+            ("record", "alpha", "--statement", " ", "--evidence", f"{RECORD_ID}#m1"),
             error(
                 422,
                 "validation_error",

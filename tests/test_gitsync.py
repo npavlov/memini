@@ -271,7 +271,7 @@ async def test_serve_does_not_sync_git_without_embeddings(
     async with job_handlers(settings, NO_POOL) as handlers:
         assert set(handlers) == {MCP_SYNC, RETENTION}  # neither needs embeddings
 
-    assert "git sources are not synced: no embedding provider is configured" in (
+    assert "repositories are not synced: no embedding provider is configured" in (
         log_output.getvalue()
     )
 
@@ -286,7 +286,7 @@ async def test_serve_does_not_sync_git_when_mirrors_cannot_be_kept(
     async with job_handlers(settings, NO_POOL) as handlers:
         assert set(handlers) == {MCP_SYNC, RETENTION}
 
-    assert "git sources are not synced: the mirror directory" in log_output.getvalue()
+    assert "repositories are not synced: the mirror directory" in log_output.getvalue()
 
 
 @pytest.mark.anyio
