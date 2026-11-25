@@ -19,7 +19,9 @@ filter the answer is the best matches by words, across everything.
 that have a domain. `get_domain` includes the domain's active decisions. Each decision carries
 `context` with its project and domains and how each came (`push`, `default`, `manual`, `code`,
 `model`). The answer counts the project's decisions that have no domain (`without_domain`), so the
-caller knows the list may be incomplete.
+caller knows the list may be incomplete. `search(query, domains=[...])` answers by relevance
+instead: its decisions are those of the domain, by statement words first, then those citing the
+code it retrieved.
 
 ## Data
 
@@ -36,14 +38,14 @@ it.
 
 ## Check
 
-`tests/test_decision_domains_db.py` for the filters, the order, the count, the links and the job on
-a fake model; `eval/domains` for `assign_domains`: a labelled synthetic set that reports accuracy
-and how often the model answers "none", against a baseline.
+`tests/test_decision_domains_db.py` for the filters, the order, the count, the links, the
+decisions of `search` by domain over HTTP and MCP, and the job on a fake model; `eval/domains` for
+`assign_domains`: a labelled synthetic set that reports accuracy and how often the model answers
+"none", against a baseline.
 
 ## Notes
 
-Partial: the baseline of the recommended local model is not recorded yet (`eval/domains/README.md`),
-and `search` does not apply a project or domain filter to the decisions it returns.
+Partial: the baseline of the recommended local model is not recorded yet (`eval/domains/README.md`).
 
 ## See also
 
