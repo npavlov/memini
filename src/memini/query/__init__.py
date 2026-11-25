@@ -1,14 +1,18 @@
-"""The query tools: ``search``, ``search_code``, ``get_symbol`` and ``read_source``.
+"""The query tools: ``search``, ``search_code``, ``get_symbol``, ``read_source`` and
+``list_commits``.
 
 The library behind the MCP tools (:mod:`memini.mcp.query`) and their HTTP routes
 (:mod:`memini.api.query`), independent of both:
 
 - :mod:`memini.query.model`: the arguments and results, the same for MCP and HTTP.
-- :mod:`memini.query.service`: one function per tool over :func:`memini.search.search` and
-  :func:`~memini.query.reader.read_source`; :class:`QueryServices`, what they need from the
-  service; :class:`QueryError`, every refusal with an HTTP status, a code and a safe message.
+- :mod:`memini.query.service`: one function per tool over :func:`memini.search.search`,
+  :func:`~memini.query.reader.read_source` and :func:`~memini.query.commits.list_commits`;
+  :class:`QueryServices`, what they need from the service; :class:`QueryError`, every refusal
+  with an HTTP status, a code and a safe message.
 - :mod:`memini.query.reader`: :func:`~memini.query.reader.read_source`, a file, a line range or a
   directory from a repository's mirror, at a pinned commit, a ref or a commit.
+- :mod:`memini.query.commits`: :func:`~memini.query.commits.list_commits`, the history of
+  repositories read from their mirrors on demand; nothing of it is stored.
 - :mod:`memini.query.context`: the ``context`` of a code hit, a definition and a read: the
   project, service and domains a file belongs to, computed from the catalog at query time.
 
@@ -16,10 +20,27 @@ Every read goes through the caller's :class:`~memini.auth.ReadFilter`. Results c
 source kind, locator and time; their text is data, never instructions (principles 3 and 11).
 """
 
+from memini.query.commits import (
+    DEFAULT_COMMIT_LIMITS,
+    CommitAuthor,
+    CommitInfo,
+    CommitLimits,
+    CommitList,
+    CommitScope,
+    CommitsError,
+    CommitsTimeoutError,
+    CommitsTooLargeError,
+    PathChange,
+    RepositoryWalk,
+    WalkHead,
+    list_commits,
+    repository_scopes,
+)
 from memini.query.context import CodeContext, DomainRef, code_contexts
 from memini.query.model import (
     CodeSearchArguments,
     Definition,
+    ListCommitsArguments,
     ReadSourceArguments,
     ReadSourceQuery,
     SearchArguments,
@@ -47,27 +68,40 @@ from memini.query.service import (
     QueryServices,
     query_errors,
     run_get_symbol,
+    run_list_commits,
     run_read_source,
     run_search,
     run_search_code,
 )
 
 __all__ = [
+    "DEFAULT_COMMIT_LIMITS",
     "DEFAULT_READ_LIMITS",
     "CodeContext",
     "CodeSearchArguments",
+    "CommitAuthor",
+    "CommitInfo",
+    "CommitLimits",
+    "CommitList",
+    "CommitScope",
+    "CommitsError",
+    "CommitsTimeoutError",
+    "CommitsTooLargeError",
     "Definition",
     "DirectoryEntry",
     "DomainRef",
     "FileTooLargeError",
     "InvalidReadError",
+    "ListCommitsArguments",
     "NotSyncedError",
+    "PathChange",
     "QueryError",
     "QueryServices",
     "ReadError",
     "ReadLimits",
     "ReadSourceArguments",
     "ReadSourceQuery",
+    "RepositoryWalk",
     "SearchArguments",
     "SearchHit",
     "SearchResult",
@@ -76,11 +110,15 @@ __all__ = [
     "SymbolInfo",
     "SymbolResult",
     "SymbolSpan",
+    "WalkHead",
     "code_contexts",
     "code_locator",
+    "list_commits",
     "query_errors",
     "read_source",
+    "repository_scopes",
     "run_get_symbol",
+    "run_list_commits",
     "run_read_source",
     "run_search",
     "run_search_code",

@@ -94,6 +94,9 @@ INVISIBLE = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 PLAIN = frozenset({"status", "add_document", "catalog_guide"})
 """Tools whose result holds no text of the sources: the service's state, a stored document's
 ids, the service's own instruction for filling the catalog."""
+COMMIT_MESSAGE = f"{attempts()[3]}\n\n{attempts()[1]}\n\n{attempts()[7]}"
+"""The message of the repository's commit: whoever may push a commit writes to the reader of its
+history. An attempt as the subject, and two in the body: chat-template tokens, hidden text."""
 EXTRACTION_TABLES = frozenset(
     {
         "job",
@@ -168,7 +171,7 @@ async def world(migrated_database_url: str, tmp_path: Path) -> AsyncIterator[Wor
         git_local_roots=(repos,),
     )
     repo = SourceRepo(repos / REPOSITORY)
-    repo.commit({f"src/{path}": text for path, text in code_files().items()}, "first")
+    repo.commit({f"src/{path}": text for path, text in code_files().items()}, COMMIT_MESSAGE)
     embedder = FakeEmbedder()
     async with (
         open_pool(migrated_database_url, min_size=1, max_size=8, timeout=5) as pool,
@@ -295,6 +298,14 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
         )
         assert blocks == [code_files()["berth_hold.py"].removesuffix("\n")]
         await call("read_source", {"repository": REPOSITORY, "path": "src"})
+        found, blocks = await call("list_commits", {"repositories": [REPOSITORY]})
+        (commit,) = found["commits"]
+        assert all(commit[key] for key in ("source_kind", "repository", "locator", "occurred_at"))
+        assert (commit["subject"], commit["body"]) == (
+            attempts()[3],
+            f"{attempts()[1]}\n\n{attempts()[7]}",
+        )
+        assert COMMIT_MESSAGE in blocks[0]
 
         found, blocks = await call("list_meetings", {"person": "Mira Castellane"})
         assert found["meetings"]
@@ -437,6 +448,7 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
         for path, params in (
             ("/v1/search", {"query": "instructions"}),
             ("/v1/search/code", {"query": "ignore", "mode": "exact"}),
+            ("/v1/commits", {"repositories": REPOSITORY}),
             (f"/v1/meetings/{meeting}", {"include_transcript": "true"}),
             (f"/v1/threads/{thread}", {}),
             ("/v1/decisions", {"history": "true"}),

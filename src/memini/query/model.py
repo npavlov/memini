@@ -22,6 +22,7 @@ from memini.ids import RecordKind
 from memini.knowledge import ItemKind
 from memini.persons import MAX_VALUE_LENGTH, Role
 from memini.provenance import Labelled
+from memini.query.commits import DEFAULT_COMMIT_LIMIT, MAX_COMMIT_LIMIT, MAX_COMMIT_TEXT_CHARS
 from memini.query.context import CodeContext
 from memini.query.reader import MAX_REF_CHARS, code_locator
 from memini.search import MAX_LIMIT, Hit, SourceKind
@@ -34,6 +35,7 @@ __all__ = [
     "CodeMode",
     "CodeSearchArguments",
     "Definition",
+    "ListCommitsArguments",
     "ReadSourceArguments",
     "ReadSourceQuery",
     "SearchArguments",
@@ -223,6 +225,58 @@ class ReadSourceQuery(BaseModel):
     ref: str | None = Field(default=None, min_length=1, max_length=MAX_REF_CHARS, description=_REF)
     start_line: int | None = Field(default=None, ge=1, description=_START)
     end_line: int | None = Field(default=None, ge=1, description=_END)
+
+
+class ListCommitsArguments(BaseModel):
+    """Arguments of ``list_commits``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    repositories: Names | None = Field(
+        default=None,
+        description="Only these repositories (git sources), by name; default: every repository"
+        " the token may read.",
+    )
+    workspaces: Names | None = Field(default=None, description=_WORKSPACES)
+    paths: Globs | None = Field(
+        default=None,
+        description="Only commits that changed a path matching one of these globs, each listed"
+        " with those paths only. The rules are those of .gitignore: * and ? within a directory,"
+        " ** across directories (src/**/*.py); a glob without / matches at any depth (*.py); a"
+        " directory matches everything below it (src/fees). A glob that starts with a directory"
+        " or names a file (src/fees/calc.py) is answered fastest.",
+    )
+    author: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_COMMIT_TEXT_CHARS,
+        description="Only commits whose author's name or mail address, as git shows them, holds"
+        " this text, ignoring case.",
+    )
+    since: AwareDatetime | None = Field(
+        default=None,
+        description="Only commits committed at or after this time (ISO 8601 with a zone).",
+    )
+    until: AwareDatetime | None = Field(
+        default=None,
+        description="Only commits committed before this time (ISO 8601 with a zone). To continue"
+        " a list that was cut, pass its next_until.",
+    )
+    text: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_COMMIT_TEXT_CHARS,
+        description="Only commits whose message holds this text, ignoring case: the words as"
+        " written, not a pattern and not a search by meaning.",
+    )
+    limit: int = Field(
+        default=DEFAULT_COMMIT_LIMIT,
+        ge=1,
+        le=MAX_COMMIT_LIMIT,
+        description=f"The most commits, 1 to {MAX_COMMIT_LIMIT}; the service returns no more"
+        " than its own limit (100 unless its operator changed git_log_max_commits) and says"
+        " when that cut the list.",
+    )
 
 
 # --- Results -------------------------------------------------------------------------------------

@@ -27,6 +27,7 @@ Layout of the application :func:`create_app` builds:
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
   bearer tokens, the ``read`` scope for every request. It is an ASGI app of its own: it gets request
   ids from the outer middleware, and its session manager runs in the application's lifespan.
+  With ``mcp_enabled`` false no MCP server is built: the path answers 404 ``mcp_disabled``.
 
 The query tools and routes share one :class:`~memini.query.QueryServices` (``app.state.services``):
 the search options, the repository mirrors, and the embedder that embeds queries. The embedder is
@@ -48,7 +49,7 @@ origin. Any OpenAPI viewer can read ``/openapi.json`` instead.
 
 import logging
 from collections.abc import AsyncGenerator, Callable, Mapping
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, nullcontext
 from typing import Final
 
 import anyio
@@ -133,7 +134,7 @@ async def _load_reranker(reranker: LocalReranker, services: QueryServices) -> No
 
 
 def _lifespan(
-    mcp: McpEndpoint,
+    mcp: McpEndpoint | None,
     services: QueryServices,
     settings: Settings,
     *,
@@ -155,7 +156,7 @@ def _lifespan(
                 if reranker is not None:
                     tasks.start_soon(_load_reranker, reranker, services)
                 try:
-                    async with mcp.run():
+                    async with mcp.run() if mcp is not None else nullcontext():
                         yield
                 finally:
                     tasks.cancel_scope.cancel()
@@ -212,7 +213,7 @@ def create_app(
     services = QueryServices.from_settings(settings)
     services.embedder = embedder
     services.reranker = reranker
-    mcp = McpEndpoint(build_server(pool=pool, services=services))
+    mcp = McpEndpoint(build_server(pool=pool, services=services)) if settings.mcp_enabled else None
     app = _MeminiApp(
         title="Memini",
         summary="Self-hosted knowledge service: code, messages and meeting notes in; "

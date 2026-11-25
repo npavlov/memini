@@ -120,6 +120,15 @@ GROUPS: Final[tuple[Group, ...]] = (
         " minute's worth of requests, refilled steadily, and is kept in the process: budgets start"
         " full after a restart.",
     ),
+    Group(
+        "MCP endpoint",
+        ("mcp_enabled",),
+        "The service's own MCP endpoint, `/mcp` on the HTTP port: the tools agents call, behind"
+        " the same tokens as the HTTP API. Switched off, it answers every request 404"
+        " `mcp_disabled`, with a token or without, and no tool runs; the HTTP API, which serves"
+        " the same calls, stays. `GET /v1/status` says which it is (`mcp_enabled`). The `mcp_*`"
+        " settings further down are another matter: the client that syncs mcp sources.",
+    ),
     Group("Logging", ("log_",), "The service logs one JSON object per line, on stderr."),
     Group(
         "Metrics",
@@ -258,6 +267,8 @@ CHANGE_NOTES: Final[Mapping[str, str]] = {
 NOTES: Final[Mapping[str, str]] = {
     "database_url": "Compose builds it from `MEMINI_DB_PASSWORD`.",
     "http_port": "The HTTP API and MCP (`/mcp`) listen on it.",
+    "mcp_enabled": "With the server launcher: `memini-server mcp on` and `memini-server mcp off`"
+    " set it and restart the service.",
     "log_level": "The lowest level the service logs; any case.",
     "log_slow_statement_threshold": "A statement of the service over it is logged at WARNING with"
     " its duration, the request or run it served, and its text with every literal replaced by"
@@ -299,6 +310,13 @@ NOTES: Final[Mapping[str, str]] = {
     " The log line `reranking with ...` says how many.",
     "git_local_roots": "With compose, mount the directory into the container as well; compose.yaml"
     " has an example.",
+    "git_log_max_commits": "History is read from the mirrors when `list_commits` asks and is never"
+    " stored. A call that asks for more gets this many and is told where to continue.",
+    "git_log_max_walk": "The filters git cannot apply (path globs, author, text) are applied to"
+    " what it prints. A call that read this many commits of a repository returns what it found"
+    " and where to continue.",
+    "git_log_timeout": "Past it the walk is killed and the call answers 422 `commits_timeout`:"
+    " its caller narrows the question.",
     "credential_key": "Unset: the service starts, and storing or reading a credential fails with"
     " a message that names this setting.",
     "mcp_allowed_endpoints": "Checked when an mcp source is added or changed, and before every"

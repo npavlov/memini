@@ -79,7 +79,8 @@ Notes:
   the stream it arrived through is not part of it.
 - Code is not copied into the database, nor are the Markdown documents of a repository. The service keeps
   its own bare mirror of each repository; the mirror is the raw store, the database holds the file list at
-  the pinned commit. The service never touches a user's working copy.
+  the pinned commit. The service never touches a user's working copy. Commits are not copied either:
+  history is read from the mirror when it is asked for (section 6, **Commit history**).
 - A `thread` holds messages with author, time, text, recipients and mentions. A `meeting` holds title,
   start and end, participants, summary, action items and transcript.
 - Person resolution uses deterministic keys first (email, chat user id). Unmatched names stay as separate
@@ -843,6 +844,7 @@ in the index fingerprint (`payload/1`).
 | `search_code` | Code search. Modes: semantic, exact, regex, symbol. Filters: repository, path glob, language, project, domain, service. |
 | `read_source` | A file or a line range at the pinned commit or a given ref. |
 | `get_symbol` | Definitions of a symbol, with location. |
+| `list_commits` | Who changed what: commits by repository, path, author, time and message text, read from the mirror on demand. Nothing is stored. |
 | `get_catalog` | The projects of a workspace with their services and domains, and the repositories no service is in. |
 | `get_domain` | A domain or subdomain: its code (services, path masks) and the files each mask matches. |
 | `catalog_guide` | The instruction an agent follows to fill the catalog. |
@@ -1011,6 +1013,60 @@ read, 409 for a repository not synced yet, 503 for a stale index (the message na
 fingerprint check compares (principle 9); reading code needs none. `serve` makes one embedder for
 search and sync, so a local model is loaded once.
 
+**Commit history** (decided 2026-11-23; memini-qpk.4). `list_commits` and `GET /v1/commits` answer
+"who changed what" from the bare mirror, on demand: one `git log` per repository when the question
+is asked, and nothing stored, no commit record, no table and no index entry, because the mirror
+holds the whole history already and git answers for a path fast. The price is accepted: a commit
+message is matched by its words, never by meaning. The tool is part of `memini.query`
+(`memini.query.commits`), with the `read` scope and the authorization filter of the other reads,
+and needs no embedder. Arguments: `repositories` (git sources by name) and `workspaces`, by
+default every repository the token may read; `paths`, globs of the search filter; `author`, text
+held by the author's name or mail address, and `text`, text held by the message, both ignoring
+case; `since` (inclusive) and `until` (exclusive) on the committer time, as git compares them;
+`limit` (20). A name that matches nothing the token may read gives nothing, not an error, as for
+search. The history of a source is what is reachable from the pinned commit of each of its tracked
+refs, the commit its index entries are at, so a listing agrees with search and `read_source`: no
+other branch or tag the mirror holds is walked from, nor a commit fetched but not synced. A source
+without a pin is walked nowhere, and the result names every repository it looked at with the
+commits its walk started from (`repositories`), so that an empty list is told apart from a
+repository not synced yet. Git runs with literal pathspecs (section 9, Git mirrors), so a glob is
+never handed to it: the leading components of a glob that hold no wildcard narrow the walk as a
+literal path (`src/fees` of `src/fees/**/*.py`), and each changed path is matched in the service
+with the expression the search filter sends to Postgres. A glob that matches at any depth (`*.py`)
+narrows nothing, and the walk then reads the whole history. With `paths`, a commit lists only the
+paths that match. A merge lists the paths it changed against every parent, so the commits of a
+merged branch are listed themselves, under their authors, and the merge for what it resolved, as
+`git log -- <path>` shows history. Each commit carries its workspace and repository, `sha` and
+`short_sha`, the locator `repo@sha`, `occurred_at` (the committer time, which orders the list,
+newest first across repositories) and `authored_at`, the author as git shows it, without a
+mailmap, and the canonical person the author resolves to (`memini.persons.resolve_git_authors`:
+the address as an `email` alias, else the name as a `git_author` alias; a display name seen in a
+chat is not taken for a commit author; it only reads, a commit makes no person and no alias),
+`subject`, `body`, `parents`, and the changed paths with their status (`added`, `modified`,
+`deleted`, `type_changed`; a rename is a deletion and an addition), the first 50 with their
+number. Subject, body and the author's name and address are source text: their secrets are
+redacted as file content is on read, the filters match them as they are returned, so that a
+redacted secret cannot be probed for letter by letter, and the result says they are data (section
+9, **Redaction** and **Prompt injection**). The bounds are settings: one call returns at most
+`git_log_max_commits` (100) whatever its `limit`, reads at most `git_log_max_walk` (2000) commits
+of one repository, and its walks take at most `git_log_timeout` (10 s) together. For the filters
+git applies itself (literal paths, times) it is asked for one commit more than is returned. The
+others (globs, `author`, `text`) are applied to what git prints, so the cost of a call does not
+depend on how rarely a filter matches; `git log --author` and `--grep` were not chosen for that
+reason, and because they would match the text before it is redacted. A list a bound cut says so
+(`truncated`; `cut_by` is `limit` or `walk_limit`) and gives `next_until`: the same call with it
+as `until` continues with older commits and loses none, since a cut is made between two seconds,
+and a repository whose walk was cut holds back every repository's commits older than what it
+read, so the list stays newest first across calls. Only a second that alone holds more commits
+than a bound is split, and its rest left out. A cursor was not chosen: `until` is an argument a
+caller already has, and a walk through a history of merges has no single commit to resume after.
+Walks past the time limit are killed and answered with 422 `commits_timeout`, a walk that prints
+more than 64 MiB with 422 `commits_too_large`: the caller narrows the question, and nothing
+partial is returned. The library takes scopes, each a source with its own path masks
+(`CommitScope`), so that the catalog's project, domain and service become filters by expanding to
+scopes; they are not arguments yet. Accepted limits: with `since`, git stops a line of history at
+its first older commit; a history whose commit times run backwards is ordered and continued by
+those times; a rename is not followed.
 **Catalog tools** (decided 2026-11-23; memini-qpk.1; section 3, Catalog). `get_catalog`,
 `get_domain`, `put_project` and `catalog_guide` are one library, `memini.catalog`, behind the MCP
 tools and their routes, with the same arguments and results: `GET …/catalog`,
@@ -1196,6 +1252,16 @@ way, and `memini status` exits 0: the answer is in the output.
   The credentials of sources are stored encrypted, under a key from the environment (section 9).
 - Health and status endpoints, structured logs, run reports, metrics for Prometheus, a log of slow
   database statements.
+- The MCP endpoint can be switched off (decided 2026-11-23; memini-qpk.5): `mcp_enabled`, a
+  setting like every other, on by default. Off, no MCP server is built: `/mcp` answers 404
+  `mcp_disabled` to every request before a token is looked at, so no tool runs, and the HTTP API,
+  which serves the same calls, stays; `GET /v1/status` says which it is. The service reads its
+  settings once, so the switch is a setting and a restart: on a managed server
+  `memini-server mcp on|off` writes it into `.env.memini` and recreates the service, then asks the
+  service whether it applied it. A switch through the API was not chosen: it needs settings in
+  the database. For a program that drives the launcher, `memini-server status`, `start`, `stop`
+  and `mcp` print one JSON object with `--json` (the install guide, "Output for programs"), which
+  holds no secret.
 - Backup is a database dump. Repository mirrors are re-cloned. The dump (`pg_dump`, custom format)
   holds every table and index, the HNSW indexes and the journal's triggers included, and
   credentials as ciphertext only; the credential key is backed up apart. `scripts/backup.sh` and

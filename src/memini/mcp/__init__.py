@@ -4,8 +4,8 @@
 - :mod:`memini.mcp.tools`: what a tool is: typed arguments, a typed result, a scope.
 - :mod:`memini.mcp.text`: how a text content shows the sources' text: in fenced blocks nothing
   closes early, with one-line escaped labels (principle 11).
-- :mod:`memini.mcp.query`: ``search``, ``search_code``, ``get_symbol`` and ``read_source``, over
-  :mod:`memini.query`, the library the HTTP routes call too.
+- :mod:`memini.mcp.query`: ``search``, ``search_code``, ``get_symbol``, ``read_source`` and
+  ``list_commits``, over :mod:`memini.query`, the library the HTTP routes call too.
 - :mod:`memini.mcp.comms`: ``list_meetings``, ``get_meeting``, ``list_messages``, ``get_thread``
   and the write ``add_document``, over :mod:`memini.comms`, the library the HTTP routes call too.
 - :mod:`memini.mcp.catalog`: ``get_catalog``, ``get_domain``, ``catalog_guide`` and the write

@@ -2,7 +2,8 @@
 
 The answer is :class:`memini.status.ServiceStatus`: whether the base is current, each stream's lag,
 last runs, history and index, each workspace's index, the database. Everything goes through the
-caller's authorization filter, so a token limited to one workspace sees that workspace only. As
+caller's authorization filter, so a token limited to one workspace sees that workspace only. It
+also repeats the setting ``mcp_enabled``: whether the service serves its MCP endpoint. As
 the tool does, it reports a database that cannot be reached instead of failing; the token lookup
 before it needs the database, though, so such a request is refused first (503).
 
@@ -20,6 +21,7 @@ from fastapi import APIRouter, Query, Request, Response
 
 from memini import status
 from memini.api.auth import ReadAccess
+from memini.config import Settings
 from memini.db import Pool
 from memini.query import QueryServices
 
@@ -62,8 +64,11 @@ def build_status_router() -> APIRouter:
         ``gate=true``, 503 when the base is not current."""
         pool = cast(Pool | None, getattr(request.app.state, "pool", None))
         services = cast(QueryServices, request.app.state.services)
+        settings = cast(Settings, request.app.state.settings)
         fingerprint = status.service_fingerprint(services.embedder)
-        answer = await status.read_status(pool, access, fingerprint=fingerprint)
+        answer = await status.read_status(
+            pool, access, fingerprint=fingerprint, mcp_enabled=settings.mcp_enabled
+        )
         if gate and not answer.current:
             response.status_code = NOT_CURRENT_STATUS
         return answer

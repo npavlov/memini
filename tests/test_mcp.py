@@ -65,6 +65,7 @@ TOOL_NAMES = [
     "search_code",
     "read_source",
     "get_symbol",
+    "list_commits",
     "get_catalog",
     "get_domain",
     "catalog_guide",
@@ -210,6 +211,7 @@ async def test_status_without_a_database_says_so_and_is_not_current(
     # No embedding provider in the settings: there is no index to speak of.
     assert structured["index"]["state"] == "off"
     assert structured["index"]["configured"] is None
+    assert structured["mcp_enabled"] is True  # an answer over MCP is proof of it
     datetime.fromisoformat(structured["as_of"])  # ISO 8601
     text = text_of(result.content[0])
     assert "Current: no." in text
