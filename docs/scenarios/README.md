@@ -75,6 +75,7 @@ pain.
 |---|---|---|---|---|
 | [S11](S11-run-without-a-terminal.md) | Run Memini without a terminal | Operator | planned | memini-qpk.5 |
 | [S12](S12-see-and-edit-the-project-map.md) | See the project map and correct it | Team lead | planned | memini-qpk.5 |
+| [S15](S15-see-what-memini-holds.md) | See what Memini holds and try its tools | Operator, team lead | planned | memini-qpk.9 |
 
 ## Tools and filters the scenarios need
 
