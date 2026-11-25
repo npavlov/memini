@@ -24,12 +24,13 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
-use crate::api::{failure, ApiClient, Target};
+use crate::api::{failure, interpret, ApiClient, Target};
 use crate::error::{clean, AppError, AppResult, ErrorKind};
 use crate::keychain::SecretStore;
 use crate::launcher::{self, Action, LauncherResult, LauncherStatus, SearchPath};
 use crate::secret::Token;
 use crate::store::{ConnectionInput, ConnectionsView, Settings, Store, DEFAULT_LOCAL_URL};
+use crate::tools::{self, ToolCall, ToolDescription};
 
 /// The largest token file that is read, in bytes. A token is 50 characters.
 const MAX_TOKEN_FILE: u64 = 4096;
@@ -503,6 +504,79 @@ pub async fn api_workspaces(state: State<'_, AppState>, id: String) -> AppResult
             None,
         )
         .await
+}
+
+/// `GET /v1/workspaces/{workspace}/sources`: the sources of a workspace, for the Data screen.
+#[tauri::command]
+pub async fn api_sources(
+    state: State<'_, AppState>,
+    id: String,
+    workspace: String,
+) -> AppResult<Value> {
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    let segments = ["v1", "workspaces", workspace.as_str(), "sources"];
+    inner
+        .http
+        .call(&target, Some(&token), Method::GET, &segments, None)
+        .await
+}
+
+/// The read tools the server has, from its OpenAPI document. The document is public, so no token
+/// is sent for it.
+#[tauri::command]
+pub async fn api_tools(state: State<'_, AppState>, id: String) -> AppResult<Vec<ToolDescription>> {
+    let inner = state.shared();
+    let target = inner.target(&id)?;
+    let document = inner
+        .http
+        .call(&target, None, Method::GET, &["openapi.json"], None)
+        .await?;
+    Ok(tools::describe_tools(&document))
+}
+
+/// What a read tool answered, with the request that produced it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ToolAnswer {
+    /// The method and the path with its query, as it was sent. It holds no token.
+    pub request: String,
+    pub status: u16,
+    /// The JSON of a successful answer.
+    pub body: Option<Value>,
+    /// The server's error, when it refused the call.
+    pub error: Option<AppError>,
+}
+
+/// Runs one read tool: a `GET` to the tool's route (see [`crate::tools`]). An answer of the
+/// server, an error included, comes back with the request; only a call that got no answer fails.
+#[tauri::command]
+pub async fn api_tool_call(
+    state: State<'_, AppState>,
+    id: String,
+    call: ToolCall,
+) -> AppResult<ToolAnswer> {
+    let route = tools::route_of(&call)?;
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    let url = target.route(&route.segments, &route.query)?;
+    let request = clean(&match url.query() {
+        Some(query) => format!("GET {}?{query}", url.path()),
+        None => format!("GET {}", url.path()),
+    });
+    let raw = inner
+        .http
+        .send(&target, Some(&token), Method::GET, url, None)
+        .await?;
+    let (body, error) = match interpret(&raw, &target.place()) {
+        Ok(body) => (body, None),
+        Err(error) => (None, Some(error)),
+    };
+    Ok(ToolAnswer {
+        request,
+        status: raw.status,
+        body,
+        error,
+    })
 }
 
 /// `GET /v1/tokens`: the tokens, without secrets.

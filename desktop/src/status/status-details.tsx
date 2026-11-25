@@ -1,65 +1,56 @@
-import { useCallback } from "react";
 import type { ReactElement } from "react";
 
-import type { Connection } from "../connections/connections";
-import { useBackend } from "../ipc/backend-context";
+import { describeTokenCheck } from "../connections/connection-check";
 import { countNoun } from "../text/count-noun";
 import { formatInstant } from "../text/format-time";
 import { ErrorNotice, Notice } from "../ui/notice";
-import { Fact, Panel, Screen } from "../ui/panel";
+import { Fact, Panel } from "../ui/panel";
 import { Pill } from "../ui/pill";
-import { useLoad } from "../ui/use-load";
+import type { ConnectionHealth } from "./connection-health";
 import { indexVerdict, totals } from "./freshness";
-import { readServiceStatus } from "./status";
 import type { ServiceStatus } from "./status";
 import { WorkspacePanel } from "./workspace-panel";
 
-export interface StatusScreenProps {
-  readonly connection: Connection;
+export interface StatusDetailsProps {
+  readonly health: ConnectionHealth;
 }
 
-export function StatusScreen({ connection }: StatusScreenProps): ReactElement {
-  return (
-    <Screen
-      title="Status"
-      lead="Whether the knowledge base is current: each source’s streams, their lag and their last run."
-    >
-      {connection.hasToken ? (
-        <Status connection={connection} />
-      ) : (
-        <Notice tone="warn" title="This connection has no token">
-          <p>Store a token with the read scope on the Connection screen.</p>
-        </Notice>
-      )}
-    </Screen>
-  );
-}
-
-function Status({ connection }: StatusScreenProps): ReactElement {
-  const backend = useBackend();
-  const loaded = useLoad(
-    useCallback(() => readServiceStatus(backend, connection.id), [backend, connection.id]),
-  );
+/** What the bar opens: the base as a whole, then each workspace with its streams. */
+export function StatusDetails({ health }: StatusDetailsProps): ReactElement {
+  if (!health.answers) {
+    return <ErrorNotice error={health.problem} />;
+  }
+  if (health.status === null) {
+    return <WithoutStatus health={health} />;
+  }
   return (
     <>
-      <Panel
-        title="The base"
-        actions={
-          <button type="button" className="button small" disabled={loaded.busy} onClick={loaded.reload}>
-            {loaded.busy ? "Refreshing…" : "Refresh"}
-          </button>
-        }
-      >
-        {loaded.state.phase === "loading" ? <p className="muted">Asking the server…</p> : null}
-        {loaded.state.phase === "failed" ? <ErrorNotice error={loaded.state.error} /> : null}
-        {loaded.state.phase === "ready" ? <Summary status={loaded.state.data} /> : null}
+      <Panel title="The base">
+        <Summary status={health.status} />
       </Panel>
-      {loaded.state.phase === "ready"
-        ? loaded.state.data.workspaces.map((workspace, position) => (
-            <WorkspacePanel key={`${String(position)}:${workspace.name}`} workspace={workspace} />
-          ))
-        : null}
+      {health.status.workspaces.map((workspace, position) => (
+        <WorkspacePanel key={`${String(position)}:${workspace.name}`} workspace={workspace} />
+      ))}
     </>
+  );
+}
+
+/** The server answers, but the base cannot be read: say why, in the token's terms. */
+function WithoutStatus({ health }: StatusDetailsProps): ReactElement {
+  if (health.statusProblem !== null) {
+    return <ErrorNotice error={health.statusProblem} />;
+  }
+  const finding = describeTokenCheck({
+    version: health.version ?? "",
+    ready: health.ready,
+    token: health.token ?? "unknown",
+    workspaces: null,
+    detail: null,
+  });
+  return (
+    <Notice tone={finding.tone} title={finding.text}>
+      <p>The freshness of the base is read with a token that has the read scope.</p>
+    </Notice>
   );
 }
 

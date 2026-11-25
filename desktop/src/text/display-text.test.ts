@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { displayText } from "./display-text";
+import { displayBlock, displayText } from "./display-text";
 
 const at = (codePoint: number): string => String.fromCodePoint(codePoint);
 
@@ -36,5 +36,32 @@ describe("displayText", () => {
 
   it("returns an empty text for a missing value", () => {
     expect(displayText(null)).toBe("");
+  });
+});
+
+describe("displayBlock", () => {
+  it("keeps the lines and the indentation of a snippet", () => {
+    expect(displayBlock("def on(self):\n\treturn True\n", 100)).toBe("def on(self):\n\treturn True\n");
+  });
+
+  it("writes every kind of line break as one line feed", () => {
+    expect(displayBlock("a\r\nb\rc", 100)).toBe("a\nb\nc");
+  });
+
+  it.each([
+    ["an escape character", `a${at(0x1b)}[31mb`, "a [31mb"],
+    ["a right-to-left override", `a${at(0x202e)}b`, "a b"],
+    ["a zero-width space", `a${at(0x200b)}b`, "a b"],
+    ["a line separator", `a${at(0x2028)}b`, "a b"],
+  ])("replaces %s with a space", (_what, text, shown) => {
+    expect(displayBlock(text, 100)).toBe(shown);
+  });
+
+  it("bounds the text by characters", () => {
+    expect(displayBlock("abcdef", 3)).toBe("abc…");
+  });
+
+  it("returns an empty text for a missing value", () => {
+    expect(displayBlock(null, 100)).toBe("");
   });
 });

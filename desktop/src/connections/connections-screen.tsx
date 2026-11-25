@@ -63,7 +63,7 @@ function AddButtons({ view, onAdd }: AddButtonsProps): ReactElement {
       {localConnection(view) === null ? (
         <button
           type="button"
-          className="button small"
+          className="button"
           onClick={() => {
             onAdd("local");
           }}
@@ -73,7 +73,7 @@ function AddButtons({ view, onAdd }: AddButtonsProps): ReactElement {
       ) : null}
       <button
         type="button"
-        className="button small"
+        className="button"
         onClick={() => {
           onAdd("remote");
         }}
@@ -152,7 +152,7 @@ function ConnectionRow(props: ConnectionRowProps): ReactElement {
       {active ? (
         <Pill tone="good">active</Pill>
       ) : (
-        <button type="button" className="button small" onClick={onUse}>
+        <button type="button" className="button" onClick={onUse}>
           Use
         </button>
       )}

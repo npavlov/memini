@@ -34,7 +34,7 @@ export function CopyButton({ text, label = "Copy", secret = false }: CopyButtonP
   }, [copied]);
   const words = action.error === null ? (copied ? "Copied" : label) : "Could not copy";
   return (
-    <button type="button" className="button small" onClick={() => action.run()}>
+    <button type="button" className="button" onClick={() => action.run()}>
       {words}
     </button>
   );

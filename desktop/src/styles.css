@@ -22,6 +22,9 @@
   --idle: #5d6875;
   --idle-soft: #ececea;
   --code: #f0eee8;
+  /* One height for everything a row of controls can hold: buttons, inputs, selects. */
+  --control-height: 32px;
+  --control-font: 0.93rem;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   font-size: 14px;
   line-height: 1.45;
@@ -70,6 +73,8 @@ body {
 
 h1,
 h2,
+h3,
+h4,
 p,
 dl,
 dd,
@@ -85,6 +90,12 @@ h1 {
 
 h2 {
   font-size: 1.05rem;
+  font-weight: 650;
+}
+
+h3,
+h4 {
+  font-size: 1rem;
   font-weight: 650;
 }
 
@@ -115,11 +126,12 @@ pre {
   padding: 32px;
 }
 
-/* Layout */
+/* Layout: the navigation and the screen above, the status bar across the bottom. */
 
 .shell {
   display: grid;
   grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
 }
 
@@ -166,25 +178,8 @@ pre {
   opacity: 0.7;
 }
 
-.content {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  height: 100%;
-}
-
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 24px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-}
-
 main {
-  flex: 1;
+  min-width: 0;
   overflow: auto;
   padding: 24px;
 }
@@ -228,15 +223,86 @@ main {
   gap: 8px;
 }
 
-/* Controls */
+.subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subsection-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* The status bar: always visible; its details open above it. */
+
+.statusbar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.statusbar-address {
+  overflow-wrap: anywhere;
+}
+
+.statusbar-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.statusbar-details {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 62vh;
+  padding: 16px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 14%);
+}
+
+/*
+ * Controls. Every button is the same size, wherever it stands: height, padding and font come
+ * from .button alone. A primary or a dangerous button differs by its colours only.
+ */
+
+.button,
+input[type="text"],
+select {
+  height: var(--control-height);
+  font: inherit;
+  font-size: var(--control-font);
+}
 
 .button {
-  padding: 7px 14px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
   color: var(--ink);
-  font: inherit;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -249,22 +315,15 @@ main {
   opacity: 0.55;
 }
 
-.button.small {
-  padding: 4px 10px;
-  font-size: 0.9rem;
-}
-
 .button.primary {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
-  font-weight: 600;
 }
 
 .button.danger {
   border-color: var(--bad);
   color: var(--bad);
-  font-weight: 600;
 }
 
 .confirm {
@@ -310,14 +369,22 @@ legend {
 }
 
 input[type="text"],
-select {
+select,
+textarea {
   width: 100%;
-  padding: 7px 9px;
+  padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
+}
+
+textarea {
+  min-height: calc(var(--control-height) * 1.6);
+  padding: 6px 9px;
   font: inherit;
+  font-size: var(--control-font);
+  resize: vertical;
 }
 
 :focus-visible {
@@ -335,9 +402,16 @@ select {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
 }
 
 .hint {
@@ -457,7 +531,8 @@ select {
   overflow-wrap: anywhere;
 }
 
-.facts {
+.facts,
+.card-facts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 6px 16px;
@@ -494,12 +569,8 @@ select {
   padding: 7px 8px;
   border-top: 1px solid var(--line);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
   overflow-wrap: break-word;
-}
-
-.table .nowrap {
-  white-space: nowrap;
 }
 
 .table thead th {
@@ -511,6 +582,10 @@ select {
 
 .table tbody th {
   font-weight: 600;
+}
+
+.table .nowrap {
+  white-space: nowrap;
 }
 
 .code-block {
@@ -562,5 +637,88 @@ pre {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
-  font-weight: 600;
+}
+
+/* The Data screen: a tool's form, and its answer as cards or as JSON. */
+
+.tool {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tool-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+
+.field-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.answer-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--code);
+  overflow-wrap: anywhere;
+}
+
+.raw-json {
+  max-height: 480px;
+  overflow: auto;
+}
+
+.card-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.card .card {
+  background: var(--surface);
+}
+
+.card-title {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.card-text {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.field > span .muted,
+.field-caption .muted,
+.field-caption small {
+  font-weight: 400;
 }

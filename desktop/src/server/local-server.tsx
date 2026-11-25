@@ -55,7 +55,7 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
       <Panel
         title="Local server"
         actions={
-          <button type="button" className="button small" disabled={busy} onClick={reload}>
+          <button type="button" className="button" disabled={busy} onClick={reload}>
             {status.busy ? "Refreshing…" : "Refresh"}
           </button>
         }

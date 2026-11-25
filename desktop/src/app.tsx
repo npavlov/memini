@@ -5,6 +5,7 @@ import { activeConnection } from "./connections/connections";
 import type { Connection, ConnectionsView } from "./connections/connections";
 import { listConnections } from "./connections/connections-api";
 import { ConnectionsScreen } from "./connections/connections-screen";
+import { DataScreen } from "./data/data-screen";
 import { readAppInfo } from "./ipc/app-info";
 import type { AppInfo } from "./ipc/app-info";
 import type { Backend } from "./ipc/backend";
@@ -12,18 +13,18 @@ import { useBackend } from "./ipc/backend-context";
 import { McpScreen } from "./mcp/mcp-screen";
 import { ProjectMapScreen } from "./project-map/project-map-screen";
 import { ServerScreen } from "./server/server-screen";
-import { StatusScreen } from "./status/status-screen";
+import { StatusBar } from "./status/status-bar";
 import { TokensScreen } from "./tokens/tokens-screen";
 import { ErrorNotice, Notice } from "./ui/notice";
-import { Pill } from "./ui/pill";
 import { useLoad } from "./ui/use-load";
 
+/** The screens of the navigation. The state of the connection is not one: it is the bar below. */
 const SCREENS = [
   { id: "connection", label: "Connection" },
   { id: "server", label: "Server" },
   { id: "mcp", label: "MCP" },
   { id: "tokens", label: "Tokens" },
-  { id: "status", label: "Status" },
+  { id: "data", label: "Data" },
   { id: "map", label: "Project map" },
 ] as const;
 
@@ -63,9 +64,8 @@ interface ShellProps {
 function Shell({ boot }: ShellProps): ReactElement {
   const [view, setView] = useState(boot.view);
   const [screen, setScreen] = useState<ScreenId>(
-    boot.view.connections.length === 0 ? "connection" : "status",
+    boot.view.connections.length === 0 ? "connection" : "data",
   );
-  const active = activeConnection(view);
   return (
     <div className="shell">
       <nav className="sidebar" aria-label="Screens">
@@ -87,33 +87,11 @@ function Shell({ boot }: ShellProps): ReactElement {
           {boot.info.version === "" ? "" : `Version ${boot.info.version}`}
         </p>
       </nav>
-      <div className="content">
-        <ActiveConnectionBar connection={active} />
-        <main>
-          <CurrentScreen screen={screen} view={view} info={boot.info} onView={setView} />
-        </main>
-      </div>
+      <main>
+        <CurrentScreen screen={screen} view={view} info={boot.info} onView={setView} />
+      </main>
+      <StatusBar connection={activeConnection(view)} />
     </div>
-  );
-}
-
-interface ActiveConnectionBarProps {
-  readonly connection: Connection | null;
-}
-
-function ActiveConnectionBar({ connection }: ActiveConnectionBarProps): ReactElement {
-  if (connection === null) {
-    return <header className="bar muted">No connection is active.</header>;
-  }
-  return (
-    <header className="bar">
-      <strong>{connection.name}</strong>
-      <span className="muted">{connection.url}</span>
-      <Pill tone="info">{connection.kind === "local" ? "this computer" : "remote"}</Pill>
-      <Pill tone={connection.hasToken ? "good" : "warn"}>
-        {connection.hasToken ? "token in the keychain" : "no token"}
-      </Pill>
-    </header>
   );
 }
 
@@ -135,9 +113,9 @@ function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): Reac
       return <ProjectMapScreen />;
     case "mcp":
     case "tokens":
-    case "status":
+    case "data":
       return active === null ? (
-        <Notice tone="info" title="No connection is active">
+        <Notice tone="info" title="No connection is selected">
           <p>Add a server on the Connection screen, or choose one of the saved connections.</p>
         </Notice>
       ) : (
@@ -147,7 +125,7 @@ function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): Reac
 }
 
 interface ConnectionScreenProps {
-  readonly screen: "mcp" | "tokens" | "status";
+  readonly screen: "mcp" | "tokens" | "data";
   readonly connection: Connection;
 }
 
@@ -159,7 +137,7 @@ function ConnectionScreen({ screen, connection }: ConnectionScreenProps): ReactE
       return <McpScreen key={key} connection={connection} />;
     case "tokens":
       return <TokensScreen key={key} connection={connection} />;
-    case "status":
-      return <StatusScreen key={key} connection={connection} />;
+    case "data":
+      return <DataScreen key={key} connection={connection} />;
   }
 }

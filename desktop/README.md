@@ -3,7 +3,7 @@
 A native application for macOS, Windows and Linux that manages a Memini server. It starts and stops
 the server on this computer through the `memini-server` launcher, connects to other servers by
 address and token, shows the MCP address with configuration to paste into a client, manages tokens,
-and shows whether the sources are current.
+shows what the base holds, and runs the read tools by hand.
 
 It is built with Tauri 2: a Rust side that owns the tokens, every HTTP call and the launcher, and a
 React front end that shows what the Rust side returns. This is a first version; read
@@ -18,8 +18,13 @@ on it.
 | Server | The local server: whether Docker is available, whether the server is installed and running, each service, start and stop. Explains how to install the launcher when it is missing. | The `memini-server` launcher |
 | MCP | The MCP address, whether the endpoint is on, the switch for the local server, and configuration for the clients of [docs/mcp](../docs/mcp/README.md). | A connection |
 | Tokens | Lists, creates and revokes tokens. A new token is shown once. | A token with the `admin` scope |
-| Status | Whether the base is current; each stream's lag, schedule and last run. | A token with the `read` scope |
+| Data | What the base holds: per workspace, each source with its kind, records and freshness. A console for the read tools: a form per tool, built from the arguments the server publishes, and the answer as cards and as raw JSON with the request that produced it. Read-only. | A token with the `read` scope |
 | Project map | A placeholder. The server has no catalog API yet. | — |
+
+A bar at the bottom of the window is always visible. It names the selected connection and says
+whether the server answers, its version, whether the base is current or behind, and whether MCP is
+on. **Details** opens the base's status above the bar: each workspace, its streams, their lag and
+their last run. The bar asks again every minute while the window is in front.
 
 ## Requirements
 
@@ -75,12 +80,13 @@ signed.
 desktop/
   src/                  the front end, by feature
     ipc/                the one bridge to the Rust side, and the error shape
-    connections/  server/  mcp/  tokens/  status/  project-map/
+    connections/  server/  mcp/  tokens/  data/  status/  project-map/
     json/  text/  ui/   readers for outside values, text made safe to show, shared components
   src-tauri/
     src/commands.rs     the commands the front end may call
     src/api.rs          the HTTP client of the Memini API
     src/launcher.rs     finding and running memini-server, reading its JSON
+    src/tools.rs        the read tools of the Data screen and the request a call becomes
     src/keychain.rs     tokens in the operating system's keychain
     src/store.rs        the settings file with the saved connections
     src/secret.rs  src/error.rs   the token type, and errors whose text is masked
@@ -115,6 +121,11 @@ rule, not around it.
   (`status`, `start`, `stop`, `mcp on`, `mcp off`, each with `--json`), directly and never through
   a shell. The front end names an action; nothing it sends becomes an argument. A path the user
   sets must still end in `memini-server`.
+- **The Data screen only reads.** A tool is one of a fixed table of read tools in
+  `src-tauri/src/tools.rs`, each with the `GET` route that serves it. The front end names a tool
+  and gives values; they become encoded path segments and query pairs of that route and cannot
+  name another. No write tool is in the table, and there is no query language. Which arguments a
+  tool takes comes from the server's OpenAPI document, so a new filter needs no change of the app.
 - **Text from a server or from the launcher is data.** It is shown as text, with control and
   text-reordering characters removed and its length bounded, and it never makes the app act: the
   app offers the launcher's address and the user clicks.
@@ -155,22 +166,22 @@ On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3 and Rust 1
 | Command | Result |
 |---|---|
 | `pnpm typecheck` | no errors |
-| `pnpm test` | 272 tests passed |
+| `pnpm test` | 367 tests passed |
 | `pnpm build` | built |
 | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` | clean |
-| `cargo test --locked` | 53 tests passed |
-| `pnpm tauri build --debug --bundles app -- --locked` | `Memini.app` built |
+| `cargo test --locked` | 64 tests passed |
 | `pnpm tauri build --bundles app -- --locked` | `Memini.app` built |
 
 The built front end was also opened in a browser with a stand-in for the Rust side, under the
-production content security policy and with `Object.prototype` frozen as Tauri freezes it: every
-screen rendered without an error, and markup in a server's text stayed text.
+production content security policy and with `Object.prototype` frozen as Tauri freezes it. Every
+screen rendered without an error; markup in a server's text stayed text; every button measured the
+same height, padding and font; and the forms of the ten read tools were built from the OpenAPI
+document of the service in this repository.
 
 ## What is not done
 
-- **The app was never started.** It compiles and bundles on macOS; nobody has opened its window,
-  clicked through it against a real server, or stored a token in a real keychain. `pnpm tauri dev`
-  was not run.
+- **The app was not checked against a real server.** It was opened on macOS; nothing here has run
+  it against a real server, launcher or keychain, and `pnpm tauri dev` was not run.
 - **Windows and Linux were not compiled.** The code for them (finding the launcher, starting it
   without a console window, the Secret Service) is written and waits for the first CI run.
 - **The launcher's `--json` output and `mcp on|off`** arrive with another change. The app was
@@ -180,4 +191,8 @@ screen rendered without an error, and markup in a server's text stayed text.
   first release: changing it later moves the settings.
 - **The first admin token still comes from a terminal** (`memini-server cli bootstrap`). The
   launcher contract has no command for it.
-- **The project map**, code search and repositories: the server has no catalog API yet.
+- **`list_commits`** is in the table of read tools with the route `GET /v1/commits`, which is a
+  guess: the server does not have the tool yet. The Data screen offers it once the server's
+  OpenAPI document has that route.
+- **Chunks per source.** The overview counts chunks per workspace; no route counts them per source.
+- **The project map** and repositories: the server has no catalog API yet.

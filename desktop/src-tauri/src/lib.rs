@@ -9,6 +9,7 @@
 //! - [`launcher`]: finding and running `memini-server`, and reading its JSON.
 //! - [`keychain`]: tokens in the operating system's keychain.
 //! - [`store`]: the settings file with the saved connections; no secrets.
+//! - [`tools`]: the read tools the Data screen may run, and the request a call becomes.
 //! - [`secret`], [`error`]: the token type that cannot be serialized, and the error shape whose
 //!   text is masked before it leaves Rust.
 
@@ -19,6 +20,7 @@ mod keychain;
 mod launcher;
 mod secret;
 mod store;
+mod tools;
 
 use tauri::Manager;
 
@@ -45,6 +47,9 @@ pub fn run() {
             commands::connection_check,
             commands::api_status,
             commands::api_workspaces,
+            commands::api_sources,
+            commands::api_tools,
+            commands::api_tool_call,
             commands::api_tokens_list,
             commands::api_token_create,
             commands::api_token_revoke,

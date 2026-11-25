@@ -17,7 +17,7 @@ export function ConfirmButton(props: ConfirmButtonProps): ReactElement {
     return (
       <button
         type="button"
-        className="button small"
+        className="button"
         disabled={props.disabled === true}
         onClick={() => {
           setAsking(true);
@@ -34,12 +34,12 @@ export function ConfirmButton(props: ConfirmButtonProps): ReactElement {
   return (
     <span className="confirm">
       <span>{props.question}</span>
-      <button type="button" className="button small danger" onClick={confirm}>
+      <button type="button" className="button danger" onClick={confirm}>
         {props.confirmLabel}
       </button>
       <button
         type="button"
-        className="button small"
+        className="button"
         onClick={() => {
           setAsking(false);
         }}

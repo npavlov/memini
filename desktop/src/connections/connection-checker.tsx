@@ -30,7 +30,7 @@ export function ConnectionChecker({ connection }: ConnectionCheckerProps): React
       actions={
         <button
           type="button"
-          className="button small"
+          className="button"
           disabled={checking.pending}
           onClick={() => checking.run()}
         >

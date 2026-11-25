@@ -60,6 +60,20 @@ impl Target {
         Ok(url)
     }
 
+    /// The address of a route with a query. Segments and query pairs are encoded; an empty last
+    /// segment gives the trailing slash of a directory route.
+    pub fn route(&self, segments: &[String], query: &[(String, String)]) -> AppResult<Url> {
+        let mut url = self.base.clone();
+        url.path_segments_mut()
+            .map_err(|()| AppError::invalid("The connection's address cannot take a path."))?
+            .pop_if_empty()
+            .extend(segments);
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(query);
+        }
+        Ok(url)
+    }
+
     /// Scheme, host and port, for messages. It is what the user entered, never a secret.
     pub fn place(&self) -> String {
         self.base.origin().ascii_serialization()
@@ -96,6 +110,18 @@ impl ApiClient {
         body: Option<&Value>,
     ) -> AppResult<Raw> {
         let url = target.endpoint(segments)?;
+        self.send(target, token, method, url, body).await
+    }
+
+    /// One call to an address that [`Target::endpoint`] or [`Target::route`] built for `target`.
+    pub async fn send(
+        &self,
+        target: &Target,
+        token: Option<&Token>,
+        method: Method,
+        url: Url,
+        body: Option<&Value>,
+    ) -> AppResult<Raw> {
         let client = if target.loopback {
             &self.direct
         } else {
@@ -387,6 +413,26 @@ mod tests {
             url.as_str(),
             "https://memini.example.org/v1/tokens/..%2Fworkspaces%3Fx=1%23y"
         );
+        assert_eq!(url.query(), None);
+    }
+
+    #[test]
+    fn a_route_with_a_query_encodes_its_pairs_and_keeps_a_trailing_slash() {
+        let target = Target::of(&connection("https://memini.example.org/prefix")).expect("valid");
+        let segments = ["v1".to_owned(), "search".to_owned()];
+        let query = [
+            ("query".to_owned(), "archive & retention?".to_owned()),
+            ("kinds".to_owned(), "thread".to_owned()),
+            ("kinds".to_owned(), "meeting".to_owned()),
+        ];
+        let url = target.route(&segments, &query).expect("a route");
+        assert_eq!(
+            url.as_str(),
+            "https://memini.example.org/prefix/v1/search?query=archive+%26+retention%3F&kinds=thread&kinds=meeting"
+        );
+        let directory = ["files".to_owned(), String::new()];
+        let url = target.route(&directory, &[]).expect("a route");
+        assert_eq!(url.as_str(), "https://memini.example.org/prefix/files/");
         assert_eq!(url.query(), None);
     }
 

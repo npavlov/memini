@@ -22,3 +22,22 @@ export function displayText(value: string | null, limit: number = DEFAULT_LIMIT)
   }
   return `${characters.slice(0, limit).join("")}…`;
 }
+
+/** As HIDDEN, but line breaks and tabs stay: for text that is shown in its own lines. */
+const HIDDEN_IN_LINES = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\u2060-\u2069\uFEFF]/gu;
+
+/**
+ * Longer text from outside the app, such as a snippet of code or the text of a message, as it
+ * may be shown in a block: its lines are kept, nothing is hidden, at most `limit` characters.
+ */
+export function displayBlock(value: string | null, limit: number): string {
+  if (value === null) {
+    return "";
+  }
+  const visible = value.replace(/\r\n?/gu, "\n").replace(HIDDEN_IN_LINES, " ");
+  const characters = Array.from(visible);
+  if (characters.length <= limit) {
+    return visible;
+  }
+  return `${characters.slice(0, limit).join("")}…`;
+}
