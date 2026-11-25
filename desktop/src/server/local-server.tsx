@@ -122,7 +122,12 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
   return (
     <>
       {offered === "setup" ? (
-        <FirstSetup disabled={working !== null && working !== "setup"} onView={onView} onRunning={onSetup} />
+        <FirstSetup
+          disabled={working !== null && working !== "setup"}
+          onView={onView}
+          onRunning={onSetup}
+          servicesSeen={(loaded?.services.length ?? 0) > 0}
+        />
       ) : null}
       <Panel
         title="Local server"

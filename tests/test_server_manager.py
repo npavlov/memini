@@ -928,6 +928,23 @@ def test_repos_add_mounts_a_folder_read_only_and_names_its_location(
     assert (gone.code, gone.value["error"]) == (1, "no folder is named harbour-app")
 
 
+def test_repos_add_writes_a_dollar_of_the_path_as_compose_reads_it_literally(
+    tmp_path: Path, state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.rows = [container("memini", port=6399)]
+    folder = working_copy(tmp_path / "work", "price$HOME")
+
+    added = launch(state, "repos", "add", str(folder))
+
+    assert added.code == 0, added.text
+    # Compose interpolates $ in a value; $$ is one literal $.
+    volume = local_compose(state)["services"]["memini"]["volumes"][0]
+    assert volume["source"] == str(folder.resolve()).replace("$", "$$")
+    # The list keeps the path as it is.
+    assert added.value["repository"]["path"] == str(folder.resolve())
+    assert added.value["repository"]["name"] == "price-home"
+
+
 def test_repos_add_refuses_what_is_not_the_folder_of_a_repository(
     tmp_path: Path, state: Path, docker: FakeDocker, launch: Callable[..., Printed]
 ) -> None:
