@@ -1,8 +1,6 @@
 import type { ReactElement } from "react";
 
-import { CodeBlock } from "../ui/code-block";
-import { Notice } from "../ui/notice";
-import { Panel } from "../ui/panel";
+import { CodeBlock, Notice, Panel, Text } from "../components";
 import { installSteps } from "./launcher";
 
 export interface LauncherMissingProps {
@@ -16,23 +14,23 @@ export function LauncherMissing({ os, configuredPath }: LauncherMissingProps): R
   return (
     <Panel title="The launcher is not installed">
       <Notice tone="info" title="memini-server was not found on this computer">
-        <p>
+        <Text>
           {configuredPath === null
             ? "This app does not contain the server. It runs the memini-server launcher, which starts Memini with Docker."
             : "There is no memini-server at the path set below. Correct the path, or clear it to look on PATH."}
-        </p>
+        </Text>
       </Notice>
-      <p>
+      <Text>
         Start Docker with Compose 2.24 or later, then install the launcher in a terminal. Allow 4
         CPU cores, 8 GB of memory and 20 GB of free disk.
-      </p>
+      </Text>
       {installSteps(os).map((step) => (
         <CodeBlock key={step.title} label={step.title} text={step.text} />
       ))}
-      <p className="muted">
+      <Text tone="muted">
         Then open this screen again. To connect to a server that runs elsewhere, you do not need the
         launcher: add it on the Connection screen.
-      </p>
+      </Text>
     </Panel>
   );
 }

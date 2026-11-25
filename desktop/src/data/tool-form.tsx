@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { Checkbox, Field, FieldGrid, FieldGroup, Mono, Select, Text, TextArea, TextInput } from "../components";
 import { setValue, toggleChoice } from "./tool-call";
 import type { FieldValue, FormValues } from "./tool-call";
 import type { Tool, ToolField } from "./tool-schema";
@@ -13,14 +14,14 @@ export interface ToolFieldsProps {
 /** The fields of a tool's form, in the order the server lists its arguments. */
 export function ToolFields({ tool, values, onChange }: ToolFieldsProps): ReactElement {
   if (tool.fields.length === 0) {
-    return <p className="muted">This tool takes no arguments.</p>;
+    return <Text tone="muted">This tool takes no arguments.</Text>;
   }
   return (
-    <div className="tool-fields">
+    <FieldGrid>
       {tool.fields.map((field) => (
         <FieldRow key={`${field.location}:${field.name}`} field={field} values={values} onChange={onChange} />
       ))}
-    </div>
+    </FieldGrid>
   );
 }
 
@@ -40,123 +41,64 @@ function noteOf(field: ToolField): string {
   return parts.filter((part): part is string => part !== null).join(" · ");
 }
 
+function chosenOf(value: FieldValue | undefined): readonly string[] {
+  return typeof value === "string" || value === undefined ? [] : value;
+}
+
 function FieldRow({ field, values, onChange }: FieldRowProps): ReactElement {
-  const note = noteOf(field);
-  const control = (
-    <FieldControl
-      field={field}
-      value={values.get(field.name)}
-      onValue={(value) => {
-        onChange(setValue(values, field.name, value));
-      }}
-      onToggle={(option) => {
-        onChange(toggleChoice(values, field.name, option));
-      }}
-    />
-  );
-  const caption = (
-    <>
-      <span>
-        <code>{field.name}</code> {note === "" ? null : <span className="muted small">{note}</span>}
-      </span>
-      {field.description === "" ? null : <small className="muted">{field.description}</small>}
-    </>
-  );
-  // Several checkboxes are a group with a legend; any other control is labelled by its caption.
+  const label = <Mono>{field.name}</Mono>;
+  const value = values.get(field.name);
+  // Several boxes are a group with a legend; any other control is labelled by its field.
   if (field.kind === "choices") {
+    const chosen = chosenOf(value);
     return (
-      <fieldset className="choices">
-        <legend className="field-caption">{caption}</legend>
-        {control}
-      </fieldset>
+      <FieldGroup label={label} note={noteOf(field)} hint={field.description} inline>
+        {field.options.map((option) => (
+          <Checkbox
+            key={option}
+            checked={chosen.includes(option)}
+            onChange={() => {
+              onChange(toggleChoice(values, field.name, option));
+            }}
+          >
+            {option}
+          </Checkbox>
+        ))}
+      </FieldGroup>
     );
   }
   return (
-    <label className="field">
-      {caption}
-      {control}
-    </label>
+    <Field label={label} note={noteOf(field)} hint={field.description}>
+      <FieldControl
+        field={field}
+        text={typeof value === "string" ? value : ""}
+        onText={(text) => {
+          onChange(setValue(values, field.name, text));
+        }}
+      />
+    </Field>
   );
 }
 
 interface FieldControlProps {
   readonly field: ToolField;
-  readonly value: FieldValue | undefined;
-  readonly onValue: (value: string) => void;
-  readonly onToggle: (option: string) => void;
+  readonly text: string;
+  readonly onText: (text: string) => void;
 }
 
-function FieldControl({ field, value, onValue, onToggle }: FieldControlProps): ReactElement {
-  const text = typeof value === "string" ? value : "";
+function FieldControl({ field, text, onText }: FieldControlProps): ReactElement {
   switch (field.kind) {
-    case "choice":
-      return (
-        <select
-          value={text}
-          onChange={(event) => {
-            onValue(event.target.value);
-          }}
-        >
-          <option value="">{field.required ? "Choose…" : "Leave to the server"}</option>
-          {field.options.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      );
-    case "choices":
-      return <ChoiceBoxes field={field} chosen={typeof value === "string" || value === undefined ? [] : value} onToggle={onToggle} />;
+    case "choice": {
+      const unset = { value: "", label: field.required ? "Choose…" : "Leave to the server" };
+      const options = field.options.map((option) => ({ value: option, label: option }));
+      return <Select value={text} options={[unset, ...options]} onChange={onText} />;
+    }
     case "list":
-      return (
-        <textarea
-          rows={2}
-          spellCheck={false}
-          value={text}
-          onChange={(event) => {
-            onValue(event.target.value);
-          }}
-        />
-      );
+      return <TextArea value={text} onChange={onText} />;
     case "integer":
+      return <TextInput kind="number" value={text} onChange={onText} />;
+    case "choices":
     case "text":
-      return (
-        <input
-          type="text"
-          inputMode={field.kind === "integer" ? "numeric" : "text"}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          value={text}
-          onChange={(event) => {
-            onValue(event.target.value);
-          }}
-        />
-      );
+      return <TextInput kind="code" value={text} onChange={onText} />;
   }
-}
-
-interface ChoiceBoxesProps {
-  readonly field: ToolField;
-  readonly chosen: readonly string[];
-  readonly onToggle: (option: string) => void;
-}
-
-function ChoiceBoxes({ field, chosen, onToggle }: ChoiceBoxesProps): ReactElement {
-  return (
-    <div className="choice-row">
-      {field.options.map((option) => (
-        <label key={option} className="check">
-          <input
-            type="checkbox"
-            checked={chosen.includes(option)}
-            onChange={() => {
-              onToggle(option);
-            }}
-          />
-          <span>{option}</span>
-        </label>
-      ))}
-    </div>
-  );
 }

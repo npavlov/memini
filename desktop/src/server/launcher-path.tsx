@@ -1,10 +1,9 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import { Button, ErrorNotice, Fact, Facts, Field, Form, Mono, Panel, TextInput } from "../components";
+import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
-import { ErrorNotice } from "../ui/notice";
-import { Fact, Panel } from "../ui/panel";
-import { useAction } from "../ui/use-action";
 import type { LauncherInfo } from "./launcher";
 import { setLauncherPath } from "./launcher-api";
 
@@ -29,39 +28,30 @@ export function LauncherPath({ launcher, onLauncher }: LauncherPathProps): React
     [backend, onLauncher],
   );
   const saving = useAction(save);
+  const empty = path.trim() === "";
   return (
     <Panel title="Launcher program">
-      <dl className="facts">
-        <Fact name="In use">{launcher.resolvedPath ?? "not found"}</Fact>
+      <Facts>
+        <Fact name="In use">
+          {launcher.resolvedPath === null ? "not found" : <Mono>{launcher.resolvedPath}</Mono>}
+        </Fact>
         <Fact name="Found by">
           {launcher.configuredPath === null ? "PATH and the package managers’ folders" : "the path set here"}
         </Fact>
-      </dl>
-      <form
-        className="inline-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          return saving.run(path.trim() === "" ? null : path);
-        }}
-      >
-        <label className="field grow">
-          <span>Full path of memini-server, if it is somewhere else</span>
-          <input
-            type="text"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
+      </Facts>
+      <Form inline onSubmit={() => saving.run(empty ? null : path)}>
+        <Field label="Full path of memini-server, if it is somewhere else" grow>
+          <TextInput
+            kind="code"
             value={path}
             placeholder="/opt/homebrew/bin/memini-server"
-            onChange={(event) => {
-              setPath(event.target.value);
-            }}
+            onChange={setPath}
           />
-        </label>
-        <button type="submit" className="button" disabled={saving.pending}>
-          {path.trim() === "" ? "Look on PATH" : "Use this path"}
-        </button>
-      </form>
+        </Field>
+        <Button submit disabled={saving.pending}>
+          {empty ? "Look on PATH" : "Use this path"}
+        </Button>
+      </Form>
       <ErrorNotice error={saving.error} />
     </Panel>
   );

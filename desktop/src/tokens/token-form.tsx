@@ -1,11 +1,23 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import {
+  Actions,
+  Button,
+  Checkbox,
+  Columns,
+  ErrorNotice,
+  Field,
+  FieldGroup,
+  Form,
+  Panel,
+  Select,
+  Text,
+  TextInput,
+} from "../components";
 import type { Connection } from "../connections/connections";
+import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
-import { ErrorNotice } from "../ui/notice";
-import { Panel } from "../ui/panel";
-import { useAction } from "../ui/use-action";
 import {
   EMPTY_TOKEN_FORM,
   EXPIRIES,
@@ -38,35 +50,27 @@ export function TokenForm({ connection, workspaces, onCreated }: TokenFormProps)
   const creating = useAction(create);
   return (
     <Panel title="Create a token">
-      <form
-        className="form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          return problem === null ? creating.run() : undefined;
-        }}
-      >
-        <label className="field">
-          <span>What it is for</span>
-          <input
-            type="text"
+      <Form onSubmit={() => (problem === null ? creating.run() : undefined)}>
+        <Field label="What it is for">
+          <TextInput
             value={form.name}
             maxLength={200}
             placeholder="laptop agent"
-            onChange={(event) => {
-              setForm({ ...form, name: event.target.value });
+            onChange={(name) => {
+              setForm({ ...form, name });
             }}
           />
-        </label>
+        </Field>
         <ScopeChoices form={form} onChange={setForm} />
         <LimitChoices form={form} workspaces={workspaces} onChange={setForm} />
-        {form.name === "" || problem === null ? null : <p className="hint">{problem}</p>}
+        {form.name === "" || problem === null ? null : <Text tone="hint">{problem}</Text>}
         <ErrorNotice error={creating.error} />
-        <div className="actions">
-          <button type="submit" className="button primary" disabled={problem !== null || creating.pending}>
+        <Actions>
+          <Button variant="primary" submit disabled={problem !== null || creating.pending}>
             {creating.pending ? "Creating…" : "Create token"}
-          </button>
-        </div>
-      </form>
+          </Button>
+        </Actions>
+      </Form>
     </Panel>
   );
 }
@@ -78,23 +82,22 @@ interface ChoicesProps {
 
 function ScopeChoices({ form, onChange }: ChoicesProps): ReactElement {
   return (
-    <fieldset className="choices">
-      <legend>What it may do</legend>
+    <FieldGroup label="What it may do">
       {SCOPES.map((scope) => (
-        <label key={scope} className="check">
-          <input
-            type="checkbox"
-            checked={form.scopes.includes(scope)}
-            onChange={() => {
-              onChange({ ...form, scopes: toggleScope(form.scopes, scope) });
-            }}
-          />
-          <span>
-            <strong>{scope}</strong> <span className="muted">{SCOPE_MEANINGS[scope]}</span>
-          </span>
-        </label>
+        <Checkbox
+          key={scope}
+          checked={form.scopes.includes(scope)}
+          onChange={() => {
+            onChange({ ...form, scopes: toggleScope(form.scopes, scope) });
+          }}
+        >
+          <strong>{scope}</strong>{" "}
+          <Text tone="muted" inline>
+            {SCOPE_MEANINGS[scope]}
+          </Text>
+        </Checkbox>
       ))}
-    </fieldset>
+    </FieldGroup>
   );
 }
 
@@ -103,39 +106,27 @@ interface LimitChoicesProps extends ChoicesProps {
 }
 
 function LimitChoices({ form, workspaces, onChange }: LimitChoicesProps): ReactElement {
+  const everywhere = { value: "", label: "Every workspace" };
   return (
-    <div className="columns">
-      <label className="field">
-        <span>Workspace</span>
-        <select
+    <Columns>
+      <Field label="Workspace">
+        <Select
           value={form.workspace}
-          onChange={(event) => {
-            onChange({ ...form, workspace: event.target.value });
+          options={[everywhere, ...workspaces.map((name) => ({ value: name, label: name }))]}
+          onChange={(workspace) => {
+            onChange({ ...form, workspace });
           }}
-        >
-          <option value="">Every workspace</option>
-          {workspaces.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>Expires</span>
-        <select
+        />
+      </Field>
+      <Field label="Expires">
+        <Select
           value={form.expiry}
-          onChange={(event) => {
-            onChange({ ...form, expiry: readExpiry(event.target.value) });
+          options={EXPIRIES.map((expiry) => ({ value: expiry.id, label: expiry.label }))}
+          onChange={(expiry) => {
+            onChange({ ...form, expiry: readExpiry(expiry) });
           }}
-        >
-          {EXPIRIES.map((expiry) => (
-            <option key={expiry.id} value={expiry.id}>
-              {expiry.label}
-            </option>
-          ))}
-        </select>
-      </label>
-    </div>
+        />
+      </Field>
+    </Columns>
   );
 }

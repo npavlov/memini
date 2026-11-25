@@ -1,0 +1,108 @@
+/*
+ * The design tokens of the app: the Meander brand. Every colour, radius, shadow and font the app
+ * uses is a variable of this file, and no other file writes one (tokens.test.ts holds that).
+ * A text colour and the ground it stands on are a pair with a contrast of at least 4.5 to 1,
+ * in both themes; the same test checks every pair.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Grounds, from the window to what lies on it. */
+  --ground: #f5f7fb;
+  --surface: #e8edf5;
+  --raised: #ffffff;
+  --line: #c8d1df;
+
+  /* Text. */
+  --text: #121b2e;
+  --muted: #4a5870;
+
+  /* The brand's colours and what is written on them. */
+  --accent: #2450c8;
+  --on-accent: #ffffff;
+  --aqua: #0c7366;
+  --danger: #b3261e;
+  --warn: #7a4a00;
+
+  /* The soft grounds of chips and notices, one per state. */
+  --accent-soft: #e2e9fb;
+  --aqua-soft: #daf2ed;
+  --danger-soft: #fbe5e2;
+  --warn-soft: #fbeed3;
+  --idle-soft: #e8edf5;
+
+  /* Controls. */
+  --control-ground: #ffffff;
+  --control-line: #aeb9cb;
+  --focus-ring: #2450c8;
+
+  /* The sidebar is navy in both themes. */
+  --sidebar-top: #1b2f63;
+  --sidebar-bottom: #0f1a38;
+  --sidebar-text: #e8edf7;
+  --sidebar-muted: #c5cfe2;
+  --sidebar-active: rgba(143, 176, 255, 0.2);
+  --sidebar-hover: rgba(143, 176, 255, 0.1);
+
+  /* Shape: controls, panels, and chips that are fully rounded. */
+  --radius-control: 10px;
+  --radius-panel: 12px;
+  --radius-chip: 999px;
+
+  /*
+   * The primary button is a plain solid fill without a border: only a small shadow lifts it. It
+   * darkens a little under the pointer and more when pressed.
+   */
+  --accent-hover: #1f46b0;
+  --accent-pressed: #1a3b96;
+  --shadow-primary: 0 1px 2px rgba(18, 27, 46, 0.25);
+  /* What opens over the screen casts a wider shadow. */
+  --shadow-overlay: 0 -8px 24px rgba(18, 27, 46, 0.16);
+
+  /* Type: Plex Sans for the interface; Plex Mono for the name, code, paths and addresses. */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-size: 14px;
+  --font-size-small: 0.88rem;
+  --font-size-control: 0.93rem;
+  --font-size-title: 1.5rem;
+  --font-size-heading: 1.05rem;
+
+  /* One height for everything a row of controls can hold. */
+  --control-height: 34px;
+  --sidebar-width: 196px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0d1322;
+    --surface: #161f35;
+    --raised: #1b2742;
+    --line: #2a3650;
+
+    --text: #e8edf7;
+    --muted: #9aa7bd;
+
+    --accent: #8fb0ff;
+    --on-accent: #0d1322;
+    --aqua: #5fe0c8;
+    --danger: #ff8a80;
+    --warn: #f0c36a;
+
+    --accent-soft: #22335c;
+    --aqua-soft: #12403d;
+    --danger-soft: #4a2428;
+    --warn-soft: #3f3210;
+    --idle-soft: #232e49;
+
+    --control-ground: #1b2742;
+    --control-line: #40507a;
+    --focus-ring: #8fb0ff;
+
+    --accent-hover: #7da1f6;
+    --accent-pressed: #6c92ea;
+    --shadow-primary: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-overlay: 0 -8px 24px rgba(0, 0, 0, 0.45);
+  }
+}

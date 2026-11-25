@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
-import { CodeBlock } from "../ui/code-block";
-import { Panel } from "../ui/panel";
+import { CodeBlock, Panel, Stack, Tabs, Text } from "../components";
 import { TOKEN_VARIABLE, clientGuides, tokenSetup } from "./mcp-clients";
 import type { ClientGuide } from "./mcp-clients";
 
@@ -19,33 +18,23 @@ export function ClientGuides({ address }: ClientGuidesProps): ReactElement {
   return (
     <>
       <Panel title="Before you start">
-        <p>
+        <Text>
           A client needs a token with the read scope. Create one on the Tokens screen, save it to a
           file only you can read, and load it into {TOKEN_VARIABLE} in the shell that starts the
           client. The configuration below reads that variable, so no token is written into a
           project file.
-        </p>
+        </Text>
         {tokenSetup().map((snippet) => (
           <CodeBlock key={snippet.label} label={snippet.label} text={snippet.text} />
         ))}
       </Panel>
       <Panel title="Client configuration">
-        <div className="tabs" role="tablist" aria-label="MCP clients">
-          {guides.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={item.id === guide?.id}
-              className={item.id === guide?.id ? "tab current" : "tab"}
-              onClick={() => {
-                setChosen(item.id);
-              }}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          label="MCP clients"
+          items={guides.map((item) => ({ id: item.id, label: item.name }))}
+          current={guide?.id ?? ""}
+          onSelect={setChosen}
+        />
         {guide === undefined ? null : <Guide guide={guide} />}
       </Panel>
     </>
@@ -58,11 +47,11 @@ interface GuideProps {
 
 function Guide({ guide }: GuideProps): ReactElement {
   return (
-    <div role="tabpanel">
+    <Stack>
       {guide.snippets.map((snippet) => (
         <CodeBlock key={snippet.label} label={snippet.label} text={snippet.text} />
       ))}
-      <p className="muted">{guide.check}</p>
-    </div>
+      <Text tone="muted">{guide.check}</Text>
+    </Stack>
   );
 }

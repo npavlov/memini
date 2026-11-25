@@ -1,14 +1,23 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import {
+  Actions,
+  Button,
+  ConfirmButton,
+  ErrorNotice,
+  Field,
+  Form,
+  Notice,
+  Panel,
+  Pill,
+  Text,
+  TextInput,
+} from "../components";
+import { useAction } from "../hooks/use-action";
+import type { Action } from "../hooks/use-action";
 import type { AppError } from "../ipc/app-error";
 import { useBackend } from "../ipc/backend-context";
-import { ConfirmButton } from "../ui/confirm-button";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Panel } from "../ui/panel";
-import { Pill } from "../ui/pill";
-import { useAction } from "../ui/use-action";
-import type { Action } from "../ui/use-action";
 import type { Connection, ConnectionsView } from "./connections";
 import { clearToken, takeTokenFromClipboard, takeTokenFromFile } from "./connections-api";
 
@@ -72,11 +81,11 @@ export function ConnectionToken(props: ConnectionTokenProps): ReactElement {
         </Pill>
       }
     >
-      <p className="muted">{connection.kind === "local" ? LOCAL_HELP : REMOTE_HELP}</p>
-      <p className="muted">
+      <Text tone="muted">{connection.kind === "local" ? LOCAL_HELP : REMOTE_HELP}</Text>
+      <Text tone="muted">
         The token goes from the clipboard or the file straight to the system keychain. It is never
         shown here and never written to the app’s settings.
-      </p>
+      </Text>
       <TokenButtons hasToken={connection.hasToken} actions={actions} />
       <TokenFileForm pending={actions.reading.pending} onRead={actions.reading.run} />
       {actions.done === null || actions.error !== null ? null : (
@@ -95,15 +104,10 @@ interface TokenButtonsProps {
 function TokenButtons({ hasToken, actions }: TokenButtonsProps): ReactElement {
   const { pasting, removing } = actions;
   return (
-    <div className="actions">
-      <button
-        type="button"
-        className="button primary"
-        disabled={pasting.pending}
-        onClick={() => pasting.run()}
-      >
+    <Actions>
+      <Button variant="primary" disabled={pasting.pending} onClick={() => pasting.run()}>
         {hasToken ? "Replace with the token on the clipboard" : "Take the token from the clipboard"}
-      </button>
+      </Button>
       {hasToken ? (
         <ConfirmButton
           label="Remove token"
@@ -113,7 +117,7 @@ function TokenButtons({ hasToken, actions }: TokenButtonsProps): ReactElement {
           onConfirm={() => removing.run()}
         />
       ) : null}
-    </div>
+    </Actions>
   );
 }
 
@@ -124,31 +128,15 @@ interface TokenFileFormProps {
 
 function TokenFileForm({ pending, onRead }: TokenFileFormProps): ReactElement {
   const [path, setPath] = useState("");
+  const empty = path.trim() === "";
   return (
-    <form
-      className="inline-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        return path.trim() === "" ? undefined : onRead(path);
-      }}
-    >
-      <label className="field grow">
-        <span>Or read it from a token file</span>
-        <input
-          type="text"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          value={path}
-          placeholder="~/.config/memini/admin.token"
-          onChange={(event) => {
-            setPath(event.target.value);
-          }}
-        />
-      </label>
-      <button type="submit" className="button" disabled={pending || path.trim() === ""}>
+    <Form inline onSubmit={() => (empty ? undefined : onRead(path))}>
+      <Field label="Or read it from a token file" grow>
+        <TextInput kind="code" value={path} placeholder="~/.config/memini/admin.token" onChange={setPath} />
+      </Field>
+      <Button submit disabled={pending || empty}>
         Read the file
-      </button>
-    </form>
+      </Button>
+    </Form>
   );
 }

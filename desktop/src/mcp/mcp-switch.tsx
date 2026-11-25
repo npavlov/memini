@@ -1,11 +1,10 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import { Actions, ConfirmButton, ErrorNotice, Notice, Text } from "../components";
+import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
 import { changeServer } from "../server/launcher-api";
-import { ConfirmButton } from "../ui/confirm-button";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { useAction } from "../ui/use-action";
 
 export interface McpSwitchProps {
   readonly on: boolean;
@@ -30,7 +29,7 @@ export function McpSwitch({ on, onChanged }: McpSwitchProps): ReactElement {
   const flipping = useAction(flip);
   return (
     <>
-      <div className="actions">
+      <Actions>
         <ConfirmButton
           label={on ? "Switch MCP off" : "Switch MCP on"}
           question={
@@ -42,8 +41,12 @@ export function McpSwitch({ on, onChanged }: McpSwitchProps): ReactElement {
           disabled={flipping.pending}
           onConfirm={() => flipping.run()}
         />
-        {flipping.pending ? <span className="muted">The launcher is working…</span> : null}
-      </div>
+        {flipping.pending ? (
+          <Text tone="muted" inline>
+            The launcher is working…
+          </Text>
+        ) : null}
+      </Actions>
       {refusal === null ? null : <Notice tone="bad" title={refusal} />}
       <ErrorNotice error={flipping.error} />
     </>

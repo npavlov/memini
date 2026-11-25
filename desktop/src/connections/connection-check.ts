@@ -4,7 +4,7 @@
 import { readBoolean, readNumber, readObject, readString } from "../json/read-json";
 import { countNoun } from "../text/count-noun";
 import { displayText } from "../text/display-text";
-import type { Tone } from "../ui/tone";
+import type { Tone } from "../components";
 
 export const TOKEN_CHECKS = ["missing", "accepted", "refused", "no_read_scope", "unknown"] as const;
 

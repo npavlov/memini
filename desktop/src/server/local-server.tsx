@@ -1,14 +1,12 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import { Actions, Button, ConfirmButton, ErrorNotice, Notice, Panel, Text } from "../components";
 import type { ConnectionsView } from "../connections/connections";
+import { useAction } from "../hooks/use-action";
+import { useLoad } from "../hooks/use-load";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
-import { ConfirmButton } from "../ui/confirm-button";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Panel } from "../ui/panel";
-import { useAction } from "../ui/use-action";
-import { useLoad } from "../ui/use-load";
 import { describePhase, serverPhase } from "./launcher";
 import type { LauncherChange, LauncherStatus } from "./launcher";
 import { changeServer, readLauncherStatus } from "./launcher-api";
@@ -55,12 +53,12 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
       <Panel
         title="Local server"
         actions={
-          <button type="button" className="button" disabled={busy} onClick={reload}>
+          <Button disabled={busy} onClick={reload}>
             {status.busy ? "Refreshing…" : "Refresh"}
-          </button>
+          </Button>
         }
       >
-        {status.state.phase === "loading" ? <p className="muted">Asking the launcher…</p> : null}
+        {status.state.phase === "loading" ? <Text tone="muted">Asking the launcher…</Text> : null}
         {status.state.phase === "failed" ? <ErrorNotice error={status.state.error} /> : null}
         {status.state.phase === "ready" ? (
           <ServerControls status={status.state.data} busy={busy} onChange={changing.run} />
@@ -84,10 +82,10 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
 function ChangeInProgress(): ReactElement {
   return (
     <Notice tone="info" title="The launcher is working…">
-      <p>
+      <Text>
         The first start downloads the application, the database and the search model, which can
         take a long time. Keep the app open: closing it stops the launcher.
-      </p>
+      </Text>
     </Notice>
   );
 }
@@ -105,21 +103,18 @@ function ServerControls({ status, busy, onChange }: ServerControlsProps): ReactE
   return (
     <>
       <Notice tone={summary.tone} title={summary.title}>
-        <p>{summary.text}</p>
+        <Text>{summary.text}</Text>
         {phase === "no_docker" && status.dockerError !== null ? (
-          <p className="muted small">The launcher said: {status.dockerError}</p>
+          <Text tone="muted" small>
+            The launcher said: {status.dockerError}
+          </Text>
         ) : null}
       </Notice>
-      <div className="actions">
+      <Actions>
         {stopped ? (
-          <button
-            type="button"
-            className="button primary"
-            disabled={busy}
-            onClick={() => onChange("start")}
-          >
+          <Button variant="primary" disabled={busy} onClick={() => onChange("start")}>
             {phase === "not_installed" ? "Install and start" : "Start"}
-          </button>
+          </Button>
         ) : null}
         {status.running ? (
           <ConfirmButton
@@ -130,7 +125,7 @@ function ServerControls({ status, busy, onChange }: ServerControlsProps): ReactE
             onConfirm={() => onChange("stop")}
           />
         ) : null}
-      </div>
+      </Actions>
     </>
   );
 }

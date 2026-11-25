@@ -1,12 +1,21 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import {
+  Button,
+  EmptyState,
+  ErrorNotice,
+  Mono,
+  Panel,
+  Pill,
+  RowList,
+  Screen,
+  SelectableRow,
+  Text,
+} from "../components";
+import { useAction } from "../hooks/use-action";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Panel, Screen } from "../ui/panel";
-import { Pill } from "../ui/pill";
-import { useAction } from "../ui/use-action";
 import { ConnectionChecker } from "./connection-checker";
 import { ConnectionEditor } from "./connection-editor";
 import { ConnectionToken } from "./connection-token";
@@ -20,7 +29,7 @@ export interface ConnectionsScreenProps {
   readonly onView: (view: ConnectionsView) => void;
 }
 
-/** What the right side of the screen shows: a saved connection, or the form for a new one. */
+/** What the lower part of the screen shows: a saved connection, or the form for a new one. */
 type Selection =
   | { readonly mode: "saved"; readonly id: string }
   | { readonly mode: "new"; readonly kind: ConnectionKind }
@@ -61,25 +70,21 @@ function AddButtons({ view, onAdd }: AddButtonsProps): ReactElement {
   return (
     <>
       {localConnection(view) === null ? (
-        <button
-          type="button"
-          className="button"
+        <Button
           onClick={() => {
             onAdd("local");
           }}
         >
           Add this computer
-        </button>
+        </Button>
       ) : null}
-      <button
-        type="button"
-        className="button"
+      <Button
         onClick={() => {
           onAdd("remote");
         }}
       >
         Add a remote server
-      </button>
+      </Button>
     </>
   );
 }
@@ -103,15 +108,15 @@ function ConnectionList(props: ConnectionListProps): ReactElement {
   const action = useAction(activate);
   if (view.connections.length === 0) {
     return (
-      <Notice tone="info" title="No connection yet">
-        <p>Add this computer to manage a local server, or a remote server by its address.</p>
-      </Notice>
+      <EmptyState title="No connection yet">
+        <Text>Add this computer to manage a local server, or a remote server by its address.</Text>
+      </EmptyState>
     );
   }
   return (
     <>
       <ErrorNotice error={action.error} />
-      <ul className="rows">
+      <RowList>
         {view.connections.map((connection) => (
           <ConnectionRow
             key={connection.id}
@@ -124,7 +129,7 @@ function ConnectionList(props: ConnectionListProps): ReactElement {
             onUse={() => action.run(connection.id)}
           />
         ))}
-      </ul>
+      </RowList>
     </>
   );
 }
@@ -140,23 +145,18 @@ interface ConnectionRowProps {
 function ConnectionRow(props: ConnectionRowProps): ReactElement {
   const { connection, active, selected, onSelect, onUse } = props;
   return (
-    <li className={selected ? "row selected" : "row"}>
-      <button type="button" className="row-main" onClick={onSelect}>
-        <strong>{connection.name}</strong>
-        <span className="muted">{connection.url}</span>
-      </button>
+    <SelectableRow
+      selected={selected}
+      onSelect={onSelect}
+      title={connection.name}
+      detail={<Mono>{connection.url}</Mono>}
+    >
       <Pill tone="info">{connection.kind === "local" ? "this computer" : "remote"}</Pill>
       <Pill tone={connection.hasToken ? "good" : "warn"}>
         {connection.hasToken ? "token stored" : "no token"}
       </Pill>
-      {active ? (
-        <Pill tone="good">active</Pill>
-      ) : (
-        <button type="button" className="button" onClick={onUse}>
-          Use
-        </button>
-      )}
-    </li>
+      {active ? <Pill tone="good">active</Pill> : <Button onClick={onUse}>Use</Button>}
+    </SelectableRow>
   );
 }
 

@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from "react";
 
 import { errorAdvice, errorReference } from "../ipc/app-error";
 import type { AppError } from "../ipc/app-error";
+import { Text } from "./layout";
 import type { Tone } from "./tone";
 
 export interface NoticeProps {
@@ -10,6 +11,7 @@ export interface NoticeProps {
   readonly children?: ReactNode;
 }
 
+/** A message about the state of something, coloured by its tone. A bad one is announced. */
 export function Notice({ tone, title, children }: NoticeProps): ReactElement {
   return (
     <div className={`notice notice-${tone}`} role={tone === "bad" ? "alert" : "status"}>
@@ -33,7 +35,7 @@ export function ErrorNotice({ error }: ErrorNoticeProps): ReactElement | null {
   return (
     <Notice tone="bad" title={error.message}>
       {advice === null ? null : <p>{advice}</p>}
-      {reference === null ? null : <p className="muted small">{reference}</p>}
+      {reference === null ? null : <Text tone="muted" small>{reference}</Text>}
     </Notice>
   );
 }

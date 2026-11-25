@@ -4,7 +4,7 @@
 import type { CommandArguments } from "../ipc/backend";
 import { ShapeError, readArray, readObject, readString, readStrings } from "../json/read-json";
 import { displayText } from "../text/display-text";
-import type { Tone } from "../ui/tone";
+import type { Tone } from "../components";
 
 export const SCOPES = ["read", "ingest", "admin"] as const;
 

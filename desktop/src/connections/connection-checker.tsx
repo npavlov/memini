@@ -1,11 +1,10 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import { Button, ErrorNotice, Notice, Panel, Text } from "../components";
+import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
 import { displayText } from "../text/display-text";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Panel } from "../ui/panel";
-import { useAction } from "../ui/use-action";
 import { describeReadiness, describeTokenCheck } from "./connection-check";
 import type { ConnectionCheck } from "./connection-check";
 import type { Connection } from "./connections";
@@ -28,20 +27,15 @@ export function ConnectionChecker({ connection }: ConnectionCheckerProps): React
     <Panel
       title="Check"
       actions={
-        <button
-          type="button"
-          className="button"
-          disabled={checking.pending}
-          onClick={() => checking.run()}
-        >
+        <Button disabled={checking.pending} onClick={() => checking.run()}>
           {checking.pending ? "Checking…" : "Check the connection"}
-        </button>
+        </Button>
       }
     >
       {result === null && checking.error === null ? (
-        <p className="muted">
+        <Text tone="muted">
           Asks the server for its version and readiness, then whether it accepts the stored token.
-        </p>
+        </Text>
       ) : null}
       <ErrorNotice error={checking.error} />
       {result === null ? null : <CheckFindings check={result} />}
@@ -61,7 +55,11 @@ function CheckFindings({ check }: CheckFindingsProps): ReactElement {
     <>
       <Notice tone={readiness.tone} title={readiness.text} />
       <Notice tone={token.tone} title={token.text}>
-        {detail === "" ? null : <p className="muted small">The server said: {detail}</p>}
+        {detail === "" ? null : (
+          <Text tone="muted" small>
+            The server said: {detail}
+          </Text>
+        )}
       </Notice>
     </>
   );
