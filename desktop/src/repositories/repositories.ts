@@ -51,6 +51,9 @@ export interface GitSource {
   readonly location: string;
   readonly refs: readonly string[];
   readonly scheduleSeconds: number | null;
+  /** The globs of files it leaves out, and those it keeps (none: every file). */
+  readonly exclude: readonly string[];
+  readonly include: readonly string[];
 }
 
 /** The state of one tracked ref of a source. */
@@ -60,6 +63,12 @@ export interface RefState {
   readonly label: string;
   /** The reason of a failed run or attempt, as the server gave it. */
   readonly detail: string | null;
+  /** A sync of the ref runs now. */
+  readonly running: boolean;
+  /** The newest run: the one that runs, or the last one. */
+  readonly runId: string | null;
+  /** When the newest run finished, as the server wrote it. */
+  readonly finishedAt: string | null;
 }
 
 /** Where the secret of a git access comes from; the secret itself never reaches the front end. */
@@ -150,6 +159,8 @@ export function parseGitSources(value: unknown): readonly GitSource[] {
       location: text(source["location"], 1000),
       refs: readStrings(source["refs"]).map((ref) => displayText(ref, 200)),
       scheduleSeconds: readNumber(source["schedule_seconds"]),
+      exclude: readStrings(source["exclude"]).map((glob) => displayText(glob, 400)),
+      include: readStrings(source["include"]).map((glob) => displayText(glob, 400)),
     }));
 }
 
@@ -161,6 +172,9 @@ export function parseRefStates(value: unknown): readonly RefState[] {
     const ref = text(stream["key"], 200);
     const pending = stream["pending_sync"];
     const last = stream["last_run"];
+    const run = last === null || last === undefined ? null : readObject(last, "the newest run");
+    const runId = run === null ? null : readString(run["id"]);
+    const finishedAt = run === null ? null : readString(run["finished_at"]);
     if (pending !== null && pending !== undefined) {
       const job = readObject(pending, "a pending sync");
       const running = readString(job["status"]) === "running";
@@ -169,16 +183,18 @@ export function parseRefStates(value: unknown): readonly RefState[] {
         tone: "info",
         label: running ? "syncing" : "waiting to sync",
         detail: optionalText(job["last_error"]),
+        running,
+        runId: running && run !== null && readString(run["status"]) === "running" ? runId : null,
+        finishedAt: null,
       };
     }
-    if (last === null || last === undefined) {
-      return { ref, tone: "idle", label: "not synced yet", detail: null };
+    if (run === null) {
+      return { ref, tone: "idle", label: "not synced yet", detail: null, running: false, runId: null, finishedAt: null };
     }
-    const run = readObject(last, "the newest run");
     const status = readString(run["status"]) ?? "";
     const tone: Tone = status === "succeeded" ? "good" : status === "failed" ? "bad" : "warn";
     const label = status === "succeeded" ? "synced" : displayText(status, 40);
-    return { ref, tone, label, detail: optionalText(run["error"]) };
+    return { ref, tone, label, detail: optionalText(run["error"]), running: false, runId, finishedAt };
   });
 }
 

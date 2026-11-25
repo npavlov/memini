@@ -1,10 +1,11 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
-import { DataTable, EmptyState, ErrorNotice, Field, Panel, Screen, Select, Text } from "../components";
+import { CopyButton, DataTable, EmptyState, ErrorNotice, Field, Panel, Screen, Select, Text } from "../components";
 import type { Connection } from "../connections/connections";
 import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
+import { agentTask } from "../repositories/codebases";
 import { displayText } from "../text/display-text";
 import { listWorkspaceNames } from "../tokens/tokens-api";
 import { readCatalog, repositoriesOf } from "./catalog";
@@ -87,6 +88,24 @@ function WorkspaceCatalog({ place }: WorkspaceCatalogProps): ReactElement {
   const repositories = repositoriesOf(catalog.state.data);
   return (
     <>
+      <Panel
+        title="Map it with an agent"
+        actions={
+          <CopyButton
+            text={agentTask(
+              workspace,
+              repositories.map((name) => ({ name, location: null })),
+            )}
+            label="Copy task for an agent"
+          />
+        }
+      >
+        <Text>
+          An agent connected to Memini reads the code bases, starting with their Markdown and code
+          comments, and proposes projects, domains and subdomains with the code of each. Paste the
+          task into it, then check and correct the map here.
+        </Text>
+      </Panel>
       <NewProjectPanel place={place} onCreated={onCreated} />
       {projects.length === 0 ? (
         <EmptyState title="This workspace has no project yet">

@@ -40,6 +40,8 @@ export { ErrorNotice, Notice } from "./notice";
 export type { ErrorNoticeProps, NoticeProps } from "./notice";
 export { Pill } from "./pill";
 export type { PillProps } from "./pill";
+export { ProgressBar } from "./progress-bar";
+export type { ProgressBarProps } from "./progress-bar";
 export { StatusBarActions, StatusBarFrame } from "./status-bar";
 export type { StatusBarActionsProps, StatusBarFrameProps } from "./status-bar";
 export { StepList } from "./step-list";
