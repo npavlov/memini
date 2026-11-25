@@ -4,8 +4,8 @@
     "homepage": "https://github.com/npavlov/memini",
     "license": "Apache-2.0",
     "depends": "main/python",
-    "url": "https://github.com/npavlov/memini/releases/download/v0.2.0-rc.1/memini-server-0.2.0-rc.1-2.zip",
-    "hash": "b8787b0fe762b6ce7c66a1546777100d162b9e5179ca4fcf0a82e8a5a1b2f7d6",
+    "url": "https://github.com/npavlov/memini/releases/download/v0.2.0-rc.1/memini-server-0.2.0-rc.1-3.zip",
+    "hash": "1f04f9b9c828b328f138f8a915ca633eee5d5b86354716a1e3d03b3ad02edd14",
     "extract_dir": "memini-server",
     "bin": "memini-server.cmd"
 }
