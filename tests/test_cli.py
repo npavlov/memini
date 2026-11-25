@@ -245,6 +245,7 @@ def test_help_lists_client_and_operator_commands_apart(
         "decision",
         "extract",
         "forget",
+        "sensitive",
         "push",
         "person",
     }
