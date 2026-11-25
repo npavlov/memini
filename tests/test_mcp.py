@@ -65,6 +65,9 @@ TOOL_NAMES = [
     "search_code",
     "read_source",
     "get_symbol",
+    "get_catalog",
+    "get_domain",
+    "catalog_guide",
     "list_meetings",
     "get_meeting",
     "list_messages",
@@ -79,6 +82,7 @@ WRITE_TOOL_NAMES = [
     "supersede_decision",
     "close_decision",
     "retract_decision",
+    "put_project",
 ]
 """The tools a token sees only with the ingest scope."""
 

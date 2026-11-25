@@ -41,12 +41,14 @@ What is read
     content (a live record of the source at that path whose content hash is the file's blob id),
     whatever the ref.
 
-Every result carries the repository, the commit and its committer time, the path and a locator,
-``repo@sha:path#L10-L20``. The content is the file's, as it is, but with its secrets and card
-numbers redacted (:func:`memini.redaction.redact_text`, principle 11), as in the chunks search
-returns: the mirror is the raw store and cannot be rewritten, so the redaction is applied to what is
-read. It keeps the file's lines, so line numbers and ``size`` (the blob's bytes) still hold. The
-content is data, never instructions. No error message repeats a path, a ref or anything read.
+Every result carries the repository, the commit and its committer time, the path, a locator,
+``repo@sha:path#L10-L20``, and what the path belongs to by the catalog (``context``: project,
+service, domains; :mod:`memini.query.context`), whatever the ref read. The content is the file's,
+as it is, but with its secrets and card numbers redacted (:func:`memini.redaction.redact_text`,
+principle 11), as in the chunks search returns: the mirror is the raw store and cannot be
+rewritten, so the redaction is applied to what is read. It keeps the file's lines, so line numbers
+and ``size`` (the blob's bytes) still hold. The content is data, never instructions. No error
+message repeats a path, a ref or anything read.
 
 Access goes through the caller's :class:`~memini.auth.ReadFilter`: a workspace or repository it may
 not read is not found, like one that does not exist.
@@ -79,7 +81,9 @@ from memini.git import (
 )
 from memini.gitsync import Pin, file_record_id, read_pin
 from memini.provenance import Labelled
+from memini.query.context import CodeContext
 from memini.redaction import redact_text
+from memini.search.catalog import load_code_maps
 from memini.sources import Source, get_source
 from memini.workspaces import NotFoundError
 
@@ -230,6 +234,11 @@ class SourceRead(Labelled):
     symbols: list[SymbolSpan] = Field(
         description="Definitions that overlap the lines read, when the index holds this content."
     )
+    context: CodeContext | None = Field(
+        default=None,
+        description="What the path belongs to, by the catalog as it is now: the project and"
+        " service it is in and the domains whose path masks match it.",
+    )
 
 
 def code_locator(
@@ -291,6 +300,8 @@ async def read_source(
     async with conn.transaction():
         source = await _find_repository(conn, access, workspace, repository)
         pins = await _pins(conn, access, source.id)
+        catalog = (await load_code_maps(conn, access, [source.workspace_id]))[source.workspace_id]
+    context = CodeContext.of(catalog.context(source.id, path))
     mirror = mirrors.find(source.id)
     if mirror is None:
         raise NotSyncedError
@@ -322,6 +333,7 @@ async def read_source(
             "target": None,
             "entries": None,
             "symbols": [],
+            "context": context,
         }
         values.update(fields)
         return SourceRead.model_validate(values)

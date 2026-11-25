@@ -72,6 +72,7 @@ from memini.bench.report import (
     Sizes,
 )
 from memini.bench.repository import PreparedRepository
+from memini.catalog import CatalogError, ProjectDocument, run_put_project
 from memini.chunking import FileChunks, chunk_file, chunk_markdown, chunk_payload
 from memini.db import Pool, connect, migrate, open_pool
 from memini.embeddings import Embedder, Vector
@@ -91,6 +92,7 @@ from memini.search import (
     search,
 )
 from memini.search.model import DEFAULT_LIMIT
+from memini.search.patterns import glob_regex
 from memini.search.retrieval import ChunkScope, dense_statement
 from memini.sources import NewGitSource, NewPushSource, create_git_source, create_push_source
 from memini.workspaces import create_workspace, ensure_principal
@@ -117,6 +119,11 @@ _RECORD_ID: Final = "0" * 64
 """The record id the separate chunking passes cut with: chunk ids are hashed with it, nothing
 else depends on it."""
 _MESSAGE_KINDS: Final = ("thread", "meeting")
+BENCH_PROJECT: Final = "bench"
+SMALL_DOMAIN: Final = "small"
+SMALL_DOMAIN_CHUNKS: Final = 20
+"""The fewest chunks the directory declared as the small domain should hold: two pages of
+hits. The smallest directory with that many is taken; without one, the largest."""
 
 
 class BenchSetupError(Exception):
@@ -609,6 +616,7 @@ async def _one_search(
     access: ReadFilter,
     query: BenchQuery,
     options: SearchOptions,
+    filters: SearchFilters | None = None,
 ) -> bool:
     async with pool.connection() as conn:
         try:
@@ -616,7 +624,12 @@ async def _one_search(
                 conn,
                 embedder,
                 access,
-                SearchQuery(text=query.text, mode=query.mode, limit=DEFAULT_LIMIT),
+                SearchQuery(
+                    text=query.text,
+                    mode=query.mode,
+                    limit=DEFAULT_LIMIT,
+                    filters=filters or SearchFilters(),
+                ),
                 options=options,
             )
         except (SearchTimeoutError, InvalidSearchError):
@@ -631,6 +644,7 @@ async def _time_searches(
     queries: Sequence[BenchQuery],
     options: SearchOptions,
     concurrency: int,
+    filters: SearchFilters | None = None,
 ) -> tuple[list[float], int, float]:
     """Each query once, ``concurrency`` at a time: latencies, errors, wall time."""
     latencies: list[float] = []
@@ -641,7 +655,7 @@ async def _time_searches(
         nonlocal errors_
         for query in pending:
             started = time.perf_counter()
-            ok = await _one_search(pool, embedder, access, query, options)
+            ok = await _one_search(pool, embedder, access, query, options, filters)
             latencies.append(time.perf_counter() - started)
             if not ok:
                 errors_ += 1
@@ -653,6 +667,65 @@ async def _time_searches(
     return latencies, errors_, time.perf_counter() - started
 
 
+async def _small_domain(
+    conn: Conn, write: WriteAccess, access: ReadFilter, say: Callable[[str], None]
+) -> tuple[SearchFilters, str] | None:
+    """Declare one small directory of the repository as a domain of the catalog, as
+    ``put_project`` does for an agent: the filter that searches it, and what it selects, in
+    words. ``None`` when the repository has no directory.
+
+    The directory is the one with the fewest chunks among those with at least
+    :data:`SMALL_DOMAIN_CHUNKS`; the domain holds it and everything below it.
+    """
+    cur = await conn.execute(
+        "SELECT regexp_replace(c.path, '/[^/]*$', ''), count(*) FROM chunk c"
+        " JOIN source s ON s.id = c.source_id"
+        " WHERE s.name = %s AND c.path LIKE %s GROUP BY 1 ORDER BY 2, 1",
+        (REPO_SOURCE, "%/%"),
+    )
+    # A directory whose name is itself a glob would select more than it names, and one with a
+    # line break is no mask at all.
+    counted = [(row[0], row[1]) for row in await cur.fetchall() if not set(row[0]) & set("*?\n\r")]
+    if not counted:
+        return None
+    enough = [each for each in counted if each[1] >= SMALL_DOMAIN_CHUNKS]
+    directory = enough[0][0] if enough else counted[-1][0]
+    document = ProjectDocument.model_validate(
+        {
+            "title": "Benchmark",
+            "services": [{"name": REPO_SOURCE, "repository": REPO_SOURCE}],
+            "domains": [
+                {
+                    "name": SMALL_DOMAIN,
+                    "code": [{"service": REPO_SOURCE, "paths": [f"/{directory}"]}],
+                }
+            ],
+        }
+    )
+    try:
+        result = await run_put_project(conn, write, access, WORKSPACE, BENCH_PROJECT, document)
+    except CatalogError as error:  # a directory name the catalog refuses, a secret's shape say
+        say(f"no small domain: {error.message}")
+        return None
+    cur = await conn.execute(
+        "SELECT count(*) FILTER (WHERE c.path ~ %s), count(*) FROM chunk c", (_below(directory),)
+    )
+    row = await cur.fetchone()
+    selected, total = (0, 0) if row is None else (row[0], row[1])
+    share = selected / total if total else 0.0
+    files = sum(mask.files for mask in result.masks)
+    say(f"small domain: {directory} ({files} files, {selected} of {total} chunks)")
+    return (
+        SearchFilters(domains=(SMALL_DOMAIN,)),
+        f"domain: {selected:,} chunks, {share:.2%} of the index",
+    )
+
+
+def _below(directory: str) -> str:
+    """The expression the domain's mask is for Postgres, as search sends it."""
+    return glob_regex(f"/{directory}")
+
+
 async def _search_latency(
     pool: Pool,
     embedder: Embedder,
@@ -661,6 +734,7 @@ async def _search_latency(
     config: BenchConfig,
     report: BenchReport,
     say: Callable[[str], None],
+    narrow: tuple[SearchFilters, str] | None = None,
 ) -> None:
     options = config.options
     say("one untimed pass of every query, to warm the caches")
@@ -700,6 +774,32 @@ async def _search_latency(
                 queries_per_second=len(hybrid) / wall if wall > 0 else 0.0,
                 errors=failed,
                 candidates=candidates,
+            )
+        )
+    if narrow is None:
+        return
+    # A small domain in a large index: the filter of the catalog keeps a small share of the
+    # chunks, which the dense retriever must find past everything else (migration 0018 gives
+    # the planner an index by source and path for it).
+    filters, selected = narrow
+    for mode in ("hybrid", "dense", "lexical"):
+        items = [query for query in queries.get(mode, []) if query.origin == "code"]
+        if not items:
+            continue
+        say(f"timing {len(items)} {mode} searches of the small domain")
+        await _time_searches(pool, embedder, access, items, options, 1, filters)  # warm
+        latencies, failed, wall = await _time_searches(
+            pool, embedder, access, items, options, 1, filters
+        )
+        report.search.append(
+            SearchTiming(
+                mode=mode,
+                concurrency=1,
+                latency=Latency.of(latencies),
+                queries_per_second=len(items) / wall if wall > 0 else 0.0,
+                errors=failed,
+                candidates=options.candidates,
+                filter=selected,
             )
         )
 
@@ -1054,7 +1154,12 @@ async def run_bench(
                         )
                     finally:
                         await one.aclose()
-                await _search_latency(pool, timed, access, queries, config, report, say)
+                narrow = (
+                    None
+                    if config.repository is None
+                    else await _small_domain(conn, write, access, say)
+                )
+                await _search_latency(pool, timed, access, queries, config, report, say, narrow)
                 ranked = queries.get("dense", [])[: config.recall_queries]
                 await _dense_quality(
                     conn,

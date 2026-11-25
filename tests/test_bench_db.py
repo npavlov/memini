@@ -139,6 +139,11 @@ def test_a_smoke_run_measures_every_step_and_mode(
         assert (mode, 2, 50) in timings
     assert ("hybrid", 1, 5) in timings
     assert all(t["errors"] == 0 for t in report["search"])
+    # A small domain of the catalog: the ranked modes once more, narrowed to one directory.
+    narrowed = [t for t in report["search"] if t["filter"]]
+    assert [t["mode"] for t in narrowed] == ["hybrid", "dense", "lexical"]
+    assert all(t["filter"].startswith("domain: ") for t in narrowed)
+    assert "small domain: harbour" in captured.err
     assert {(r["m"], r["ef_search"], r["filtered"], r["k"]) for r in report["recall"]} >= {
         (16, 10, False, 10),
         (16, 40, True, 50),

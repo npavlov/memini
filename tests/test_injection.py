@@ -292,7 +292,8 @@ def test_escaping_a_line_keeps_its_value_and_leaves_no_token(value: dict[str, An
 
 
 def test_every_tool_that_returns_source_text_labels_it_as_data() -> None:
-    plain = {"status", "add_document"}  # service state; the stored document's ids
+    # Service state; the stored document's ids; the service's own instruction.
+    plain = {"status", "add_document", "catalog_guide"}
     for tool in TOOLS:
         schema = tool.definition().output_schema
         assert schema is not None
@@ -313,6 +314,7 @@ def test_the_server_instructions_and_the_write_tools_state_the_rule() -> None:
         "supersede_decision",
         "close_decision",
         "retract_decision",
+        "put_project",
     }
     for tool in writes:
         assert tool.scope == "ingest"

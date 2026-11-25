@@ -7,6 +7,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A catalog of what code belongs to. A project has services (a repository, or one directory of
+  it) and domains with subdomains that name their code by path masks. An agent writes a project
+  as one document with `put_project`, following `catalog_guide`; `get_catalog` and `get_domain`
+  read it. `search` and `search_code` take `projects`, `domains` and `services`, and every code
+  hit, definition and `read_source` answer says what its file belongs to (`context`). Changing
+  the catalog needs no reindex. [MCP tool reference](docs/mcp/README.md#tool-reference).
+
 ## [0.1.0] - 2026-11-22
 
 ### Fixed

@@ -19,7 +19,9 @@ Layout of the application :func:`create_app` builds:
   executor's runs of mcp sources (:mod:`memini.api.agent_runs`). Queries: search, code
   search, symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools;
   meetings, messages, threads and adding a document (:mod:`memini.api.comms`), the same calls as
-  the MCP comms tools. Knowledge: recording, superseding, closing and retracting decisions by hand
+  the MCP comms tools. The catalog: projects, services and domains, and writing a project
+  (:mod:`memini.api.catalog`), the same calls as the MCP catalog tools. Knowledge: recording,
+  superseding, closing and retracting decisions by hand
   (:mod:`memini.api.decisions`), the same calls as the MCP write tools; enqueuing the extraction of
   stored records the current extractor has not read (:mod:`memini.api.extract`).
 - The MCP endpoint is at :data:`~memini.mcp.MCP_PATH` (see :mod:`memini.api.mcp`): the same
@@ -57,6 +59,7 @@ from starlette.types import ASGIApp
 from memini import __version__
 from memini.api.agent_runs import build_agent_runs_router
 from memini.api.auth import authenticate_request
+from memini.api.catalog import build_catalog_router
 from memini.api.comms import build_comms_router
 from memini.api.decisions import build_decisions_router
 from memini.api.errors import ERROR_RESPONSES, install_error_handlers
@@ -260,6 +263,7 @@ def create_app(
         build_tokens_router(),
         build_persons_router(),
         build_query_router(),
+        build_catalog_router(),
         build_comms_router(),
         build_decisions_router(),
         build_extract_router(),
