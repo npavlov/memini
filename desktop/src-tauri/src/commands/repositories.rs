@@ -136,8 +136,8 @@ pub async fn api_workspace_create(
         .await
 }
 
-/// A git source as the user describes it. The server checks the location against what it
-/// allows (an https or ssh remote, or a folder under its local roots).
+/// A source of kind repository as the user describes it. The server checks the location against
+/// what it allows (an https or ssh remote, or a folder under its local roots).
 #[derive(Debug, Clone, Deserialize)]
 pub struct NewGitSource {
     pub workspace: String,
@@ -148,10 +148,11 @@ pub struct NewGitSource {
     pub schedule_seconds: Option<u32>,
     /// Path globs of files to leave out, such as tests and data (scenario S18).
     #[serde(default)]
-    pub exclude: Vec<String>,
+    pub exclude_paths: Vec<String>,
 }
 
-/// `POST /v1/workspaces/{workspace}/sources` with a git source. Needs the admin scope.
+/// `POST /v1/workspaces/{workspace}/sources` with a source of kind repository. Needs the admin
+/// scope.
 #[tauri::command]
 pub async fn api_source_create(
     state: State<'_, AppState>,
@@ -161,12 +162,12 @@ pub async fn api_source_create(
     let inner = state.shared();
     let (target, token) = authorized(&inner, &id).await?;
     let body = json!({
-        "kind": "git",
+        "kind": "repository",
         "name": source.name,
         "location": source.location,
         "refs": source.refs,
         "schedule_seconds": source.schedule_seconds,
-        "exclude": source.exclude,
+        "exclude_paths": source.exclude_paths,
     });
     let segments = ["v1", "workspaces", source.workspace.as_str(), "sources"];
     inner
@@ -223,13 +224,13 @@ pub enum ScheduleChange {
 }
 
 /// What a code base indexes and when it syncs (scenario S18). A field left out stays as it is;
-/// `include` and `exclude` replace the whole list.
+/// `include_paths` and `exclude_paths` replace the whole list.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SourceChanges {
     #[serde(default)]
-    pub include: Option<Vec<String>>,
+    pub include_paths: Option<Vec<String>>,
     #[serde(default)]
-    pub exclude: Option<Vec<String>>,
+    pub exclude_paths: Option<Vec<String>>,
     #[serde(default)]
     pub builtin_excludes: Option<bool>,
     #[serde(default)]
@@ -240,7 +241,10 @@ impl SourceChanges {
     /// The query of a preview: each glob a pair, an empty pair for a list cleared.
     fn preview_query(&self) -> Vec<(String, String)> {
         let mut query = Vec::new();
-        for (name, globs) in [("include", &self.include), ("exclude", &self.exclude)] {
+        for (name, globs) in [
+            ("include_paths", &self.include_paths),
+            ("exclude_paths", &self.exclude_paths),
+        ] {
             if let Some(globs) = globs {
                 if globs.is_empty() {
                     query.push((name.to_owned(), String::new()));
@@ -258,11 +262,11 @@ impl SourceChanges {
     /// switched off.
     fn body(&self) -> Value {
         let mut body = serde_json::Map::new();
-        if let Some(include) = &self.include {
-            body.insert("include".to_owned(), json!(include));
+        if let Some(include) = &self.include_paths {
+            body.insert("include_paths".to_owned(), json!(include));
         }
-        if let Some(exclude) = &self.exclude {
-            body.insert("exclude".to_owned(), json!(exclude));
+        if let Some(exclude) = &self.exclude_paths {
+            body.insert("exclude_paths".to_owned(), json!(exclude));
         }
         if let Some(builtin) = self.builtin_excludes {
             body.insert("builtin_excludes".to_owned(), json!(builtin));
@@ -323,7 +327,7 @@ pub async fn api_source_preview(
     Ok(interpret(&raw, &target.place())?.unwrap_or(Value::Null))
 }
 
-/// `GET /v1/runs/{run}`: one run with its report, which tells how far a sync is.
+/// `GET /v1/runs/{id}`: one run with its report, which tells how far a sync is.
 #[tauri::command]
 pub async fn api_run(state: State<'_, AppState>, id: String, run: String) -> AppResult<Value> {
     if run.is_empty() || run.len() > 64 || !run.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
@@ -399,21 +403,22 @@ mod tests {
     #[test]
     fn a_change_sends_only_what_changes() {
         let changes: SourceChanges =
-            serde_json::from_str(r#"{"exclude": ["**/*_test.go"]}"#).expect("a change");
-        assert_eq!(changes.body(), json!({"exclude": ["**/*_test.go"]}));
+            serde_json::from_str(r#"{"exclude_paths": ["**/*_test.go"]}"#).expect("a change");
+        assert_eq!(changes.body(), json!({"exclude_paths": ["**/*_test.go"]}));
     }
 
     #[test]
     fn a_preview_puts_each_glob_in_the_query_and_a_cleared_list_as_one_empty_pair() {
-        let rules: SourceChanges =
-            serde_json::from_str(r#"{"exclude": ["**/*_test.go", "**/*.json"], "include": []}"#)
-                .expect("rules");
+        let rules: SourceChanges = serde_json::from_str(
+            r#"{"exclude_paths": ["**/*_test.go", "**/*.json"], "include_paths": []}"#,
+        )
+        .expect("rules");
         assert_eq!(
             rules.preview_query(),
             [
-                ("include".to_owned(), String::new()),
-                ("exclude".to_owned(), "**/*_test.go".to_owned()),
-                ("exclude".to_owned(), "**/*.json".to_owned()),
+                ("include_paths".to_owned(), String::new()),
+                ("exclude_paths".to_owned(), "**/*_test.go".to_owned()),
+                ("exclude_paths".to_owned(), "**/*.json".to_owned()),
             ]
         );
         assert!(SourceChanges::default().preview_query().is_empty());

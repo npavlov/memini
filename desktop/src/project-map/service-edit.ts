@@ -7,7 +7,7 @@ import { countNoun } from "../text/count-noun";
 import type { Project, Service, Subdomain } from "./catalog";
 import { checkNames } from "./names";
 
-export type ServiceChange = Partial<Pick<Service, "name" | "description" | "repository" | "root">>;
+export type ServiceChange = Partial<Pick<Service, "name" | "description" | "source" | "root">>;
 
 /** Something that names a service: the code of a domain, or a link. */
 interface Reference {
@@ -21,14 +21,14 @@ export function editService(project: Project, at: number, change: ServiceChange)
 }
 
 /** Adds a service without a name yet, in `repository`, for the whole of it. */
-export function addService(project: Project, repository: string): Project {
+export function addService(project: Project, source: string): Project {
   // A server that keeps no links sends none, and takes none.
   const linked = project.services.length === 0 || project.services.some((service) => service.uses !== null);
   const added: Service = {
     name: "",
     origin: null,
     description: "",
-    repository,
+    source,
     root: "",
     files: null,
     uses: linked ? [] : null,
@@ -180,13 +180,13 @@ export function checkServices(project: Project): string | null {
   if (named !== null) {
     return named;
   }
-  if (project.services.some((service) => service.repository === "")) {
+  if (project.services.some((service) => service.source === "")) {
     return "Every service needs its repository.";
   }
   if (project.services.some((service) => !isDirectory(service.root))) {
     return "The directory of a service is a path inside its repository, without '.', '..' or empty parts; empty for the whole repository.";
   }
-  const places = project.services.map((service) => `${service.repository}\n${storedRoot(service.root)}`);
+  const places = project.services.map((service) => `${service.source}\n${storedRoot(service.root)}`);
   return places.some((place, index) => places.indexOf(place) !== index)
     ? "Two services are the same directory of the same repository."
     : null;

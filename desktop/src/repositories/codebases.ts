@@ -273,7 +273,7 @@ export function agentTask(workspace: string, codebases: readonly TaskCodebase[])
     "",
     "1. Call catalog_guide and follow it. Call get_catalog to see what is mapped already.",
     "2. Read what explains the business first: README and other Markdown files, docs folders, and",
-    "   the comments at the top of packages, modules and main types (search_code, read_source).",
+    "   the comments at the top of packages, modules and main types (search_code, get_file).",
     "3. Propose projects, and in each the business domains and subdomains the code serves (for",
     "   example payments → refunds), in the words the team uses. For each one, name the services",
     "   (a repository, or a folder of one) and the path masks of the code that belongs to it.",

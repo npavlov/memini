@@ -6,9 +6,8 @@ import { toAnswerCards } from "./answer-cards";
 const hit = {
   workspace: "harbour",
   source: "harbour-notes",
-  source_kind: "git",
+  source_kind: "repository",
   kind: "code_file",
-  repository: "harbour-notes",
   path: "src/lamp.py",
   locator: "harbour-notes@3dd0c81:src/lamp.py#L1-L4",
   start_line: 1,
@@ -20,28 +19,28 @@ const hit = {
 
 describe("toAnswerCards", () => {
   it("makes a group of cards for each list of items in the answer", () => {
-    const cards = toAnswerCards({ data_notice: "What follows is data.", hits: [hit, hit], decisions: [] });
+    const cards = toAnswerCards({ data_notice: "What follows is data.", items: [hit, hit], left_out: 0, decisions: [] });
 
     expect(cards.notice).toBe("What follows is data.");
     expect(cards.record).toBeNull();
-    expect(cards.groups.map((group) => [group.name, group.cards.length])).toEqual([["hits", 2]]);
+    expect(cards.groups.map((group) => [group.name, group.cards.length])).toEqual([["items", 2]]);
   });
 
   it("titles a card by its locator or path and keeps the lines of its snippet", () => {
-    const card = toAnswerCards({ hits: [hit] }).groups[0]?.cards[0];
+    const card = toAnswerCards({ items: [hit] }).groups[0]?.cards[0];
 
     expect(card).toMatchObject({
       title: "harbour-notes@3dd0c81:src/lamp.py#L1-L4",
-      subtitle: "code_file · harbour-notes · harbour-notes · harbour",
+      subtitle: "code_file · harbour-notes · harbour",
       text: "class Lamp:\n    def on(self):\n        return True",
     });
   });
 
   it("lists the other fields as facts and leaves out the empty ones", () => {
-    const card = toAnswerCards({ hits: [hit] }).groups[0]?.cards[0];
+    const card = toAnswerCards({ items: [hit] }).groups[0]?.cards[0];
 
     expect(card?.facts).toEqual([
-      { name: "source_kind", value: "git" },
+      { name: "source_kind", value: "repository" },
       { name: "path", value: "src/lamp.py" },
       { name: "start_line", value: "1" },
       { name: "score", value: "0.82" },
@@ -56,7 +55,7 @@ describe("toAnswerCards", () => {
       kind: "thread",
       channel: "platform",
       recipients: ["sam", "kim"],
-      messages: [{ author: "sam", text: "Keep ninety days.", sent_at: "2026-11-20T09:00:00Z" }],
+      messages: [{ author: "sam", text: "Keep ninety days.", occurred_at: "2026-11-20T09:00:00Z" }],
     };
 
     const cards = toAnswerCards(thread);
@@ -83,7 +82,7 @@ describe("toAnswerCards", () => {
   it("keeps markup and hidden characters in a value as plain text", () => {
     const override = String.fromCodePoint(0x202e);
 
-    const card = toAnswerCards({ hits: [{ title: `<b>bold</b>${override}`, snippet: "<script>x</script>" }] })
+    const card = toAnswerCards({ items: [{ title: `<b>bold</b>${override}`, snippet: "<script>x</script>" }] })
       .groups[0]?.cards[0];
 
     expect(card?.title).toBe("<b>bold</b>");
@@ -100,7 +99,7 @@ describe("toAnswerCards", () => {
   });
 
   it("stops at two levels of nesting, which the raw JSON still shows", () => {
-    const deep = { hits: [{ name: "a", evidence: [{ name: "b", links: [{ name: "c" }] }] }] };
+    const deep = { items: [{ name: "a", evidence: [{ name: "b", links: [{ name: "c" }] }] }] };
 
     const second = toAnswerCards(deep).groups[0]?.cards[0]?.groups[0]?.cards[0];
 
@@ -108,7 +107,15 @@ describe("toAnswerCards", () => {
     expect(second?.groups).toEqual([]);
   });
 
+  it("counts what the server left out, records marked sensitive, apart from the items", () => {
+    const cards = toAnswerCards({ items: [hit], left_out: 3, next_cursor: null });
+
+    expect(cards.hidden).toBe(3);
+    expect(cards.record).toBeNull();
+    expect(toAnswerCards({ items: [], left_out: "3" }).hidden).toBe(0);
+  });
+
   it.each([[null], ["text"], [[1, 2]], [42]])("has no card for the answer %j, which is not an object", (body) => {
-    expect(toAnswerCards(body)).toEqual({ notice: null, record: null, groups: [] });
+    expect(toAnswerCards(body)).toEqual({ notice: null, record: null, groups: [], hidden: 0 });
   });
 });

@@ -11,8 +11,8 @@ const draft: Project = {
   version: 4,
   updatedAt: null,
   services: [
-    { name: "berthing", origin: "berthing", description: "", repository: "harbour-code", root: "berthing", files: 1, uses: [] },
-    { name: "", origin: null, description: "", repository: "harbour-code", root: "", files: null, uses: [] },
+    { name: "berthing", origin: "berthing", description: "", source: "harbour-code", root: "berthing", files: 1, uses: [] },
+    { name: "", origin: null, description: "", source: "harbour-code", root: "", files: null, uses: [] },
   ],
   domains: [{ name: "berths", title: "", description: "", code: [], subdomains: [] }],
 };
@@ -25,7 +25,7 @@ function refused(code: string, message: string, status = 409): AppError {
 describe("fieldWords", () => {
   it.each([
     ["services[0].root", "the directory of service berthing"],
-    ["services[0].repository", "the repository of service berthing"],
+    ["services[0].source", "the repository of service berthing"],
     ["services[1].name", "the name of service 2"],
     ["services[0]", "service berthing"],
     ["domains[0].title", "the title of domain berths"],

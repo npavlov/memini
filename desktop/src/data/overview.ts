@@ -41,7 +41,7 @@ const NO_STREAM: Verdict = { tone: "idle", label: "no stream yet" };
 /** The sources of `GET /v1/workspaces/{workspace}/sources`. */
 export function parseListedSources(value: unknown): readonly ListedSource[] {
   const list = readObject(value, "the list of sources");
-  return readArray(list["sources"]).map((item) => {
+  return readArray(list["items"]).map((item) => {
     const source = readObject(item, "a source");
     return {
       name: displayText(readString(source["name"]), 80),

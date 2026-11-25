@@ -63,7 +63,7 @@ function ServiceFields({ draft, at, repositories, onDraft }: ServiceFieldsProps)
   const change = (changed: ServiceChange): void => {
     onDraft(editService(draft, at, changed));
   };
-  const choices = repositoryChoices(repositories, service.repository);
+  const choices = repositoryChoices(repositories, service.source);
   return (
     <>
       <FieldGrid>
@@ -72,8 +72,8 @@ function ServiceFields({ draft, at, repositories, onDraft }: ServiceFieldsProps)
         </Field>
         <Field label="Repository">
           <Select
-            value={service.repository}
-            onChange={(repository) => change({ repository })}
+            value={service.source}
+            onChange={(source) => change({ source })}
             options={choices.map((name) => ({ value: name, label: name }))}
           />
         </Field>

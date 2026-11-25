@@ -17,7 +17,7 @@ const answer = {
     {
       project: "port",
       service: "berthing",
-      repository: "harbour-code",
+      source: "harbour-code",
       root: "berthing",
       files: 9,
       paths: [
@@ -33,7 +33,7 @@ const answer = {
       title: "Holds",
       description: "",
       files: 3,
-      code: [{ project: "tides", service: "tables", repository: "tide-tables", root: "", files: 3, paths: [{ path: "lib/hold.py", files: 3 }] }],
+      code: [{ project: "tides", service: "tables", source: "tide-tables", root: "", files: 3, paths: [{ path: "lib/hold.py", files: 3 }] }],
     },
   ],
 };

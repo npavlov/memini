@@ -142,10 +142,10 @@ function Unassigned({ repositories }: UnassignedProps): ReactElement | null {
   return (
     <Panel title="Repositories in no project">
       <DataTable columns={["Repository", "Files"]}>
-        {repositories.map((repository) => (
-          <tr key={repository.repository}>
-            <th scope="row">{displayText(repository.repository)}</th>
-            <td>{repository.files === null ? "—" : String(repository.files)}</td>
+        {repositories.map((entry) => (
+          <tr key={entry.source}>
+            <th scope="row">{displayText(entry.source)}</th>
+            <td>{entry.files === null ? "—" : String(entry.files)}</td>
           </tr>
         ))}
       </DataTable>

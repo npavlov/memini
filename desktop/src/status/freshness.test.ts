@@ -13,7 +13,7 @@ import type { ServiceStatus, StreamStatus, WorkspaceIndex } from "./status";
 function stream(changes: Partial<StreamStatus>): StreamStatus {
   return {
     source: "harbour-notes",
-    sourceKind: "git",
+    sourceKind: "repository",
     key: "refs/heads/main",
     scheduleSeconds: 3600,
     checkedUntil: null,

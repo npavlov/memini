@@ -16,7 +16,7 @@ export interface EmptyMask {
 export interface Overlap {
   /** The two domains that name the same files. */
   readonly domains: readonly string[];
-  readonly repository: string;
+  readonly source: string;
   readonly files: number | null;
 }
 
@@ -52,7 +52,7 @@ function parseOverlap(value: unknown): Overlap {
   const overlap = readObject(value, "two domains that share files");
   return {
     domains: readStrings(overlap["domains"]),
-    repository: readString(overlap["repository"]) ?? "",
+    source: readString(overlap["source"]) ?? "",
     files: readNumber(overlap["files"]),
   };
 }
@@ -113,7 +113,7 @@ export function describeSave(report: SaveReport): SaveSummary {
   );
   const overlaps = report.overlaps.map(
     (overlap) =>
-      `${overlap.domains.join(" and ")} both name ${countNoun(overlap.files ?? 0, "file")} of ${overlap.repository}.`,
+      `${overlap.domains.join(" and ")} both name ${countNoun(overlap.files ?? 0, "file")} of ${overlap.source}.`,
   );
   const masked =
     report.redacted === 0

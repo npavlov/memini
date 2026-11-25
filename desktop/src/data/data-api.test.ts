@@ -14,7 +14,7 @@ const statusAnswer = {
     {
       name: "harbour",
       index: { state: "ok", records: 100, chunks: 900 },
-      streams: [{ source: "harbour-notes", source_kind: "git", key: "refs/heads/main", records: 100 }],
+      streams: [{ source: "harbour-notes", source_kind: "repository", key: "refs/heads/main", records: 100 }],
     },
   ],
 };
@@ -25,9 +25,9 @@ describe("readOverview", () => {
       answers: {
         api_status: () => statusAnswer,
         api_sources: () => ({
-          sources: [
+          items: [
             { name: "chat", kind: "push", schedule_seconds: null },
-            { name: "harbour-notes", kind: "git", schedule_seconds: 3600 },
+            { name: "harbour-notes", kind: "repository", schedule_seconds: 3600 },
           ],
         }),
       },
@@ -76,7 +76,7 @@ describe("the tool commands", () => {
         api_tool_call: () => ({
           request: "GET /v1/search?query=archive",
           status: 200,
-          body: { hits: [] },
+          body: { items: [], left_out: 0 },
           error: null,
         }),
       },
@@ -88,7 +88,7 @@ describe("the tool commands", () => {
     expect(answer).toEqual({
       request: "GET /v1/search?query=archive",
       status: 200,
-      body: { hits: [] },
+      body: { items: [], left_out: 0 },
       error: null,
     });
     expect(backend.calls).toEqual([{ command: "api_tool_call", args: { id: "c1", call } }]);

@@ -19,16 +19,16 @@ export const RECORD_ID = /^[0-9a-f]{64}$/u;
 
 export function parseMarkedRecords(value: unknown): readonly MarkedRecord[] {
   const answer = readObject(value, "the list of sensitive records");
-  return readArray(answer["records"]).map((item) => {
+  return readArray(answer["items"]).map((item) => {
     const record = readObject(item, "a sensitive record");
     const reason = readString(record["reason"]);
     return {
-      recordId: readString(record["record_id"]) ?? "",
-      kind: displayText(readString(record["record_kind"]) ?? ""),
+      recordId: readString(record["id"]) ?? "",
+      kind: displayText(readString(record["kind"]) ?? ""),
       source: displayText(readString(record["source"]) ?? ""),
       externalId: displayText(readString(record["external_id"]) ?? "", 200),
       reason: reason === null ? null : displayText(reason, 200),
-      markedAt: readString(record["sensitive_at"]),
+      markedAt: readString(record["marked_at"]),
     };
   });
 }

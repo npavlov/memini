@@ -536,8 +536,8 @@ pub struct SensitiveMark {
     pub reason: Option<String>,
 }
 
-/// The body of a mark: the record by its id, checked here first, and the reason of a mark.
-fn sensitive_body(mark: &SensitiveMark) -> AppResult<Value> {
+/// The record a mark names, checked here first: its id, as search results give it.
+fn marked_record(mark: &SensitiveMark) -> AppResult<&str> {
     let record = mark.record_id.trim();
     let hex = record
         .bytes()
@@ -547,7 +547,12 @@ fn sensitive_body(mark: &SensitiveMark) -> AppResult<Value> {
             "A record id is 64 lowercase hexadecimal characters, as search results give it.",
         ));
     }
-    let mut body = json!({"record_id": record, "sensitive": mark.sensitive});
+    Ok(record)
+}
+
+/// The body of a mark: whether the record is sensitive, and the reason of a mark.
+fn sensitive_body(mark: &SensitiveMark) -> Value {
+    let mut body = json!({"sensitive": mark.sensitive});
     let reason = mark
         .reason
         .as_deref()
@@ -556,18 +561,19 @@ fn sensitive_body(mark: &SensitiveMark) -> AppResult<Value> {
     if let (true, Some(reason)) = (mark.sensitive, reason) {
         body["reason"] = Value::String(reason.to_owned());
     }
-    Ok(body)
+    body
 }
 
-/// `PUT /v1/workspaces/{workspace}/records/sensitive`: mark one record sensitive, or clear its
-/// mark. The record is named by its id only; the server checks the rest.
+/// `PUT /v1/workspaces/{workspace}/records/{id}/sensitive`: mark one record sensitive, or clear
+/// its mark. The record is named by its id only; the server checks the rest.
 #[tauri::command]
 pub async fn api_sensitive_mark(
     state: State<'_, AppState>,
     id: String,
     mark: SensitiveMark,
 ) -> AppResult<Value> {
-    let body = sensitive_body(&mark)?;
+    let record = marked_record(&mark)?;
+    let body = sensitive_body(&mark);
     let inner = state.shared();
     let (target, token) = authorized(&inner, &id).await?;
     let segments = [
@@ -575,6 +581,7 @@ pub async fn api_sensitive_mark(
         "workspaces",
         mark.workspace.as_str(),
         "records",
+        record,
         "sensitive",
     ];
     inner
@@ -827,7 +834,7 @@ pub async fn api_token_create(
         .await
 }
 
-/// `DELETE /v1/tokens/{token_id}`: revokes a token and answers with it.
+/// `DELETE /v1/tokens/{id}`: revokes a token and answers with it.
 #[tauri::command]
 pub async fn api_token_revoke(
     state: State<'_, AppState>,
@@ -1211,15 +1218,19 @@ mod tests {
         };
         let id = "a".repeat(64);
         assert_eq!(
-            sensitive_body(&mark(&id, true)).expect("a record id"),
-            json!({"record_id": id, "sensitive": true, "reason": "salary"})
+            marked_record(&mark(&format!(" {id} "), true)).expect("a record id"),
+            id
         );
         assert_eq!(
-            sensitive_body(&mark(&id, false)).expect("a record id"),
-            json!({"record_id": id, "sensitive": false})
+            sensitive_body(&mark(&id, true)),
+            json!({"sensitive": true, "reason": "salary"})
+        );
+        assert_eq!(
+            sensitive_body(&mark(&id, false)),
+            json!({"sensitive": false})
         );
         for bad in ["", "A".repeat(64).as_str(), "a".repeat(63).as_str(), "../x"] {
-            assert!(sensitive_body(&mark(bad, true)).is_err(), "{bad}");
+            assert!(marked_record(&mark(bad, true)).is_err(), "{bad}");
         }
     }
 

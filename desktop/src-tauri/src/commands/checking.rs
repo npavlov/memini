@@ -128,7 +128,7 @@ async fn try_token(inner: &Inner, target: &Target, token: &Token, check: &mut Co
 /// each token; when they do not point at exactly one active token, nothing is claimed.
 fn scopes_in(list: &Value, token: &Token) -> Option<Vec<Scope>> {
     let own: Vec<&Value> = list
-        .get("tokens")?
+        .get("items")?
         .as_array()?
         .iter()
         .filter(|entry| {
@@ -309,7 +309,7 @@ mod tests {
             "GET /v1/tokens" => (
                 200,
                 format!(
-                    "{{\"tokens\":[{{\"prefix\":\"{}\",\"status\":\"active\",\"scopes\":[\"admin\"]}}]}}",
+                    "{{\"items\":[{{\"prefix\":\"{}\",\"status\":\"active\",\"scopes\":[\"admin\"]}}]}}",
                     &own[..12]
                 ),
             ),
@@ -461,7 +461,7 @@ mod tests {
         let token = Token::parse(&fake_token('b')).expect("a token");
         let entry = |prefix: &str, status: &str| serde_json::json!({"prefix": prefix, "status": status, "scopes": ["read", "admin"]});
         let own = &token.expose()[..12];
-        let list = |entries: Vec<Value>| serde_json::json!({ "tokens": entries });
+        let list = |entries: Vec<Value>| serde_json::json!({ "items": entries });
 
         let found = [
             scopes_in(

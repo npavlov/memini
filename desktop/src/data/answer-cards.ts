@@ -21,7 +21,7 @@ export interface Card {
 }
 
 export interface CardGroup {
-  /** The field of the answer the cards come from, such as `hits`. */
+  /** The field of the answer the cards come from, such as `items`. */
   readonly name: string;
   readonly cards: readonly Card[];
   /** How many more items the answer has than the cards shown. */
@@ -34,12 +34,15 @@ export interface AnswerCards {
   /** The answer's own fields, when it is one record. */
   readonly record: Card | null;
   readonly groups: readonly CardGroup[];
+  /** How many items the server left out of the answer, records marked sensitive (`left_out`). */
+  readonly hidden: number;
 }
 
 const TITLE_KEYS = ["title", "statement", "qualified_name", "name", "display_name", "locator", "path"];
 const TEXT_KEYS = ["snippet", "text", "content", "summary"];
-const SUBTITLE_KEYS = ["kind", "source", "repository", "workspace", "author", "status"];
+const SUBTITLE_KEYS = ["kind", "source", "workspace", "author", "status"];
 const NOTICE_KEY = "data_notice";
+const LEFT_OUT_KEY = "left_out";
 const MAX_CARDS = 100;
 const MAX_DEPTH = 2;
 const MAX_TEXT = 6000;
@@ -82,7 +85,7 @@ function cardOf(item: JsonObject, depth: number): Card {
   const titleKey = firstText(item, TITLE_KEYS);
   const textKey = firstText(item, TEXT_KEYS);
   const subtitleKeys = SUBTITLE_KEYS.filter((key) => typeof item[key] === "string" && item[key] !== "");
-  const used = new Set([titleKey, textKey, NOTICE_KEY, ...subtitleKeys]);
+  const used = new Set([titleKey, textKey, NOTICE_KEY, LEFT_OUT_KEY, ...subtitleKeys]);
   const rest = Object.entries(item).filter(([key]) => !used.has(key));
   return {
     title: titleKey === null ? "" : displayText(String(item[titleKey]), 200),
@@ -104,13 +107,15 @@ function hasContent(card: Card): boolean {
 /** The cards of an answer. An answer that is not an object has none: its raw JSON says it all. */
 export function toAnswerCards(body: unknown): AnswerCards {
   if (!isObject(body)) {
-    return { notice: null, record: null, groups: [] };
+    return { notice: null, record: null, groups: [], hidden: 0 };
   }
   const notice = body[NOTICE_KEY];
+  const leftOut = body[LEFT_OUT_KEY];
   const card = cardOf(body, 0);
   return {
     notice: typeof notice === "string" && notice !== "" ? displayText(notice, 400) : null,
     record: hasContent(card) ? { ...card, groups: [] } : null,
     groups: card.groups,
+    hidden: typeof leftOut === "number" && Number.isInteger(leftOut) && leftOut > 0 ? leftOut : 0,
   };
 }

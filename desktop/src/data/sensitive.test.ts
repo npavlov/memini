@@ -9,15 +9,15 @@ describe("parseMarkedRecords", () => {
   it("reads names, reasons and times, and no content", () => {
     const records = parseMarkedRecords({
       workspace: "harbour",
-      records: [
+      items: [
         {
-          record_id: ID,
-          record_kind: "thread",
+          id: ID,
+          kind: "thread",
           source: "mail",
           external_id: "<1@mail.example.test>",
           occurred_at: "2026-11-01T10:00:00Z",
           reason: "salary figures",
-          sensitive_at: "2026-11-25T20:00:00Z",
+          marked_at: "2026-11-25T20:00:00Z",
         },
       ],
     });
@@ -39,7 +39,7 @@ describe("the commands", () => {
   it("lists a workspace and marks a record by its id, trimmed", async () => {
     const backend = createFakeBackend({
       answers: {
-        api_sensitive_list: () => ({ workspace: "harbour", records: [] }),
+        api_sensitive_list: () => ({ workspace: "harbour", items: [] }),
         api_sensitive_mark: () => ({ changed: true }),
       },
     });

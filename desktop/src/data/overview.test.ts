@@ -7,7 +7,7 @@ import { overviewOf, parseListedSources } from "./overview";
 function stream(changes: Partial<StreamStatus>): StreamStatus {
   return {
     source: "harbour-notes",
-    sourceKind: "git",
+    sourceKind: "repository",
     key: "refs/heads/main",
     scheduleSeconds: 3600,
     checkedUntil: null,
@@ -45,7 +45,7 @@ function workspace(streams: readonly StreamStatus[]): WorkspaceStatus {
 describe("parseListedSources", () => {
   it("reads the name, the kind and the schedule of each source", () => {
     const listed = parseListedSources({
-      sources: [{ name: "chat", kind: "push", schedule_seconds: null, location: null }],
+      items: [{ name: "chat", kind: "push", schedule_seconds: null, location: null }],
     });
 
     expect(listed).toEqual([{ name: "chat", kind: "push", scheduleSeconds: null }]);
@@ -76,12 +76,12 @@ describe("overviewOf", () => {
     ];
 
     const row = overviewOf(workspace(streams), [
-      { name: "harbour-notes", kind: "git", scheduleSeconds: 3600 },
+      { name: "harbour-notes", kind: "repository", scheduleSeconds: 3600 },
     ]).sources[0];
 
     expect(row).toEqual({
       name: "harbour-notes",
-      kind: "git",
+      kind: "repository",
       scheduleSeconds: 3600,
       streams: 2,
       records: 120,
@@ -107,7 +107,7 @@ describe("overviewOf", () => {
 
     expect(overview.sources.map((row) => [row.name, row.kind])).toEqual([
       ["chat", "push"],
-      ["harbour-notes", "git"],
+      ["harbour-notes", "repository"],
     ]);
   });
 });

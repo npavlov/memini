@@ -16,7 +16,7 @@ export interface Refusal {
 const FIELDS: Readonly<Record<string, string>> = {
   name: "name",
   description: "description",
-  repository: "repository",
+  source: "repository",
   root: "directory",
   title: "title",
   uses: "links",

@@ -166,7 +166,7 @@ function MarkForm({ connection, workspace, onDone, onCancel }: MarkFormProps): R
     <Form onSubmit={() => (valid ? mark.run() : undefined)}>
       <Field
         label="Record id"
-        hint="64 hexadecimal characters: the record_id of a search hit or a thread."
+        hint="64 hexadecimal characters: the record_id of a search hit, or the id of a thread or a meeting."
       >
         <TextInput value={recordId} onChange={setRecordId} kind="code" maxLength={64} />
       </Field>

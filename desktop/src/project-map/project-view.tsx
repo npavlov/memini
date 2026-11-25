@@ -70,7 +70,7 @@ function ServiceLine({ service }: ServiceLineProps): ReactElement {
           </Text>
         )}
       </th>
-      <td>{displayText(service.repository)}</td>
+      <td>{displayText(service.source)}</td>
       <td>{service.root === "" ? "the whole repository" : <Mono>{displayText(service.root)}</Mono>}</td>
       <td>{service.files === null ? "—" : String(service.files)}</td>
     </tr>
