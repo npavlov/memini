@@ -32,6 +32,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the HTTP API keeps working. `GET /v1/status` and `memini status` say which it is.
 - Drive the server launcher from a program: `memini-server status`, `start`, `stop` and `mcp`
   print one JSON object with `--json`. [Output for programs](docs/install.md#output-for-programs).
+- Remove a managed server with `memini-server uninstall --yes`: its containers, its data and its
+  state directory; Docker keeps the images. The desktop app has a Remove button for it, which
+  also forgets the connection to that server and its token.
+  [Remove the server](docs/install.md#remove-the-server).
 - A catalog of what code belongs to. A project has services (a repository, or one directory of
   it) and domains with subdomains that name their code by path masks. An agent writes a project
   as one document with `put_project`, following `catalog_guide`; `get_catalog` and `get_domain`

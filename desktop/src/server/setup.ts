@@ -37,9 +37,21 @@ export function dockerAdvice(status: LauncherStatus): DockerAdvice | null {
   };
 }
 
-/** Whether the first setup still has something to do: no server yet, or no token for it in the app. */
-export function needsSetup(status: LauncherStatus, local: Connection | null): boolean {
-  return !status.installed || local === null || !local.hasToken;
+/**
+ * What the Server screen offers for this computer:
+ * - `setup`: the first setup has something to do, as no server yet or no token for it in the app;
+ * - `foreign`: the local connection holds a token, but the launcher manages no server. That
+ *   server was set up another way; a setup would install a second one and give the connection a
+ *   token of the wrong server, so none is offered;
+ * - `done`: the launcher manages the server and the app holds its token.
+ */
+export type LocalSetup = "setup" | "foreign" | "done";
+
+export function localSetup(status: LauncherStatus, local: Connection | null): LocalSetup {
+  if (!status.installed) {
+    return local !== null && local.hasToken ? "foreign" : "setup";
+  }
+  return local === null || !local.hasToken ? "setup" : "done";
 }
 
 export const SETUP_STEPS = ["docker", "server", "token"] as const;
@@ -125,16 +137,20 @@ export function tokenExists(outcome: SetupOutcome): boolean {
   return !outcome.ok && (outcome.error ?? "").includes("admin token exists");
 }
 
-const WORKING: Readonly<Record<LauncherChange | "setup", string>> = {
+/** What can run on the Server screen: a change, the first setup or the removal. */
+export type ServerWork = LauncherChange | "setup" | "uninstall";
+
+const WORKING: Readonly<Record<ServerWork, string>> = {
   start: "The server is starting.",
   stop: "The server is stopping.",
   restart: "The server is restarting.",
   mcp_on: "MCP is being switched on.",
   mcp_off: "MCP is being switched off.",
   setup: "The setup is running.",
+  uninstall: "The server is being removed.",
 };
 
 /** Why the buttons are disabled while something runs; null when nothing does. */
-export function busyReason(working: LauncherChange | "setup" | null): string | null {
+export function busyReason(working: ServerWork | null): string | null {
   return working === null ? null : `${WORKING[working]} The other actions wait until it is done.`;
 }

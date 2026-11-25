@@ -33,6 +33,7 @@ const COMMANDS: &[&str] = &[
     "launcher_status",
     "launcher_change",
     "launcher_setup_token",
+    "launcher_uninstall",
 ];
 
 fn main() {

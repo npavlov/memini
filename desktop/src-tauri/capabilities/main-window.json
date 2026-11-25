@@ -34,6 +34,7 @@
     "allow-launcher-status",
     "allow-launcher-change",
     "allow-launcher-setup-token",
+    "allow-launcher-uninstall",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-write-secret"
   ]

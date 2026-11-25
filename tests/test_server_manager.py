@@ -479,6 +479,60 @@ def test_a_refusal_is_a_result_object_and_exit_status_1(
     assert (nothing.code, nothing.value) == (0, OK)
 
 
+def test_uninstall_removes_the_containers_the_volumes_and_the_state(
+    state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    removed = launch(state, "uninstall", "--yes")
+
+    assert (removed.code, removed.value) == (0, OK)
+    assert docker.calls[-1][-3:] == ["down", "--volumes", "--remove-orphans"]
+    assert docker.calls[-1][3].startswith("memini-managed-")  # the project of this server only
+    assert not state.exists()
+
+    # Nothing left to remove is no failure, and Docker is not asked.
+    calls = len(docker.calls)
+    again = launch(state, "uninstall", "--yes")
+    assert (again.code, again.value) == (0, OK)
+    assert len(docker.calls) == calls
+
+
+def test_uninstall_keeps_the_state_when_docker_fails(
+    state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.fail = subprocess.CalledProcessError(3, "docker")
+
+    failed = launch(state, "uninstall", "--yes")
+
+    assert failed.code == 3
+    assert failed.value == {
+        "schema": 1,
+        "ok": False,
+        "error": "docker compose failed with exit status 3",
+    }
+    # The secrets of the database stay with it, so another try can still reach it.
+    assert (state / ".env").is_file()
+
+
+def test_uninstall_needs_yes_and_a_directory_of_the_manager(
+    tmp_path: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "keep.txt").write_text("a file of someone else\n")
+
+    refused = launch(foreign, "uninstall", "--yes")
+
+    assert refused.code == 1
+    assert refused.value["error"] == (
+        f"no managed server at {foreign.resolve()}; nothing was removed"
+    )
+    assert (foreign / "keep.txt").is_file()
+    with pytest.raises(SystemExit) as unconfirmed:
+        launch(foreign, "uninstall")
+    assert unconfirmed.value.code == 2
+    assert docker.calls == []
+
+
 def test_bootstrap_prints_the_first_admin_token_as_one_object(
     state: Path, docker: FakeDocker, launch: Callable[..., Printed]
 ) -> None:

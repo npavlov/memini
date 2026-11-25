@@ -5,12 +5,13 @@ import { createFakeBackend } from "../ipc/fake-backend";
 import type { FakeAnswer } from "../ipc/fake-backend";
 import { ShapeError } from "../json/read-json";
 import type { LauncherStatus } from "./launcher";
+import { removeServer } from "./launcher-api";
 import {
   DOCKER_INSTALL_PAGE,
   NOT_STARTED,
   busyReason,
   dockerAdvice,
-  needsSetup,
+  localSetup,
   parseSetupOutcome,
   setupSteps,
   tokenExists,
@@ -109,15 +110,18 @@ describe("dockerAdvice", () => {
   });
 });
 
-describe("needsSetup", () => {
+describe("localSetup", () => {
+  const none = status({ installed: false, running: false });
   it.each([
-    ["no server is installed", status({ installed: false, running: false }), local, true],
-    ["this computer is not a connection", status({}), null, true],
-    ["the connection has no token", status({}), { ...local, hasToken: false }, true],
-    ["the server is installed and the app holds its token", status({}), local, false],
-    ["the server is only stopped", status({ running: false }), local, false],
-  ])("tells whether there is something to set up when %s", (_what, given, connection, expected) => {
-    expect(needsSetup(given, connection)).toBe(expected);
+    ["no server is installed and nothing is connected", none, null, "setup"],
+    ["no server is installed and the connection has no token", none, { ...local, hasToken: false }, "setup"],
+    ["a server set up another way answers the connection", none, local, "foreign"],
+    ["this computer is not a connection", status({}), null, "setup"],
+    ["the connection has no token", status({}), { ...local, hasToken: false }, "setup"],
+    ["the server is installed and the app holds its token", status({}), local, "done"],
+    ["the server is only stopped", status({ running: false }), local, "done"],
+  ] as const)("offers what fits when %s", (_what, given, connection, expected) => {
+    expect(localSetup(given, connection)).toBe(expected);
   });
 });
 
@@ -237,5 +241,31 @@ describe("runSetup", () => {
     await runSetup(backend, { force: true, onProgress: () => undefined, onStopped: () => undefined });
 
     expect(backend.calls.at(-1)).toEqual({ command: "launcher_setup_token", args: { force: true } });
+  });
+});
+
+describe("removeServer", () => {
+  it("asks Rust to remove the server and returns what is left of the connections", async () => {
+    const backend = createFakeBackend({
+      answers: { launcher_uninstall: () => ({ ok: true, error: null, view }) },
+    });
+
+    const outcome = await removeServer(backend);
+
+    expect(backend.calls).toEqual([{ command: "launcher_uninstall", args: {} }]);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.view.connections.map((connection) => connection.id)).toEqual(["c1"]);
+  });
+
+  it("gives the launcher's reason when the removal failed", async () => {
+    const backend = createFakeBackend({
+      answers: {
+        launcher_uninstall: () => ({ ok: false, error: "docker compose failed with exit status 1", view }),
+      },
+    });
+
+    const outcome = await removeServer(backend);
+
+    expect(outcome).toMatchObject({ ok: false, error: "docker compose failed with exit status 1" });
   });
 });

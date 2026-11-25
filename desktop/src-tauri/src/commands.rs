@@ -33,7 +33,8 @@ use crate::keychain::SecretStore;
 use crate::launcher::{self, Action, LauncherResult, LauncherStatus, SearchPath};
 use crate::secret::Token;
 use crate::store::{
-    check_url, ConnectionInput, ConnectionKind, ConnectionsView, Settings, Store, DEFAULT_LOCAL_URL,
+    check_url, is_loopback, ConnectionInput, ConnectionKind, ConnectionsView, Settings, Store,
+    DEFAULT_LOCAL_URL,
 };
 use crate::tools::{self, ToolCall, ToolDescription};
 
@@ -169,6 +170,27 @@ impl Inner {
             settings.activate(&id)
         })?;
         self.view()
+    }
+
+    /// Forgets the local connection, and its token, when it names the server at `removed`: the
+    /// server the launcher has just removed. A local connection to another server stays.
+    fn forget_local(&self, removed: Option<&str>) -> AppResult<ConnectionsView> {
+        let found = {
+            let store = self.lock()?;
+            store
+                .settings
+                .connections
+                .iter()
+                .find(|connection| {
+                    connection.kind == ConnectionKind::Local
+                        && removed.is_some_and(|url| same_server(&connection.url, url))
+                })
+                .map(|connection| connection.id.clone())
+        };
+        match found {
+            Some(id) => self.delete_connection(&id),
+            None => self.view(),
+        }
     }
 
     fn target(&self, id: &str) -> AppResult<Target> {
@@ -869,6 +891,41 @@ impl Drop for BusyGuard<'_> {
     }
 }
 
+/// Two addresses of this computer that name one server: the same scheme and port, and loopback
+/// hosts both (`localhost` and `127.0.0.1` are one computer).
+fn same_server(first: &str, second: &str) -> bool {
+    match (url::Url::parse(first), url::Url::parse(second)) {
+        (Ok(first), Ok(second)) => {
+            first.scheme() == second.scheme()
+                && first.port_or_known_default() == second.port_or_known_default()
+                && (first.host() == second.host() || (is_loopback(&first) && is_loopback(&second)))
+        }
+        _ => false,
+    }
+}
+
+/// The start the launcher is asked for. A server that is not installed yet starts on the first
+/// free port from 6364, so another server on this computer does not stop the first setup; an
+/// installed one starts on the port it has.
+async fn start_action(program: &std::path::Path, search: &SearchPath) -> AppResult<Action> {
+    let status = launcher::parse_status(&launcher::run(program, Action::Status, search).await?)?;
+    if status.installed {
+        return Ok(Action::Start);
+    }
+    let port = blocking(|| Ok(launcher::first_free_port(launcher::port_is_free))).await?;
+    port.map(Action::FirstStart).ok_or_else(|| {
+        AppError::new(
+            ErrorKind::LauncherFailed,
+            format!(
+                "Ports {} to {} of this computer are all taken, so the server has no port to \
+                 start on. Stop what listens on one of them and set up again.",
+                launcher::DEFAULT_PORT,
+                launcher::DEFAULT_PORT + launcher::PORTS_TRIED - 1
+            ),
+        )
+    })
+}
+
 /// `memini-server start|stop|mcp on|mcp off --json`, one at a time. A change of several actions
 /// stops at the first that fails and answers with it.
 #[tauri::command]
@@ -884,8 +941,13 @@ pub async fn launcher_change(
         ok: true,
         error: None,
     };
-    for action in change.actions() {
-        let output = launcher::run(&program, *action, &search).await?;
+    for &action in change.actions() {
+        let action = if action == Action::Start {
+            start_action(&program, &search).await?
+        } else {
+            action
+        };
+        let output = launcher::run(&program, action, &search).await?;
         result = launcher::parse_result(&output)?;
         if !result.ok {
             break;
@@ -935,6 +997,39 @@ pub async fn launcher_setup_token(
     Ok(SetupOutcome {
         ok: true,
         error: None,
+        view,
+    })
+}
+
+/// What the removal of the server did. The local connection to it is gone when it worked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UninstallOutcome {
+    pub ok: bool,
+    pub error: Option<String>,
+    pub view: ConnectionsView,
+}
+
+/// `memini-server uninstall --yes --json`: removes the server on this computer with its data,
+/// then forgets the local connection to it and its token. The webview asks the user first.
+#[tauri::command]
+pub async fn launcher_uninstall(state: State<'_, AppState>) -> AppResult<UninstallOutcome> {
+    let inner = state.shared();
+    let _busy = BusyGuard::begin(&inner.launcher_busy)?;
+    let shared = Arc::clone(&inner);
+    let (program, search) = blocking(move || shared.launcher()).await?;
+    // The address is read before: after the removal the launcher knows no server.
+    let status = launcher::parse_status(&launcher::run(&program, Action::Status, &search).await?)?;
+    let result =
+        launcher::parse_result(&launcher::run(&program, Action::Uninstall, &search).await?)?;
+    let shared = Arc::clone(&inner);
+    let view = if result.ok && status.installed {
+        blocking(move || shared.forget_local(status.api_url.as_deref())).await?
+    } else {
+        blocking(move || shared.view()).await?
+    };
+    Ok(UninstallOutcome {
+        ok: result.ok,
+        error: result.error,
         view,
     })
 }
@@ -1154,6 +1249,57 @@ mod tests {
             .set_launcher_path(Some("  "))
             .expect("cleared");
         assert_eq!(cleared.configured_path, None);
+    }
+
+    #[test]
+    fn two_addresses_name_one_server_by_scheme_port_and_loopback_host() {
+        assert!(same_server(
+            "http://127.0.0.1:6364",
+            "http://127.0.0.1:6364/"
+        ));
+        assert!(same_server(
+            "http://localhost:6364",
+            "http://127.0.0.1:6364"
+        ));
+        assert!(!same_server(
+            "http://127.0.0.1:6365",
+            "http://127.0.0.1:6364"
+        ));
+        assert!(!same_server(
+            "https://127.0.0.1:6364",
+            "http://127.0.0.1:6364"
+        ));
+        assert!(!same_server("http://127.0.0.1:6364", "not an address"));
+    }
+
+    #[test]
+    fn removing_the_server_forgets_its_local_connection_and_token_only() {
+        let fixture = Fixture::new("forget-local");
+        let remote = fixture.add("Harbour", "https://a.example.org");
+        let token = Token::parse(&fake_token('u')).expect("a token");
+        let local = fixture
+            .inner
+            .adopt_local(&token, Some("http://127.0.0.1:6370"))
+            .expect("adopted")
+            .active_id
+            .expect("the local connection");
+
+        // Another server was removed: the connection to this one stays.
+        let kept = fixture
+            .inner
+            .forget_local(Some("http://127.0.0.1:6364"))
+            .expect("a view");
+        assert_eq!(kept.connections.len(), 2);
+        let kept = fixture.inner.forget_local(None).expect("a view");
+        assert_eq!(kept.connections.len(), 2);
+
+        let view = fixture
+            .inner
+            .forget_local(Some("http://localhost:6370"))
+            .expect("a view");
+        assert_eq!(view.connections.len(), 1);
+        assert_eq!(view.connections[0].id, remote);
+        assert_eq!(fixture.inner.secrets.get(&local).expect("readable"), None);
     }
 
     #[test]
