@@ -1,0 +1,223 @@
+{
+  "chunker_version": 3,
+  "language": "java",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "4ba12aebd16a67ad9e983743d303f0c2f2f5bdf787b2b08ffd72e7c233a52d3b",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 10],
+      "bytes": [0, 216],
+      "content_hash": "38f05a8ed32b1e1e28bcaf4894a1c798859b6ce8c74c0c4acd811be7d586f46b",
+      "text": [
+        "Orchard.java: Harvest",
+        "// Orchard is a synthetic fixture for the chunker tests.",
+        "package town.orchard;",
+        "",
+        "import java.util.ArrayList;",
+        "import java.util.List;",
+        "",
+        "/** Something that can be picked. */",
+        "interface Harvest {",
+        "    int yieldKilograms();",
+        "}"
+      ]
+    },
+    {
+      "key": "Season#0",
+      "id": "093a8d52a98e0afe0ff789fff0ff714553c74308373b3ec61b15767a9a332382",
+      "kind": "enum",
+      "symbol": "Season",
+      "lines": [12, 20],
+      "bytes": [218, 331],
+      "content_hash": "70ba581842b85b473d6b87c8460c732dc0ab1396e02e107e23f981d47d01cd81",
+      "text": [
+        "Orchard.java: Season",
+        "enum Season {",
+        "    SPRING,",
+        "    SUMMER,",
+        "    AUTUMN;",
+        "",
+        "    boolean picking() {",
+        "        return this == AUTUMN;",
+        "    }",
+        "}"
+      ]
+    },
+    {
+      "key": "Crate#0",
+      "id": "1147f458550fa5b94782b8144f6932c3502cf0926f98063845beb735010fe3fa",
+      "kind": "class",
+      "symbol": "Crate",
+      "lines": [22, 23],
+      "bytes": [333, 433],
+      "content_hash": "3c9ba3243f1317db0e4c2e80ce1f3d5ab69d11ee56f72a9f8ddb31344d64c0d7",
+      "text": [
+        "Orchard.java: Crate",
+        "/** A crate of apples, as the packing shed counts it. */",
+        "record Crate(String variety, int apples) {}"
+      ]
+    },
+    {
+      "key": "Orchard#0",
+      "id": "916220d11c33286ad0397892559415e91e71682bfea3c03d0d222170273b16f4",
+      "kind": "class",
+      "symbol": "Orchard",
+      "lines": [25, 58],
+      "bytes": [435, 1137],
+      "content_hash": "45cb10f37c95f5b747052afe7ba61fe53cd4cac6397fab08503a78b7b7e81f9c",
+      "text": [
+        "Orchard.java: Orchard",
+        "public class Orchard implements Harvest {",
+        "    public static final int MAX_TREES = 120;",
+        "",
+        "    private final List<Tree> trees = new ArrayList<>();",
+        "",
+        "    public Orchard(int rows) {",
+        "        for (int row = 0; row < rows; row++) {",
+        "            trees.add(new Tree(row));",
+        "        }",
+        "    }",
+        "",
+        "    /** Kilograms of fruit across every tree. */",
+        "    @Override",
+        "    public int yieldKilograms() {",
+        "        int total = 0;",
+        "        for (Tree tree : trees) {",
+        "            total += tree.fruit;",
+        "        }",
+        "        return total;",
+        "    }",
+        "",
+        "    static class Tree {",
+        "        final int row;",
+        "        int fruit = 4;",
+        "",
+        "        Tree(int row) {",
+        "            this.row = row;",
+        "        }",
+        "",
+        "        void prune() {",
+        "            fruit -= 1;",
+        "        }",
+        "    }",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "Harvest",
+      "name": "Harvest",
+      "kind": "interface",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [8, 10],
+      "bytes": [169, 216],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Harvest.yieldKilograms",
+      "name": "yieldKilograms",
+      "kind": "method",
+      "parent": "Harvest",
+      "ordinal": 0,
+      "lines": [9, 9],
+      "bytes": [193, 214],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Season",
+      "name": "Season",
+      "kind": "enum",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [12, 20],
+      "bytes": [218, 331],
+      "chunk": "Season#0"
+    },
+    {
+      "qualified_name": "Season.picking",
+      "name": "picking",
+      "kind": "method",
+      "parent": "Season",
+      "ordinal": 0,
+      "lines": [17, 19],
+      "bytes": [273, 329],
+      "chunk": "Season#0"
+    },
+    {
+      "qualified_name": "Crate",
+      "name": "Crate",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [23, 23],
+      "bytes": [390, 433],
+      "chunk": "Crate#0"
+    },
+    {
+      "qualified_name": "Orchard",
+      "name": "Orchard",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [25, 58],
+      "bytes": [435, 1137],
+      "chunk": "Orchard#0"
+    },
+    {
+      "qualified_name": "Orchard.Orchard",
+      "name": "Orchard",
+      "kind": "method",
+      "parent": "Orchard",
+      "ordinal": 0,
+      "lines": [30, 34],
+      "bytes": [584, 711],
+      "chunk": "Orchard#0"
+    },
+    {
+      "qualified_name": "Orchard.yieldKilograms",
+      "name": "yieldKilograms",
+      "kind": "method",
+      "parent": "Orchard",
+      "ordinal": 0,
+      "lines": [37, 44],
+      "bytes": [766, 937],
+      "chunk": "Orchard#0"
+    },
+    {
+      "qualified_name": "Orchard.Tree",
+      "name": "Tree",
+      "kind": "class",
+      "parent": "Orchard",
+      "ordinal": 0,
+      "lines": [46, 57],
+      "bytes": [943, 1135],
+      "chunk": "Orchard#0"
+    },
+    {
+      "qualified_name": "Orchard.Tree.Tree",
+      "name": "Tree",
+      "kind": "method",
+      "parent": "Orchard.Tree",
+      "ordinal": 0,
+      "lines": [50, 52],
+      "bytes": [1018, 1071],
+      "chunk": "Orchard#0"
+    },
+    {
+      "qualified_name": "Orchard.Tree.prune",
+      "name": "prune",
+      "kind": "method",
+      "parent": "Orchard.Tree",
+      "ordinal": 0,
+      "lines": [54, 56],
+      "bytes": [1081, 1129],
+      "chunk": "Orchard#0"
+    }
+  ]
+}

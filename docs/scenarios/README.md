@@ -44,7 +44,7 @@ pain.
 |---|---|---|---|---|
 | [S1](S01-where-is-x-implemented.md) | Where and how is X implemented? | Engineer | works |  |
 | [S7](S07-who-changed-what.md) | Who changed what? | Team lead, engineer | ready | memini-qpk.4 |
-| [S10](S10-definitions-in-my-language.md) | Find a definition in my language | Engineer on another stack | partial | memini-qpk.2 |
+| [S10](S10-definitions-in-my-language.md) | Find a definition in my language | Engineer on another stack | ready | memini-qpk.2 |
 
 ### Catalog: what code and conversations belong to
 

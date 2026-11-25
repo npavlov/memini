@@ -21,13 +21,16 @@ __all__ = [
     "SymbolKind",
 ]
 
-CHUNKER_VERSION: Final = 2
+CHUNKER_VERSION: Final = 3
 """Version of the chunking rules. It changes whenever the output for some input can change: chunk
 boundaries, ids, texts, headers, symbols or the default sizes. The index fingerprint includes it
 (principle 9); :func:`memini.chunking.chunker_fingerprint` adds the grammar versions.
 
 2: a NUL byte past the binary probe becomes U+FFFD in the chunk text, so the content hash is
-computed over the text that is stored."""
+computed over the text that is stored.
+3: fifteen more languages are parsed (Java, C#, C, C++, PHP, Kotlin, Swift, Rust, Scala, Dart,
+Lua, shell, SQL, Objective-C, Elixir): their files get definition chunks and symbols instead of
+line windows. Files of the first five languages keep their chunks and ids."""
 
 MARKDOWN_CHUNKER_VERSION: Final = 1
 """Version of the rules of the Markdown chunker (:mod:`memini.chunking.markdown`), the same way:
@@ -41,8 +44,31 @@ whenever their output for some payload can change. The index fingerprint include
 CHUNK_ID_DOMAIN: Final = "memini.chunk.v1"
 """Domain tag of chunk ids (see :mod:`memini.chunking`). A new rule gets a new tag."""
 
-Language = Literal["python", "javascript", "typescript", "ruby", "go"]
-"""Languages parsed with tree-sitter. TSX is ``typescript``, JSX is ``javascript``."""
+Language = Literal[
+    "python",
+    "javascript",
+    "typescript",
+    "ruby",
+    "go",
+    "java",
+    "csharp",
+    "c",
+    "cpp",
+    "php",
+    "kotlin",
+    "swift",
+    "rust",
+    "scala",
+    "dart",
+    "lua",
+    "shell",
+    "sql",
+    "objc",
+    "elixir",
+]
+"""Languages parsed with tree-sitter. TSX is ``typescript``, JSX is ``javascript``, a C or C++
+header (``.h``) is ``cpp``, Objective-C (``.m``, ``.mm``) is ``objc``, Bash and POSIX shell are
+``shell``."""
 
 LANGUAGES: Final[tuple[Language, ...]] = get_args(Language)
 

@@ -1,0 +1,141 @@
+{
+  "chunker_version": 3,
+  "language": "elixir",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "Kitchen.Stove#0",
+      "id": "d4ff5076900df7912dce2ce92ea568667bb98ab58cafeb5581774772ae067002",
+      "kind": "module",
+      "symbol": "Kitchen.Stove",
+      "lines": [1, 23],
+      "bytes": [0, 531],
+      "content_hash": "a4f9458b9ad08471e9fa06555f07d6bf73491aa5658db72f5d6a53f115084c11",
+      "text": [
+        "kitchen.ex: Kitchen.Stove",
+        "# kitchen.ex is a synthetic fixture for the chunker tests.",
+        "defmodule Kitchen.Stove do",
+        "  @moduledoc \"A stove with a few burners.\"",
+        "",
+        "  @burners 4",
+        "",
+        "  defstruct heat: 0, lit: []",
+        "",
+        "  @doc \"Light a burner, up to the number the stove has.\"",
+        "  def light(%__MODULE__{lit: lit} = stove, burner) when burner < @burners do",
+        "    %{stove | lit: [burner | lit]}",
+        "  end",
+        "",
+        "  def light(stove, _burner), do: stove",
+        "",
+        "  defp warm(stove), do: %{stove | heat: stove.heat + 10}",
+        "",
+        "  defmacro simmer(do: block) do",
+        "    quote do",
+        "      unquote(block)",
+        "    end",
+        "  end",
+        "end"
+      ]
+    },
+    {
+      "key": "Kitchen.Pan#0",
+      "id": "31489235d18e1b063bc24da355a50aff8403ba9ae8ad6286457afbc47b63b124",
+      "kind": "module",
+      "symbol": "Kitchen.Pan",
+      "lines": [25, 28],
+      "bytes": [533, 615],
+      "content_hash": "ca425dd1c4d7d31936f30b938f096399932e8bd2ad4710b1afc08d4c64bc25ed",
+      "text": [
+        "kitchen.ex: Kitchen.Pan",
+        "defmodule Kitchen.Pan do",
+        "  def size(:small), do: 20",
+        "  def size(:large), do: 32",
+        "end"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "Kitchen.Stove",
+      "name": "Stove",
+      "kind": "module",
+      "parent": "Kitchen",
+      "ordinal": 0,
+      "lines": [2, 23],
+      "bytes": [59, 531],
+      "chunk": "Kitchen.Stove#0"
+    },
+    {
+      "qualified_name": "Kitchen.Stove.light",
+      "name": "light",
+      "kind": "function",
+      "parent": "Kitchen.Stove",
+      "ordinal": 0,
+      "lines": [10, 12],
+      "bytes": [233, 348],
+      "chunk": "Kitchen.Stove#0"
+    },
+    {
+      "qualified_name": "Kitchen.Stove.light",
+      "name": "light",
+      "kind": "function",
+      "parent": "Kitchen.Stove",
+      "ordinal": 1,
+      "lines": [14, 14],
+      "bytes": [352, 388],
+      "chunk": "Kitchen.Stove#0"
+    },
+    {
+      "qualified_name": "Kitchen.Stove.warm",
+      "name": "warm",
+      "kind": "function",
+      "parent": "Kitchen.Stove",
+      "ordinal": 0,
+      "lines": [16, 16],
+      "bytes": [392, 446],
+      "chunk": "Kitchen.Stove#0"
+    },
+    {
+      "qualified_name": "Kitchen.Stove.simmer",
+      "name": "simmer",
+      "kind": "function",
+      "parent": "Kitchen.Stove",
+      "ordinal": 0,
+      "lines": [18, 22],
+      "bytes": [450, 527],
+      "chunk": "Kitchen.Stove#0"
+    },
+    {
+      "qualified_name": "Kitchen.Pan",
+      "name": "Pan",
+      "kind": "module",
+      "parent": "Kitchen",
+      "ordinal": 0,
+      "lines": [25, 28],
+      "bytes": [533, 615],
+      "chunk": "Kitchen.Pan#0"
+    },
+    {
+      "qualified_name": "Kitchen.Pan.size",
+      "name": "size",
+      "kind": "function",
+      "parent": "Kitchen.Pan",
+      "ordinal": 0,
+      "lines": [26, 26],
+      "bytes": [560, 584],
+      "chunk": "Kitchen.Pan#0"
+    },
+    {
+      "qualified_name": "Kitchen.Pan.size",
+      "name": "size",
+      "kind": "function",
+      "parent": "Kitchen.Pan",
+      "ordinal": 1,
+      "lines": [27, 27],
+      "bytes": [587, 611],
+      "chunk": "Kitchen.Pan#0"
+    }
+  ]
+}

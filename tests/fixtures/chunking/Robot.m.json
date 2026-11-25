@@ -1,0 +1,188 @@
+{
+  "chunker_version": 3,
+  "language": "objc",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "7781bfbfc0309567d4bede836bacfea9bcde42a71d9d3e8feb3aa1e8f2bd7d89",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 14],
+      "bytes": [0, 375],
+      "content_hash": "10386a693afd09afdf977e0275f2fb6507962d89e2d104c654a663f41326ef98",
+      "text": [
+        "Robot.m: kMaxSteps, Walker, Robot",
+        "// Robot.m is a synthetic fixture for the chunker tests.",
+        "#import <Foundation/Foundation.h>",
+        "",
+        "static const NSInteger kMaxSteps = 100;",
+        "",
+        "@protocol Walker <NSObject>",
+        "- (void)walk:(NSInteger)steps;",
+        "@end",
+        "",
+        "@interface Robot : NSObject <Walker>",
+        "@property (nonatomic, copy) NSString *name;",
+        "- (instancetype)initWithName:(NSString *)name;",
+        "+ (instancetype)robotNamed:(NSString *)name;",
+        "@end"
+      ]
+    },
+    {
+      "key": "Robot#0+0",
+      "id": "54f908aa4482caff4a726ee044fb138fafa5c1ae23aca054786fda94453cf105",
+      "kind": "code",
+      "symbol": null,
+      "lines": [16, 39],
+      "bytes": [377, 823],
+      "content_hash": "3acce2b8b4d99d6e2fbe48c37d57059164c2936b38406e04526480128ff1bb47",
+      "text": [
+        "Robot.m",
+        "@implementation Robot",
+        "",
+        "- (instancetype)initWithName:(NSString *)name",
+        "{",
+        "    self = [super init];",
+        "    if (self) {",
+        "        _name = [name copy];",
+        "    }",
+        "    return self;",
+        "}",
+        "",
+        "+ (instancetype)robotNamed:(NSString *)name",
+        "{",
+        "    return [[Robot alloc] initWithName:name];",
+        "}",
+        "",
+        "/// Walk a number of steps, at most the limit.",
+        "- (void)walk:(NSInteger)steps",
+        "{",
+        "    NSInteger taken = MIN(steps, kMaxSteps);",
+        "    NSLog(@\"%@ walked %ld\", self.name, (long)taken);",
+        "}",
+        "",
+        "@end"
+      ]
+    },
+    {
+      "key": "RobotCount#0",
+      "id": "da5a6390821e5ccf43b38f556b5d0a7ee57bb69e070740a9f8f152ecb85c38fd",
+      "kind": "function",
+      "symbol": "RobotCount",
+      "lines": [41, 44],
+      "bytes": [825, 863],
+      "content_hash": "a62172ac789b084cef7638caff2a7753dbf8375baccab3824f2de372b46a66d6",
+      "text": [
+        "Robot.m: RobotCount",
+        "int RobotCount(void)",
+        "{",
+        "    return 1;",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "kMaxSteps",
+      "name": "kMaxSteps",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [4, 4],
+      "bytes": [92, 131],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Walker",
+      "name": "Walker",
+      "kind": "interface",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [6, 8],
+      "bytes": [133, 196],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Walker.walk",
+      "name": "walk",
+      "kind": "method",
+      "parent": "Walker",
+      "ordinal": 0,
+      "lines": [7, 7],
+      "bytes": [161, 191],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Robot",
+      "name": "Robot",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [10, 14],
+      "bytes": [198, 375],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Robot.initWithName",
+      "name": "initWithName",
+      "kind": "method",
+      "parent": "Robot",
+      "ordinal": 0,
+      "lines": [12, 12],
+      "bytes": [279, 325],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Robot.robotNamed",
+      "name": "robotNamed",
+      "kind": "method",
+      "parent": "Robot",
+      "ordinal": 0,
+      "lines": [13, 13],
+      "bytes": [326, 370],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Robot.initWithName",
+      "name": "initWithName",
+      "kind": "method",
+      "parent": "Robot",
+      "ordinal": 1,
+      "lines": [18, 25],
+      "bytes": [400, 542],
+      "chunk": "Robot#0+0"
+    },
+    {
+      "qualified_name": "Robot.robotNamed",
+      "name": "robotNamed",
+      "kind": "method",
+      "parent": "Robot",
+      "ordinal": 1,
+      "lines": [27, 30],
+      "bytes": [544, 637],
+      "chunk": "Robot#0+0"
+    },
+    {
+      "qualified_name": "Robot.walk",
+      "name": "walk",
+      "kind": "method",
+      "parent": "Robot",
+      "ordinal": 0,
+      "lines": [33, 37],
+      "bytes": [686, 817],
+      "chunk": "Robot#0+0"
+    },
+    {
+      "qualified_name": "RobotCount",
+      "name": "RobotCount",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [41, 44],
+      "bytes": [825, 863],
+      "chunk": "RobotCount#0"
+    }
+  ]
+}

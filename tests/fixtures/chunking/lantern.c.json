@@ -1,0 +1,160 @@
+{
+  "chunker_version": 3,
+  "language": "c",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "88968deb570e9cd2b861f6c236a146e0809f51fe2fa807b76e6754e2ec764d88",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 14],
+      "bytes": [0, 262],
+      "content_hash": "92d49f3c994258e6dd42d9542ef33d371137bc1c76656057e6a0572104761d70",
+      "text": [
+        "lantern.c: MAX_WICKS, BRIGHTNESS, Glow, Lantern",
+        "/* lantern.c is a synthetic fixture for the chunker tests. */",
+        "#include <stdio.h>",
+        "",
+        "#define MAX_WICKS 3",
+        "#define BRIGHTNESS(w) ((w) * 40)",
+        "",
+        "typedef enum { DIM, STEADY, BRIGHT } Glow;",
+        "",
+        "struct Lantern {",
+        "    int wicks;",
+        "    Glow glow;",
+        "};",
+        "",
+        "typedef struct Lantern Lantern;"
+      ]
+    },
+    {
+      "key": "clamp#0",
+      "id": "3164a027a6ced2b3169ce7880e170c6f07a3fc70b8b54edcbbbaeb87e9a50290",
+      "kind": "function",
+      "symbol": "clamp",
+      "lines": [16, 22],
+      "bytes": [264, 403],
+      "content_hash": "8158a258cd15b94567ee9940a575fcc8aee0d6c2ec5a543751d193c8f755cd3e",
+      "text": [
+        "lantern.c: clamp",
+        "static int clamp(int value, int low, int high)",
+        "{",
+        "    if (value < low) {",
+        "        return low;",
+        "    }",
+        "    return value > high ? high : value;",
+        "}"
+      ]
+    },
+    {
+      "key": "lantern_light#0",
+      "id": "f92898af2339023869d2a7642e335fa9ae2bb74c5c886bcb7c8cf8756a533deb",
+      "kind": "group",
+      "symbol": null,
+      "lines": [24, 36],
+      "bytes": [405, 700],
+      "content_hash": "50fb3d67c0472fd629bf3e0c76624112ff42bb0cc6640f18bb90657d70bed0bd",
+      "text": [
+        "lantern.c: lantern_light, main",
+        "/* Light one more wick, up to the limit. */",
+        "int lantern_light(Lantern *lantern)",
+        "{",
+        "    lantern->wicks = clamp(lantern->wicks + 1, 0, MAX_WICKS);",
+        "    return BRIGHTNESS(lantern->wicks);",
+        "}",
+        "",
+        "int main(void)",
+        "{",
+        "    Lantern lantern = {0, DIM};",
+        "    printf(\"%d\\n\", lantern_light(&lantern));",
+        "    return 0;",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "MAX_WICKS",
+      "name": "MAX_WICKS",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [4, 4],
+      "bytes": [82, 102],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "BRIGHTNESS",
+      "name": "BRIGHTNESS",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [5, 5],
+      "bytes": [102, 135],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Glow",
+      "name": "Glow",
+      "kind": "type",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [7, 7],
+      "bytes": [136, 178],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Lantern",
+      "name": "Lantern",
+      "kind": "struct",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [9, 12],
+      "bytes": [180, 228],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Lantern",
+      "name": "Lantern",
+      "kind": "type",
+      "parent": null,
+      "ordinal": 1,
+      "lines": [14, 14],
+      "bytes": [231, 262],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "clamp",
+      "name": "clamp",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [16, 22],
+      "bytes": [264, 403],
+      "chunk": "clamp#0"
+    },
+    {
+      "qualified_name": "lantern_light",
+      "name": "lantern_light",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [25, 29],
+      "bytes": [449, 589],
+      "chunk": "lantern_light#0"
+    },
+    {
+      "qualified_name": "main",
+      "name": "main",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [31, 36],
+      "bytes": [591, 700],
+      "chunk": "lantern_light#0"
+    }
+  ]
+}

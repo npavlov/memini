@@ -1,0 +1,124 @@
+{
+  "chunker_version": 3,
+  "language": "shell",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "101ef28fac4caaa2848f2593f61d1b52ce103ca1322a8836ad6643e827adc142",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 10],
+      "bytes": [0, 190],
+      "content_hash": "888e4724fd978184a245ae359a4448c1f04aaf30281327efc1ea158e8df91311",
+      "text": [
+        "deploy.sh: TARGET_DIR, RETRIES, log",
+        "#!/usr/bin/env bash",
+        "# deploy.sh is a synthetic fixture for the chunker tests.",
+        "set -euo pipefail",
+        "",
+        "TARGET_DIR=\"/srv/greenhouse\"",
+        "RETRIES=3",
+        "",
+        "log() {",
+        "  printf '%s %s\\n' \"$(date +%H:%M:%S)\" \"$*\"",
+        "}"
+      ]
+    },
+    {
+      "key": "copy_build#0",
+      "id": "a48b24796abaadb7124c509ab925bd10f43ff36247bd1b6c3f826cea91c2c5b7",
+      "kind": "function",
+      "symbol": "copy_build",
+      "lines": [12, 22],
+      "bytes": [192, 434],
+      "content_hash": "c72bcee32fcfe8327272618532098f92a99e925fafdd02df8923f38b0a39301a",
+      "text": [
+        "deploy.sh: copy_build",
+        "# Copy the build to the target, retrying a few times.",
+        "function copy_build {",
+        "  local attempt=1",
+        "  while (( attempt <= RETRIES )); do",
+        "    if cp -r build/. \"$TARGET_DIR\"; then",
+        "      return 0",
+        "    fi",
+        "    attempt=$((attempt + 1))",
+        "  done",
+        "  return 1",
+        "}"
+      ]
+    },
+    {
+      "key": "main#0",
+      "id": "6331582d08185b73ac6b7facc0f8f08a9028699e1c52a60c5713971550beb9c0",
+      "kind": "group",
+      "symbol": null,
+      "lines": [24, 30],
+      "bytes": [436, 516],
+      "content_hash": "1f076ed5c0c4c89f1f6ae6cc034df54c05df52475e5e66b24abf19bba9ca00f2",
+      "text": [
+        "deploy.sh: main",
+        "main() {",
+        "  log \"deploying to $TARGET_DIR\"",
+        "  copy_build",
+        "  log \"done\"",
+        "}",
+        "",
+        "main \"$@\""
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "TARGET_DIR",
+      "name": "TARGET_DIR",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [5, 5],
+      "bytes": [97, 125],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "RETRIES",
+      "name": "RETRIES",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [6, 6],
+      "bytes": [126, 135],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "log",
+      "name": "log",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [8, 10],
+      "bytes": [137, 190],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "copy_build",
+      "name": "copy_build",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [13, 22],
+      "bytes": [246, 434],
+      "chunk": "copy_build#0"
+    },
+    {
+      "qualified_name": "main",
+      "name": "main",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [24, 28],
+      "bytes": [436, 505],
+      "chunk": "main#0"
+    }
+  ]
+}

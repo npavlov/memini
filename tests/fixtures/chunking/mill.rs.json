@@ -1,0 +1,227 @@
+{
+  "chunker_version": 3,
+  "language": "rust",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "fb61add6f0ff7c6288c1c5ecf6ec0b59e2c2ad062a8d01c6e10713fa65b19993",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 19],
+      "bytes": [0, 383],
+      "content_hash": "a998bad18c7fca24a3085868515d001c09c68c09e99bacea74933ac58aa000f9",
+      "text": [
+        "mill.rs: STONES, Grain, Grind, Mill",
+        "// mill.rs is a synthetic fixture for the chunker tests.",
+        "use std::collections::HashMap;",
+        "",
+        "pub const STONES: usize = 2;",
+        "",
+        "/// Grain the mill knows how to grind.",
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+        "pub enum Grain {",
+        "    Wheat,",
+        "    Rye,",
+        "}",
+        "",
+        "pub trait Grind {",
+        "    fn grind(&mut self, grain: Grain, kilograms: u32) -> u32;",
+        "}",
+        "",
+        "pub struct Mill {",
+        "    flour: HashMap<Grain, u32>,",
+        "}"
+      ]
+    },
+    {
+      "key": "Mill#0+0",
+      "id": "bbc4bdb4c5c382b3ee035b3dda6269b41767294a9d615784b4f698b9cd9d0e20",
+      "kind": "code",
+      "symbol": null,
+      "lines": [21, 30],
+      "bytes": [385, 611],
+      "content_hash": "c3fbdc73865a5f11c94b68172bf965c3c6daf6a293e49b3d32a7b778c1d26cf8",
+      "text": [
+        "mill.rs",
+        "impl Mill {",
+        "    pub fn new() -> Self {",
+        "        Mill { flour: HashMap::new() }",
+        "    }",
+        "",
+        "    /// Kilograms of flour of one grain.",
+        "    pub fn stock(&self, grain: Grain) -> u32 {",
+        "        *self.flour.get(&grain).unwrap_or(&0)",
+        "    }",
+        "}"
+      ]
+    },
+    {
+      "key": "Mill#0+1",
+      "id": "382bf365d57901051f9fb14d55934809529b6f3a877fd131e931f81ce6128d5c",
+      "kind": "code",
+      "symbol": null,
+      "lines": [32, 38],
+      "bytes": [613, 815],
+      "content_hash": "fca377c9413c33d6c983087832fdfdb577423c4ebc96fb8cd6ed2e56c2ed5768",
+      "text": [
+        "mill.rs",
+        "impl Grind for Mill {",
+        "    fn grind(&mut self, grain: Grain, kilograms: u32) -> u32 {",
+        "        let flour = kilograms * 9 / 10;",
+        "        *self.flour.entry(grain).or_insert(0) += flour;",
+        "        flour",
+        "    }",
+        "}"
+      ]
+    },
+    {
+      "key": "Ledger#0",
+      "id": "7be65fba675dde62545bb27f1cc2e169ba1f7a8d944b8af75c1b2dbeee175f1c",
+      "kind": "group",
+      "symbol": null,
+      "lines": [40, 52],
+      "bytes": [817, 1074],
+      "content_hash": "08c13af9c540a15edc31464c3047731e85c14f4c7f01e1e9f1059c55616943ac",
+      "text": [
+        "mill.rs: Ledger, sacks, main",
+        "type Ledger = HashMap<String, u32>;",
+        "",
+        "mod sacks {",
+        "    pub fn weight(count: u32) -> u32 {",
+        "        count * 25",
+        "    }",
+        "}",
+        "",
+        "fn main() {",
+        "    let mut mill = Mill::new();",
+        "    mill.grind(Grain::Rye, 100);",
+        "    println!(\"{}\", mill.stock(Grain::Rye) + sacks::weight(1));",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "STONES",
+      "name": "STONES",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [4, 4],
+      "bytes": [89, 117],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Grain",
+      "name": "Grain",
+      "kind": "enum",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [7, 11],
+      "bytes": [158, 247],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Grind",
+      "name": "Grind",
+      "kind": "interface",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [13, 15],
+      "bytes": [249, 330],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Grind.grind",
+      "name": "grind",
+      "kind": "method",
+      "parent": "Grind",
+      "ordinal": 0,
+      "lines": [14, 14],
+      "bytes": [271, 328],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Mill",
+      "name": "Mill",
+      "kind": "struct",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [17, 19],
+      "bytes": [332, 383],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Mill.new",
+      "name": "new",
+      "kind": "method",
+      "parent": "Mill",
+      "ordinal": 0,
+      "lines": [22, 24],
+      "bytes": [401, 468],
+      "chunk": "Mill#0+0"
+    },
+    {
+      "qualified_name": "Mill.stock",
+      "name": "stock",
+      "kind": "method",
+      "parent": "Mill",
+      "ordinal": 0,
+      "lines": [27, 29],
+      "bytes": [515, 609],
+      "chunk": "Mill#0+0"
+    },
+    {
+      "qualified_name": "Mill.grind",
+      "name": "grind",
+      "kind": "method",
+      "parent": "Mill",
+      "ordinal": 0,
+      "lines": [33, 37],
+      "bytes": [639, 813],
+      "chunk": "Mill#0+1"
+    },
+    {
+      "qualified_name": "Ledger",
+      "name": "Ledger",
+      "kind": "type",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [40, 40],
+      "bytes": [817, 852],
+      "chunk": "Ledger#0"
+    },
+    {
+      "qualified_name": "sacks",
+      "name": "sacks",
+      "kind": "module",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [42, 46],
+      "bytes": [854, 931],
+      "chunk": "Ledger#0"
+    },
+    {
+      "qualified_name": "sacks.weight",
+      "name": "weight",
+      "kind": "function",
+      "parent": "sacks",
+      "ordinal": 0,
+      "lines": [43, 45],
+      "bytes": [870, 929],
+      "chunk": "Ledger#0"
+    },
+    {
+      "qualified_name": "main",
+      "name": "main",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [48, 52],
+      "bytes": [933, 1074],
+      "chunk": "Ledger#0"
+    }
+  ]
+}

@@ -1,0 +1,216 @@
+{
+  "chunker_version": 3,
+  "language": "kotlin",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "d212df39d8eef2a6a248e1efcc36a5e78d41fa6d5c339444f75612e329672d4f",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 13],
+      "bytes": [0, 264],
+      "content_hash": "940fd41badee68d5e5d75fe3715a2e4b31eb43a7dff169c8504d70d666255257",
+      "text": [
+        "Kite.kt: MAX_STRING_METRES, Flyer, Gust",
+        "// Kite.kt is a synthetic fixture for the chunker tests.",
+        "package town.kites",
+        "",
+        "import kotlin.math.max",
+        "",
+        "const val MAX_STRING_METRES = 60",
+        "",
+        "/** Anything that flies on a string. */",
+        "interface Flyer {",
+        "    fun lift(wind: Int): Int",
+        "}",
+        "",
+        "enum class Gust { CALM, FRESH, STRONG }"
+      ]
+    },
+    {
+      "key": "Kite#0",
+      "id": "2ccdb25e25baf30b437a1de00c8bbfce979ed8cbb4fb365d2ee2a3d4f33f549d",
+      "kind": "class",
+      "symbol": "Kite",
+      "lines": [15, 25],
+      "bytes": [266, 537],
+      "content_hash": "6eaf23b1465b847cc6b5d8610c4ce6b47968e3d29605fb5835533e2c8825a707",
+      "text": [
+        "Kite.kt: Kite",
+        "data class Kite(val colour: String, val tails: Int) : Flyer {",
+        "    override fun lift(wind: Int): Int {",
+        "        return max(0, wind - tails)",
+        "    }",
+        "",
+        "    fun shorten(): Kite = copy(tails = tails - 1)",
+        "",
+        "    companion object {",
+        "        fun plain(): Kite = Kite(\"white\", 0)",
+        "    }",
+        "}"
+      ]
+    },
+    {
+      "key": "Wind#0",
+      "id": "0e78948a1a9627e7fdfed45407dc70b2e46a85c33ace12107130bac1911d20ff",
+      "kind": "group",
+      "symbol": null,
+      "lines": [27, 33],
+      "bytes": [539, 694],
+      "content_hash": "69667892dae1a9cb9e3f6e6e66094f784a1e93205085d569b307fee3d11dcb70",
+      "text": [
+        "Kite.kt: Wind, Kite.launch",
+        "object Wind {",
+        "    var speed = 3",
+        "",
+        "    fun gust(): Gust = if (speed > 10) Gust.STRONG else Gust.FRESH",
+        "}",
+        "",
+        "fun Kite.launch(wind: Int): Boolean = lift(wind) > 2"
+      ]
+    },
+    {
+      "key": "sky#0",
+      "id": "e3ebd2ca98fdb14076720a01ae788a57edd8d6c58e28c6f146937d5d6e63dd41",
+      "kind": "function",
+      "symbol": "sky",
+      "lines": [35, 41],
+      "bytes": [696, 826],
+      "content_hash": "da629bea6984b6f9fd15cdc5705b0d945f9f3fd3b2caccf8b921a52292a0192f",
+      "text": [
+        "Kite.kt: sky",
+        "fun sky(kites: List<Kite>): Int {",
+        "    var total = 0",
+        "    for (kite in kites) {",
+        "        total += kite.tails",
+        "    }",
+        "    return total",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "MAX_STRING_METRES",
+      "name": "MAX_STRING_METRES",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [6, 6],
+      "bytes": [101, 133],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Flyer",
+      "name": "Flyer",
+      "kind": "interface",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [9, 11],
+      "bytes": [175, 223],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Flyer.lift",
+      "name": "lift",
+      "kind": "method",
+      "parent": "Flyer",
+      "ordinal": 0,
+      "lines": [10, 10],
+      "bytes": [197, 221],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Gust",
+      "name": "Gust",
+      "kind": "enum",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [13, 13],
+      "bytes": [225, 264],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Kite",
+      "name": "Kite",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [15, 25],
+      "bytes": [266, 537],
+      "chunk": "Kite#0"
+    },
+    {
+      "qualified_name": "Kite.lift",
+      "name": "lift",
+      "kind": "method",
+      "parent": "Kite",
+      "ordinal": 0,
+      "lines": [16, 18],
+      "bytes": [332, 409],
+      "chunk": "Kite#0"
+    },
+    {
+      "qualified_name": "Kite.shorten",
+      "name": "shorten",
+      "kind": "method",
+      "parent": "Kite",
+      "ordinal": 0,
+      "lines": [20, 20],
+      "bytes": [415, 460],
+      "chunk": "Kite#0"
+    },
+    {
+      "qualified_name": "Kite.plain",
+      "name": "plain",
+      "kind": "method",
+      "parent": "Kite",
+      "ordinal": 0,
+      "lines": [23, 23],
+      "bytes": [493, 529],
+      "chunk": "Kite#0"
+    },
+    {
+      "qualified_name": "Wind",
+      "name": "Wind",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [27, 31],
+      "bytes": [539, 640],
+      "chunk": "Wind#0"
+    },
+    {
+      "qualified_name": "Wind.gust",
+      "name": "gust",
+      "kind": "method",
+      "parent": "Wind",
+      "ordinal": 0,
+      "lines": [30, 30],
+      "bytes": [576, 638],
+      "chunk": "Wind#0"
+    },
+    {
+      "qualified_name": "Kite.launch",
+      "name": "launch",
+      "kind": "method",
+      "parent": "Kite",
+      "ordinal": 0,
+      "lines": [33, 33],
+      "bytes": [642, 694],
+      "chunk": "Wind#0"
+    },
+    {
+      "qualified_name": "sky",
+      "name": "sky",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [35, 41],
+      "bytes": [696, 826],
+      "chunk": "sky#0"
+    }
+  ]
+}

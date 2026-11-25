@@ -24,12 +24,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   default, for the common languages; **What it indexes** previews what a sync keeps and saves a
   new scope. **Copy task for an agent**, there and on the Project map, gives a connected agent
   what to read and how to write the project map.
+- Definitions and symbols in fifteen more languages: Java, C#, C, C++, PHP, Kotlin, Swift, Rust,
+  Scala, Dart, Lua, shell, SQL, Objective-C and Elixir, twenty in all. Their files are chunked by
+  function, method and type instead of line windows, `get_symbol` finds their definitions, and
+  `search_code` and `get_symbol` filter by them (`languages`). A method added to a type outside
+  it, in a Rust `impl`, a Swift or Dart `extension`, an Objective-C `@implementation`, a Kotlin
+  extension function or a C++ `Dock::moor`, is named after the type.
 
 ### Changed
 
 - The server launcher, and the desktop app that carries it, install and start the image of
   0.2.0-rc.1, so a managed server has the catalog, domains and the project map. A managed server
   of 0.1.0 moves to it at its next start, and its database is migrated on the way.
+- The chunker is version 3, which changes the index fingerprint: after the upgrade, search refuses
+  a workspace until `memini reindex --workspace NAME` has rebuilt it. Vectors are reused, so only
+  the files of the new languages are embedded again.
 
 ### Fixed
 

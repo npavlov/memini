@@ -29,7 +29,7 @@ The code retrieval eval (`eval/code/suite.toml`, 101 questions) against its base
 
 ## Notes
 
-Definitions are recognised for five languages; see S10.
+Definitions are recognised for twenty languages; see S10.
 
 ## See also
 
