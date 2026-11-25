@@ -77,6 +77,7 @@ pain.
 | [S12](S12-see-and-edit-the-project-map.md) | See the project map and correct it | Team lead | ready | memini-qpk.5 |
 | [S15](S15-see-what-memini-holds.md) | See what Memini holds and try its tools | Operator, team lead | ready | memini-qpk.9 |
 | [S16](S16-connect-agents-in-one-click.md) | Connect my agent clients in one click | Operator, engineer | ready | memini-qpk.11 |
+| [S17](S17-add-a-repository.md) | Add a repository without a terminal | Operator, engineer | ready | memini-qpk.18 |
 
 ## Tools and filters the scenarios need
 

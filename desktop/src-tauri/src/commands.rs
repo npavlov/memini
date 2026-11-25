@@ -16,6 +16,7 @@
 
 pub mod agent_clients;
 pub mod checking;
+pub mod repositories;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};

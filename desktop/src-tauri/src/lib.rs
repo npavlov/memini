@@ -22,6 +22,7 @@ mod error;
 mod jsonc;
 mod keychain;
 mod launcher;
+mod local_git;
 mod secret;
 mod store;
 #[cfg(test)]
@@ -73,6 +74,13 @@ pub fn run() {
             commands::launcher_change,
             commands::launcher_setup_token,
             commands::launcher_uninstall,
+            commands::repositories::launcher_repos,
+            commands::repositories::launcher_git,
+            commands::repositories::api_workspace_create,
+            commands::repositories::api_source_create,
+            commands::repositories::api_source_streams,
+            commands::repositories::api_source_sync,
+            commands::repositories::api_source_delete,
         ])
         .run(tauri::generate_context!())
         .expect("the Memini desktop app could not start");

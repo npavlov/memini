@@ -208,7 +208,7 @@ pub fn parse_bootstrap(output: &str) -> AppResult<BootstrapAnswer> {
 /// The one JSON object of the output, checked for a schema this app knows. The whole output is
 /// tried first, then its last line that is not empty, should the program have printed progress
 /// before its answer.
-fn parse_object<T: for<'de> Deserialize<'de>>(output: &str) -> AppResult<T> {
+pub(crate) fn parse_object<T: for<'de> Deserialize<'de>>(output: &str) -> AppResult<T> {
     let text = output.trim();
     let value = serde_json::from_str::<Value>(text)
         .ok()
@@ -413,10 +413,39 @@ pub fn missing() -> AppError {
 /// judged here: with `--json` a failure is an answer too (`"ok": false`); without any output it
 /// is an error.
 pub async fn run(program: &Path, action: Action, search: &SearchPath) -> AppResult<String> {
+    let invocation = Invocation {
+        arguments: action.arguments(),
+        words: action.words(),
+        time_limit: action.time_limit(),
+    };
+    run_invocation(program, &invocation, None, search).await
+}
+
+/// One run of the program: its whole argument vector, the words that name it in a message, and
+/// how long it may take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invocation {
+    pub arguments: Vec<String>,
+    pub words: String,
+    pub time_limit: Duration,
+}
+
+/// Runs the program as `invocation` says. `input`, a secret the program reads on its standard
+/// input, is written there and the input closed; without it the program reads nothing.
+pub async fn run_invocation(
+    program: &Path,
+    invocation: &Invocation,
+    input: Option<&[u8]>,
+    search: &SearchPath,
+) -> AppResult<String> {
     let mut command = tokio::process::Command::new(program);
     command
-        .args(action.arguments())
-        .stdin(Stdio::null())
+        .args(&invocation.arguments)
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         // The launcher's JSON commands need no token; none is handed to it.
@@ -432,23 +461,34 @@ pub async fn run(program: &Path, action: Action, search: &SearchPath) -> AppResu
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    let words = action.words();
-    let child = command.spawn().map_err(|error| {
+    let words = &invocation.words;
+    let mut child = command.spawn().map_err(|error| {
         AppError::new(
             ErrorKind::LauncherFailed,
             // The kind only: the text of the error can hold paths.
             format!("{words} could not be started ({:?}).", error.kind()),
         )
     })?;
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(input).await.map_err(|error| {
+            AppError::new(
+                ErrorKind::LauncherFailed,
+                format!("{words} could not be given its input ({:?}).", error.kind()),
+            )
+        })?;
+        // Dropped: the input is closed, and the program reads to its end.
+    }
+    let limit = invocation.time_limit;
     // Past the limit the future is dropped, and the program with it (kill_on_drop).
-    let output = tokio::time::timeout(action.time_limit(), child.wait_with_output())
+    let output = tokio::time::timeout(limit, child.wait_with_output())
         .await
         .map_err(|_| {
             AppError::new(
                 ErrorKind::LauncherFailed,
                 format!(
                     "{words} did not finish within {} minutes and was stopped.",
-                    action.time_limit().as_secs() / 60
+                    limit.as_secs().div_ceil(60)
                 ),
             )
         })?
@@ -460,7 +500,7 @@ pub async fn run(program: &Path, action: Action, search: &SearchPath) -> AppResu
         })?;
     let printed = String::from_utf8_lossy(&output.stdout).into_owned();
     if printed.trim().is_empty() {
-        return Err(silent_failure(&words, output.status.code(), &output.stderr));
+        return Err(silent_failure(words, output.status.code(), &output.stderr));
     }
     Ok(printed)
 }

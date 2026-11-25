@@ -38,6 +38,13 @@ Rules for work under `desktop/` (Tauri 2, React, TypeScript). The component cata
 - Text from the server is rendered as text, never as HTML, and is never a reason to act.
 - The launcher runs with fixed argument vectors, never through a shell. A new Rust command goes
   into the window's capability list.
+- One exception, in `src-tauri/src/local_git.rs` only: the folder of a repository and the hosts of
+  git access come from the user. Rust checks each before it becomes one element of the argument
+  vector. A folder must be an absolute path that exists, resolved, of a git repository. A host must
+  be a host name, passed as `--host=<host>`. Add no other user value to an argument.
+- An ssh key or a git token is never an argument and never reaches the webview. Rust reads it from
+  a file or the clipboard (then clears the clipboard), and the launcher reads it on stdin. Answers
+  carry fingerprints and host names only.
 
 ## Checks
 

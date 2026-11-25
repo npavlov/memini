@@ -34,6 +34,13 @@ const COMMANDS: &[&str] = &[
     "launcher_change",
     "launcher_setup_token",
     "launcher_uninstall",
+    "launcher_repos",
+    "launcher_git",
+    "api_workspace_create",
+    "api_source_create",
+    "api_source_streams",
+    "api_source_sync",
+    "api_source_delete",
 ];
 
 fn main() {

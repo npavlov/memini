@@ -36,6 +36,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   state directory; Docker keeps the images. The desktop app has a Remove button for it, which
   also forgets the connection to that server and its token.
   [Remove the server](docs/install.md#remove-the-server).
+- Add repositories without a terminal. The desktop app's Repositories screen adds a folder of this
+  computer, or a remote by its address, as a git source of a workspace (and creates the workspace),
+  syncs it, and shows each branch's state. The Server screen's Git access gives the server an ssh
+  key, with the fingerprints of its hosts to compare, or an https token. Underneath,
+  `memini-server repos add|remove|list` mounts folders read-only into a managed server, and
+  `memini-server git ssh-key|https-token|remove|status` sets its access, the secret on stdin.
+  [Repositories and git access](docs/install.md#repositories-and-git-access).
 - A catalog of what code belongs to. A project has services (a repository, or one directory of
   it) and domains with subdomains that name their code by path masks. An agent writes a project
   as one document with `put_project`, following `catalog_guide`; `get_catalog` and `get_domain`

@@ -20,6 +20,7 @@ import { ProjectMapScreen } from "./project-map/project-map-screen";
 import { ServerScreen } from "./server/server-screen";
 import { StatusBar } from "./status/status-bar";
 import { useConnectionHealth } from "./status/use-connection-health";
+import { RepositoriesScreen } from "./repositories/repositories-screen";
 import { TokensScreen } from "./tokens/tokens-screen";
 
 /** The screens of the navigation. The state of the connection is not one: it is the bar below. */
@@ -28,6 +29,7 @@ const SCREENS = [
   { id: "server", label: "Server" },
   { id: "mcp", label: "MCP" },
   { id: "tokens", label: "Tokens" },
+  { id: "repos", label: "Repositories" },
   { id: "data", label: "Data" },
   { id: "map", label: "Project map" },
 ] as const;
@@ -134,6 +136,7 @@ function CurrentScreen({ screen, view, info, onView, token }: CurrentScreenProps
       return <ServerScreen view={view} info={info} onView={onView} />;
     case "mcp":
     case "tokens":
+    case "repos":
     case "data":
     case "map":
       return active === null ? (
@@ -141,19 +144,20 @@ function CurrentScreen({ screen, view, info, onView, token }: CurrentScreenProps
           <Text>Add a server on the Connection screen, or choose one of the saved connections.</Text>
         </EmptyState>
       ) : (
-        <ConnectionScreen screen={screen} connection={active} token={token} />
+        <ConnectionScreen screen={screen} connection={active} info={info} token={token} />
       );
   }
 }
 
 interface ConnectionScreenProps {
-  readonly screen: "mcp" | "tokens" | "data" | "map";
+  readonly screen: "mcp" | "tokens" | "repos" | "data" | "map";
   readonly connection: Connection;
+  readonly info: AppInfo;
   readonly token: TokenGate;
 }
 
 /** A screen about one connection. It is keyed by the connection, so answers never cross over. */
-function ConnectionScreen({ screen, connection, token }: ConnectionScreenProps): ReactElement {
+function ConnectionScreen({ screen, connection, info, token }: ConnectionScreenProps): ReactElement {
   const key = `${connection.id}:${connection.url}:${String(connection.hasToken)}`;
   const { problem, onAddToken } = token;
   // The MCP screen has an address to show without a token; the others have only the server's data.
@@ -166,6 +170,8 @@ function ConnectionScreen({ screen, connection, token }: ConnectionScreenProps):
       return <McpScreen key={key} connection={connection} token={token} />;
     case "tokens":
       return <TokensScreen key={key} connection={connection} />;
+    case "repos":
+      return <RepositoriesScreen key={key} connection={connection} info={info} />;
     case "data":
       return <DataScreen key={key} connection={connection} />;
     case "map":
