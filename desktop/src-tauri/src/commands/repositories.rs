@@ -237,6 +237,23 @@ pub struct SourceChanges {
 }
 
 impl SourceChanges {
+    /// The query of a preview: each glob a pair, an empty pair for a list cleared.
+    fn preview_query(&self) -> Vec<(String, String)> {
+        let mut query = Vec::new();
+        for (name, globs) in [("include", &self.include), ("exclude", &self.exclude)] {
+            if let Some(globs) = globs {
+                if globs.is_empty() {
+                    query.push((name.to_owned(), String::new()));
+                }
+                query.extend(globs.iter().map(|glob| (name.to_owned(), glob.clone())));
+            }
+        }
+        if let Some(builtin) = self.builtin_excludes {
+            query.push(("builtin_excludes".to_owned(), builtin.to_string()));
+        }
+        query
+    }
+
     /// The body of the request: only the fields that change, an explicit null for a schedule
     /// switched off.
     fn body(&self) -> Value {
@@ -275,8 +292,9 @@ pub async fn api_source_update(
     source_body_call(&state, &id, &source, Method::PATCH, None, &changes.body()).await
 }
 
-/// `POST /v1/workspaces/{workspace}/sources/{source}/preview`: what a sync would index with the
-/// source's rules, or with the ones given, which are not saved.
+/// `GET /v1/workspaces/{workspace}/sources/{source}/preview`: what a sync would index with the
+/// source's rules, or with the ones given, which are not saved. The globs go in the query, one
+/// pair each; an empty list is one empty pair, which the server reads as a list cleared.
 #[tauri::command]
 pub async fn api_source_preview(
     state: State<'_, AppState>,
@@ -284,19 +302,25 @@ pub async fn api_source_preview(
     source: SourceRef,
     rules: SourceChanges,
 ) -> AppResult<Value> {
-    let preview = SourceChanges {
-        schedule: None,
-        ..rules
-    };
-    source_body_call(
-        &state,
-        &id,
-        &source,
-        Method::POST,
-        Some("preview"),
-        &preview.body(),
-    )
-    .await
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    let segments: Vec<String> = [
+        "v1",
+        "workspaces",
+        source.workspace.as_str(),
+        "sources",
+        source.source.as_str(),
+        "preview",
+    ]
+    .iter()
+    .map(|&segment| segment.to_owned())
+    .collect();
+    let url = target.route(&segments, &rules.preview_query())?;
+    let raw = inner
+        .http
+        .send(&target, Some(&token), Method::GET, url, None)
+        .await?;
+    Ok(interpret(&raw, &target.place())?.unwrap_or(Value::Null))
 }
 
 /// `GET /v1/runs/{run}`: one run with its report, which tells how far a sync is.
@@ -377,6 +401,22 @@ mod tests {
         let changes: SourceChanges =
             serde_json::from_str(r#"{"exclude": ["**/*_test.go"]}"#).expect("a change");
         assert_eq!(changes.body(), json!({"exclude": ["**/*_test.go"]}));
+    }
+
+    #[test]
+    fn a_preview_puts_each_glob_in_the_query_and_a_cleared_list_as_one_empty_pair() {
+        let rules: SourceChanges =
+            serde_json::from_str(r#"{"exclude": ["**/*_test.go", "**/*.json"], "include": []}"#)
+                .expect("rules");
+        assert_eq!(
+            rules.preview_query(),
+            [
+                ("include".to_owned(), String::new()),
+                ("exclude".to_owned(), "**/*_test.go".to_owned()),
+                ("exclude".to_owned(), "**/*.json".to_owned()),
+            ]
+        );
+        assert!(SourceChanges::default().preview_query().is_empty());
     }
 
     #[test]
