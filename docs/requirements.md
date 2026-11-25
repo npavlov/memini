@@ -865,6 +865,28 @@ before them. Line numbers and content are not in the key, so editing one functio
 content hash of its chunk and nothing else. The chunker version and the grammar versions are part
 of the index fingerprint.
 
+**Languages** (decided 2026-11-25, chunker 3). Twenty languages are parsed with tree-sitter, chosen
+by file extension: Python, JavaScript, TypeScript, Ruby, Go, Java, C#, C, C++ (a `.h` header too,
+which the C++ grammar also parses as C), PHP, Kotlin, Swift, Rust, Scala, Dart, Lua, shell (Bash),
+SQL, Objective-C and Elixir. Each language is a function over the node types its grammar uses for
+definitions, named after the `tags.scm` queries the grammars ship, under the rules of the first
+five: types, functions and modules are definitions at every level and a function in a class is a
+method; variables and constants count at file level only; class fields and properties are not
+symbols. A body that adds members to a type defined elsewhere (a Rust `impl`, a Swift or Dart
+`extension`, an Objective-C `@implementation`, a Kotlin extension function) defines no symbol of
+its own, and its members are named after that type (`Mill.grind`), as a Go method is after its
+receiver; so is a C++ member defined outside its class (`Dock::moor`). Header guards, other `#if`
+blocks and `extern "C" { }` are transparent: what they hold is at file level. The queries
+themselves are not run: four of the fifteen new grammar packages ship none, one ships them outside
+its package, and a query on every node of the walk would read the subtree each time. Each grammar
+is one PyPI package with wheels for macOS arm64, Linux x86_64 and aarch64, and Windows, under MIT
+(Elixir: Apache-2.0); R has no package and is not parsed, Elixir is the twentieth. The new grammars
+add about 50 MB to the image. The language of a chunk or symbol is checked for its shape only
+(migration 0021), so a further language needs no migration. Chunker 3 changes the index
+fingerprint, so after an upgrade search refuses each workspace until `memini reindex --workspace
+NAME` has rebuilt it; a vector is reused by its text hash, so the rebuild re-reads every file but
+embeds only the texts that changed: the files of the fifteen languages, until then line windows.
+
 **Document chunks** (decided 2026-11-18). A Markdown document is cut by its headings: ATX (`#` to
 `######`) and setext (a paragraph underlined with `=` or `-`), as CommonMark has them at the top
 level; no line of front matter, of a fenced code block or of an HTML comment is a heading. A
@@ -1348,6 +1370,18 @@ way, and `memini status` exits 0: the answer is in the output.
   a generated `compose.local.yaml` in its state directory, which sets
   `MEMINI_GIT_LOCAL_ROOTS=/srv/local`. `memini-server git` keeps one ssh key with the scanned host
   keys and one https token as those compose secrets, each read on stdin.
+- Where the search model of a managed server runs (decided 2026-11-25, memini-qpk.28, scenario S11):
+  in the ollama service of its Compose project, or in Ollama on the host. Docker on macOS gives
+  containers no GPU, and the model in the container embedded a code chunk in about 12.5 s at four
+  cores against about 0.11 s in Ollama on the Mac. The launcher keeps the runtime with the CPU limit
+  in `indexing.json` and writes both into `compose.resources.yaml`: in host mode the service's
+  `MEMINI_EMBEDDING_URL` is `http://host.docker.internal:11434/v1` (with `extra_hosts`
+  `host-gateway` for Linux), its batches are 32, its wait for the ollama service is optional and
+  that service is in a profile no command starts. Moving the model is refused when the host's build
+  of the model has another digest than the container's, since the index holds that build's vectors
+  and the fingerprint names its digest. The desktop app chooses host mode at the first start on a
+  Mac when Ollama answers, has Ollama download the model with its progress shown, and installs
+  Ollama with Homebrew when the user says so; Linux and Windows keep the container.
 - A CLI wraps the API for setup and operations (decided 2026-11-18). Its commands are HTTP clients of
   the running service, with a service URL and a token: the service is the one place that checks scopes,
   applies the authorization filter, touches the mirrors and writes run reports, and no database

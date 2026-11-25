@@ -30,6 +30,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::api::{failure, interpret, ApiClient, Target};
 use crate::error::{clean, AppError, AppResult, ErrorKind};
+use crate::host_model;
 use crate::keychain::SecretStore;
 use crate::launcher::{self, Action, LauncherResult, LauncherStatus, SearchPath};
 use crate::secret::Token;
@@ -53,6 +54,9 @@ pub struct Inner {
     http: ApiClient,
     launcher_busy: AtomicBool,
     clients_busy: AtomicBool,
+    /// A download of the search model or an installation of Ollama on this computer runs.
+    host_busy: AtomicBool,
+    host_progress: host_model::Progress,
 }
 
 impl AppState {
@@ -63,6 +67,8 @@ impl AppState {
             http: ApiClient::new()?,
             launcher_busy: AtomicBool::new(false),
             clients_busy: AtomicBool::new(false),
+            host_busy: AtomicBool::new(false),
+            host_progress: host_model::Progress::default(),
         })))
     }
 
@@ -907,24 +913,32 @@ fn same_server(first: &str, second: &str) -> bool {
 
 /// The start the launcher is asked for. A server that is not installed yet starts on the first
 /// free port from 6364, so another server on this computer does not stop the first setup; an
-/// installed one starts on the port it has.
-async fn start_action(program: &std::path::Path, search: &SearchPath) -> AppResult<Action> {
+/// installed one starts on the port it has. On macOS a new server runs the search model in
+/// Ollama on the Mac when it answers: Docker there has no GPU (memini-qpk.28). Rust asks Ollama
+/// itself; the window's word is not taken for it.
+async fn start_action(
+    program: &std::path::Path,
+    search: &SearchPath,
+    progress: &host_model::Progress,
+) -> AppResult<Action> {
     let status = launcher::parse_status(&launcher::run(program, Action::Status, search).await?)?;
     if status.installed {
         return Ok(Action::Start);
     }
+    let host_model = host_model::probe(progress).await?.found;
     let port = blocking(|| Ok(launcher::first_free_port(launcher::port_is_free))).await?;
-    port.map(Action::FirstStart).ok_or_else(|| {
-        AppError::new(
-            ErrorKind::LauncherFailed,
-            format!(
-                "Ports {} to {} of this computer are all taken, so the server has no port to \
+    port.map(|port| Action::FirstStart { port, host_model })
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorKind::LauncherFailed,
+                format!(
+                    "Ports {} to {} of this computer are all taken, so the server has no port to \
                  start on. Stop what listens on one of them and set up again.",
-                launcher::DEFAULT_PORT,
-                launcher::DEFAULT_PORT + launcher::PORTS_TRIED - 1
-            ),
-        )
-    })
+                    launcher::DEFAULT_PORT,
+                    launcher::DEFAULT_PORT + launcher::PORTS_TRIED - 1
+                ),
+            )
+        })
 }
 
 /// `memini-server start|stop|mcp on|mcp off --json`, one at a time. A change of several actions
@@ -944,7 +958,7 @@ pub async fn launcher_change(
     };
     for &action in change.actions() {
         let action = if action == Action::Start {
-            start_action(&program, &search).await?
+            start_action(&program, &search, &inner.host_progress).await?
         } else {
             action
         };
@@ -1023,6 +1037,51 @@ pub async fn launcher_indexing_set(
     let shared = Arc::clone(&inner);
     let (program, search) = blocking(move || shared.launcher()).await?;
     launcher::parse_indexing(&launcher::run(&program, Action::IndexingSet(mode), &search).await?)
+}
+
+/// `memini-server embedding host|container --json`: moves the search model to Ollama on this
+/// computer or back into its container, and recreates a running service. The webview names one of
+/// the two; the argument vector comes from [`Action`].
+#[tauri::command]
+pub async fn launcher_embedding_set(
+    state: State<'_, AppState>,
+    runtime: launcher::Runtime,
+) -> AppResult<launcher::IndexingAnswer> {
+    let inner = state.shared();
+    let _busy = BusyGuard::begin(&inner.launcher_busy)?;
+    let shared = Arc::clone(&inner);
+    let (program, search) = blocking(move || shared.launcher()).await?;
+    launcher::parse_indexing(
+        &launcher::run(&program, Action::EmbeddingSet(runtime), &search).await?,
+    )
+}
+
+/// Ollama on this computer: whether it answers and has the search model, whether Homebrew can
+/// install it, and how far a download or an installation is. The window polls it while one runs.
+#[tauri::command]
+pub async fn host_model_status(state: State<'_, AppState>) -> AppResult<host_model::HostModel> {
+    let inner = state.shared();
+    host_model::probe(&inner.host_progress).await
+}
+
+/// Has Ollama on this computer download the search model. Answers at the end; the progress is in
+/// [`host_model_status`] meanwhile.
+#[tauri::command]
+pub async fn host_model_pull(state: State<'_, AppState>) -> AppResult<host_model::PullProgress> {
+    let inner = state.shared();
+    let _busy = BusyGuard::begin(&inner.host_busy)?;
+    host_model::pull(&inner.host_progress).await
+}
+
+/// Installs Ollama with Homebrew (`brew install ollama`, `brew services start ollama`) after the
+/// user said so in the window. Answers with the end of what Homebrew printed.
+#[tauri::command]
+pub async fn host_ollama_install(
+    state: State<'_, AppState>,
+) -> AppResult<host_model::InstallOutcome> {
+    let inner = state.shared();
+    let _busy = BusyGuard::begin(&inner.host_busy)?;
+    host_model::install(&inner.host_progress).await
 }
 
 /// What the removal of the server did. The local connection to it is gone when it worked.

@@ -1,0 +1,195 @@
+{
+  "chunker_version": 3,
+  "language": "csharp",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "bd710c092012c13123c4ec69f164ce4b19fe17d179e9868a185a61a64b2b9c25",
+      "kind": "code",
+      "symbol": null,
+      "lines": [1, 3],
+      "bytes": [0, 103],
+      "content_hash": "5977ca139388832694292da6619881f191ccd8b42bdadc214c9028fcb46be0c4",
+      "text": [
+        "Bakery.cs",
+        "// Bakery is a synthetic fixture for the chunker tests.",
+        "using System;",
+        "using System.Collections.Generic;"
+      ]
+    },
+    {
+      "key": "Town.Bakery.IOven#0",
+      "id": "8b11e7a67078ae989e419d1da14488521c8f5dbcfb5b0be87a33e22e2670ec30",
+      "kind": "group",
+      "symbol": "Town.Bakery",
+      "lines": [5, 25],
+      "bytes": [105, 457],
+      "content_hash": "efad16838f2a2d90ff79add79f3eaf2900c58aa94cea243db258de99dfb15f92",
+      "text": [
+        "Bakery.cs: Town.Bakery, Town.Bakery.IOven, Town.Bakery.Crust, Town.Bakery.Loaf, Town.Bakery.Order",
+        "namespace Town.Bakery",
+        "{",
+        "    /// <summary>Anything that bakes.</summary>",
+        "    public interface IOven",
+        "    {",
+        "        int Heat(int minutes);",
+        "    }",
+        "",
+        "    public enum Crust",
+        "    {",
+        "        Soft,",
+        "        Crisp,",
+        "    }",
+        "",
+        "    public struct Loaf",
+        "    {",
+        "        public string Name;",
+        "        public Crust Crust;",
+        "    }",
+        "",
+        "    public record Order(string Customer, int Loaves);"
+      ]
+    },
+    {
+      "key": "Town.Bakery.Bakery#0",
+      "id": "6da860b99d0fdbb76055af9e943f3f4e75335632e80c874e91157d563aba3b60",
+      "kind": "class",
+      "symbol": "Town.Bakery.Bakery",
+      "lines": [27, 51],
+      "bytes": [459, 985],
+      "content_hash": "eaf11e264bf5d233b51efdc473412223a9c140aab0523bde82e3553119239a35",
+      "text": [
+        "Bakery.cs: Town.Bakery.Bakery",
+        "    public class Bakery : IOven",
+        "    {",
+        "        public const int OpensAt = 6;",
+        "",
+        "        private readonly List<Loaf> shelf = new();",
+        "",
+        "        public string Owner { get; set; } = \"Ada Placeholder\";",
+        "",
+        "        public Bakery(string owner)",
+        "        {",
+        "            Owner = owner;",
+        "        }",
+        "",
+        "        /// <summary>Degrees after the given minutes.</summary>",
+        "        public int Heat(int minutes)",
+        "        {",
+        "            return 180 + minutes;",
+        "        }",
+        "",
+        "        public void Stock(Loaf loaf)",
+        "        {",
+        "            shelf.Add(loaf);",
+        "        }",
+        "    }",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "Town.Bakery",
+      "name": "Bakery",
+      "kind": "module",
+      "parent": "Town",
+      "ordinal": 0,
+      "lines": [5, 51],
+      "bytes": [105, 985],
+      "chunk": "Town.Bakery.IOven#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.IOven",
+      "name": "IOven",
+      "kind": "interface",
+      "parent": "Town.Bakery",
+      "ordinal": 0,
+      "lines": [8, 11],
+      "bytes": [181, 246],
+      "chunk": "Town.Bakery.IOven#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.IOven.Heat",
+      "name": "Heat",
+      "kind": "method",
+      "parent": "Town.Bakery.IOven",
+      "ordinal": 0,
+      "lines": [10, 10],
+      "bytes": [218, 240],
+      "chunk": "Town.Bakery.IOven#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.Crust",
+      "name": "Crust",
+      "kind": "enum",
+      "parent": "Town.Bakery",
+      "ordinal": 0,
+      "lines": [13, 17],
+      "bytes": [252, 310],
+      "chunk": "Town.Bakery.IOven#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.Loaf",
+      "name": "Loaf",
+      "kind": "struct",
+      "parent": "Town.Bakery",
+      "ordinal": 0,
+      "lines": [19, 23],
+      "bytes": [316, 402],
+      "chunk": "Town.Bakery.IOven#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.Order",
+      "name": "Order",
+      "kind": "class",
+      "parent": "Town.Bakery",
+      "ordinal": 0,
+      "lines": [25, 25],
+      "bytes": [408, 457],
+      "chunk": "Town.Bakery.IOven#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.Bakery",
+      "name": "Bakery",
+      "kind": "class",
+      "parent": "Town.Bakery",
+      "ordinal": 0,
+      "lines": [27, 50],
+      "bytes": [463, 983],
+      "chunk": "Town.Bakery.Bakery#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.Bakery.Bakery",
+      "name": "Bakery",
+      "kind": "method",
+      "parent": "Town.Bakery.Bakery",
+      "ordinal": 0,
+      "lines": [35, 38],
+      "bytes": [660, 734],
+      "chunk": "Town.Bakery.Bakery#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.Bakery.Heat",
+      "name": "Heat",
+      "kind": "method",
+      "parent": "Town.Bakery.Bakery",
+      "ordinal": 0,
+      "lines": [41, 44],
+      "bytes": [808, 890],
+      "chunk": "Town.Bakery.Bakery#0"
+    },
+    {
+      "qualified_name": "Town.Bakery.Bakery.Stock",
+      "name": "Stock",
+      "kind": "method",
+      "parent": "Town.Bakery.Bakery",
+      "ordinal": 0,
+      "lines": [46, 49],
+      "bytes": [900, 977],
+      "chunk": "Town.Bakery.Bakery#0"
+    }
+  ]
+}

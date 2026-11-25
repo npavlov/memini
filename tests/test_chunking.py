@@ -43,6 +43,21 @@ FIXTURE_NAMES = [
     "tea_shop.rb",
     "weather.go",
     "kiln.toml",
+    "Orchard.java",
+    "Bakery.cs",
+    "lantern.c",
+    "harbor.cpp",
+    "Library.php",
+    "Kite.kt",
+    "Observatory.swift",
+    "mill.rs",
+    "Ferry.scala",
+    "garden.dart",
+    "inventory.lua",
+    "deploy.sh",
+    "schema.sql",
+    "Robot.m",
+    "kitchen.ex",
 ]
 RID = record_id(SOURCE, "code_file", "refs/heads/main:src/sample.py")
 
@@ -277,6 +292,244 @@ def test_a_go_method_is_qualified_by_its_receiver() -> None:
         "Reading.Warm": "Reading",
         "Series.Push": "Series",
     }
+
+
+# The fifteen languages of chunker 3: the symbols each fixture defines, in order.
+SYMBOLS: dict[str, list[tuple[str, str]]] = {
+    "Orchard.java": [
+        ("Harvest", "interface"),
+        ("Harvest.yieldKilograms", "method"),
+        ("Season", "enum"),
+        ("Season.picking", "method"),
+        ("Crate", "class"),
+        ("Orchard", "class"),
+        ("Orchard.Orchard", "method"),
+        ("Orchard.yieldKilograms", "method"),
+        ("Orchard.Tree", "class"),
+        ("Orchard.Tree.Tree", "method"),
+        ("Orchard.Tree.prune", "method"),
+    ],
+    "Bakery.cs": [
+        ("Town.Bakery", "module"),
+        ("Town.Bakery.IOven", "interface"),
+        ("Town.Bakery.IOven.Heat", "method"),
+        ("Town.Bakery.Crust", "enum"),
+        ("Town.Bakery.Loaf", "struct"),
+        ("Town.Bakery.Order", "class"),
+        ("Town.Bakery.Bakery", "class"),
+        ("Town.Bakery.Bakery.Bakery", "method"),
+        ("Town.Bakery.Bakery.Heat", "method"),
+        ("Town.Bakery.Bakery.Stock", "method"),
+    ],
+    "lantern.c": [
+        ("MAX_WICKS", "constant"),
+        ("BRIGHTNESS", "function"),
+        ("Glow", "type"),
+        ("Lantern", "struct"),
+        ("Lantern", "type"),
+        ("clamp", "function"),
+        ("lantern_light", "function"),
+        ("main", "function"),
+    ],
+    "harbor.cpp": [
+        ("port", "module"),
+        ("port.kBerths", "constant"),
+        ("port.Tide", "enum"),
+        ("port.Buoy", "struct"),
+        ("port.Dock", "class"),
+        ("port.Dock.Dock", "method"),
+        ("port.Dock.moor", "method"),
+        ("port.Dock.free", "method"),
+        ("port.Dock.Dock", "method"),
+        ("port.Dock.moor", "method"),
+        ("port.deepest", "function"),
+    ],
+    "Library.php": [
+        ("LOAN_DAYS", "constant"),
+        ("Lendable", "interface"),
+        ("Lendable.dueIn", "method"),
+        ("Stamps", "class"),
+        ("Stamps.stamp", "method"),
+        ("Shelf", "enum"),
+        ("Library", "class"),
+        ("Library.__construct", "method"),
+        ("Library.dueIn", "method"),
+        ("Library.lend", "method"),
+        ("overdue", "function"),
+    ],
+    "Kite.kt": [
+        ("MAX_STRING_METRES", "constant"),
+        ("Flyer", "interface"),
+        ("Flyer.lift", "method"),
+        ("Gust", "enum"),
+        ("Kite", "class"),
+        ("Kite.lift", "method"),
+        ("Kite.shorten", "method"),
+        ("Kite.plain", "method"),
+        ("Wind", "class"),
+        ("Wind.gust", "method"),
+        ("Kite.launch", "method"),
+        ("sky", "function"),
+    ],
+    "Observatory.swift": [
+        ("lightYearKilometres", "constant"),
+        ("Lens", "interface"),
+        ("Lens.magnify", "method"),
+        ("Phase", "enum"),
+        ("Star", "struct"),
+        ("Telescope", "class"),
+        ("Telescope.init", "method"),
+        ("Telescope.brightest", "method"),
+        ("Telescope.magnify", "method"),
+        ("Telescope.catalogue", "method"),
+        ("observe", "function"),
+    ],
+    "mill.rs": [
+        ("STONES", "constant"),
+        ("Grain", "enum"),
+        ("Grind", "interface"),
+        ("Grind.grind", "method"),
+        ("Mill", "struct"),
+        ("Mill.new", "method"),
+        ("Mill.stock", "method"),
+        ("Mill.grind", "method"),
+        ("Ledger", "type"),
+        ("sacks", "module"),
+        ("sacks.weight", "function"),
+        ("main", "function"),
+    ],
+    "Ferry.scala": [
+        ("MaxPassengers", "constant"),
+        ("Vessel", "interface"),
+        ("Vessel.capacity", "method"),
+        ("Weather", "enum"),
+        ("Ferry", "class"),
+        ("Ferry.capacity", "method"),
+        ("Ferry.board", "method"),
+        ("Ferry", "class"),
+        ("Ferry.small", "method"),
+        ("Pier", "class"),
+        ("Pier.dock", "method"),
+        ("crossing", "function"),
+    ],
+    "garden.dart": [
+        ("maxBeds", "constant"),
+        ("Thirsty", "class"),
+        ("Thirsty.litres", "method"),
+        ("Soil", "enum"),
+        ("Weeding", "class"),
+        ("Weeding.weed", "method"),
+        ("Garden", "class"),
+        ("Garden.Garden", "method"),
+        ("Garden.litres", "method"),
+        ("Garden.largest", "method"),
+        ("Garden.baskets", "method"),
+        ("rainfall", "function"),
+    ],
+    "inventory.lua": [
+        ("Inventory", "variable"),
+        ("MAX_ITEMS", "constant"),
+        ("clamp", "function"),
+        ("Inventory.new", "function"),
+        ("Inventory.add", "method"),
+        ("Inventory.count", "method"),
+    ],
+    "deploy.sh": [
+        ("TARGET_DIR", "constant"),
+        ("RETRIES", "constant"),
+        ("log", "function"),
+        ("copy_build", "function"),
+        ("main", "function"),
+    ],
+    "schema.sql": [
+        ("greenhouse", "type"),
+        ("reading", "type"),
+        ("warmest", "type"),
+        ("fahrenheit", "function"),
+    ],
+    "Robot.m": [
+        ("kMaxSteps", "constant"),
+        ("Walker", "interface"),
+        ("Walker.walk", "method"),
+        ("Robot", "class"),
+        ("Robot.initWithName", "method"),
+        ("Robot.robotNamed", "method"),
+        ("Robot.initWithName", "method"),
+        ("Robot.robotNamed", "method"),
+        ("Robot.walk", "method"),
+        ("RobotCount", "function"),
+    ],
+    "kitchen.ex": [
+        ("Kitchen.Stove", "module"),
+        ("Kitchen.Stove.light", "function"),
+        ("Kitchen.Stove.light", "function"),
+        ("Kitchen.Stove.warm", "function"),
+        ("Kitchen.Stove.simmer", "function"),
+        ("Kitchen.Pan", "module"),
+        ("Kitchen.Pan.size", "function"),
+        ("Kitchen.Pan.size", "function"),
+    ],
+}
+
+
+@pytest.mark.parametrize("name", sorted(SYMBOLS))
+def test_each_language_finds_its_definitions(name: str) -> None:
+    result = chunk_fixture(name)
+
+    assert result.fallback is None
+    assert not result.syntax_errors
+    assert [(s.qualified_name, s.kind) for s in result.symbols] == SYMBOLS[name]
+
+
+@pytest.mark.parametrize(
+    ("name", "qualified_name", "parent"),
+    [
+        ("mill.rs", "Mill.grind", "Mill"),  # impl Grind for Mill
+        ("Observatory.swift", "Telescope.catalogue", "Telescope"),  # extension Telescope
+        ("garden.dart", "Garden.baskets", "Garden"),  # extension Harvest on Garden
+        ("Robot.m", "Robot.walk", "Robot"),  # @implementation Robot
+        ("Kite.kt", "Kite.launch", "Kite"),  # fun Kite.launch()
+        ("Kite.kt", "Kite.plain", "Kite"),  # companion object
+        ("harbor.cpp", "port.Dock.moor", "port.Dock"),  # bool Dock::moor() in namespace port
+    ],
+)
+def test_members_added_outside_their_type_are_named_after_it(
+    name: str, qualified_name: str, parent: str
+) -> None:
+    result = chunk_fixture(name)
+
+    parents = {s.parent for s in result.symbols if s.qualified_name == qualified_name}
+    assert parents == {parent}
+
+
+def test_a_dart_definition_spans_its_body() -> None:
+    result = chunk_fixture("garden.dart")
+    spans = {s.qualified_name: (s.start_line, s.end_line) for s in result.symbols}
+
+    # The annotation above, and the body the grammar puts beside the signature.
+    assert spans["Garden.litres"] == (27, 30)
+    assert spans["rainfall"] == (39, 45)
+
+
+def test_c_header_guards_and_extern_blocks_hold_top_level_declarations() -> None:
+    source = (
+        b"#ifndef LANTERN_H\n"
+        b"#define LANTERN_H\n"
+        b'extern "C" {\n'
+        b"int lantern_light(int wicks);\n"
+        b"struct Wick { int length; };\n"
+        b"}\n"
+        b"#endif\n"
+    )
+
+    result = chunk_file(RID, "lantern.h", source)
+
+    assert result.language == "cpp"
+    assert [(s.qualified_name, s.kind, s.parent) for s in result.symbols] == [
+        ("LANTERN_H", "constant", None),
+        ("lantern_light", "function", None),
+        ("Wick", "struct", None),
+    ]
 
 
 def test_comments_and_decorators_belong_to_the_definition_below() -> None:
@@ -550,7 +803,28 @@ def test_syntax_errors_still_give_chunks() -> None:
         ("a.rb", "ruby"),
         ("a.go", "go"),
         ("A.PY", "python"),
-        ("a.rs", None),
+        ("Orchard.java", "java"),
+        ("Bakery.cs", "csharp"),
+        ("lantern.c", "c"),
+        ("lantern.h", "cpp"),
+        ("harbor.cc", "cpp"),
+        ("harbor.hpp", "cpp"),
+        ("Library.php", "php"),
+        ("Kite.kt", "kotlin"),
+        ("build.gradle.kts", "kotlin"),
+        ("Observatory.swift", "swift"),
+        ("mill.rs", "rust"),
+        ("Ferry.scala", "scala"),
+        ("garden.dart", "dart"),
+        ("inventory.lua", "lua"),
+        ("deploy.sh", "shell"),
+        ("init.bash", "shell"),
+        ("schema.sql", "sql"),
+        ("Robot.m", "objc"),
+        ("Robot.mm", "objc"),
+        ("kitchen.ex", "elixir"),
+        ("kitchen_test.exs", "elixir"),
+        ("a.zig", None),
         ("Makefile", None),
         ("dir.py/readme", None),
     ],
@@ -563,7 +837,7 @@ def test_bad_input_is_refused() -> None:
     with pytest.raises(ValueError, match="64 lowercase hex"):
         chunk_file("ABC", "a.py", b"x = 1\n")
     with pytest.raises(ValueError, match="unknown language"):
-        chunk_file(RID, "a.rs", b"fn main() {}\n", language="rust")  # pyright: ignore[reportArgumentType]
+        chunk_file(RID, "a.zig", b"fn main() void {}\n", language="zig")  # pyright: ignore[reportArgumentType]
     with pytest.raises(ValueError, match="not valid Unicode"):
         chunk_file(RID, "caf\udce9.py", b"x = 1\n")
     with pytest.raises(ValueError, match="NUL character"):

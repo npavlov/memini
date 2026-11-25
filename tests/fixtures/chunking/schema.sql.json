@@ -1,0 +1,86 @@
+{
+  "chunker_version": 3,
+  "language": "sql",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "greenhouse#0",
+      "id": "bb5d3976985621a5e7daeddd82dbcf41d7ceb4302def3f49afaab7572ef8fdc9",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 24],
+      "bytes": [0, 614],
+      "content_hash": "4dc06e09d999b16cd0691895a9ee367abd6f1c646ed952a0bbd4cab1ebf3065e",
+      "text": [
+        "schema.sql: greenhouse, reading, warmest, fahrenheit",
+        "-- schema.sql is a synthetic fixture for the chunker tests.",
+        "CREATE TABLE greenhouse (",
+        "    id integer PRIMARY KEY,",
+        "    name text NOT NULL,",
+        "    opened date",
+        ");",
+        "",
+        "CREATE TABLE reading (",
+        "    greenhouse_id integer REFERENCES greenhouse (id),",
+        "    taken_at timestamptz NOT NULL,",
+        "    celsius numeric(4, 1)",
+        ");",
+        "",
+        "CREATE INDEX reading_taken_at ON reading (taken_at);",
+        "",
+        "-- The warmest reading of each greenhouse.",
+        "CREATE VIEW warmest AS",
+        "SELECT greenhouse_id, max(celsius) AS celsius",
+        "FROM reading",
+        "GROUP BY greenhouse_id;",
+        "",
+        "CREATE FUNCTION fahrenheit(celsius numeric) RETURNS numeric",
+        "LANGUAGE sql",
+        "AS $$ SELECT celsius * 9 / 5 + 32 $$;"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "greenhouse",
+      "name": "greenhouse",
+      "kind": "type",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [2, 6],
+      "bytes": [60, 155],
+      "chunk": "greenhouse#0"
+    },
+    {
+      "qualified_name": "reading",
+      "name": "reading",
+      "kind": "type",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [8, 12],
+      "bytes": [158, 297],
+      "chunk": "greenhouse#0"
+    },
+    {
+      "qualified_name": "warmest",
+      "name": "warmest",
+      "kind": "type",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [17, 20],
+      "bytes": [397, 501],
+      "chunk": "greenhouse#0"
+    },
+    {
+      "qualified_name": "fahrenheit",
+      "name": "fahrenheit",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [22, 24],
+      "bytes": [504, 613],
+      "chunk": "greenhouse#0"
+    }
+  ]
+}

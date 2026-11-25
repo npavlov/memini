@@ -18,8 +18,7 @@ except a JavaScript or TypeScript class field whose value is a function, which i
 import functools
 import posixpath
 from collections.abc import Callable
-from dataclasses import dataclass, replace
-from typing import Final, Literal
+from typing import Final
 
 import tree_sitter
 import tree_sitter_go
@@ -29,7 +28,13 @@ import tree_sitter_ruby
 import tree_sitter_typescript
 from tree_sitter import Node
 
+from memini.chunking import more_languages
 from memini.chunking.model import LANGUAGES, Language, SymbolKind
+from memini.chunking.syntax import Found, Level, Spec
+from memini.chunking.syntax import found as _found
+from memini.chunking.syntax import name_of as _name
+from memini.chunking.syntax import rewrap as _rewrap
+from memini.chunking.syntax import text_of as _text
 
 __all__ = [
     "EXTENSIONS",
@@ -41,8 +46,6 @@ __all__ = [
     "grammar",
     "spec",
 ]
-
-Level = Literal["top", "class", "local"]
 
 EXTENSIONS: Final[dict[str, Language]] = {
     ".py": "python",
@@ -57,6 +60,7 @@ EXTENSIONS: Final[dict[str, Language]] = {
     ".cts": "typescript",
     ".rb": "ruby",
     ".go": "go",
+    **more_languages.EXTENSIONS,
 }
 """File extensions, lowercase, and the language of each."""
 
@@ -67,6 +71,7 @@ GRAMMAR_PACKAGES: Final = (
     "tree-sitter-python",
     "tree-sitter-ruby",
     "tree-sitter-typescript",
+    *more_languages.GRAMMAR_PACKAGES,
 )
 """Distributions whose versions can change the chunker's output."""
 
@@ -83,6 +88,7 @@ _GRAMMARS: Final[dict[str, Callable[[], object]]] = {
     "tsx": tree_sitter_typescript.language_tsx,
     "ruby": tree_sitter_ruby.language,
     "go": tree_sitter_go.language,
+    **more_languages.GRAMMARS,
 }
 
 
@@ -96,72 +102,6 @@ def grammar(language: Language, path: str) -> tree_sitter.Language:
     if language == "typescript" and path.lower().endswith(".tsx"):
         return _grammar("tsx")
     return _grammar(language)
-
-
-@dataclass(frozen=True, slots=True)
-class Found:
-    """A definition introduced by a node."""
-
-    name_path: tuple[str, ...]
-    """The name, after any qualifier written in the definition itself: ``("Area",)``, or
-    ``("Point", "Area")`` for a Go method, ``("A", "B")`` for Ruby ``class A::B``."""
-    kind: SymbolKind
-    span: Node
-    """The node whose range is the definition, with its decorators and ``export`` keyword."""
-    body: Node | None = None
-    """The node whose named children are searched for nested definitions."""
-    body_level: Level = "local"
-    container: bool = False
-    """The members of ``body`` become chunks of their own when the definition is too large."""
-
-
-def _found(
-    name: str,
-    kind: SymbolKind,
-    span: Node,
-    body: Node | None = None,
-    *,
-    container: Level | None = None,
-) -> list[Found]:
-    """One definition named ``name``, or none if the name is empty (a syntax error).
-
-    ``container`` is the level of the members of ``body`` when they can be chunks of their own.
-    """
-    if not name:
-        return []
-    if container is None:
-        return [Found((name,), kind, span, body)]
-    return [Found((name,), kind, span, body, body_level=container, container=True)]
-
-
-@dataclass(frozen=True, slots=True)
-class Spec:
-    """How the chunker reads one language."""
-
-    language: Language
-    classify: Callable[[Node, Level], list[Found]]
-    comments: frozenset[str] = frozenset({"comment"})
-    """Node types of comments. A comment block right above a member belongs to it."""
-    decorators: frozenset[str] = frozenset()
-    """Node types that stand before a class member as siblings and belong to it."""
-    anonymous_container: Callable[[Node], Node | None] = lambda _node: None
-    """The body of a node that holds members without defining a symbol (Ruby ``class << self``).
-    Its members belong to the enclosing scope."""
-
-
-def _text(node: Node | None) -> str:
-    if node is None or node.text is None:
-        return ""
-    return node.text.decode("utf-8", "replace")
-
-
-def _name(node: Node) -> str:
-    return _text(node.child_by_field_name("name"))
-
-
-def _rewrap(found: list[Found], inner: Node, outer: Node) -> list[Found]:
-    """Definitions of ``inner`` with ``outer`` (an export or a declare wrapper) as their span."""
-    return [replace(f, span=outer) if f.span == inner else f for f in found]
 
 
 # Python ------------------------------------------------------------------------------------------
@@ -405,6 +345,7 @@ _SPECS: Final[dict[Language, Spec]] = {
     "typescript": Spec("typescript", _js, decorators=frozenset({"decorator"})),
     "ruby": Spec("ruby", _ruby, anonymous_container=_ruby_anonymous_container),
     "go": Spec("go", _go),
+    **more_languages.SPECS,
 }
 assert sorted(_SPECS) == sorted(LANGUAGES)  # noqa: S101 -- one spec per language
 

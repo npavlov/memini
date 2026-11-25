@@ -18,8 +18,8 @@ import {
   tokenExists,
 } from "./setup";
 import type { SetupProgress } from "./setup";
-import { runSetup } from "./setup-run";
-import type { Stopped } from "./setup-run";
+import { NOT_STOPPED, runSetup } from "./setup-run";
+import type { OllamaChoice, Stopped } from "./setup-run";
 
 function status(changes: Partial<LauncherStatus>): LauncherStatus {
   return {
@@ -75,14 +75,40 @@ interface Run {
   readonly returned: boolean;
 }
 
-async function run(answers: Readonly<Record<string, FakeAnswer>>, force = false): Promise<Run> {
-  const backend = createFakeBackend({ answers });
+/** Ollama on this computer as Rust answers: not a Mac unless the changes say so. */
+function host(changes: Record<string, unknown>): unknown {
+  return {
+    supported: false,
+    found: false,
+    version: null,
+    model: "qwen3-embedding:0.6b",
+    has_model: false,
+    brew: false,
+    pull: null,
+    installing: false,
+    install: null,
+    ...changes,
+  };
+}
+
+const NOT_A_MAC = (): unknown => host({});
+
+async function run(
+  answers: Readonly<Record<string, FakeAnswer>>,
+  ollama: OllamaChoice = "ask",
+): Promise<Run> {
+  const backend = createFakeBackend({ answers: { host_model_status: NOT_A_MAC, ...answers } });
   const progress: SetupProgress[] = [];
   const stopped: Stopped[] = [];
   const returned = await runSetup(backend, {
-    force,
+    force: false,
+    ollama,
     onProgress: (step) => progress.push(step),
     onStopped: (found) => stopped.push(found),
+    // No real second between two looks, but a turn of the event loop, so timers still run.
+    wait: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
   });
   return { commands: backend.calls.map((call) => call.command), progress, stopped, returned: returned !== null };
 }
@@ -128,30 +154,41 @@ describe("localSetup", () => {
 
 describe("setupSteps", () => {
   it("shows every step as waiting before the start", () => {
-    expect(setupSteps(NOT_STARTED).map((step) => step.state)).toEqual(["waiting", "waiting", "waiting"]);
+    expect(setupSteps(NOT_STARTED).map((step) => step.state)).toEqual(["waiting", "waiting", "waiting", "waiting"]);
   });
 
   it("shows the steps before the current one as done and says the start is downloading", () => {
     const steps = setupSteps({ at: "server", failure: null });
 
-    expect(steps.map((step) => step.state)).toEqual(["done", "running", "waiting"]);
-    expect(steps[1]?.detail).toBe(DOWNLOADING);
+    expect(steps.map((step) => step.state)).toEqual(["done", "done", "running", "waiting"]);
+    expect(steps[2]?.detail).toBe(DOWNLOADING);
   });
 
   it("points to the services once the launcher lists any", () => {
     const steps = setupSteps({ at: "server", failure: null }, true);
 
-    expect(steps[1]?.detail).toContain("the list below shows how far each one is");
+    expect(steps[2]?.detail).toContain("the list below shows how far each one is");
+  });
+
+  it("shows what the running step reports of itself, such as a download", () => {
+    const steps = setupSteps({ at: "model", failure: null, note: "Downloading: 45%" });
+
+    expect(steps[1]).toMatchObject({ title: "Prepare the search model", state: "running", detail: "Downloading: 45%" });
   });
 
   it("shows a step that did not pass as failed, with the reason", () => {
     const steps = setupSteps({ at: "token", failure: "memini: an active admin token exists" });
 
-    expect(steps[2]).toMatchObject({ state: "failed", detail: "memini: an active admin token exists" });
+    expect(steps[3]).toMatchObject({ state: "failed", detail: "memini: an active admin token exists" });
   });
 
   it("shows every step as done when the setup is finished", () => {
-    expect(setupSteps({ at: "finished", failure: null }).map((step) => step.state)).toEqual(["done", "done", "done"]);
+    expect(setupSteps({ at: "finished", failure: null }).map((step) => step.state)).toEqual([
+      "done",
+      "done",
+      "done",
+      "done",
+    ]);
   });
 });
 
@@ -192,7 +229,12 @@ describe("runSetup", () => {
       launcher_setup_token: () => ({ ok: true, error: null, view }),
     });
 
-    expect(result.commands).toEqual(["launcher_status", "launcher_change", "launcher_setup_token"]);
+    expect(result.commands).toEqual([
+      "launcher_status",
+      "host_model_status",
+      "launcher_change",
+      "launcher_setup_token",
+    ]);
     expect(result.progress.at(-1)).toEqual({ at: "finished", failure: null });
     expect(result.returned).toBe(true);
   });
@@ -223,7 +265,7 @@ describe("runSetup", () => {
       launcher_change: () => ({ ok: false, error: "docker compose failed with exit status 1" }),
     });
 
-    expect(result.commands).toEqual(["launcher_status", "launcher_change"]);
+    expect(result.commands).toEqual(["launcher_status", "host_model_status", "launcher_change"]);
     expect(result.progress.at(-1)).toEqual({ at: "server", failure: "docker compose failed with exit status 1" });
   });
 
@@ -233,7 +275,7 @@ describe("runSetup", () => {
       launcher_setup_token: () => ({ ok: false, error: "memini: an active admin token exists", view }),
     });
 
-    expect(result.stopped).toEqual([{ docker: null, tokenExists: true }]);
+    expect(result.stopped).toEqual([{ ...NOT_STOPPED, tokenExists: true }]);
     expect(result.returned).toBe(false);
   });
 
@@ -245,9 +287,142 @@ describe("runSetup", () => {
       },
     });
 
-    await runSetup(backend, { force: true, onProgress: () => undefined, onStopped: () => undefined });
+    await runSetup(backend, {
+      force: true,
+      ollama: "ask",
+      onProgress: () => undefined,
+      onStopped: () => undefined,
+    });
 
     expect(backend.calls.at(-1)).toEqual({ command: "launcher_setup_token", args: { force: true } });
+  });
+});
+
+describe("runSetup on a Mac", () => {
+  const start = {
+    launcher_status: () => wire({}),
+    launcher_change: () => ({ ok: true, error: null }),
+    launcher_setup_token: () => ({ ok: true, error: null, view }),
+  };
+
+  it("goes on at once when Ollama on the Mac has the model", async () => {
+    const result = await run({
+      ...start,
+      host_model_status: () => host({ supported: true, found: true, has_model: true }),
+    });
+
+    expect(result.commands).toEqual([
+      "launcher_status",
+      "host_model_status",
+      "launcher_change",
+      "launcher_setup_token",
+    ]);
+    expect(result.returned).toBe(true);
+  });
+
+  it("downloads the model to Ollama on the Mac and shows how far it is", async () => {
+    let looks = 0;
+    const result = await run({
+      ...start,
+      host_model_status: () => {
+        looks += 1;
+        return host({
+          supported: true,
+          found: true,
+          has_model: false,
+          pull: { status: "pulling", completed: 319_500_000, total: 639_000_000, done: false, error: null },
+        });
+      },
+      host_model_pull: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { status: "success", completed: 639_000_000, total: 639_000_000, done: true, error: null };
+      },
+    });
+
+    expect(looks).toBeGreaterThan(1);
+    expect(result.progress.some((step) => step.note?.includes("50%, 320 of 639 MB"))).toBe(true);
+    expect(result.progress).toContainEqual(
+      expect.objectContaining({ download: { completed: 319_500_000, total: 639_000_000 } }),
+    );
+    expect(result.commands).toContain("host_model_pull");
+    expect(result.returned).toBe(true);
+  });
+
+  it("stops with Ollama's reason when the download fails", async () => {
+    const result = await run({
+      ...start,
+      host_model_status: () => host({ supported: true, found: true }),
+      host_model_pull: () => ({ status: "", completed: 0, total: 0, done: true, error: "no space left" }),
+    });
+
+    expect(result.progress.at(-1)).toEqual({ at: "model", failure: "no space left" });
+    expect(result.commands).not.toContain("launcher_change");
+  });
+
+  it("stops and asks when no Ollama answers on the Mac, saying whether Homebrew can install it", async () => {
+    const result = await run({ ...start, host_model_status: () => host({ supported: true, brew: true }) });
+
+    expect(result.stopped).toEqual([{ ...NOT_STOPPED, ollama: { brew: true, install: null } }]);
+    expect(result.progress.at(-1)?.at).toBe("model");
+    expect(result.commands).not.toContain("launcher_change");
+    expect(result.commands).not.toContain("host_ollama_install");
+  });
+
+  it("goes on with the model in Docker when the user said so", async () => {
+    const result = await run({ ...start, host_model_status: () => host({ supported: true }) }, "skip");
+
+    expect(result.commands).toContain("launcher_change");
+    expect(result.returned).toBe(true);
+  });
+
+  it("installs Ollama with Homebrew when the user said so, then downloads the model", async () => {
+    let installed = false;
+    const result = await run(
+      {
+        ...start,
+        host_model_status: () => host({ supported: true, brew: true, found: installed }),
+        host_ollama_install: () => {
+          installed = true;
+          return { ok: true, error: null, tail: ["==> Pouring ollama"] };
+        },
+        host_model_pull: () => ({ status: "success", completed: 1, total: 1, done: true, error: null }),
+      },
+      "install",
+    );
+
+    expect(result.commands.slice(0, 4)).toEqual([
+      "launcher_status",
+      "host_model_status",
+      "host_ollama_install",
+      "host_model_status",
+    ]);
+    expect(result.commands).toContain("host_model_pull");
+    expect(result.returned).toBe(true);
+  });
+
+  it("shows what Homebrew said when the installation failed", async () => {
+    const result = await run(
+      {
+        ...start,
+        host_model_status: () => host({ supported: true, brew: true }),
+        host_ollama_install: () => ({ ok: false, error: "brew install ollama failed.", tail: ["Error: no network"] }),
+      },
+      "install",
+    );
+
+    expect(result.stopped).toEqual([
+      { ...NOT_STOPPED, ollama: { brew: true, install: { ok: false, error: "brew install ollama failed.", tail: ["Error: no network"] } } },
+    ]);
+    expect(result.progress.at(-1)).toEqual({ at: "model", failure: "brew install ollama failed." });
+  });
+
+  it("leaves an installed server's model where it is", async () => {
+    const result = await run({
+      launcher_status: () => wire({ installed: true, running: true }),
+      launcher_setup_token: () => ({ ok: true, error: null, view }),
+    });
+
+    expect(result.commands).toEqual(["launcher_status", "launcher_setup_token"]);
   });
 });
 
