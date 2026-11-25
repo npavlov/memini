@@ -1,30 +1,16 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
-import {
-  Button,
-  DataTable,
-  EmptyState,
-  ErrorNotice,
-  Field,
-  Notice,
-  Panel,
-  Screen,
-  Select,
-  Text,
-} from "../components";
+import { DataTable, EmptyState, ErrorNotice, Field, Panel, Screen, Select, Text } from "../components";
 import type { Connection } from "../connections/connections";
 import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
 import { displayText } from "../text/display-text";
-import { formatInstant } from "../text/format-time";
 import { listWorkspaceNames } from "../tokens/tokens-api";
-import { readCatalog } from "./catalog";
-import type { Catalog, Project, ProjectPlace } from "./catalog";
-import { ProjectEditor } from "./project-editor";
-import { ProjectView } from "./project-view";
-import { describeSave } from "./save-report";
-import type { SaveReport } from "./save-report";
+import { readCatalog, repositoriesOf } from "./catalog";
+import type { Catalog, ProjectPlace } from "./catalog";
+import { NewProjectPanel } from "./new-project";
+import { ProjectPanel } from "./project-panel";
 
 export interface ProjectMapScreenProps {
   readonly connection: Connection;
@@ -32,8 +18,8 @@ export interface ProjectMapScreenProps {
 
 /**
  * The catalog of a workspace: its projects, their services, and their domains and subdomains
- * with the code each is responsible for. A project is edited as a whole and saved against the
- * version it was read at.
+ * with the code each is responsible for. A project is created here, and edited as a whole and
+ * saved against the version it was read at.
  */
 export function ProjectMapScreen({ connection }: ProjectMapScreenProps): ReactElement {
   const backend = useBackend();
@@ -76,10 +62,21 @@ interface WorkspaceCatalogProps {
   readonly place: ProjectPlace;
 }
 
+/** The projects of one workspace, with the form for a new one. */
 function WorkspaceCatalog({ place }: WorkspaceCatalogProps): ReactElement {
   const backend = useBackend();
   const { id, workspace } = place;
   const catalog = useLoad(useCallback(() => readCatalog(backend, { id, workspace }), [backend, id, workspace]));
+  // The project that was just created here: it is shown in its editor, because it is empty.
+  const [created, setCreated] = useState<string | null>(null);
+  const { reload } = catalog;
+  const onCreated = useCallback(
+    (name: string): void => {
+      setCreated(name);
+      reload();
+    },
+    [reload],
+  );
   if (catalog.state.phase === "loading") {
     return <Text tone="muted">Reading the catalog…</Text>;
   }
@@ -87,76 +84,30 @@ function WorkspaceCatalog({ place }: WorkspaceCatalogProps): ReactElement {
     return <ErrorNotice error={catalog.state.error} />;
   }
   const { projects, unassigned } = catalog.state.data;
+  const repositories = repositoriesOf(catalog.state.data);
   return (
     <>
+      <NewProjectPanel place={place} onCreated={onCreated} />
       {projects.length === 0 ? (
         <EmptyState title="This workspace has no project yet">
           <Text>
-            An agent writes the first project with the put_project tool, following catalog_guide.
-            After that its titles, descriptions, domains and path masks can be edited here.
+            Create one with New project, or let an agent write it with the put_project tool,
+            following catalog_guide. Its services, domains and path masks are edited here.
           </Text>
         </EmptyState>
       ) : null}
       {projects.map((project) => (
-        <ProjectPanel key={project.name} place={place} project={project} onReload={catalog.reload} />
+        <ProjectPanel
+          key={project.name}
+          place={place}
+          project={project}
+          repositories={repositories}
+          startInEditor={project.name === created}
+          onReload={reload}
+        />
       ))}
       <Unassigned repositories={unassigned} />
     </>
-  );
-}
-
-interface ProjectPanelProps {
-  readonly place: ProjectPlace;
-  readonly project: Project;
-  readonly onReload: () => void;
-}
-
-/** One project: its tree, or its editor. After a save it shows what the server answered. */
-function ProjectPanel({ place, project, onReload }: ProjectPanelProps): ReactElement {
-  const [editing, setEditing] = useState(false);
-  const [report, setReport] = useState<SaveReport | null>(null);
-  const close = (saved: SaveReport | null): void => {
-    setReport(saved);
-    setEditing(false);
-    onReload();
-  };
-  const title = project.title === "" ? project.name : `${project.title} (${project.name})`;
-  return (
-    <Panel
-      title={displayText(title)}
-      actions={editing ? undefined : <Button onClick={() => setEditing(true)}>Edit</Button>}
-    >
-      <Text tone="muted" small>
-        Version {String(project.version)}, last changed {formatInstant(project.updatedAt)}.
-      </Text>
-      {report === null || editing ? null : <SaveNotice report={report} />}
-      {editing ? (
-        <ProjectEditor
-          place={place}
-          project={project}
-          onSaved={close}
-          onCancel={() => setEditing(false)}
-          onReload={() => close(null)}
-        />
-      ) : (
-        <ProjectView place={place} project={project} />
-      )}
-    </Panel>
-  );
-}
-
-interface SaveNoticeProps {
-  readonly report: SaveReport;
-}
-
-function SaveNotice({ report }: SaveNoticeProps): ReactElement {
-  const summary = describeSave(report);
-  return (
-    <Notice tone={summary.tone} title={summary.title}>
-      {summary.lines.map((line) => (
-        <Text key={line}>{displayText(line)}</Text>
-      ))}
-    </Notice>
   );
 }
 

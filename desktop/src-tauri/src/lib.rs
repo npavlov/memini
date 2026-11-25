@@ -56,6 +56,7 @@ pub fn run() {
             commands::api_sources,
             commands::api_catalog,
             commands::api_domain,
+            commands::api_project,
             commands::api_project_put,
             commands::api_tools,
             commands::api_tool_call,

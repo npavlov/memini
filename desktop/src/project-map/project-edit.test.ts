@@ -15,6 +15,7 @@ import {
   tidyProject,
   unattachedServices,
 } from "./project-edit";
+import { addService, editService } from "./service-edit";
 
 const service = { description: "", repository: "harbour-code", files: 10, uses: null };
 
@@ -25,8 +26,8 @@ const port: Project = {
   version: 4,
   updatedAt: null,
   services: [
-    { ...service, name: "berthing", root: "berthing" },
-    { ...service, name: "fees", root: "fees" },
+    { ...service, name: "berthing", origin: "berthing", root: "berthing" },
+    { ...service, name: "fees", origin: "fees", root: "fees" },
   ],
   domains: [
     {
@@ -101,7 +102,19 @@ describe("path masks", () => {
   ])("offers the services not attached yet to %s", (_case, place, expected) => {
     const services = unattachedServices(port, place);
 
-    expect(services).toEqual(expected);
+    expect(services.map((service) => service.value)).toEqual(expected);
+  });
+
+  it("offers a renamed service under its new name, and names it by the name it was read with", () => {
+    const draft = editService(port, 1, { name: "tariffs" });
+
+    expect(unattachedServices(draft, berths)).toEqual([{ value: "fees", label: "tariffs" }]);
+  });
+
+  it("does not offer a service that was added and is not saved yet", () => {
+    const draft = editService(addService(port, "harbour-code"), 2, { name: "pilots" });
+
+    expect(unattachedServices(draft, holds).map((service) => service.label)).toEqual(["berthing", "fees"]);
   });
 });
 
@@ -151,6 +164,12 @@ describe("tidyProject", () => {
     expect(sameProject(draft, port)).toBe(true);
   });
 
+  it("saves the code of a domain under the new name of a service that was renamed", () => {
+    const tidy = tidyProject(editService(port, 0, { name: " berths-api " }));
+
+    expect([tidy.services[0]?.name, tidy.domains[0]?.code[0]?.service]).toEqual(["berths-api", "berths-api"]);
+  });
+
   it("says that a draft with another title is not the project as it was", () => {
     const draft = editEntry(port, berths, { title: "Quays" });
 
@@ -164,10 +183,11 @@ describe("checkProject", () => {
   });
 
   it.each([
-    ["a new domain without a name", addDomain(port), "Every domain needs a name of lowercase letters, digits, '-' or '_', at most 63 characters."],
-    ["a domain named in capitals", editEntry(port, berths, { name: "Berths" }), "Every domain needs a name of lowercase letters, digits, '-' or '_', at most 63 characters."],
+    ["a new domain without a name", addDomain(port), "Every domain needs a name of lowercase letters, digits, '-' or '_', starting with a letter or a digit, at most 63 characters."],
+    ["a domain named in capitals", editEntry(port, berths, { name: "Berths" }), "Every domain needs a name of lowercase letters, digits, '-' or '_', starting with a letter or a digit, at most 63 characters."],
+    ["a service without a name", addService(port, "harbour-code"), "Every service needs a name of lowercase letters, digits, '-' or '_', starting with a letter or a digit, at most 63 characters."],
     ["two domains of one name", editEntry(port, berths, { name: "fees" }), "Two domains are named fees."],
-    ["a new subdomain without a name", addSubdomain(port, 0), "Every subdomain needs a name of lowercase letters, digits, '-' or '_', at most 63 characters."],
+    ["a new subdomain without a name", addSubdomain(port, 0), "Every subdomain needs a name of lowercase letters, digits, '-' or '_', starting with a letter or a digit, at most 63 characters."],
   ])("names the problem of %s", (_case, draft, expected) => {
     expect(checkProject(draft)).toBe(expected);
   });

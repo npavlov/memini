@@ -18,6 +18,7 @@
     "allow-api-sources",
     "allow-api-catalog",
     "allow-api-domain",
+    "allow-api-project",
     "allow-api-project-put",
     "allow-api-tools",
     "allow-api-tool-call",

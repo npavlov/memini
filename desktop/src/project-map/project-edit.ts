@@ -3,6 +3,9 @@
 
 import { toProjectDocument } from "./catalog";
 import type { Code, Domain, Project, Subdomain } from "./catalog";
+import { checkNames } from "./names";
+import { checkServices, namedServices, tidyServices } from "./service-edit";
+import type { NamedService } from "./service-edit";
 
 /** Where a domain or a subdomain is in a project, by position. */
 export interface EntryPlace {
@@ -10,8 +13,6 @@ export interface EntryPlace {
   /** The position among the domain's subdomains; null for the domain itself. */
   readonly subdomain: number | null;
 }
-
-const NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/u;
 
 function replaceAt<T>(items: readonly T[], position: number, item: T): readonly T[] {
   return items.map((existing, index) => (index === position ? item : existing));
@@ -73,12 +74,10 @@ export function setMasks(project: Project, place: CodePlace, text: string): Proj
   return editEntry(project, place, { code: replaceAt(entry.code, place.code, { ...code, paths }) });
 }
 
-/** The services of the project whose code an entry does not name yet. */
-export function unattachedServices(project: Project, place: EntryPlace): readonly string[] {
+/** The services of the project that an entry can name and does not name yet. */
+export function unattachedServices(project: Project, place: EntryPlace): readonly NamedService[] {
   const attached = (entryAt(project, place)?.code ?? []).filter((code) => code.project === null);
-  return project.services
-    .map((service) => service.name)
-    .filter((name) => !attached.some((code) => code.service === name));
+  return namedServices(project).filter((service) => !attached.some((code) => code.service === service.value));
 }
 
 /** Attaches code of a service of the project to a domain or a subdomain, with no mask yet. */
@@ -125,9 +124,10 @@ function tidyEntry<T extends Subdomain>(entry: T): T {
 
 /**
  * The draft as it is saved: names and titles without the white space around them, masks one per
- * line, and code that was left without a mask taken out.
+ * line, code that was left without a mask taken out, and every service named as it is named now.
  */
-export function tidyProject(project: Project): Project {
+export function tidyProject(draft: Project): Project {
+  const project = tidyServices(draft);
   return {
     ...project,
     title: project.title.trim(),
@@ -143,18 +143,11 @@ export function sameProject(draft: Project, project: Project): boolean {
   return JSON.stringify(toProjectDocument(tidyProject(draft))) === JSON.stringify(toProjectDocument(project));
 }
 
-function checkNames(names: readonly string[], what: string): string | null {
-  if (names.some((name) => !NAME.test(name.trim()))) {
-    return `Every ${what} needs a name of lowercase letters, digits, '-' or '_', at most 63 characters.`;
-  }
-  const repeated = names.find((name, index) => names.indexOf(name) !== index);
-  return repeated === undefined ? null : `Two ${what}s are named ${repeated}.`;
-}
-
 /** The first problem with the draft, or null. A help for the user; the server checks again. */
 export function checkProject(project: Project): string | null {
   const names = (entries: readonly Subdomain[]): readonly string[] => entries.map((entry) => entry.name);
   const problems = [
+    checkServices(project),
     checkNames(names(project.domains), "domain"),
     ...project.domains.map((domain) => checkNames(names(domain.subdomains), "subdomain")),
   ];
