@@ -74,6 +74,8 @@ pub fn run() {
             commands::launcher_change,
             commands::launcher_setup_token,
             commands::launcher_uninstall,
+            commands::launcher_indexing,
+            commands::launcher_indexing_set,
             commands::repositories::launcher_repos,
             commands::repositories::launcher_git,
             commands::repositories::api_workspace_create,

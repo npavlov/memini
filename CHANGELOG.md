@@ -15,6 +15,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Preview what a git source indexes before a sync spends time on it:
   `GET /v1/workspaces/{workspace}/sources/{source}/preview` counts the files of a ref that the
   source's rules, or rules to try, keep, by extension and by top-level folder.
+- Limit how much of the computer the search model of a managed server uses while it indexes:
+  `memini-server indexing set half|background|full`, half the cores by default. The desktop app
+  sets it on the Server screen. [Limit the cores](docs/install.md#limit-the-cores-the-search-model-uses).
 
 ### Changed
 

@@ -1002,6 +1002,29 @@ pub async fn launcher_setup_token(
     })
 }
 
+/// `memini-server indexing status --json`: how many cores the search model may use.
+#[tauri::command]
+pub async fn launcher_indexing(state: State<'_, AppState>) -> AppResult<launcher::IndexingAnswer> {
+    let inner = state.shared();
+    let (program, search) = blocking(move || inner.launcher()).await?;
+    launcher::parse_indexing(&launcher::run(&program, Action::IndexingStatus, &search).await?)
+}
+
+/// `memini-server indexing set <mode> --json`. The webview names a mode of a fixed set; the
+/// argument vector comes from [`Action`]. A running model is recreated, so it waits for any other
+/// launcher action.
+#[tauri::command]
+pub async fn launcher_indexing_set(
+    state: State<'_, AppState>,
+    mode: launcher::IndexingMode,
+) -> AppResult<launcher::IndexingAnswer> {
+    let inner = state.shared();
+    let _busy = BusyGuard::begin(&inner.launcher_busy)?;
+    let shared = Arc::clone(&inner);
+    let (program, search) = blocking(move || shared.launcher()).await?;
+    launcher::parse_indexing(&launcher::run(&program, Action::IndexingSet(mode), &search).await?)
+}
+
 /// What the removal of the server did. The local connection to it is gone when it worked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UninstallOutcome {
