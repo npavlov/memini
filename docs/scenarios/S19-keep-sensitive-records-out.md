@@ -19,7 +19,7 @@ answers about work, and no model should read them.
 A record can be marked sensitive. It stays stored and indexed; nothing is deleted or re-embedded.
 
 - **Marking.** An admin marks or clears one record with
-  `PUT /v1/workspaces/{workspace}/records/sensitive` (`memini sensitive mark|unmark`, or *Mark a
+  `PUT /v1/workspaces/{workspace}/records/{id}/sensitive` (`memini sensitive mark|unmark`, or *Mark a
   record…* on the Data screen of the desktop app), named by `record_id` or by `source` and
   `external_id`, with an optional short reason. A push marks a record with `"sensitive": true`; a
   push never clears a mark. `GET` on the same route (`memini sensitive list`) lists the marked

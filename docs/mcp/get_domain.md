@@ -6,10 +6,10 @@ Token scope: `read`; `sensitive` too for `include_sensitive`.
 
 | Argument | Required | Description |
 |---|---|---|
+| `include_sensitive` | no | Also read records marked sensitive (a salary, a diagnosis), which are left out by default. Needs a token with the sensitive scope; without it the request is refused. |
 | `project` | yes | The project, by name. |
 | `domain` | yes | The domain, or a subdomain as domain/subdomain. |
 | `workspace` | no | The workspace, by name; may be left out when the token reads exactly one workspace. |
-| `include_sensitive` | no | Also read records marked sensitive (a salary, a diagnosis), which are left out by default. Needs a token with the `sensitive` scope; without it the call is refused. |
 
 ## Example
 

@@ -48,7 +48,7 @@ initialized with the previous tag's migrations, then runs the current tool and
 ## Forget one record
 
 Identify the workspace and record ID in a search result. With its admin token, run
-`bin/memini forget WORKSPACE --record RECORD_ID`. This permanently removes the stored
+`bin/memini forget WORKSPACE RECORD_ID`. This permanently removes the stored
 record content and prevents its return on a later sync of the same source. Journal evidence
 retains a forgotten reference. Earlier backups and the upstream source can still contain
 the original data. [Forget integration tests](../../tests/test_forget_db.py).

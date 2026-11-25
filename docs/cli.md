@@ -16,19 +16,19 @@ memini source list <ws> | show <ws> <source> | remove <ws> <source>
 memini source edit <ws> <source> [--name NEW] [--ref REF ...] [--schedule DURATION | --no-schedule] ...
 memini streams <ws> <source>                     # lag, last run and queued sync of each ref
 memini sync <ws> <source> [--stream KEY ...] [--wait]
-memini runs <ws> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
+memini runs <ws> [--source NAME ...] [--stream KEY ...] [--limit N] [--cursor CURSOR]
 memini run <run-id>                              # one run with its report
 memini token create --scope {read,ingest,admin,sensitive} [--scope ...] [--workspace NAME] [--name LABEL]
                     [--expires-in DURATION]      # prints the token alone, once
 memini token list | revoke <id-or-prefix>
-memini search <query> [--code] [--mode MODE] [--workspace NAME] [--repository NAME] [--limit N]
+memini search <query> [--code] [--mode MODE] [--workspace NAME ...] [--source NAME ...] [--project NAME ...] [--domain NAME ...] [--limit N]
 memini push --workspace NAME --source NAME [--stream KEY] [--batch-size N] [--dry-run] [--json] FILE|-
                     # records from JSON or JSON lines (ingest scope); intake.md
-memini decision record <ws> --statement TEXT [--kind decision|open_question] [--decided-at TIME]
-                       --evidence SOURCE:EXTERNAL_ID[#ANCHOR] [--participant PERSON_ID ...]
+memini decision record <ws> --statement TEXT [--kind decision|open_question] [--occurred-at TIME]
+                       --evidence RECORD_ID[#ANCHOR] [--participant PERSON_ID ...]
                        [--supersedes ITEM_ID[:replaces|answers] ...]   # needs the ingest scope
-memini decision supersede <ws> <item-id> --supersedes ITEM_ID[:replaces|answers] [...]
-memini decision close|retract <ws> <item-id>
+memini decision supersede <ws> <id> --supersedes ITEM_ID[:replaces|answers] [...]
+memini decision close|retract <ws> <id>
 memini extract <ws> [--source NAME ...] [--since TIME] [--dry-run]   # extract decisions from stored
                     records the current extractor has not read (needs the admin scope)
 ```

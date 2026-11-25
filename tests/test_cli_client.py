@@ -250,7 +250,7 @@ def test_a_client_command_without_a_token_exits_2(
 def test_a_client_command_needs_no_database_url(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.answer(ok({"workspaces": []}))
+    service.answer(ok({"items": []}))
 
     result = cli("workspace", "list")
 
@@ -337,7 +337,7 @@ def test_a_call_sends_the_token_to_the_service_url_and_path(
     cli: Callable[..., Run], env: pytest.MonkeyPatch, service: FakeService
 ) -> None:
     env.setenv("MEMINI_URL", "https://memini.example.invalid/prefix/")
-    service.answer(ok({"sources": []}))
+    service.answer(ok({"items": []}))
 
     result = cli("source", "list", "acme")
 
@@ -469,12 +469,12 @@ def test_source_add_push_sends_no_git_settings(
 @pytest.mark.parametrize(
     ("argv", "complaint"),
     [
-        ((), "a git source needs --location and --ref"),
-        (("--location", "/srv/shop"), "a git source needs --ref"),
-        (("--kind", "push", "--ref", "main"), "--ref: only for a git source"),
+        ((), "a repository needs --location and --ref"),
+        (("--location", "/srv/shop"), "a repository needs --ref"),
+        (("--kind", "push", "--ref", "main"), "--ref: only for a repository"),
         (
             ("--kind", "push", "--location", "/srv/shop", "--no-builtin-excludes"),
-            "--location, --no-builtin-excludes: only for a git source",
+            "--location, --no-builtin-excludes: only for a repository",
         ),
     ],
 )
@@ -727,7 +727,7 @@ def test_source_add_mcp_sends_the_recipe_file_s_text_and_shows_the_source(
         "name": "chat",
         "endpoint": {"url": "https://hearth.example/mcp"},
         "recipe": {"toml": 'format = 1\nname = "hearth"\n'},
-        "streams": ["C0042", "C0043"],
+        "items": ["C0042", "C0043"],
         "schedule_seconds": 900,
         "window": {"initial": "3d", "backfill": None},
         "filters": {"exclude_authors": ["*bot*"]},
@@ -811,7 +811,7 @@ def test_source_edit_mcp_sends_the_new_endpoint_streams_and_window(
     assert result.code == EXIT_OK, result.err
     assert json.loads(service.last.content) == {
         "endpoint": {"url": "https://hearth.example/v2/mcp"},
-        "streams": ["C0042"],
+        "items": ["C0042"],
         "window": {},
     }
 
@@ -863,7 +863,7 @@ LAST_RUN: Json = {
 def test_streams_shows_lag_last_run_and_the_queued_sync(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.answer(ok({"streams": [stream(PENDING, LAST_RUN)]}))
+    service.answer(ok({"items": [stream(PENDING, LAST_RUN)]}))
 
     result = cli("streams", "acme", "shop")
 
@@ -911,9 +911,9 @@ def test_sync_wait_reports_the_run(
     finished = {**LAST_RUN, "status": status, "error": None if status == "succeeded" else "boom"}
     service.answer(
         ok({"jobs": [{"stream": "refs/heads/main", "job_id": JOB, "created": False}]}, 202),
-        ok({"streams": [stream(PENDING, None)]}),
-        ok({"streams": [stream(retried, None)]}),
-        ok({"streams": [stream(None, finished)]}),
+        ok({"items": [stream(PENDING, None)]}),
+        ok({"items": [stream(retried, None)]}),
+        ok({"items": [stream(None, finished)]}),
     )
 
     result = cli("sync", "acme", "shop", "--wait")
@@ -936,7 +936,7 @@ def test_sync_wait_gives_up_after_its_timeout(
     monkeypatch.setattr(source_commands, "POLL_INTERVAL", 0.0)
     service.answer(
         ok({"jobs": [{"stream": "refs/heads/main", "job_id": JOB, "created": True}]}, 202),
-        ok({"streams": [stream(PENDING, None)]}),
+        ok({"items": [stream(PENDING, None)]}),
     )
 
     result = cli("sync", "acme", "shop", "--wait", "--wait-timeout", "1s")
@@ -955,9 +955,9 @@ def test_sync_wait_says_why_a_sync_may_not_start(
     queued = {**PENDING, "status": "queued", "attempts": 0}
     service.answer(
         ok({"jobs": [{"stream": "refs/heads/main", "job_id": JOB, "created": True}]}, 202),
-        ok({"streams": [stream(queued, None)]}),
-        ok({"streams": [stream(queued, None)]}),
-        ok({"streams": [stream(None, LAST_RUN)]}),
+        ok({"items": [stream(queued, None)]}),
+        ok({"items": [stream(queued, None)]}),
+        ok({"items": [stream(None, LAST_RUN)]}),
     )
 
     result = cli("sync", "acme", "shop", "--wait")
@@ -1071,7 +1071,7 @@ def test_a_report_of_another_version_is_shown_as_json(
 
 def test_runs_lists_runs_and_the_next_page(cli: Callable[..., Run], service: FakeService) -> None:
     summary = {k: v for k, v in RUN.items() if k not in ("workspace", "report")}
-    service.answer(ok({"runs": [summary], "next_before": "cursor-2"}))
+    service.answer(ok({"items": [summary], "next_cursor": "cursor-2"}))
 
     result = cli("runs", "acme", "--source", "shop", "--limit", "1")
 
@@ -1111,7 +1111,7 @@ def test_search_prints_hits_with_escaped_snippets(
         "snippet": "\n".join(f"line {n}\x1b[2J" for n in range(1, 9)),
         "truncated": False,
     }
-    service.answer(ok({"hits": [hit, {**hit, "snippet": "short"}]}))
+    service.answer(ok({"items": [hit, {**hit, "snippet": "short"}]}))
 
     result = cli("search", "--code", "lamp", "--mode", "exact", "--language", "python")
 
@@ -1145,7 +1145,7 @@ def test_search_prints_the_link_of_a_hit_inside_a_thread(
         "snippet": "Bought the hose.",
         "truncated": False,
     }
-    service.answer(ok({"hits": [hit]}))
+    service.answer(ok({"items": [hit]}))
 
     result = cli("search", "hose", "--kind", "thread")
 
@@ -1194,7 +1194,7 @@ def test_meetings_prints_each_meeting_with_its_passage(
         "snippet": "Ship on Friday.",
         "truncated": False,
     }
-    service.answer(ok({"persons": [], "meetings": [meeting]}))
+    service.answer(ok({"persons": [], "items": [meeting]}))
 
     result = cli("meetings", "release", "--since", "2026-03-01T00:00:00Z", "--source", "notes")
 
@@ -1222,14 +1222,14 @@ def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: Fak
         "locator": "chat:general/1#msg-m1",
         "link": "https://chat.example.invalid/m1",
         "author": "U02BO",
-        "sent_at": "2026-03-02T09:30:00Z",
+        "occurred_at": "2026-03-02T09:30:00Z",
         "roles": ["author"],
         "channel": "general",
         "title": None,
         "text": "Bought the hose.",
         "truncated": True,
     }
-    service.answer(ok({"persons": [], "messages": [each]}))
+    service.answer(ok({"persons": [], "items": [each]}))
 
     result = cli("messages", "--person", "bo@example.test", "--role", "author", "--limit", "5")
 
@@ -1304,7 +1304,7 @@ def test_token_create_prints_nothing_without_a_token_in_the_answer(
 
 
 def test_token_list_shows_no_secret(cli: Callable[..., Run], service: FakeService) -> None:
-    service.answer(ok({"tokens": [token_out(), token_out(workspace=None, status="revoked")]}))
+    service.answer(ok({"items": [token_out(), token_out(workspace=None, status="revoked")]}))
 
     result = cli("token", "list")
 
@@ -1321,7 +1321,7 @@ def test_token_revoke_finds_the_token_and_revokes_it_by_id(
 ) -> None:
     listed = token_out()
     reference = {"prefix": OTHER_TOKEN[:15], "id": listed["id"], "whole token": OTHER_TOKEN}[by]
-    service.answer(ok({"tokens": [listed]}), ok({**listed, "revoked_at": "2026-11-18T17:00:00Z"}))
+    service.answer(ok({"items": [listed]}), ok({**listed, "revoked_at": "2026-11-18T17:00:00Z"}))
 
     result = cli("token", "revoke", reference)
 
@@ -1335,7 +1335,7 @@ def test_token_revoke_finds_the_token_and_revokes_it_by_id(
 def test_token_revoke_refuses_an_unknown_token(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.answer(ok({"tokens": [token_out()]}))
+    service.answer(ok({"items": [token_out()]}))
 
     result = cli("token", "revoke", "memini_zzzzzzzz")
 
@@ -1363,12 +1363,11 @@ FORGOTTEN: Json = {
 def test_forget_by_record_id(cli: Callable[..., Run], service: FakeService) -> None:
     service.answer(ok(FORGOTTEN))
 
-    result = cli("forget", "acme", "--record", RECORD)
+    result = cli("forget", "acme", RECORD)
 
     assert result.code == EXIT_OK, result.err
     assert service.last.method == "POST"
-    assert service.last.url.path == "/v1/workspaces/acme/forget"
-    assert json.loads(service.last.content) == {"record_id": RECORD}
+    assert service.last.url.path == f"/v1/workspaces/acme/records/{RECORD}/forget"
     lines = [line.split(None, 1) for line in result.out.splitlines()]
     assert ["forgot", RECORD] in lines
     assert [line for line in result.out.splitlines() if line.startswith("chunks deleted")] == [
@@ -1377,36 +1376,16 @@ def test_forget_by_record_id(cli: Callable[..., Run], service: FakeService) -> N
     assert "knowledge items citing it  1" in result.out
 
 
-def test_forget_by_source_and_external_id(cli: Callable[..., Run], service: FakeService) -> None:
-    service.answer(ok(FORGOTTEN))
-
-    result = cli(
-        "forget", "acme", "--source", "chat", "--external-id", "garden/100", "--kind", "thread",
-        "--json",
-    )  # fmt: skip
-
-    assert result.code == EXIT_OK, result.err
-    assert json.loads(service.last.content) == {
-        "source": "chat",
-        "external_id": "garden/100",
-        "record_kind": "thread",
-    }
-    assert json.loads(result.out) == FORGOTTEN
-
-
 @pytest.mark.parametrize(
     "argv",
     [
         ("forget", "acme"),
-        ("forget", "acme", "--record", "XYZ"),
-        ("forget", "acme", "--source", "chat"),
-        ("forget", "acme", "--record", RECORD, "--kind", "thread"),
-        ("forget", "acme", "--record", RECORD, "--external-id", "garden/100"),
-        ("forget", "acme", "--record", RECORD, "--source", "chat"),
-        ("forget", "acme", "--external-id", "garden/100"),
+        ("forget", "acme", "XYZ"),
+        ("forget", "acme", "--record", RECORD),
+        ("forget", "acme", "--source", "chat", "--external-id", "garden/100"),
     ],
 )
-def test_forget_names_its_record_one_way(
+def test_forget_names_its_record_by_id(
     cli: Callable[..., Run], service: FakeService, argv: tuple[str, ...]
 ) -> None:
     result = cli(*argv)

@@ -64,7 +64,6 @@ TOOL_NAMES = [
     "search",
     "search_code",
     "get_file",
-    "get_symbol",
     "list_commits",
     "get_catalog",
     "get_project",

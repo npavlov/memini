@@ -135,10 +135,10 @@ PORT: Json = {
     "title": "Port operations",
     "description": "Fees and bookings of the synthetic harbour.",
     "services": [
-        {"name": "quay", "repository": "quay", "description": "The fee engine."},
+        {"name": "quay", "source": "quay", "description": "The fee engine."},
         {
             "name": "booking-web",
-            "repository": "lantern",
+            "source": "lantern",
             "root": "web/booking",
             "description": "The booking pages.",
         },
@@ -184,7 +184,7 @@ outside the two services are in no domain."""
 
 SAFE: Json = {
     "title": "Safe",
-    "services": [{"name": "vault", "repository": "vault"}],
+    "services": [{"name": "vault", "source": "vault"}],
     "domains": [{"name": "locks", "code": [{"service": "vault", "paths": ["**"]}]}],
 }
 """The project of the other workspace."""
@@ -376,7 +376,7 @@ async def found_in(client: Client, tool: str = "search_code", **arguments: Any) 
 
 
 def places(result: Json) -> set[tuple[str, str]]:
-    return {(hit["repository"], hit["path"]) for hit in result["hits"]}
+    return {(hit["source"], hit["path"]) for hit in result["hits"]}
 
 
 def hit_of(result: Json, path: str) -> Json:
@@ -456,7 +456,7 @@ async def test_the_answer_reports_what_the_masks_match(world: World) -> None:
     assert report["overlaps"] == [
         {
             "domains": ["fees/berth", "fees/pilot"],
-            "repository": "quay",
+            "source": "quay",
             "files": 1,
             "examples": ["quay/fees/rates.py"],
         }
@@ -465,14 +465,14 @@ async def test_the_answer_reports_what_the_masks_match(world: World) -> None:
     assert report["services"] == [
         {
             "service": "booking-web",
-            "repository": "lantern",
+            "source": "lantern",
             "files": 2,
             "unassigned": 1,
             "unassigned_share": 0.5,
         },
         {
             "service": "quay",
-            "repository": "quay",
+            "source": "quay",
             "files": 5,
             "unassigned": 1,
             "unassigned_share": 0.2,
@@ -498,7 +498,7 @@ async def test_a_document_without_warnings_and_a_project_that_goes_away(world: W
     assert (emptied["changed"], emptied["version"], emptied["masks"]) == (True, 2, [])
     (port,) = catalog["projects"]
     assert (port["services"], port["domains"]) == ([], [])
-    assert [each["repository"] for each in catalog["unassigned_repositories"]] == [
+    assert [each["source"] for each in catalog["unassigned_sources"]] == [
         "lantern",
         "quay",
         "spare",
@@ -605,7 +605,7 @@ async def test_texts_are_redacted_and_a_refused_field_is_named_not_repeated(worl
     async with http_client(world.app(), await world.token("read", "ingest")) as http:
         refused_root = await http.put(
             project_url(),
-            json={"services": [{"name": "quay", "repository": "quay", "root": "../etc/secret"}]},
+            json={"services": [{"name": "quay", "source": "quay", "root": "../etc/secret"}]},
         )
 
     assert stored["redacted"] == {"secret": 1, "stripe_key": 1}
@@ -669,7 +669,7 @@ async def test_a_search_of_a_subdomain_returns_only_its_files_across_both_reposi
     }
     # Only files under the masks of the subdomain, in both repositories.
     assert places(berth) == BERTH
-    assert {hit["repository"] for hit in berth["hits"]} == {"quay", "lantern"}
+    assert {hit["source"] for hit in berth["hits"]} == {"quay", "lantern"}
     # A domain includes its subdomains; several values are alternatives.
     assert places(fees) == BERTH | PILOT
     assert places(water) == {("quay", "quay/tides.py")}
@@ -861,7 +861,7 @@ async def test_get_catalog_lists_the_projects_and_a_repository_without_a_service
         over_http = await http.get("/v1/workspaces/harbor/catalog")
 
     assert empty["projects"] == []
-    assert [each["repository"] for each in empty["unassigned_repositories"]] == [
+    assert [each["source"] for each in empty["unassigned_sources"]] == [
         "lantern",
         "quay",
         "spare",
@@ -872,7 +872,7 @@ async def test_get_catalog_lists_the_projects_and_a_repository_without_a_service
     assert (port["name"], port["title"], port["version"]) == ("port", "Port operations", 1)
     assert port["description"] == "Fees and bookings of the synthetic harbour."
     booking, quay = port["services"]
-    assert (quay["name"], quay["repository"], quay["root"], quay["files"]) == (
+    assert (quay["name"], quay["source"], quay["root"], quay["files"]) == (
         "quay",
         "quay",
         "",
@@ -880,7 +880,7 @@ async def test_get_catalog_lists_the_projects_and_a_repository_without_a_service
     )
     assert quay["refs"] == [{"ref": MAIN, "commit": world.pins["quay"]}]
     assert quay["languages"] == [{"language": "python", "files": 4}]
-    assert (booking["name"], booking["repository"], booking["root"], booking["files"]) == (
+    assert (booking["name"], booking["source"], booking["root"], booking["files"]) == (
         "booking-web",
         "lantern",
         "web/booking",
@@ -913,9 +913,9 @@ async def test_get_catalog_lists_the_projects_and_a_repository_without_a_service
     assert (plans["code"], plans["subdomains"]) == ([], [])
     assert water["code"][0]["paths"] == ["quay/tides.py"]
     # A repository no service is in. lantern has one, over a directory of it.
-    assert catalog["unassigned_repositories"] == [
+    assert catalog["unassigned_sources"] == [
         {
-            "repository": "spare",
+            "source": "spare",
             "refs": [{"ref": MAIN, "commit": world.pins["spare"]}],
             "files": 1,
             "languages": [{"language": "python", "files": 1}],
@@ -999,7 +999,7 @@ async def test_get_domain_lists_both_services_and_what_each_mask_matches(world: 
         {
             "project": "port",
             "service": "booking-web",
-            "repository": "lantern",
+            "source": "lantern",
             "root": "web/booking",
             "files": 1,
             "paths": [{"path": "berth.ts", "files": 1}],
@@ -1007,7 +1007,7 @@ async def test_get_domain_lists_both_services_and_what_each_mask_matches(world: 
         {
             "project": "port",
             "service": "quay",
-            "repository": "quay",
+            "source": "quay",
             "root": "",
             "files": 2,
             "paths": [
@@ -1040,7 +1040,7 @@ async def test_get_domain_lists_both_services_and_what_each_mask_matches(world: 
 
 LIGHTS: Json = {
     "title": "Lights",
-    "services": [{"name": "admin-web", "repository": "lantern", "root": "web/admin"}],
+    "services": [{"name": "admin-web", "source": "lantern", "root": "web/admin"}],
     "domains": [
         {
             "name": "signals",
@@ -1072,7 +1072,7 @@ async def test_a_domain_names_a_service_of_another_project_of_its_workspace(worl
         # A directory of a repository is one service: port has web/booking already.
         twice = await put(
             client,
-            {"services": [{"name": "pages", "repository": "lantern", "root": "web/booking/"}]},
+            {"services": [{"name": "pages", "source": "lantern", "root": "web/booking/"}]},
             project="again",
         )
         # port cannot drop the service that lights names code in.
@@ -1087,13 +1087,13 @@ async def test_a_domain_names_a_service_of_another_project_of_its_workspace(worl
             project="again",
         )
         no_repository = await put(
-            client, {"services": [{"name": "safe", "repository": "vault"}]}, project="again"
+            client, {"services": [{"name": "safe", "source": "vault"}]}, project="again"
         )
         catalog = ok(await client.call_tool("get_catalog", {"workspace": "harbor"}))
     async with http_client(world.app(), await world.token("read", "ingest")) as http:
         twice_over_http = await http.put(
             project_url("again"),
-            json={"services": [{"name": "pages", "repository": "lantern", "root": "web/booking"}]},
+            json={"services": [{"name": "pages", "source": "lantern", "root": "web/booking"}]},
         )
         dropped_over_http = await http.put(project_url(), json={"title": "Port operations"})
 
@@ -1181,7 +1181,7 @@ async def test_a_service_goes_with_its_repository_and_the_export_holds_the_catal
     assert [part["name"] for part in fees["subdomains"]] == ["berth", "pilot"]
     assert [code["service"] for code in fees["subdomains"][0]["code"]] == ["quay"]
     assert places(berth) == {place for place in BERTH if place[0] == "quay"}
-    assert [each["repository"] for each in catalog["unassigned_repositories"]] == ["spare"]
+    assert [each["source"] for each in catalog["unassigned_sources"]] == ["spare"]
 
 
 # --- Links between services ----------------------------------------------------------------------
@@ -1197,7 +1197,7 @@ SIGNALS: Json = {
     "services": [
         {
             "name": "admin-web",
-            "repository": "lantern",
+            "source": "lantern",
             "root": "web/admin",
             "uses": [
                 {
@@ -1221,7 +1221,7 @@ def link_of(link: Json) -> tuple[Any, ...]:
         link["to_project"],
         link["to_service"],
         link["kind"],
-        link["repository"],
+        link["source"],
         link["root"],
         [(mask["path"], mask["files"]) for mask in link["paths"]],
     )
@@ -1262,22 +1262,22 @@ async def test_a_link_is_returned_by_get_project_of_both_projects_in_its_directi
         between = ok(
             await client.call_tool(
                 "get_project",
-                {"workspace": "harbor", "project": "port", "other_project": "signals"},
+                {"workspace": "harbor", "project": "port", "linked_projects": "signals"},
             )
         )
         inside = ok(
             await client.call_tool(
-                "get_project", {"workspace": "harbor", "project": "port", "other_project": "port"}
+                "get_project", {"workspace": "harbor", "project": "port", "linked_projects": "port"}
             )
         )
         missing = await client.call_tool("get_project", {"workspace": "harbor", "project": "tug"})
         no_other = await client.call_tool(
-            "get_project", {"workspace": "harbor", "project": "port", "other_project": "tug"}
+            "get_project", {"workspace": "harbor", "project": "port", "linked_projects": "tug"}
         )
         catalog = ok(await client.call_tool("get_catalog", {"workspace": "harbor"}))
     async with http_client(world.app(), await world.token("read")) as http:
         port_over_http = await http.get(project_url())
-        between_over_http = await http.get(project_url(), params={"other_project": "signals"})
+        between_over_http = await http.get(project_url(), params={"linked_projects": "signals"})
         missing_over_http = await http.get(project_url("tug"))
     exported = [
         json.loads(line)
@@ -1403,7 +1403,7 @@ async def test_a_link_out_of_the_workspace_or_to_no_service_is_refused(world: Wo
     def using(link: Json) -> Json:
         return {
             "services": [
-                {"name": "admin-web", "repository": "lantern", "root": "web/admin", "uses": [link]}
+                {"name": "admin-web", "source": "lantern", "root": "web/admin", "uses": [link]}
             ]
         }
 
@@ -1427,7 +1427,7 @@ async def test_a_link_out_of_the_workspace_or_to_no_service_is_refused(world: Wo
         ok(await put(client, SIGNALS, project="signals"))
         # port cannot drop the service that a link of signals names.
         kept = changed(LINKED_PORT, domains=[])
-        kept["services"] = [{"name": "booking-web", "repository": "lantern", "root": "web/booking"}]
+        kept["services"] = [{"name": "booking-web", "source": "lantern", "root": "web/booking"}]
         dropped = await put(client, kept)
     async with http_client(world.app(), await world.token("read", "ingest")) as http:
         other_over_http = await http.put(
@@ -1535,7 +1535,7 @@ async def test_a_workspace_token_sees_no_other_workspaces_catalog(world: World) 
         "other",
         ["safe"],
     )
-    assert own["unassigned_repositories"] == []
+    assert own["unassigned_sources"] == []
     assert own_domain["files"] == 1
     # The other workspace looks exactly like one that does not exist, read or written.
     assert refused(harbor) == "No such workspace."

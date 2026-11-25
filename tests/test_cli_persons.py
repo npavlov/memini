@@ -110,7 +110,7 @@ def person(person_id: str = ANN, **fields: Any) -> Json:
 def test_list_prints_persons_and_the_next_page(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.replies({"persons": [person(is_me=True)], "next_after": "Y3Vyc29y"})
+    service.replies({"items": [person(is_me=True)], "next_after": "Y3Vyc29y"})
 
     run = cli("person", "list", "acme", "--query", "ann", "--merged", "--limit", "5")
 

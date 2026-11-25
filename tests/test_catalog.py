@@ -351,8 +351,8 @@ PORT: dict[str, Any] = {
     "title": "  Port   operations ",
     "description": "Fees and bookings.\r\nSecond line.\n",
     "services": [
-        {"name": "quay", "repository": "quay", "description": "The fee engine."},
-        {"name": "booking-web", "repository": "lantern", "root": "/web/booking/"},
+        {"name": "quay", "source": "quay", "description": "The fee engine."},
+        {"name": "booking-web", "source": "lantern", "root": "/web/booking/"},
     ],
     "domains": [
         {
@@ -424,12 +424,12 @@ def test_secrets_in_texts_are_redacted_and_in_identifiers_refused() -> None:
     for field, changes in (
         (
             "services[0].root",
-            {"services": [{"name": "quay", "repository": "quay", "root": secret}]},
+            {"services": [{"name": "quay", "source": "quay", "root": secret}]},
         ),
         (
             "domains[0].code[0].paths[0]",
             {
-                "services": [{"name": "quay", "repository": "quay"}],
+                "services": [{"name": "quay", "source": "quay"}],
                 "domains": [{"name": "d", "code": [{"service": "quay", "paths": [secret]}]}],
             },
         ),
@@ -440,29 +440,29 @@ def test_secrets_in_texts_are_redacted_and_in_identifiers_refused() -> None:
         assert secret not in str(refused.value)
 
 
-QUAY_ONLY: list[dict[str, Any]] = [{"name": "quay", "repository": "quay"}]
+QUAY_ONLY: list[dict[str, Any]] = [{"name": "quay", "source": "quay"}]
 
 
 @pytest.mark.parametrize(
     ("changes", "field"),
     [
-        ({"services": [{"name": "Quay", "repository": "quay"}]}, "services[0].name"),
-        ({"services": [{"name": "-quay", "repository": "quay"}]}, "services[0].name"),
+        ({"services": [{"name": "Quay", "source": "quay"}]}, "services[0].name"),
+        ({"services": [{"name": "-quay", "source": "quay"}]}, "services[0].name"),
         ({"services": [*QUAY_ONLY, *QUAY_ONLY]}, "services[1].name"),
         (
-            {"services": [*QUAY_ONLY, {"name": "again", "repository": "quay", "root": "/"}]},
+            {"services": [*QUAY_ONLY, {"name": "again", "source": "quay", "root": "/"}]},
             "services[1]",
         ),
         (
-            {"services": [{"name": "quay", "repository": "quay", "root": "a/../b"}]},
+            {"services": [{"name": "quay", "source": "quay", "root": "a/../b"}]},
             "services[0].root",
         ),
         (
-            {"services": [{"name": "quay", "repository": "quay", "root": "a//b"}]},
+            {"services": [{"name": "quay", "source": "quay", "root": "a//b"}]},
             "services[0].root",
         ),
         (
-            {"services": [{"name": "quay", "repository": "quay", "root": "a\x07b"}]},
+            {"services": [{"name": "quay", "source": "quay", "root": "a\x07b"}]},
             "services[0].root",
         ),
         ({"domains": [{"name": "fees"}, {"name": "fees"}]}, "domains[1].name"),
@@ -514,7 +514,7 @@ LINKED: dict[str, Any] = {
     "services": [
         {
             "name": "quay",
-            "repository": "quay",
+            "source": "quay",
             "uses": [
                 {
                     "service": "booking-web",
@@ -529,7 +529,7 @@ LINKED: dict[str, Any] = {
                 },
             ],
         },
-        {"name": "booking-web", "repository": "lantern", "root": "web/booking"},
+        {"name": "booking-web", "source": "lantern", "root": "web/booking"},
     ]
 }
 
@@ -552,8 +552,8 @@ def test_a_link_is_cleaned_as_the_rest_of_the_document() -> None:
 def _uses(*links: dict[str, Any]) -> dict[str, Any]:
     return {
         "services": [
-            {"name": "quay", "repository": "quay", "uses": list(links)},
-            {"name": "web", "repository": "lantern"},
+            {"name": "quay", "source": "quay", "uses": list(links)},
+            {"name": "web", "source": "lantern"},
         ]
     }
 
@@ -610,13 +610,13 @@ BAD_SHAPES: list[dict[str, Any]] = [
     {"if_version": -1},
     {"links": NO_PATHS},
     # A link has a kind of the four, and a short note.
-    {"services": [{"name": "a", "repository": "r", "uses": [{"service": "b"}]}]},
-    {"services": [{"name": "a", "repository": "r", "uses": [{"service": "b", "kind": "rpc"}]}]},
+    {"services": [{"name": "a", "source": "r", "uses": [{"service": "b"}]}]},
+    {"services": [{"name": "a", "source": "r", "uses": [{"service": "b", "kind": "rpc"}]}]},
     {
         "services": [
             {
                 "name": "a",
-                "repository": "r",
+                "source": "r",
                 "uses": [{"service": "b", "kind": "http", "note": "n" * (MAX_NOTE_CHARS + 1)}],
             }
         ]
@@ -815,7 +815,7 @@ def test_the_text_of_a_write_says_what_to_correct() -> None:
             "services": [
                 {
                     "service": "quay",
-                    "repository": "quay",
+                    "source": "quay",
                     "files": 0,
                     "unassigned": 0,
                     "unassigned_share": None,
@@ -861,7 +861,7 @@ def test_the_catalog_tools_have_their_scopes() -> None:
     for name in ("search", "search_code"):
         properties = tools[name].definition().input_schema["properties"]
         assert {"projects", "domains", "services"} <= set(properties)
-    for name in ("search", "search_code", "get_symbol", "get_file"):
+    for name in ("search", "search_code", "get_file"):
         output = tools[name].definition().output_schema
         assert output is not None
         assert "CodeContext" in output["$defs"], name

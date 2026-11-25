@@ -121,13 +121,13 @@ def chat_thread(*, edited: bool = False) -> Json:
         {
             "id": "1793700000.000100",
             "author": "Lev Primerov",
-            "sent_at": "2026-11-05T10:00:00Z",
+            "occurred_at": "2026-11-05T10:00:00Z",
             "text": "Выпускаем 2.4 в четверг или ждём исправления экспорта?",
         },
         {
             "id": "1793700300.000200",
             "author": "Ana Example",
-            "sent_at": "2026-11-05T10:05:00Z",
+            "occurred_at": "2026-11-05T10:05:00Z",
             "mentions": ["Lev Primerov"],
             "text": "Ждём исправления, выпускаем в пятницу.",
         },
@@ -138,14 +138,14 @@ def chat_thread(*, edited: bool = False) -> Json:
             {
                 "id": "1793701200.000300",
                 "author": "Lev Primerov",
-                "sent_at": "2026-11-05T10:20:00Z",
+                "occurred_at": "2026-11-05T10:20:00Z",
                 "text": "Agreed, Monday.",
             }
         )
     return {
         "kind": "thread",
         "external_id": "C0RELEASE/1793700000.000100",
-        "occurred_at": messages[-1]["sent_at"],
+        "occurred_at": messages[-1]["occurred_at"],
         "external_url": "https://chat.example.invalid/archives/C0RELEASE/p1793700000000100",
         "payload": {
             "channel": "release",
