@@ -12,7 +12,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TAG = "v0.1.0"
 VERSION = "0.1.0"
-ARCHIVE = f"memini-server-{VERSION}-1.zip"
+# The package revision: raised when the launcher changes between releases of the service, so the
+# archive of an earlier revision, which users have installed, is never replaced. Back to 1 with a
+# new VERSION.
+REVISION = 2
+ARCHIVE = f"memini-server-{VERSION}-{REVISION}.zip"
 URL = f"https://github.com/npavlov/memini/releases/download/{TAG}/{ARCHIVE}"
 FILES = [
     "LICENSE",
@@ -55,7 +59,11 @@ def build(destination: Path) -> None:
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     formula = (Path(__file__).with_name("memini-server.rb.in")).read_text()
     (destination / "memini-server.rb").write_text(
-        formula.replace("@URL@", URL).replace("@SHA@", digest).replace("@VERSION@", VERSION)
+        formula.replace("@URL@", URL)
+        .replace("@SHA@", digest)
+        .replace("@VERSION@", VERSION)
+        # Homebrew upgrades an installed formula of the same version only for a higher revision.
+        .replace("@REVISION@", f"  revision {REVISION - 1}\n" if REVISION > 1 else "")
     )
     manifest = {
         "version": VERSION,

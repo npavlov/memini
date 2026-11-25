@@ -4,7 +4,7 @@ class MeminiServer < Formula
   url "@URL@"
   version "@VERSION@"
   sha256 "@SHA@"
-  license "Apache-2.0"
+@REVISION@  license "Apache-2.0"
 
   depends_on "python@3.12"
 
