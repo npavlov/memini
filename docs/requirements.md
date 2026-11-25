@@ -2,6 +2,7 @@
 
 The name is Latin for "I remember". Background on comparable projects: [prior-art.md](prior-art.md).
 Build order: [plan.md](plan.md). For the implemented paths and their tests, see the [developer guide](codebase.md).
+The questions Memini is built to answer, with their data and checks: [scenarios](scenarios/README.md).
 
 ## 1. Purpose
 
