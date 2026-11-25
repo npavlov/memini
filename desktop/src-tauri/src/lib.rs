@@ -24,6 +24,8 @@ mod keychain;
 mod launcher;
 mod secret;
 mod store;
+#[cfg(test)]
+mod stub;
 mod tools;
 
 use tauri::Manager;
@@ -48,7 +50,7 @@ pub fn run() {
             commands::connection_token_from_clipboard,
             commands::connection_token_from_file,
             commands::connection_token_clear,
-            commands::connection_check,
+            commands::checking::connection_check,
             commands::api_status,
             commands::api_workspaces,
             commands::api_sources,

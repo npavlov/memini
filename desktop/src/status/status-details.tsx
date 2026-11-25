@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 
 import { ErrorNotice, Fact, Facts, Notice, Panel, Pill, Text } from "../components";
-import { describeTokenCheck } from "../connections/connection-check";
+import { describeToken } from "../connections/connection-check";
 import { countNoun } from "../text/count-noun";
 import { formatInstant } from "../text/format-time";
 import type { ConnectionHealth } from "./connection-health";
@@ -38,13 +38,7 @@ function WithoutStatus({ health }: StatusDetailsProps): ReactElement {
   if (health.statusProblem !== null) {
     return <ErrorNotice error={health.statusProblem} />;
   }
-  const finding = describeTokenCheck({
-    version: health.version ?? "",
-    ready: health.ready,
-    token: health.token ?? "unknown",
-    workspaces: null,
-    detail: null,
-  });
+  const finding = describeToken(health.token ?? "unknown", health.lacking);
   return (
     <Notice tone={finding.tone} title={finding.text}>
       <Text>The freshness of the base is read with a token that has the read scope.</Text>

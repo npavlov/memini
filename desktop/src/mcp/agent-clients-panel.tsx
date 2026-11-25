@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
 import { Button, EmptyState, ErrorNotice, Field, Notice, Panel, Select, Text } from "../components";
+import type { TokenProblem } from "../connections/connection-check";
 import type { Connection } from "../connections/connections";
+import { TokenNotice } from "../connections/token-needed";
 import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
 import { listWorkspaceNames } from "../tokens/tokens-api";
@@ -13,6 +15,8 @@ import { mcpAddressOf } from "./mcp-clients";
 
 export interface AgentClientsPanelProps {
   readonly connection: Connection;
+  /** Connect makes a token with the connection's own: what is wrong with that one, if anything. */
+  readonly token: { readonly problem: TokenProblem | null; readonly onAddToken: () => void };
 }
 
 const EVERY_WORKSPACE = { value: "", label: "Every workspace" };
@@ -21,7 +25,7 @@ const EVERY_WORKSPACE = { value: "", label: "Every workspace" };
  * The agent clients found on this computer. Each is connected or disconnected on its own click;
  * what is shown is read from the client's file every time, not remembered.
  */
-export function AgentClientsPanel({ connection }: AgentClientsPanelProps): ReactElement {
+export function AgentClientsPanel({ connection, token }: AgentClientsPanelProps): ReactElement {
   const backend = useBackend();
   const clients = useLoad(useCallback(() => listAgentClients(backend), [backend]));
   const workspaces = useLoad(
@@ -47,6 +51,7 @@ export function AgentClientsPanel({ connection }: AgentClientsPanelProps): React
         </Button>
       }
     >
+      {token.problem === null ? null : <TokenNotice problem={token.problem} onAddToken={token.onAddToken} />}
       <WorkspaceChoice names={names} value={workspace} onChange={setWorkspace} />
       {outcome === null ? null : (
         <Notice tone={outcome.tone} title={outcome.label}>

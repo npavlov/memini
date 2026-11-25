@@ -54,6 +54,8 @@ export type {
   ScreenProps,
   SectionProps,
 } from "./surfaces";
+export { Toggle } from "./toggle";
+export type { ToggleProps } from "./toggle";
 export type { Tone } from "./tone";
 export { Tree, TreeItem } from "./tree";
 export type { TreeItemProps, TreeProps } from "./tree";

@@ -39,6 +39,7 @@ function health(changes: Partial<ConnectionHealth>): ConnectionHealth {
     version: "0.2.0",
     ready: true,
     token: "accepted",
+    lacking: null,
     mcp: "on",
     status: status(true),
     statusProblem: null,
@@ -65,21 +66,49 @@ describe("readConnectionHealth", () => {
     expect(read.status?.current).toBe(true);
   });
 
-  it("reports a server that does not answer with the reason and nothing else", async () => {
+  it("reports a server that does not answer with the reason, and that no token is stored", async () => {
     const down = new AppError({ kind: "unreachable", message: "Cannot reach the server." });
     const backend = createFakeBackend({
       answers: {
         ...answers,
+        connection_check: () => ({ unreachable: { kind: "unreachable", message: "Cannot reach the server." }, token: "missing" }),
+      },
+    });
+
+    const read = await readConnectionHealth(backend, connection);
+
+    expect(read).toMatchObject({ answers: false, problem: down, token: "missing", version: null, mcp: null, status: null });
+    expect(backend.calls.map((call) => call.command)).toEqual(["connection_check"]);
+  });
+
+  it("reports a check that could not be made at all with its reason", async () => {
+    const gone = new AppError({ kind: "not_found", message: "No such connection." });
+    const backend = createFakeBackend({
+      answers: {
+        ...answers,
         connection_check: () => {
-          throw down;
+          throw gone;
         },
       },
     });
 
     const read = await readConnectionHealth(backend, connection);
 
-    expect(read).toMatchObject({ answers: false, problem: down, version: null, mcp: null, status: null });
-    expect(backend.calls.map((call) => call.command)).toEqual(["connection_check"]);
+    expect(read).toMatchObject({ answers: false, problem: gone, token: null });
+  });
+
+  it.each([
+    ["refused", null],
+    ["lacks_scope", "read"],
+  ])("does not ask for the status with a token that is %s", async (token, lacking) => {
+    const backend = createFakeBackend({
+      answers: { ...answers, connection_check: () => ({ version: "0.2.0", ready: true, token, lacking }) },
+    });
+
+    const read = await readConnectionHealth(backend, connection);
+
+    expect(read).toMatchObject({ answers: true, token, lacking, status: null });
+    expect(backend.calls.map((call) => call.command)).not.toContain("api_status");
   });
 
   it("does not ask for the status with a token that may not read", async () => {
@@ -116,19 +145,39 @@ describe("barItems", () => {
   });
 
   it("says only that the server does not answer when it does not", () => {
-    const silent = health({ answers: false, version: null, token: null, mcp: null, status: null });
+    const silent = health({ answers: false, version: null, token: "not_checked", mcp: null, status: null });
 
     expect(barItems(silent)).toEqual([{ key: "server", tone: "bad", label: "server does not answer" }]);
   });
 
+  it("says that no token is stored also when the server does not answer", () => {
+    const silent = health({ answers: false, version: null, token: "missing", mcp: null, status: null });
+
+    expect(labels(silent)).toEqual(["server does not answer", "No token"]);
+  });
+
   it.each([
     ["is behind", health({ status: status(false) }), "bad", "base behind"],
-    ["cannot be read without a token", health({ status: null, token: "missing" }), "warn", "base unknown: no token"],
-    ["cannot be read with a refused token", health({ status: null, token: "refused" }), "bad", "base unknown: token refused"],
-    ["cannot be read without the read scope", health({ status: null, token: "no_read_scope" }), "idle", "base unknown: no read scope"],
     ["could not be read", health({ status: null }), "warn", "base unknown"],
   ])("says that the base %s", (_what, given, tone, label) => {
     expect(barItems(given)[2]).toEqual({ key: "base", tone, label });
+  });
+
+  it.each([
+    ["no token is stored", health({ status: null, token: "missing" }), "warn", "No token"],
+    ["the token is refused", health({ status: null, token: "refused" }), "bad", "Token refused"],
+    ["the token lacks a scope", health({ status: null, token: "lacks_scope", lacking: "read" }), "warn", "Token lacks the read scope"],
+  ])("names the token where the base would stand when %s", (_what, given, tone, label) => {
+    expect(barItems(given)[2]).toEqual({ key: "token", tone, label });
+  });
+
+  it.each([
+    ["missing", "idle"],
+    ["refused", "idle"],
+    ["lacks_scope", "idle"],
+    ["accepted", "good"],
+  ] as const)("shows a server that answers a token that is %s in the tone %s: green is for a connection that works", (token, tone) => {
+    expect(barItems(health({ token }))[0]).toEqual({ key: "server", tone, label: "server answers" });
   });
 
   it.each([

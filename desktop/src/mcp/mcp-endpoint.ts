@@ -66,3 +66,14 @@ const SUMMARIES: Readonly<Record<EndpointState, EndpointSummary>> = {
 export function describeEndpoint(state: EndpointState): EndpointSummary {
   return SUMMARIES[state];
 }
+
+/**
+ * Why the endpoint cannot be switched from this app; null when it can. The switch is the
+ * launcher's: it works for the server on this computer, while the launcher answers.
+ */
+export function switchUnavailable(connection: Connection, launcher: LauncherStatus | null): string | null {
+  if (connection.kind !== "local") {
+    return "The switch is on the computer that runs the server: its operator sets it.";
+  }
+  return launcher === null ? "The switch needs the memini-server launcher; see the Server screen." : null;
+}

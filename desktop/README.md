@@ -14,7 +14,7 @@ on it.
 
 | Screen | What it shows and does | What it needs |
 |---|---|---|
-| Connection | Saved connections: this computer, or a server by its address. Stores, replaces and removes a connection's token. Checks a connection. | — |
+| Connection | Saved connections: this computer, or a server by its address. Stores, replaces and removes a connection's token. **Test connection** shows each step with its state and what to do next: the address answers, the server's version, a token is stored, the server accepts it (refused, or the scope it lacks), and its scopes when the API tells them. The test also runs by itself when a connection is selected or saved or its token changes. | — |
 | Server | The local server. **Set up** in one button: checks Docker, installs and starts the server, creates its first admin token and makes this computer a connection, without a terminal. Then start, stop and restart, the state of each service, and which launcher is used. | Docker |
 | MCP | The MCP address, whether the endpoint is on and the switch for the local server. The agent clients found on this computer, each with **Connect** and **Disconnect** (see [Agent clients](#agent-clients)). Configuration to paste by hand for any other client of [docs/mcp](../docs/mcp/README.md). | A connection; for Connect, a token with the `admin` scope |
 | Tokens | Lists, creates and revokes tokens. A new token is shown once. | A token with the `admin` scope |
@@ -23,7 +23,10 @@ on it.
 
 A bar at the bottom of the window is always visible. It names the selected connection and says
 whether the server answers, its version, whether the base is current or behind, and whether MCP is
-on. **Details** opens the base's status above the bar: each workspace, its streams, their lag and
+on. A connection without a token, or with one the server refuses, is never shown as healthy: the
+bar says **No token** or **Token refused** where the state of the base would stand, and Tokens,
+Data and Project map show the same message with a button that leads to the token, instead of an
+empty view. **Details** opens the base's status above the bar: each workspace, its streams, their lag and
 their last run. The bar asks again every minute while the window is in front.
 
 ## Requirements
@@ -96,10 +99,12 @@ desktop/
   public/licenses/      the licence notices of the bundled fonts, shipped with the app
   src-tauri/
     src/commands.rs     the commands the front end may call
+    src/commands/checking.rs        the test of a connection, step by step
     src/commands/agent_clients.rs   Connect and Disconnect for agent clients
     src/clients.rs      the agent clients: where each keeps its configuration, and its memini entry
     src/jsonc.rs        JSON by position, to add or remove one member and keep every other byte
     fixtures/clients/   a hand-written configuration of each client, for the tests
+    src/stub.rs         a stand-in server for the tests of the commands
     src/api.rs          the HTTP client of the Memini API
     src/launcher.rs     finding and running memini-server, reading its JSON
     src/tools.rs        the read tools of the Data screen and the request a call becomes
@@ -201,6 +206,7 @@ themes.
 | `TextArea` | Several lines of literal text, such as a list with one value per line. |
 | `Select` | One of several options. |
 | `Checkbox` | A box to tick, with its words. |
+| `Toggle` | A switch for one thing that is on or off and changes at once, with its label beside it. `busy` while the change runs and `unavailable` with the reason; both are read out, and the switch stays reachable by keyboard. Use it instead of a pair of on and off buttons. |
 | `Field` | A control with its label, a note beside the label and a hint under the control. |
 | `FieldGroup` | Several controls that answer one question, under a legend. |
 | `Form` | A form that calls `onSubmit` and never navigates; `inline` for a field with its button. |
@@ -358,10 +364,10 @@ On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3, Rust 1.10
 |---|---|
 | `uv run … python sidecar/freeze.py` | sidecar built; frozen and script print the same JSON |
 | `pnpm typecheck` | no errors |
-| `pnpm test` | 773 tests passed |
+| `pnpm test` | 819 tests passed |
 | `pnpm build` | built |
 | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` | clean |
-| `cargo test --locked` | 110 tests passed |
+| `cargo test --locked` | 120 tests passed |
 | `pnpm tauri build --bundles app -- --locked` | `Memini.app` built, with the launcher inside |
 
 The built front end was also opened in a browser with a stand-in for the Rust side, under the
@@ -377,6 +383,12 @@ nothing the front end or the settings get. The project map was opened in the bro
 stand-in catalog: the tree with its counts, an edit, a save the stand-in refused as a version
 conflict, and a save it accepted.
 
+The connection test is tested from the command down against a stand-in server, one case each: an
+address nothing listens at, a server without a token stored, a refused token, a token without the
+read scope, an accepted one, and an address that answers but is not a Memini server. In the
+browser check a connection without a token showed **No token** in the bar and on the Data screen,
+the button led to the token, and the MCP switch was worked with Space and Enter.
+
 ## What is not done
 
 - **Nothing here was run against a real Docker or a real server.** The setup, start, stop, restart,
@@ -384,6 +396,11 @@ conflict, and a save it accepted.
   stub of Docker, the app's commands against a stub of the launcher. `pnpm tauri dev` was not run.
 - **Windows and Linux were not compiled**, and their sidecars were not built: the code and the
   workflow step are written and wait for the first CI run.
+- **The scopes of a token are shown only when the server tells them**, which it does to a token
+  with the `admin` scope, in its list of tokens. For another token the test says that it may read,
+  or which scope the server asked for, and no more.
+- **The MCP switch acts at once.** It was a button that asked first; the switch restarts the
+  server on one click, and says so beside it.
 - **The link to Docker's install page is text to copy.** The app opens no link: that would need a
   capability it does not have.
 - **No agent client was started against an entry the app wrote.** The entries are the documented

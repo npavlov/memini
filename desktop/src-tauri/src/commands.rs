@@ -15,6 +15,7 @@
 //! a command that is only registered here cannot be called.
 
 pub mod agent_clients;
+pub mod checking;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -411,117 +412,6 @@ fn decode_text(bytes: &[u8]) -> Option<String> {
         [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8(rest.to_vec()).ok(),
         _ => String::from_utf8(bytes.to_vec()).ok(),
     }
-}
-
-/// What a check of a connection found.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ConnectionCheck {
-    /// The version the server reports.
-    pub version: String,
-    /// The server's readiness; `None` when it did not say.
-    pub ready: Option<bool>,
-    pub token: TokenCheck,
-    /// How many workspaces the token may read, when it was accepted.
-    pub workspaces: Option<usize>,
-    /// The server's words when the token was not accepted.
-    pub detail: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TokenCheck {
-    /// No token is stored for the connection.
-    Missing,
-    /// The server accepted the token for reading.
-    Accepted,
-    /// The server does not know the token, or it is revoked or expired.
-    Refused,
-    /// The token is valid but has no `read` scope, so the check could not read with it.
-    NoReadScope,
-    /// The check of the token did not get an answer.
-    Unknown,
-}
-
-/// Checks a connection: the server's version and readiness, which need no token, then whether
-/// the stored token may read.
-#[tauri::command]
-pub async fn connection_check(
-    state: State<'_, AppState>,
-    id: String,
-) -> AppResult<ConnectionCheck> {
-    let inner = state.shared();
-    let target = inner.target(&id)?;
-    let place = target.place();
-    let answer = inner
-        .http
-        .call(&target, None, Method::GET, &["version"], None)
-        .await?;
-    let version = answer
-        .get("version")
-        .and_then(Value::as_str)
-        .map(clean)
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorKind::Unexpected,
-                format!("The server at {place} did not report a version. Is this a Memini server?"),
-            )
-        })?;
-    // Readiness answers 503 with the same report when a check fails: read the body either way.
-    let ready = match inner
-        .http
-        .exchange(&target, None, Method::GET, &["readyz"], None)
-        .await
-    {
-        Ok(raw) => serde_json::from_slice::<Value>(&raw.body)
-            .ok()
-            .and_then(|report| {
-                report
-                    .get("status")
-                    .and_then(Value::as_str)
-                    .map(|s| s == "ready")
-            }),
-        Err(_) => None,
-    };
-    let (shared, token_id) = (Arc::clone(&inner), id.clone());
-    let token = blocking(move || shared.token(&token_id)).await?;
-    let mut check = ConnectionCheck {
-        version,
-        ready,
-        token: TokenCheck::Missing,
-        workspaces: None,
-        detail: None,
-    };
-    let Some(token) = token else {
-        return Ok(check);
-    };
-    match inner
-        .http
-        .call(
-            &target,
-            Some(&token),
-            Method::GET,
-            &["v1", "workspaces"],
-            None,
-        )
-        .await
-    {
-        Ok(answer) => {
-            check.token = TokenCheck::Accepted;
-            check.workspaces = answer
-                .get("workspaces")
-                .and_then(Value::as_array)
-                .map(Vec::len);
-        }
-        Err(error) => {
-            check.token = match error.status {
-                Some(401) => TokenCheck::Refused,
-                Some(403) => TokenCheck::NoReadScope,
-                _ => TokenCheck::Unknown,
-            };
-            check.detail = Some(error.message);
-        }
-    }
-    Ok(check)
 }
 
 /// `GET /v1/status`: sources, streams and freshness, for the workspaces the token may read.

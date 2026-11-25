@@ -9,6 +9,7 @@ import {
   endpointAddress,
   launcherEndpointState,
   probeEndpoint,
+  switchUnavailable,
 } from "./mcp-endpoint";
 
 const local: Connection = {
@@ -95,5 +96,18 @@ describe("describeEndpoint", () => {
     ["unknown", "warn", "Unknown"],
   ] as const)("labels an endpoint that is %s", (state, tone, label) => {
     expect(describeEndpoint(state)).toMatchObject({ tone, label });
+  });
+});
+
+describe("switchUnavailable", () => {
+  it("lets the server on this computer be switched while the launcher answers", () => {
+    expect(switchUnavailable(local, launcher({}))).toBeNull();
+  });
+
+  it.each([
+    ["the launcher is not there", local, null, "The switch needs the memini-server launcher; see the Server screen."],
+    ["the server is another computer's", remote, launcher({}), "The switch is on the computer that runs the server: its operator sets it."],
+  ])("says why the switch cannot be worked when %s", (_case, connection, status, reason) => {
+    expect(switchUnavailable(connection, status)).toBe(reason);
   });
 });

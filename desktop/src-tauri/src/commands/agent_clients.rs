@@ -350,83 +350,34 @@ pub async fn client_disconnect(
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufRead, BufReader, Read, Write};
-    use std::net::{TcpListener, TcpStream};
-    use std::sync::Mutex;
-
     use super::*;
     use crate::clients::{backup_of, ClientState, TokenForm};
     use crate::keychain::MemoryStore;
     use crate::secret::fake_token;
     use crate::store::{ConnectionInput, ConnectionKind, Store};
+    use crate::stub::Stub;
 
     const TOKEN_ID: &str = "0f3a6c1e-7b2d-4e58-9a41-c5d2e8f70b13";
     const CURSOR: &str = include_str!("../../fixtures/clients/cursor.json");
     const ZED: &str = include_str!("../../fixtures/clients/zed.jsonc");
 
-    /// A server that answers the two token routes and keeps what it was asked.
-    struct Server {
-        address: String,
-        requests: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl Server {
-        fn start(token: String) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("bound");
-            let address = format!("http://{}", listener.local_addr().expect("address"));
-            let requests = Arc::new(Mutex::new(Vec::new()));
-            let seen = Arc::clone(&requests);
-            std::thread::spawn(move || {
-                for stream in listener.incoming().flatten() {
-                    let request = answer(stream, &token);
-                    seen.lock().expect("lock").push(request);
-                }
-            });
-            Self { address, requests }
-        }
-
-        fn asked(&self) -> Vec<String> {
-            self.requests.lock().expect("lock").clone()
-        }
-    }
-
-    /// Reads one request and answers it. Gives the request line and the body.
-    fn answer(mut stream: TcpStream, token: &str) -> String {
-        let mut reader = BufReader::new(stream.try_clone().expect("cloned"));
-        let mut first = String::new();
-        reader.read_line(&mut first).expect("read");
-        let mut length = 0;
-        loop {
-            let mut line = String::new();
-            reader.read_line(&mut line).expect("read");
-            let header = line.to_ascii_lowercase();
-            if let Some(value) = header.strip_prefix("content-length:") {
-                length = value.trim().parse().expect("a length");
-            }
-            if line.trim().is_empty() {
-                break;
-            }
-        }
-        let mut body = vec![0; length];
-        reader.read_exact(&mut body).expect("read");
-        let made = first.starts_with("POST /v1/tokens ");
-        let secret = if made { token } else { "" };
-        let json = format!("{{\"id\":\"{TOKEN_ID}\",\"token\":\"{secret}\"}}");
-        write!(
-            stream,
-            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{json}",
-            json.len()
-        )
-        .expect("written");
-        let line = first.trim_end().trim_end_matches(" HTTP/1.1");
-        format!("{line} {}", String::from_utf8_lossy(&body))
+    /// A server that answers the two token routes: with a new token when one is asked for.
+    fn token_server(token: String) -> Stub {
+        Stub::start(move |request| {
+            let made = request.line == "POST /v1/tokens";
+            let secret = if made { token.as_str() } else { "" };
+            (
+                200,
+                format!("{{\"id\":\"{TOKEN_ID}\",\"token\":\"{secret}\"}}"),
+            )
+        })
     }
 
     struct Setup {
         inner: Arc<Inner>,
         places: Places,
         directory: PathBuf,
-        server: Server,
+        server: Stub,
         connection: String,
         token: String,
     }
@@ -450,7 +401,7 @@ mod tests {
             .expect("state");
             let inner = state.shared();
             let token = fake_token('c');
-            let server = Server::start(token.clone());
+            let server = token_server(token.clone());
             let connection = Self::connection(&inner, &server.address);
             Self {
                 inner,

@@ -2,10 +2,13 @@ import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
 import { AppFrame, EmptyState, ErrorNotice, NavItem, Sidebar, Splash, Text } from "./components";
+import { tokenProblem } from "./connections/connection-check";
+import type { TokenProblem } from "./connections/connection-check";
 import { activeConnection } from "./connections/connections";
 import type { Connection, ConnectionsView } from "./connections/connections";
 import { listConnections } from "./connections/connections-api";
 import { ConnectionsScreen } from "./connections/connections-screen";
+import { TokenNeeded } from "./connections/token-needed";
 import { DataScreen } from "./data/data-screen";
 import { useLoad } from "./hooks/use-load";
 import { readAppInfo } from "./ipc/app-info";
@@ -16,6 +19,7 @@ import { McpScreen } from "./mcp/mcp-screen";
 import { ProjectMapScreen } from "./project-map/project-map-screen";
 import { ServerScreen } from "./server/server-screen";
 import { StatusBar } from "./status/status-bar";
+import { useConnectionHealth } from "./status/use-connection-health";
 import { TokensScreen } from "./tokens/tokens-screen";
 
 /** The screens of the navigation. The state of the connection is not one: it is the bar below. */
@@ -85,11 +89,32 @@ function Shell({ boot }: ShellProps): ReactElement {
       ))}
     </Sidebar>
   );
+  const active = activeConnection(view);
+  const watch = useConnectionHealth(active);
+  // Known at once for a connection without a token; for a refused one, once the server said so.
+  const problem = active === null ? null : tokenProblem(active, watch.health?.token ?? null);
   return (
-    <AppFrame sidebar={sidebar} statusBar={<StatusBar connection={activeConnection(view)} />}>
-      <CurrentScreen screen={screen} view={view} info={boot.info} onView={setView} />
+    <AppFrame sidebar={sidebar} statusBar={<StatusBar connection={active} watch={watch} />}>
+      <CurrentScreen
+        screen={screen}
+        view={view}
+        info={boot.info}
+        onView={setView}
+        token={{
+          problem,
+          onAddToken: () => {
+            setScreen("connection");
+          },
+        }}
+      />
     </AppFrame>
   );
+}
+
+/** What keeps the selected connection from its data, and the way to the token. */
+interface TokenGate {
+  readonly problem: TokenProblem | null;
+  readonly onAddToken: () => void;
 }
 
 interface CurrentScreenProps {
@@ -97,9 +122,10 @@ interface CurrentScreenProps {
   readonly view: ConnectionsView;
   readonly info: AppInfo;
   readonly onView: (view: ConnectionsView) => void;
+  readonly token: TokenGate;
 }
 
-function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): ReactElement {
+function CurrentScreen({ screen, view, info, onView, token }: CurrentScreenProps): ReactElement {
   const active = activeConnection(view);
   switch (screen) {
     case "connection":
@@ -115,7 +141,7 @@ function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): Reac
           <Text>Add a server on the Connection screen, or choose one of the saved connections.</Text>
         </EmptyState>
       ) : (
-        <ConnectionScreen screen={screen} connection={active} />
+        <ConnectionScreen screen={screen} connection={active} token={token} />
       );
   }
 }
@@ -123,14 +149,21 @@ function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): Reac
 interface ConnectionScreenProps {
   readonly screen: "mcp" | "tokens" | "data" | "map";
   readonly connection: Connection;
+  readonly token: TokenGate;
 }
 
 /** A screen about one connection. It is keyed by the connection, so answers never cross over. */
-function ConnectionScreen({ screen, connection }: ConnectionScreenProps): ReactElement {
+function ConnectionScreen({ screen, connection, token }: ConnectionScreenProps): ReactElement {
   const key = `${connection.id}:${connection.url}:${String(connection.hasToken)}`;
+  const { problem, onAddToken } = token;
+  // The MCP screen has an address to show without a token; the others have only the server's data.
+  if (problem !== null && screen !== "mcp") {
+    const title = SCREENS.find((item) => item.id === screen)?.label ?? "";
+    return <TokenNeeded title={title} problem={problem} onAddToken={onAddToken} />;
+  }
   switch (screen) {
     case "mcp":
-      return <McpScreen key={key} connection={connection} />;
+      return <McpScreen key={key} connection={connection} token={token} />;
     case "tokens":
       return <TokensScreen key={key} connection={connection} />;
     case "data":
