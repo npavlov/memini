@@ -5,6 +5,7 @@
 import type { Backend } from "../ipc/backend";
 import { readBoolean, readNumber, readObject, readString } from "../json/read-json";
 import { displayText } from "../text/display-text";
+import type { Runtime } from "./host-model";
 
 export const INDEXING_MODES = ["half", "background", "full"] as const;
 
@@ -15,6 +16,8 @@ export interface IndexingState {
   /** The cores the model may use; null for no limit. */
   readonly cpus: number | null;
   readonly cores: number;
+  /** Where the model runs: in its container, or in Ollama on this computer. */
+  readonly runtime: Runtime;
 }
 
 export interface IndexingAnswer {
@@ -39,6 +42,7 @@ export function parseIndexingAnswer(value: unknown): IndexingAnswer {
       mode: isMode(mode) ? mode : "half",
       cpus: readNumber(state["cpus"]),
       cores: readNumber(state["cores"]) ?? 1,
+      runtime: readString(state["runtime"]) === "host" ? "host" : "container",
     };
   }
   return {
@@ -64,6 +68,11 @@ export function describeIndexing(state: IndexingState): string {
 
 export async function readIndexing(backend: Backend): Promise<IndexingAnswer> {
   return parseIndexingAnswer(await backend.invoke("launcher_indexing"));
+}
+
+/** Moves the search model to Ollama on this computer, or back into its container. */
+export async function setRuntime(backend: Backend, runtime: Runtime): Promise<IndexingAnswer> {
+  return parseIndexingAnswer(await backend.invoke("launcher_embedding_set", { runtime }));
 }
 
 export async function setIndexing(backend: Backend, mode: IndexingMode): Promise<IndexingAnswer> {

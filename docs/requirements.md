@@ -1370,6 +1370,18 @@ way, and `memini status` exits 0: the answer is in the output.
   a generated `compose.local.yaml` in its state directory, which sets
   `MEMINI_GIT_LOCAL_ROOTS=/srv/local`. `memini-server git` keeps one ssh key with the scanned host
   keys and one https token as those compose secrets, each read on stdin.
+- Where the search model of a managed server runs (decided 2026-11-25, memini-qpk.28, scenario S11):
+  in the ollama service of its Compose project, or in Ollama on the host. Docker on macOS gives
+  containers no GPU, and the model in the container embedded a code chunk in about 12.5 s at four
+  cores against about 0.11 s in Ollama on the Mac. The launcher keeps the runtime with the CPU limit
+  in `indexing.json` and writes both into `compose.resources.yaml`: in host mode the service's
+  `MEMINI_EMBEDDING_URL` is `http://host.docker.internal:11434/v1` (with `extra_hosts`
+  `host-gateway` for Linux), its batches are 32, its wait for the ollama service is optional and
+  that service is in a profile no command starts. Moving the model is refused when the host's build
+  of the model has another digest than the container's, since the index holds that build's vectors
+  and the fingerprint names its digest. The desktop app chooses host mode at the first start on a
+  Mac when Ollama answers, has Ollama download the model with its progress shown, and installs
+  Ollama with Homebrew when the user says so; Linux and Windows keep the container.
 - A CLI wraps the API for setup and operations (decided 2026-11-18). Its commands are HTTP clients of
   the running service, with a service URL and a token: the service is the one place that checks scopes,
   applies the authorization filter, touches the mirrors and writes run reports, and no database

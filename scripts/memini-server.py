@@ -57,6 +57,25 @@ INDEXING = "indexing.json"
 INDEXING_COMPOSE = "compose.resources.yaml"
 INDEXING_MODES = ("half", "background", "full")
 DEFAULT_INDEXING = "half"
+# Where the search model runs (S11, S18): in the ollama container, or in Ollama on this computer,
+# which on macOS embeds on the GPU, about a hundred times faster than the CPU of Docker's VM.
+EMBEDDING_RUNTIMES = ("container", "host")
+DEFAULT_RUNTIME = "container"
+# Ollama on this computer, as the launcher asks it and as the service's container reaches it.
+HOST_OLLAMA = "http://127.0.0.1:11434"
+HOST_OLLAMA_FROM_CONTAINER = "http://host.docker.internal:11434/v1"
+# The profile that keeps the ollama service from starting while the model runs on this computer.
+CONTAINER_MODEL_PROFILE = "container-model"
+# The service's settings in host mode: a GPU takes larger batches and answers in seconds.
+HOST_EMBEDDING = {
+    "MEMINI_EMBEDDING_URL": HOST_OLLAMA_FROM_CONTAINER,
+    "MEMINI_EMBEDDING_BATCH_SIZE": "32",
+    "MEMINI_EMBEDDING_TIMEOUT": "120",
+    "MEMINI_CLIENT_TIMEOUT": "180",
+}
+# Seconds to ask Ollama on this computer, and to let it download the model.
+HOST_PROBE_TIMEOUT = 5
+HOST_PULL_TIMEOUT = 60 * 60
 LOCAL_ROOT = "/srv/local"
 # The name of a local folder: a handle, as the names of the service are.
 HANDLE = re.compile(r"[a-z0-9][a-z0-9_-]{0,62}")
@@ -484,13 +503,10 @@ def compose(directory: Path, command: str, args: list[str], *, quiet: bool = Fal
     project = Project(directory, quiet=quiet)
     run = project.run
     if command == "start":
-        run("up", "-d", "--no-build", "--wait", "ollama")
-        if MODEL not in {
-            line.split()[0]
-            for line in run("exec", "-T", "ollama", "ollama", "list", capture=True).splitlines()
-            if line.split()
-        }:
-            run("exec", "-T", "ollama", "ollama", "pull", MODEL)
+        if embedding_runtime(directory) == "host":
+            ready_host_model()
+        else:
+            ensure_container_model(project)
         run("up", "-d", "--no-build", "--wait")
         if not quiet:
             address = run("port", "memini", str(API_PORT), capture=True).strip()
@@ -587,32 +603,211 @@ def indexing_cpus(mode: str, available: int) -> float | None:
     return None
 
 
-def indexing_mode(directory: Path) -> str:
-    """The mode set for the server in ``directory``; the default before one is set."""
+def indexing_settings(directory: Path) -> dict[str, str]:
+    """The mode and the runtime set for the server in ``directory``; the defaults for what is
+    not set."""
     try:
         value: object = json.loads((directory / INDEXING).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return DEFAULT_INDEXING
-    mode = cast(dict[str, object], value).get("mode") if isinstance(value, dict) else None
-    return mode if isinstance(mode, str) and mode in INDEXING_MODES else DEFAULT_INDEXING
+        value = {}
+    found = cast(dict[str, object], value) if isinstance(value, dict) else {}
+    mode, runtime = found.get("mode"), found.get("runtime")
+    return {
+        "mode": mode if isinstance(mode, str) and mode in INDEXING_MODES else DEFAULT_INDEXING,
+        "runtime": (
+            runtime
+            if isinstance(runtime, str) and runtime in EMBEDDING_RUNTIMES
+            else DEFAULT_RUNTIME
+        ),
+    }
 
 
-def save_indexing(directory: Path, mode: str) -> None:
-    """Write ``mode`` and the Compose file with its CPU limit; no Compose file for ``full``."""
-    write_private(directory / INDEXING, json.dumps({"mode": mode}) + "\n")
-    cpus = indexing_cpus(mode, cores())
-    if cpus is None:
+def indexing_mode(directory: Path) -> str:
+    """The mode set for the server in ``directory``; the default before one is set."""
+    return indexing_settings(directory)["mode"]
+
+
+def embedding_runtime(directory: Path) -> str:
+    """Where the search model of the server in ``directory`` runs."""
+    return indexing_settings(directory)["runtime"]
+
+
+def resources_compose(cpus: float | None, runtime: str) -> dict[str, object] | None:
+    """The Compose file of the indexing settings: the CPU limit of the ollama service and, when
+    the model runs on this computer, the service's address of it, with the ollama service in a
+    profile no command starts and the service's wait for it made optional. Every value is the
+    launcher's own; none comes from the user. ``None`` when the settings change nothing."""
+    services: dict[str, object] = {}
+    ollama: dict[str, object] = {}
+    if cpus is not None:
+        ollama["cpus"] = cpus
+    if runtime == "host":
+        ollama["profiles"] = [CONTAINER_MODEL_PROFILE]
+        services["memini"] = {
+            "environment": dict(HOST_EMBEDDING),
+            # Docker Desktop and OrbStack know this name; on Linux it is the host's gateway.
+            "extra_hosts": ["host.docker.internal:host-gateway"],
+            "depends_on": {"ollama": {"condition": "service_healthy", "required": False}},
+        }
+    if ollama:
+        services["ollama"] = ollama
+    return {"services": services} if services else None
+
+
+def save_indexing(directory: Path, mode: str | None = None, runtime: str | None = None) -> None:
+    """Write the mode and the runtime, each kept when not given, and the Compose file they make;
+    no Compose file when they change nothing."""
+    settings = indexing_settings(directory)
+    mode = mode or settings["mode"]
+    runtime = runtime or settings["runtime"]
+    write_private(directory / INDEXING, json.dumps({"mode": mode, "runtime": runtime}) + "\n")
+    content = resources_compose(indexing_cpus(mode, cores()), runtime)
+    if content is None:
         write_private(directory / INDEXING_COMPOSE, None)
         return
-    text = json.dumps({"services": {"ollama": {"cpus": cpus}}}, indent=2)
+    # JSON is YAML: Compose reads it as it is.
+    text = json.dumps(content, indent=2)
     header = "# Made by memini-server from indexing.json; change it with memini-server indexing.\n"
     write_private(directory / INDEXING_COMPOSE, header + text + "\n")
 
 
 def describe_indexing(directory: Path) -> dict[str, object]:
-    mode = indexing_mode(directory)
+    settings = indexing_settings(directory)
     available = cores()
-    return {"mode": mode, "cpus": indexing_cpus(mode, available), "cores": available}
+    return {
+        "mode": settings["mode"],
+        "cpus": indexing_cpus(settings["mode"], available),
+        "cores": available,
+        "runtime": settings["runtime"],
+    }
+
+
+def host_ollama() -> dict[str, object]:
+    """What Ollama on this computer says: whether it answers, its version, and whether it has
+    the search model, with the model's digest. Asked at 127.0.0.1 only, never through a proxy."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    answer: dict[str, object] = {
+        "found": False,
+        "version": None,
+        "model": MODEL,
+        "has_model": False,
+        "digest": None,
+    }
+    try:
+        with opener.open(f"{HOST_OLLAMA}/api/version", timeout=HOST_PROBE_TIMEOUT) as response:
+            version: object = json.loads(response.read())
+        with opener.open(f"{HOST_OLLAMA}/api/tags", timeout=HOST_PROBE_TIMEOUT) as response:
+            tags: object = json.loads(response.read())
+    except (OSError, ValueError):
+        return answer
+    answer["found"] = True
+    if isinstance(version, dict):
+        number = cast(dict[str, object], version).get("version")
+        answer["version"] = number if isinstance(number, str) else None
+    models = cast(dict[str, object], tags).get("models") if isinstance(tags, dict) else None
+    for item in objects(models):
+        if MODEL in (item.get("name"), item.get("model")):
+            digest = item.get("digest")
+            answer["has_model"] = True
+            answer["digest"] = digest if isinstance(digest, str) else None
+    return answer
+
+
+def pull_host_model() -> None:
+    """Have Ollama on this computer download the search model."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(  # noqa: S310 - the fixed loopback address of Ollama
+        f"{HOST_OLLAMA}/api/pull",
+        data=json.dumps({"model": MODEL, "stream": False}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with opener.open(request, timeout=HOST_PULL_TIMEOUT) as response:
+            answer: object = json.loads(response.read())
+    except (OSError, ValueError):
+        raise ValueError(f"Ollama on this computer could not download {MODEL}") from None
+    status = cast(dict[str, object], answer).get("status") if isinstance(answer, dict) else None
+    if status != "success":
+        raise ValueError(f"Ollama on this computer did not download {MODEL}")
+
+
+def container_model_id(project: Project) -> str | None:
+    """The id ``ollama list`` gives the search model in a running ollama service: the start of
+    its digest. ``None`` when the service does not run or has no model."""
+    rows = project.services()
+    if not any(row.get("Service") == "ollama" and row.get("State") == "running" for row in rows):
+        return None
+    listed = project.run("exec", "-T", "ollama", "ollama", "list", capture=True)
+    for line in listed.splitlines():
+        words = line.split()
+        if len(words) >= 2 and words[0] == MODEL:
+            return words[1]
+    return None
+
+
+NO_HOST_OLLAMA = (
+    "no Ollama answers at 127.0.0.1:11434 on this computer: install it from"
+    " https://ollama.com/download or with `brew install ollama`, start it, and try again"
+)
+
+
+def ready_host_model() -> dict[str, object]:
+    """Ollama on this computer with the search model, downloading the model when it is missing."""
+    found = host_ollama()
+    if not found["found"]:
+        raise ValueError(NO_HOST_OLLAMA)
+    if not found["has_model"]:
+        pull_host_model()
+        found = host_ollama()
+        if not found["has_model"]:
+            raise ValueError(f"Ollama on this computer has no {MODEL} after downloading it")
+    return found
+
+
+def ensure_container_model(project: Project) -> None:
+    """The ollama service with the search model, downloading the model when it is missing."""
+    project.run("up", "-d", "--no-build", "--wait", "ollama")
+    listed = project.run("exec", "-T", "ollama", "ollama", "list", capture=True)
+    if MODEL not in {line.split()[0] for line in listed.splitlines() if line.split()}:
+        project.run("exec", "-T", "ollama", "ollama", "pull", MODEL)
+
+
+def embedding(directory: Path, target: str, quiet: bool) -> dict[str, object]:
+    """``embedding status|host|container``: the fields of the object --json prints. ``status``
+    also answers before a server is set up, for the first setup to choose. Moving the model to
+    this computer needs Ollama to answer, downloads the model when it is missing, and refuses a
+    build of the model whose digest differs from the container's, whose vectors the index
+    holds. A running service is recreated with the new address."""
+    if target == "status":
+        settings = describe_indexing(directory) if (directory / MARKER).is_file() else None
+        return {"indexing": settings, "host": host_ollama()}
+    managed(directory)
+    if target != embedding_runtime(directory):
+        project = Project(directory, quiet=quiet)
+        running = memini_service(project.services()).get("State") == "running"
+        if target == "host":
+            found = ready_host_model()
+            known = container_model_id(project)
+            digest = found["digest"]
+            if known and not (isinstance(digest, str) and digest.startswith(known)):
+                raise ValueError(
+                    f"{MODEL} on this computer is another build ({str(digest)[:12]}) than the"
+                    f" server's ({known}): its vectors would not match the index; bring both to"
+                    " the same build first"
+                )
+            save_indexing(directory, runtime="host")
+            if running:
+                project = Project(directory, quiet=quiet)
+                project.run("up", "-d", "--no-build", "--wait", "memini")
+                project.run("stop", "ollama")
+        else:
+            save_indexing(directory, runtime="container")
+            if running:
+                project = Project(directory, quiet=quiet)
+                ensure_container_model(project)
+                project.run("up", "-d", "--no-build", "--wait", "memini")
+    return {"indexing": describe_indexing(directory), "host": host_ollama()}
 
 
 def indexing(directory: Path, action: str, mode: str | None, quiet: bool) -> dict[str, object]:
@@ -967,23 +1162,33 @@ def git(directory: Path, choice: argparse.Namespace, quiet: bool) -> dict[str, o
 
 
 def manage(
-    directory: Path, command: str, args: list[str], port: int | None, *, quiet: bool = False
+    directory: Path,
+    command: str,
+    args: list[str],
+    port: int | None,
+    *,
+    quiet: bool = False,
+    runtime: str | None = None,
 ) -> int:
     """Run ``command`` on the managed server in ``directory``; ``quiet`` prints nothing on
-    stdout."""
+    stdout. ``runtime`` is where a first start runs the search model."""
     if command == "uninstall":
         return uninstall(directory, quiet=quiet)
     if command == "start":
-        if not directory.exists():
+        fresh = not directory.exists()
+        if fresh:
             initialize(directory, API_PORT if port is None else port)
-        if (directory / MARKER).is_file() and not (directory / INDEXING).is_file():
-            save_indexing(directory, DEFAULT_INDEXING)
         elif (
             port is not None
             and (directory / MARKER).is_file()
             and f"MEMINI_HTTP_PORT={port}" not in (directory / ".env").read_text().splitlines()
         ):
             raise ValueError(f"update MEMINI_HTTP_PORT in {directory / '.env'} to change port")
+        if (directory / MARKER).is_file():
+            if fresh or not (directory / INDEXING).is_file():
+                save_indexing(directory, DEFAULT_INDEXING, runtime or DEFAULT_RUNTIME)
+            elif runtime is not None and runtime != embedding_runtime(directory):
+                raise ValueError(f"use `memini-server embedding {runtime}` to move the model")
     if not directory.exists() and command in {"status", "stop"}:
         if not quiet:
             print(f"No managed server at {directory}")
@@ -994,11 +1199,19 @@ def manage(
 
 
 def configuration_parser(prog: str, command: str) -> argparse.ArgumentParser:
-    """The arguments of ``repos``, ``git`` and ``indexing``."""
+    """The arguments of ``repos``, ``git``, ``indexing`` and ``embedding``."""
     details = argparse.ArgumentParser(prog=f"{prog} {command}")
     details.add_argument(
         "--json", action="store_true", help="print one JSON object on stdout, for programs"
     )
+    if command == "embedding":
+        details.add_argument(
+            "action",
+            choices=("status", *EMBEDDING_RUNTIMES),
+            help="status, or where the search model runs: in its container or in Ollama on"
+            " this computer (host)",
+        )
+        return details
     if command == "indexing":
         details.add_argument("action", choices=("status", "set"))
         details.add_argument(
@@ -1033,6 +1246,8 @@ def configure(directory: Path, command: str, choice: argparse.Namespace) -> int:
             answer = repos(directory, choice.action, choice.target, quiet=choice.json)
         elif command == "indexing":
             answer = indexing(directory, choice.action, choice.mode, quiet=choice.json)
+        elif command == "embedding":
+            answer = embedding(directory, choice.action, quiet=choice.json)
         else:
             answer = git(directory, choice, quiet=choice.json)
     except subprocess.CalledProcessError as error:
@@ -1052,6 +1267,25 @@ def configure(directory: Path, command: str, choice: argparse.Namespace) -> int:
 
 
 def describe_configuration(command: str, answer: dict[str, object]) -> list[str]:
+    if command == "embedding":
+        host = cast(dict[str, object], answer["host"])
+        settings = answer.get("indexing")
+        where = (
+            "no managed server yet"
+            if not isinstance(settings, dict)
+            else "the search model runs "
+            + (
+                "in Ollama on this computer"
+                if cast(dict[str, object], settings)["runtime"] == "host"
+                else "in its container"
+            )
+        )
+        if not host["found"]:
+            found = "no Ollama answers on this computer"
+        else:
+            has = "with" if host["has_model"] else "without"
+            found = f"Ollama {host['version']} on this computer, {has} {host['model']}"
+        return [where, found]
     if command == "indexing":
         found = cast(dict[str, object], answer["indexing"])
         cpus = found["cpus"]
@@ -1094,7 +1328,9 @@ def main() -> int:
         " removes the server with its data. `repos list|add PATH|remove NAME` gives the server"
         " folders of this computer as git sources; `git status|ssh-key|https-token|remove` sets"
         " its access to private remotes, the secret on stdin. `indexing status|set MODE` limits the"
-        " cores the search model uses: half (the default), background or full.",
+        " cores the search model uses: half (the default), background or full. `embedding"
+        " status|host|container` runs the search model in Ollama on this computer, or in its"
+        " container.",
     )
     parser.add_argument("--state-dir", type=Path, help="directory for this local server")
     parser.add_argument(
@@ -1109,6 +1345,7 @@ def main() -> int:
             "repos",
             "git",
             "indexing",
+            "embedding",
             "path",
             "cli",
         ),
@@ -1118,6 +1355,7 @@ def main() -> int:
     command: str = options.command
     args: list[str] = options.args
     port: int | None = None
+    runtime: str | None = None
     as_json = False
     force = False
     if command in {"start", "status", "stop", "mcp", "bootstrap", "uninstall"}:
@@ -1128,6 +1366,11 @@ def main() -> int:
         if command == "start":
             details.add_argument(
                 "--http-port", type=int, help="first-run local port (default 6364)"
+            )
+            details.add_argument(
+                "--embedding",
+                choices=EMBEDDING_RUNTIMES,
+                help="first run: where the search model runs (default container)",
             )
         if command == "bootstrap":
             details.add_argument(
@@ -1154,6 +1397,7 @@ def main() -> int:
             details.error("uninstall deletes the server and all its data; add --yes to confirm")
         if command == "start":
             port = chosen.http_port
+            runtime = chosen.embedding
             if port is not None and not 0 <= port <= 65535:
                 details.error("--http-port must be between 0 and 65535")
         args = [chosen.switch] if command == "mcp" else []
@@ -1163,7 +1407,7 @@ def main() -> int:
         print(resources())
         return 0
     directory = (options.state_dir or state_directory()).expanduser().resolve()
-    if command in {"repos", "git", "indexing"}:
+    if command in {"repos", "git", "indexing", "embedding"}:
         details = configuration_parser(parser.prog, command)
         choice = details.parse_args(args)
         if command == "indexing" and (choice.action == "set") != (choice.mode is not None):
@@ -1180,11 +1424,11 @@ def main() -> int:
         print(json.dumps(answer) if as_json else mcp_line(answer, directory))
         return 0
     if not as_json:
-        return manage(directory, command, args, port)
+        return manage(directory, command, args, port, runtime=runtime)
     # One object on stdout whatever happens; what Docker says of a failure is on stderr.
     failure: str | None = None
     try:
-        code = manage(directory, command, args, port, quiet=True)
+        code = manage(directory, command, args, port, quiet=True, runtime=runtime)
     except subprocess.CalledProcessError as error:
         code = error.returncode or 1
         failure = f"docker compose failed with exit status {error.returncode}"

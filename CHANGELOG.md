@@ -39,6 +39,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The chunker is version 3, which changes the index fingerprint: after the upgrade, search refuses
   a workspace until `memini reindex --workspace NAME` has rebuilt it. Vectors are reused, so only
   the files of the new languages are embedded again.
+- On a Mac the search model runs in Ollama on the Mac, about a hundred times faster than in
+  Docker, which has no GPU there. The desktop app's first setup finds Ollama, downloads the model
+  with its progress shown and installs the server in this mode, or offers to install Ollama with
+  Homebrew; the Server screen moves an installed server's model to the Mac or back. The launcher
+  does it with `memini-server embedding host|container|status` and
+  `memini-server start --embedding host`; the index stays as it is.
+  [Run the search model in Ollama on a Mac](docs/install.md#run-the-search-model-in-ollama-on-a-mac).
 
 ### Fixed
 

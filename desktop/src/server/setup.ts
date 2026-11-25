@@ -54,7 +54,7 @@ export function localSetup(status: LauncherStatus, local: Connection | null): Lo
   return local === null || !local.hasToken ? "setup" : "done";
 }
 
-export const SETUP_STEPS = ["docker", "server", "token"] as const;
+export const SETUP_STEPS = ["docker", "model", "server", "token"] as const;
 
 export type SetupStepId = (typeof SETUP_STEPS)[number];
 
@@ -65,6 +65,8 @@ export interface SetupProgress {
   /** The step that runs or failed; null before the start; "finished" after the last. */
   readonly at: SetupStepId | "finished" | null;
   readonly failure: string | null;
+  /** What the running step reports of itself, such as how far a download is. */
+  readonly note?: string | null;
 }
 
 export const NOT_STARTED: SetupProgress = { at: null, failure: null };
@@ -78,12 +80,14 @@ export interface SetupStep {
 
 const TITLES: Readonly<Record<SetupStepId, string>> = {
   docker: "Check Docker",
+  model: "Prepare the search model",
   server: "Install and start the server",
   token: "Create the first admin token and connect",
 };
 
 const RUNNING: Readonly<Record<SetupStepId, string>> = {
   docker: "Asking Docker…",
+  model: "Looking for Ollama on this Mac…",
   server: "The services are starting; the list below shows how far each one is.",
   token: "The token goes from the server straight to the system keychain.",
 };
@@ -118,14 +122,14 @@ function runningText(id: SetupStepId, servicesSeen: boolean): string {
 }
 
 /**
- * The three steps with their state, for the list the setup shows. `servicesSeen` says whether
+ * The four steps with their state, for the list the setup shows. `servicesSeen` says whether
  * the launcher lists any service yet; before that, the start is downloading.
  */
 export function setupSteps(progress: SetupProgress, servicesSeen = false): readonly SetupStep[] {
   return SETUP_STEPS.map((id) => {
     const state = stateOf(id, progress);
     const failed = state === "failed" ? progress.failure : null;
-    const detail = state === "running" ? runningText(id, servicesSeen) : failed;
+    const detail = state === "running" ? (progress.note ?? runningText(id, servicesSeen)) : failed;
     return { id, title: TITLES[id], state, detail };
   });
 }

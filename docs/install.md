@@ -276,7 +276,32 @@ core of the computer. The launcher limits it: `half` the cores (the default, whi
 mode in `indexing.json` and the limit in `compose.resources.yaml` in the state directory, and
 recreates a running model, so an embedding it was doing fails and its sync is tried again. A lower
 limit makes the first sync of a large repository take longer. The desktop app sets it on the Server
-screen.
+screen. The limit applies to the model in its container only.
+
+### Run the search model in Ollama on a Mac
+
+```sh
+memini-server embedding status
+memini-server embedding host
+memini-server embedding container
+```
+
+Docker on macOS has no access to the Mac's GPU, so the search model in the server's ollama
+container embeds on the processor of Docker's virtual machine. On a Mac with Apple silicon that was
+about 12.5 seconds a code chunk at four cores, against about 0.11 seconds in Ollama on the Mac
+itself ([measurements](operations/performance.md#the-model-in-docker-on-a-mac)): the first sync of
+a repository of a thousand files would take days. `embedding host` runs the model in
+[Ollama](https://ollama.com/download) on this computer instead (`brew install ollama`, then
+`brew services start ollama`): the launcher checks that Ollama answers at `127.0.0.1:11434`, has it
+download `qwen3-embedding:0.6b` when it lacks the model, and refuses a build of the model whose
+digest differs from the one in the container, whose vectors the index already holds. It keeps the
+runtime in `indexing.json` and writes it into `compose.resources.yaml`: the service reaches Ollama at
+`http://host.docker.internal:11434/v1` with batches of 32, and the ollama service is left out. A
+running service is recreated; the index stays as it is. `embedding container` moves the model back.
+A first start takes the runtime with `memini-server start --embedding host`. The desktop app does
+this on a Mac by itself: its first setup finds Ollama on the Mac, downloads the model there and
+installs the server in this mode, or offers to install Ollama with Homebrew. Keep Ollama running
+while the server indexes and searches. On Linux and Windows the model stays in its container.
 
 ### Remove the server
 
@@ -298,7 +323,7 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
 
 ### Output for programs
 
-`status`, `start`, `stop`, `mcp`, `bootstrap`, `uninstall`, `repos`, `git` and `indexing` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
+`status`, `start`, `stop`, `mcp`, `bootstrap`, `uninstall`, `repos`, `git`, `indexing` and `embedding` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
 
 `memini-server status --json` exits 0 whenever it can report, also for a stopped server, a missing installation and a missing Docker. Its object, on several lines here:
 

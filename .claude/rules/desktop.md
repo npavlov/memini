@@ -42,6 +42,9 @@ Rules for work under `desktop/` (Tauri 2, React, TypeScript). The component cata
   git access come from the user. Rust checks each before it becomes one element of the argument
   vector. A folder must be an absolute path that exists, resolved, of a git repository. A host must
   be a host name, passed as `--host=<host>`. Add no other user value to an argument.
+- Ollama on this computer (`src-tauri/src/host_model.rs`) is asked at the fixed address
+  `127.0.0.1:11434` for the fixed model only, and Homebrew runs with two fixed argument vectors
+  (`brew install ollama`, `brew services start ollama`), after the user said so in the window.
 - An ssh key or a git token is never an argument and never reaches the webview. Rust reads it from
   a file or the clipboard (then clears the clipboard), and the launcher reads it on stdin. Answers
   carry fingerprints and host names only.
