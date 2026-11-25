@@ -1,11 +1,11 @@
 {
-    "version": "0.1.0",
+    "version": "0.2.0-rc.1",
     "description": "Manage a local Memini server with Docker Compose",
     "homepage": "https://github.com/npavlov/memini",
     "license": "Apache-2.0",
     "depends": "main/python",
-    "url": "https://github.com/npavlov/memini/releases/download/v0.1.0/memini-server-0.1.0-6.zip",
-    "hash": "38f96b0cc97270fceefbf1f311dbf8a03accce371ea6ba5f1c1f1595f59e7ae7",
+    "url": "https://github.com/npavlov/memini/releases/download/v0.2.0-rc.1/memini-server-0.2.0-rc.1-1.zip",
+    "hash": "a0345ef19eee86df06d201f9b1d1ce132309e1c33edba9393e081e29ff6d403f",
     "extract_dir": "memini-server",
     "bin": "memini-server.cmd"
 }

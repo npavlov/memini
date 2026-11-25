@@ -23,8 +23,8 @@ COMPOSE_FILES = {
     "compose.release.yaml": "dc4b77f7f527dad31d12b1c47cadabd40dca49d6526e5c18ef4fc48d10efc714",
 }
 IMAGE = (
-    "ghcr.io/npavlov/memini:0.1.0"
-    "@sha256:a55fed2b8db036a5b79a482887bebf875c39d3ac10da785407d15598e87021fc"
+    "ghcr.io/npavlov/memini:0.2.0-rc.1"
+    "@sha256:2989547f45600bdfd0c6496ae31670dfd2101bc2d80061b88f2f3515839a4200"
 )
 MODEL = "qwen3-embedding:0.6b"
 MARKER = ".memini-server-v1"
