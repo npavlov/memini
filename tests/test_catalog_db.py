@@ -577,6 +577,12 @@ async def test_texts_are_redacted_and_a_refused_field_is_named_not_repeated(worl
         stored = ok(await put(client, leaky))
         catalog = await client.call_tool("get_catalog", {"workspace": "harbor"})
         again = ok(await put(client, leaky))
+        # Read the rows now: a later document of this test replaces the project and its services.
+        cur = await world.db.execute(
+            "SELECT coalesce((SELECT string_agg(p::text, '') FROM project p), '')"
+            " || coalesce((SELECT string_agg(s::text, '') FROM service s), '')"
+        )
+        row = await cur.fetchone()
         bad_name = await put(client, project="Port Operations")
         bad_mask = await put(client, with_pilot_paths(["quay/\nfees"]))
         two_levels = await put(client, {"domains": [{"name": "a", "subdomains": [{"name": "b"}]}]})
@@ -602,12 +608,8 @@ async def test_texts_are_redacted_and_a_refused_field_is_named_not_repeated(worl
     assert port["services"][1]["description"] == "password = [REDACTED:secret] in the compose file"
     # What is stored is what the same document cleans into: sending it again changes nothing.
     assert (again["changed"], again["version"]) == (False, 1)
-    cur = await world.db.execute(
-        "SELECT (SELECT string_agg(p::text, '') FROM project p)"
-        " || (SELECT string_agg(s::text, '') FROM service s)"
-    )
-    row = await cur.fetchone()
     assert row is not None
+    assert "[REDACTED:stripe_key]" in row[0]
     assert STRIPE not in row[0]
     assert "hunter2" not in row[0]
     assert STRIPE not in text(catalog)
