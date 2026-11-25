@@ -295,7 +295,7 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
   "api_url": "http://127.0.0.1:6364",
   "mcp_url": "http://127.0.0.1:6364/mcp",
   "mcp_enabled": true,
-  "image": "ghcr.io/npavlov/memini:0.1.0@sha256:a55fed2b…",
+  "image": "ghcr.io/npavlov/memini:0.2.0-rc.1@sha256:2989547f…",
   "directory": "/home/me/.local/share/memini/server",
   "docker": {"available": true, "error": null},
   "services": [

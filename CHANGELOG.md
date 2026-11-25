@@ -7,6 +7,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The server launcher, and the desktop app that carries it, install and start the image of
+  0.2.0-rc.1, so a managed server has the catalog, domains and the project map. A managed server
+  of 0.1.0 moves to it at its next start, and its database is migrated on the way.
+
 ### Fixed
 
 - The desktop app's window no longer scrolls as a whole: a selection dragged past the edge or a
