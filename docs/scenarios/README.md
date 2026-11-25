@@ -78,6 +78,7 @@ pain.
 | [S15](S15-see-what-memini-holds.md) | See what Memini holds and try its tools | Operator, team lead | ready | memini-qpk.9 |
 | [S16](S16-connect-agents-in-one-click.md) | Connect my agent clients in one click | Operator, engineer | ready | memini-qpk.11 |
 | [S17](S17-add-a-repository.md) | Add a repository without a terminal | Operator, engineer | ready | memini-qpk.18 |
+| [S18](S18-index-what-matters.md) | Index only what matters, see it move, keep my computer usable | Operator, engineer | partial | memini-qpk.20 |
 
 ## Tools and filters the scenarios need
 

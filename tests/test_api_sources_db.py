@@ -722,8 +722,9 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
 # --- Deleting a source ---------------------------------------------------------------------------
 
 
-def make_repository(path: Path) -> None:
-    """A repository with one commit on main; synthetic content and identity."""
+def make_repository(path: Path, files: dict[str, str] | None = None) -> None:
+    """A repository with one commit on main of ``files`` (a README by default); synthetic content
+    and identity."""
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": "/nonexistent",
@@ -736,10 +737,12 @@ def make_repository(path: Path) -> None:
         "GIT_AUTHOR_DATE": "2026-01-01T12:00:00+00:00",
         "GIT_COMMITTER_DATE": "2026-01-01T12:00:00+00:00",
     }
-    (path / "README.md").write_text("# Fixture\n")
+    for name, text in (files or {"README.md": "# Fixture\n"}).items():
+        (path / name).parent.mkdir(parents=True, exist_ok=True)
+        (path / name).write_text(text)
     for args in (
         ["init", "--quiet", "--initial-branch=main"],
-        ["add", "README.md"],
+        ["add", "--all"],
         ["commit", "--quiet", "-m", "first"],
     ):
         subprocess.run(["git", *args], cwd=path, env=env, check=True, capture_output=True)  # noqa: S603, S607
@@ -925,3 +928,72 @@ async def test_an_mcp_source_is_refused_without_echoing_what_was_sent(
             "validation_error",
         )
     assert await scalar(db, "SELECT count(*) FROM source") == 0
+
+
+# --- Previewing what a source indexes ------------------------------------------------------------
+
+
+@pytest.mark.git
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs the git executable")
+async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
+    client: httpx2.AsyncClient, admin: dict[str, str], repos: Path, git_settings: Settings
+) -> None:
+    make_repository(
+        repos / "app",
+        {
+            "README.md": "# Harbour\n",
+            "berths/berth.go": "package berths\n",
+            "berths/berth_test.go": "package berths\n",
+            "web/plan.ts": "export const plan = 1;\n",
+            "web/plan.test.ts": "test();\n",
+            "fixtures/ships.json": "{}\n",
+            "web/package-lock.json": "{}\n",
+        },
+    )
+    await new_workspace(client, admin, "alpha")
+    source = ok(
+        await new_source(
+            client, admin, "alpha", name="app", location=str(repos / "app"), exclude=["**/*.json"]
+        ),
+        201,
+    )
+    url = "/v1/workspaces/alpha/sources/app/preview"
+    refused(await client.get(url, headers=admin), 409, "not_fetched")
+    mirrors = MirrorManager(GitOptions.from_settings(git_settings))
+    await mirrors.sync(uuid.UUID(source["id"]), source["location"])
+
+    own = ok(await client.get(url, headers=admin))
+
+    assert own["ref"] == "refs/heads/main"
+    assert (own["tracked"], own["indexed"]) == (7, 5)
+    assert own["skipped"] == {"excluded": 2}
+    by_extension = {g["key"]: (g["tracked"], g["indexed"]) for g in own["by_extension"]}
+    assert by_extension == {".go": (2, 2), ".ts": (2, 2), ".json": (2, 0), ".md": (1, 1)}
+    assert own["by_folder"][0] == {"key": "web", "tracked": 3, "indexed": 2}
+
+    tried = ok(
+        await client.get(
+            url,
+            params={"exclude": ["**/*_test.go", "**/*.test.ts"], "builtin_excludes": "true"},
+            headers=admin,
+        )
+    )
+
+    # The rules tried replace the source's exclude: the JSON fixture is back, the lock file stays
+    # out by the built-in exclusions, and the tests are left out. Nothing is saved.
+    assert (tried["tracked"], tried["indexed"]) == (7, 4)
+    by_folder = {group["key"]: group["indexed"] for group in tried["by_folder"]}
+    assert by_folder == {"web": 1, "berths": 1, "fixtures": 1, "(root)": 1}
+    saved = ok(await client.get("/v1/workspaces/alpha/sources/app", headers=admin))
+    assert saved["exclude"] == ["**/*.json"]
+
+    # An empty exclude clears the list: every file but the lock file is kept.
+    cleared = ok(await client.get(url, params={"exclude": ""}, headers=admin))
+    assert cleared["indexed"] == 6
+
+    missing = {"ref": "refs/heads/nowhere"}
+    refused(await client.get(url, params=missing, headers=admin), 404, "not_found")
+    option = {"ref": "--upload-pack=x"}
+    assert (await client.get(url, params=option, headers=admin)).status_code == 422
+    absolute = {"exclude": "/srv/**"}
+    refused(await client.get(url, params=absolute, headers=admin), 422, "invalid_source")

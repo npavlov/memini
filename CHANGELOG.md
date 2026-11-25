@@ -7,6 +7,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- See how far a git sync is while it runs: its run report carries `details.progress`, the files
+  it writes, those read, chunked and embedded so far, and those committed, saved every few seconds
+  (`GET /v1/runs/{id}`).
+- Preview what a git source indexes before a sync spends time on it:
+  `GET /v1/workspaces/{workspace}/sources/{source}/preview` counts the files of a ref that the
+  source's rules, or rules to try, keep, by extension and by top-level folder.
+
 ### Changed
 
 - The server launcher, and the desktop app that carries it, install and start the image of
@@ -15,12 +24,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A first git sync that is stopped, by an edit of the source or a restart, keeps the files it has
+  written: it commits every 30 seconds of writing instead of once per batch of a hundred files,
+  which without a GPU took over half an hour and was lost whole.
 - The desktop app's window no longer scrolls as a whole: a selection dragged past the edge or a
   focused element moved the side bar and the status bar out of the window. Only the screen
   scrolls.
 - The Repositories screen opens the form to add a repository, and the one to create a workspace,
   on a click, instead of showing them all the time.
-
 - The first setup in the desktop app says that Docker is downloading the application, the
   database and the search model (about 2 GB) while no service exists yet, instead of pointing to
   an empty list of services for minutes.
