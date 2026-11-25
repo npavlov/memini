@@ -58,15 +58,15 @@ RU_THREAD: Json = {
     "messages": [
         {
             "id": "r-1",
-            "author": "Аня Пример",
-            "sent_at": "2026-03-04T06:00:00Z",
+            "persons": ["Аня Пример"],
+            "occurred_at": "2026-03-04T06:00:00Z",
             "text": "Рассаду томатов пора пикировать.",
             "url": "https://chat.example.invalid/archives/teplica/r-1",
         },
         {
             "id": "r-2",
-            "author": "Борис Образец",
-            "sent_at": "2026-03-04T06:20:00Z",
+            "persons": ["Борис Образец"],
+            "occurred_at": "2026-03-04T06:20:00Z",
             "text": "Пикирую в субботу, горшки уже купил.",
             "recipients": ["Аня Пример"],
         },
@@ -360,18 +360,18 @@ async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cite
         )
 
     # HTTP: the record's place and time, and the chunk's.
-    hit = found["hits"][0]
+    hit = found["items"][0]
     rid = record_id(source, "thread", "teplica/r-1")
     assert hit["record_id"] == rid
     assert (hit["locator"], hit["anchor"]) == ("chat:teplica/r-1#msg-r-1", "msg-r-1")
     assert hit["link"] == "https://chat.example.invalid/archives/teplica/r-1"
     assert hit["url"] is None
     assert instant(hit["occurred_at"]) == datetime(2026, 3, 4, 6, 20, tzinfo=UTC)
-    assert instant(hit["at"]) == datetime(2026, 3, 4, 6, tzinfo=UTC)
-    journal = sections["hits"][0]
+    assert instant(hit["chunk_occurred_at"]) == datetime(2026, 3, 4, 6, tzinfo=UTC)
+    journal = sections["items"][0]
     assert (journal["locator"], journal["anchor"]) == ("chat:handbook#Journal", "Journal")
     assert journal["link"] == journal["url"] == "https://notes.example.invalid/handbook"
-    assert journal["at"] == journal["occurred_at"]
+    assert journal["chunk_occurred_at"] == journal["occurred_at"]
 
     # MCP: the same hit, its output schema, and the text for clients that read only text.
     async with mcp_client(settings, pool, fake, agent) as client:
@@ -392,7 +392,7 @@ async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cite
     # record_id and anchor are evidence as they are.
     decision = {
         "statement": "Seedlings are pricked out on Saturday.",
-        "decided_at": "2026-03-04T06:20:00Z",
+        "occurred_at": "2026-03-04T06:20:00Z",
         "evidence": [
             {"record_id": hit["record_id"], "anchor": hit["anchor"]},
             {"record_id": journal["record_id"], "anchor": journal["anchor"]},
@@ -431,7 +431,7 @@ async def test_a_batch_sent_again_embeds_nothing_and_an_edit_reembeds_its_group_
         assert await rows(db, "SELECT id, xmin::text FROM chunk ORDER BY id") == xmin
 
         thread = json.loads(json.dumps(BATCH[0]))
-        messages = thread["payload"]["messages"]
+        messages = thread["payload"]["items"]
         index = next(i for i, m in enumerate(messages) if m["text"].startswith("Bought the hose"))
         messages[index]["text"] = "Bought the hose: ten metres, olive."  # as long as before
         edited = ok(await client.post(RECORDS, json={"records": [thread]}, headers=pusher))

@@ -369,7 +369,11 @@ async def test_threads_and_meetings_are_chunked_from_their_stored_payloads(
     db: Conn, scope: Scope, fake: FakeEmbedder
 ) -> None:
     thread = canonical_json(
-        {"messages": [{"author": "Ann Example", "sent_at": "2026-03-01T09:00:00Z", "text": "Hi."}]}
+        {
+            "messages": [
+                {"persons": ["Ann Example"], "occurred_at": "2026-03-01T09:00:00Z", "text": "Hi."}
+            ]
+        }
     )
     meeting = canonical_json({"title": "Sync", "started_at": "2026-03-01T14:00:00Z"})
     kinds: tuple[tuple[RecordKind, bytes], ...] = (("thread", thread), ("meeting", meeting))

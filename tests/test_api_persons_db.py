@@ -77,7 +77,7 @@ def refused(response: httpx2.Response, status_code: int, code: str) -> Json:
 def message(external_id: str, author: str, hours: int, people: list[Json] | None = None) -> Json:
     at = T0 + hours * HOUR
     payload: Json = {
-        "messages": [{"id": "m1", "author": author, "sent_at": iso(at), "text": "Ready."}]
+        "messages": [{"id": "m1", "author": author, "occurred_at": iso(at), "text": "Ready."}]
     }
     if people is not None:
         payload["people"] = people

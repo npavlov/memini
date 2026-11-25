@@ -207,8 +207,8 @@ async def test_an_admin_creates_two_workspaces_and_a_git_source_in_each(
     config, source_owner, workspace_id = stored[0][:3]
     assert config == {
         "location": os.path.realpath(repos / "app"),
-        "include": ["src/**"],
-        "exclude": ["**/*.min.js"],
+        "include_paths": ["src/**"],
+        "exclude_paths": ["**/*.min.js"],
     }
     assert source_owner == owner
     assert workspace_id == uuid.UUID(alpha["id"])
@@ -369,8 +369,8 @@ async def test_invalid_settings_are_refused_without_echoing_them(
 
     for body, setting in (
         ({"refs": ["main~1"]}, "refs"),
-        ({"include": ["/etc/**"]}, "include"),
-        ({"exclude": ["a/../b"]}, "exclude"),
+        ({"include_paths": ["/etc/**"]}, "include"),
+        ({"exclude_paths": ["a/../b"]}, "exclude"),
     ):
         error = refused(await new_source(client, admin, "alpha", **body), 422, "invalid_source")
         assert error["message"].startswith(f"The source setting {setting} is not valid")
@@ -453,8 +453,8 @@ async def test_a_patch_changes_refs_name_and_settings(
     assert await scalar(db, "SELECT count(*) FROM job WHERE source_id = %s", source_id) == 1
 
     settings = {
-        "include": ["src/**"],
-        "exclude": ["**/test/**"],
+        "include_paths": ["src/**"],
+        "exclude_paths": ["**/test/**"],
         "visibility": "workspace",
         "retention_days": 30,
         "llm_policy": "cloud",
@@ -464,8 +464,8 @@ async def test_a_patch_changes_refs_name_and_settings(
     assert changed["location"] == REMOTE
     assert await scalar(db, "SELECT config FROM source WHERE id = %s", source_id) == {
         "location": REMOTE,
-        "include": ["src/**"],
-        "exclude": ["**/test/**"],
+        "include_paths": ["src/**"],
+        "exclude_paths": ["**/test/**"],
     }
     assert changed["updated_at"] > source["updated_at"]
 
@@ -494,7 +494,9 @@ async def test_a_patch_changes_refs_name_and_settings(
     for body in invalid:
         refused(await client.patch(path, json=body, headers=admin), 422, "validation_error")
     refused(
-        await client.patch(path, json={"include": ["../up"]}, headers=admin), 422, "invalid_source"
+        await client.patch(path, json={"include_paths": ["../up"]}, headers=admin),
+        422,
+        "invalid_source",
     )
     refused(
         await client.patch("/v1/workspaces/alpha/sources/missing", json={}, headers=admin),
@@ -519,7 +521,7 @@ async def test_the_builtin_excludes_are_switched_off_and_on_per_source(
     path = "/v1/workspaces/alpha/sources/site"
 
     # Another rule changes; the switch stays as it was.
-    changed = ok(await client.patch(path, json={"include": ["src/**"]}, headers=admin))
+    changed = ok(await client.patch(path, json={"include_paths": ["src/**"]}, headers=admin))
     assert (changed["include"], changed["builtin_excludes"]) == (["src/**"], False)
     assert (await scalar(db, config, "site"))["builtin_excludes"] is False
 
@@ -527,8 +529,8 @@ async def test_the_builtin_excludes_are_switched_off_and_on_per_source(
     assert (changed["include"], changed["builtin_excludes"]) == (["src/**"], True)
     assert await scalar(db, config, "site") == {
         "location": REMOTE,
-        "include": ["src/**"],
-        "exclude": [],
+        "include_paths": ["src/**"],
+        "exclude_paths": [],
     }
     for body in ({"builtin_excludes": None}, {"builtin_excludes": "no"}, {"builtin_excludes": 0}):
         refused(await client.patch(path, json=body, headers=admin), 422, "validation_error")
@@ -645,19 +647,19 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
     beta_run = await run(beta_id, "git_sync", source_id=uuid.UUID(site["id"]))
 
     listed = ok(await client.get("/v1/workspaces/alpha/runs", headers=admin))
-    assert [r["id"] for r in listed["runs"]] == [str(reindex_run), str(dev_run), str(main_run)]
-    assert listed["next_before"] is None
-    newest = listed["runs"][1]
+    assert [r["id"] for r in listed["items"]] == [str(reindex_run), str(dev_run), str(main_run)]
+    assert listed["next_cursor"] is None
+    newest = listed["items"][1]
     assert (newest["kind"], newest["status"], newest["source"], newest["stream"]) == (
         "git_sync",
         "succeeded",
         "app",
         "refs/heads/dev",
     )
-    assert listed["runs"][0]["source"] is None
+    assert listed["items"][0]["source"] is None
 
     of_source = ok(await client.get("/v1/workspaces/alpha/runs?source=app", headers=admin))
-    assert [r["id"] for r in of_source["runs"]] == [str(dev_run), str(main_run)]
+    assert [r["id"] for r in of_source["items"]] == [str(dev_run), str(main_run)]
     of_stream = ok(
         await client.get(
             "/v1/workspaces/alpha/runs",
@@ -665,7 +667,7 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
             headers=admin,
         )
     )
-    assert [r["id"] for r in of_stream["runs"]] == [str(main_run)]
+    assert [r["id"] for r in of_stream["items"]] == [str(main_run)]
     refused(
         await client.get("/v1/workspaces/alpha/runs?stream=refs/heads/main", headers=admin),
         422,
@@ -688,10 +690,10 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
     params: dict[str, Any] = {"limit": 2}
     while True:
         page = ok(await client.get("/v1/workspaces/alpha/runs", params=params, headers=admin))
-        pages.append(",".join(r["id"] for r in page["runs"]))
-        if page["next_before"] is None:
+        pages.append(",".join(r["id"] for r in page["items"]))
+        if page["next_cursor"] is None:
             break
-        params["before"] = page["next_before"]
+        params["before"] = page["next_cursor"]
     assert pages == [f"{reindex_run},{dev_run}", str(main_run)]
     refused(
         await client.get("/v1/workspaces/alpha/runs?before=not-a-cursor", headers=admin),
@@ -980,7 +982,7 @@ async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
     tried = ok(
         await client.get(
             url,
-            params={"exclude": ["**/*_test.go", "**/*.test.ts"], "builtin_excludes": "true"},
+            params={"exclude_paths": ["**/*_test.go", "**/*.test.ts"], "builtin_excludes": "true"},
             headers=admin,
         )
     )

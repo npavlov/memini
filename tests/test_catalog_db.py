@@ -376,11 +376,11 @@ async def found_in(client: Client, tool: str = "search_code", **arguments: Any) 
 
 
 def places(result: Json) -> set[tuple[str, str]]:
-    return {(hit["source"], hit["path"]) for hit in result["hits"]}
+    return {(hit["source"], hit["path"]) for hit in result["items"]}
 
 
 def hit_of(result: Json, path: str) -> Json:
-    return next(hit for hit in result["hits"] if hit["path"] == path)
+    return next(hit for hit in result["items"] if hit["path"] == path)
 
 
 async def digests(db: Conn, *tables: str) -> dict[str, tuple[int, str]]:
@@ -669,24 +669,24 @@ async def test_a_search_of_a_subdomain_returns_only_its_files_across_both_reposi
     }
     # Only files under the masks of the subdomain, in both repositories.
     assert places(berth) == BERTH
-    assert {hit["source"] for hit in berth["hits"]} == {"quay", "lantern"}
+    assert {hit["source"] for hit in berth["items"]} == {"quay", "lantern"}
     # A domain includes its subdomains; several values are alternatives.
     assert places(fees) == BERTH | PILOT
     assert places(water) == {("quay", "quay/tides.py")}
     assert places(both) == BERTH | {("quay", "quay/tides.py")}
     # A domain without code is known and has nothing: no hits, no error.
-    assert plans["hits"] == []
+    assert plans["items"] == []
     assert places(booking) == BOOKING
     assert places(port) == QUAY_CODE | BOOKING
     # The filters all apply.
     assert places(fees_in_booking) == {("lantern", "web/booking/berth.ts")}
     assert places(in_python) == {place for place in BERTH | PILOT if place[0] == "quay"}
     # The ranked retrievers go through the same conditions.
-    assert semantic["hits"]
+    assert semantic["items"]
     assert places(semantic) <= PILOT
-    assert general["hits"]
+    assert general["items"]
     assert places(general) <= BERTH
-    assert all(hit["source_kind"] == "repository" for hit in general["hits"])
+    assert all(hit["source_kind"] == "repository" for hit in general["items"])
     assert general["decisions"] == []
 
 
@@ -736,8 +736,8 @@ async def test_a_hit_says_what_its_file_belongs_to(world: World) -> None:
     assert "belongs to: project port, service quay; domains: fees/berth, fees/pilot" in summary
     assert "belongs to: project port, service booking-web; domains: none" in summary
     # A hit of a file in no service has no such line.
-    in_a_service = [hit for hit in found["hits"] if hit["context"]["service"] is not None]
-    assert 0 < len(in_a_service) < len(found["hits"])
+    in_a_service = [hit for hit in found["items"] if hit["context"]["service"] is not None]
+    assert 0 < len(in_a_service) < len(found["items"])
     assert summary.count("belongs to: ") == len(in_a_service)
     (definition,) = ok(symbols)["definitions"]
     assert definition["context"] == in_both
@@ -1550,7 +1550,7 @@ async def test_a_workspace_token_sees_no_other_workspaces_catalog(world: World) 
     # Its names are not names here, and nothing of it is in any answer.
     assert refused(filtered).startswith("Value 1 of the domains filter names no domain")
     assert places(ok(named)) == {("vault", "vault.py")}
-    assert {hit["workspace"] for hit in everything["hits"]} == {"other"}
+    assert {hit["workspace"] for hit in everything["items"]} == {"other"}
     assert hit_of(everything, "vault.py")["context"] == {
         "project": "safe",
         "service": "vault",

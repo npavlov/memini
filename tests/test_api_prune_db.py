@@ -119,7 +119,7 @@ def thread(external_id: str, *authors: str) -> Json:
             "messages": [
                 {
                     "author": author,
-                    "sent_at": iso(T0 + minute * HOUR / 60),
+                    "occurred_at": iso(T0 + minute * HOUR / 60),
                     "text": BOT_TEXT if "Bot" in author else f"Message {minute} of the thread.",
                 }
                 for minute, author in enumerate(authors, start=1)

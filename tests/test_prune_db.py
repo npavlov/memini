@@ -63,7 +63,7 @@ async def env(migrated_database_url: str) -> AsyncIterator[Env]:
 
 
 def message(author: str, minute: int, text: str) -> dict[str, Any]:
-    return {"author": author, "sent_at": iso(T0 + minute * HOUR / 60), "text": text}
+    return {"author": author, "occurred_at": iso(T0 + minute * HOUR / 60), "text": text}
 
 
 def thread(
@@ -152,7 +152,7 @@ async def records(env: Env) -> dict[str, tuple[bool, dict[str, Any]]]:
 
 async def authors(env: Env, external_id: str) -> list[str]:
     _, payload = (await records(env))[external_id]
-    return [m["author"] for m in payload["messages"]]
+    return [m["author"] for m in payload["items"]]
 
 
 async def chunks(env: Env) -> dict[str, list[str]]:

@@ -647,11 +647,11 @@ def pushed_thread(number: int, at: datetime) -> dict[str, Any]:
             "channel": "general",
             "messages": [
                 {
-                    "author": "Ann Example",
-                    "sent_at": at.isoformat(),
+                    "persons": ["Ann Example"],
+                    "occurred_at": at.isoformat(),
                     "text": f"Kiln slot {number}?",
                 },
-                {"author": "Bo Sample", "sent_at": at.isoformat(), "text": "Friday works."},
+                {"persons": ["Bo Sample"], "occurred_at": at.isoformat(), "text": "Friday works."},
             ],
         },
     }
@@ -812,7 +812,7 @@ async def threads(db: Conn, source: uuid.UUID) -> dict[str, list[str]]:
         source,
     )
     return {
-        row["external_id"]: [m["author"] for m in json.loads(row["payload"])["messages"]]
+        row["external_id"]: [m["author"] for m in json.loads(row["payload"])["items"]]
         for row in found
     }
 

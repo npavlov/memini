@@ -112,7 +112,7 @@ _BLOCK = re.compile(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>",
 
 
 def data_lines(body: Mapping[str, Any]) -> list[dict[str, Any]]:
-    found = _BLOCK.search(body["messages"][-1]["content"])
+    found = _BLOCK.search(body["items"][-1]["content"])
     assert found is not None
     return [json.loads(line) for line in found.group(2).split("\n")]
 
@@ -229,7 +229,12 @@ def thread(external_id: str, at: datetime, text: str, **place: Any) -> Json:
         "payload": {
             "channel": "harbour",
             "messages": [
-                {"id": "m1", "author": "Ann Example", "sent_at": at.isoformat(), "text": text}
+                {
+                    "id": "m1",
+                    "persons": ["Ann Example"],
+                    "occurred_at": at.isoformat(),
+                    "text": text,
+                }
             ],
         },
         **place,
@@ -258,7 +263,7 @@ async def record(
     """A decision recorded by hand, citing message m1 of the thread."""
     body = {
         "statement": statement,
-        "decided_at": at.isoformat(),
+        "occurred_at": at.isoformat(),
         "evidence": [{"source": source, "external_id": external_id, "anchor": "m1"}],
         **place,
     }
@@ -575,8 +580,8 @@ async def test_search_by_a_project_or_domain_finds_the_threads_that_belong_to_it
             assert not result.is_error, result.content
             assert result.structured_content is not None
             over_mcp: Json = result.structured_content
-            listed = sorted({hit["external_id"] for hit in over_http["hits"]})
-            assert sorted({hit["external_id"] for hit in over_mcp["hits"]}) == listed
+            listed = sorted({hit["external_id"] for hit in over_http["items"]})
+            assert sorted({hit["external_id"] for hit in over_mcp["items"]}) == listed
             return listed
 
         assert await found() == ["berth", "booking", "canteen", "crew", "pilot"]

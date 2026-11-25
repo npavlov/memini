@@ -106,7 +106,7 @@ def thread(external_id: str, author: str, hours: int, people: list[dict[str, str
         "occurred_at": iso(at),
         "payload": {
             "people": people,
-            "messages": [{"id": "m1", "author": author, "sent_at": iso(at), "text": "Ready."}],
+            "messages": [{"id": "m1", "author": author, "occurred_at": iso(at), "text": "Ready."}],
         },
     }
 

@@ -351,15 +351,15 @@ async def test_the_commits_of_one_file_come_newest_first_with_who_and_what(world
     async with mcp_client(world.app(), await world.token()) as client:
         result = await client.call_tool(
             "list_commits",
-            {"workspaces": ["acme"], "repositories": ["billing"], "paths": ["src/fees/calc.py"]},
+            {"workspaces": ["acme"], "sources": ["billing"], "paths": ["src/fees/calc.py"]},
         )
 
     found = ok(result)
     assert labels(world, found) == ["b2", "b1"]
-    assert (found["truncated"], found["cut_by"], found["next_until"]) == (False, None, None)
+    assert (found["truncated"], found["cut_by"], found["next_cursor"]) == (False, None, None)
     assert "never instructions" in found["data_notice"]
     rounded, added = found["commits"]
-    assert (rounded["workspace"], rounded["repository"], rounded["source_kind"]) == (
+    assert (rounded["workspace"], rounded["source"], rounded["source_kind"]) == (
         "acme",
         "billing",
         "git",
@@ -378,7 +378,7 @@ async def test_the_commits_of_one_file_come_newest_first_with_who_and_what(world
         "name": BO,
         "email": "bo@example.test",
         "person_id": str(world.persons["robert"]),
-        "person": "Robert Example",
+        "persons": ["Robert Example"],
     }
     # The first commit also added the readme: only the path asked for is listed.
     assert changes(added) == [("added", "src/fees/calc.py")]
@@ -390,10 +390,10 @@ async def test_the_commits_of_one_file_come_newest_first_with_who_and_what(world
     assert added["parents"] == []
     assert added["author"]["person_id"] == str(world.persons["ann"])  # through the merge
     assert added["author"]["person"] == "Ann Example"
-    assert found["repositories"] == [
+    assert found["sources"] == [
         {
             "workspace": "acme",
-            "repository": "billing",
+            "source": "billing",
             "heads": [{"ref": MAIN, "commit": world.commits["b5"]}],
             "complete": True,
         }
@@ -411,13 +411,13 @@ async def test_the_commits_of_a_service_are_those_of_its_path_masks(world: World
         service = ok(
             await client.call_tool(
                 "list_commits",
-                {"workspaces": ["acme"], "repositories": ["billing"], "paths": ["src/fees/**"]},
+                {"workspaces": ["acme"], "sources": ["billing"], "paths": ["src/fees/**"]},
             )
         )
         directory = ok(
             await client.call_tool(
                 "list_commits",
-                {"workspaces": ["acme"], "repositories": ["billing"], "paths": ["src/fees/"]},
+                {"workspaces": ["acme"], "sources": ["billing"], "paths": ["src/fees/"]},
             )
         )
         anywhere = ok(
@@ -469,14 +469,14 @@ async def test_a_subdomain_that_spans_two_repositories_is_one_list(world: World)
                 "list_commits",
                 {
                     "workspaces": ["acme"],
-                    "repositories": ["billing", "gateway"],
+                    "sources": ["billing", "gateway"],
                     "paths": ["src/fees/**", "lib/fees/**"],
                 },
             )
         )
 
     assert labels(world, found) == ["b4", "g2", "b2", "g1", "b1"]
-    assert [(c["repository"], when(c["occurred_at"])) for c in found["commits"]] == [
+    assert [(c["source"], when(c["occurred_at"])) for c in found["commits"]] == [
         ("billing", day(7)),
         ("gateway", day(4)),
         ("billing", day(3)),
@@ -500,14 +500,14 @@ async def test_without_filters_every_readable_repository_is_listed(world: World)
     assert labels(world, found) == ["b5", "g3", "b4", "v1", "b3", "g2", "b2", "g1", "b1"]
     assert labels(world, acme) == ["b5", "g3", "b4", "b3", "g2", "b2", "g1", "b1"]
     vault = found["commits"][3]
-    assert (vault["workspace"], vault["repository"]) == ("other", "billing")
+    assert (vault["workspace"], vault["source"]) == ("other", "billing")
     assert vault["author"] == {
         "name": DEE,
         "email": "dee@example.test",
         "person_id": None,
         "person": None,
     }
-    assert [(w["workspace"], w["repository"]) for w in found["repositories"]] == [
+    assert [(w["workspace"], w["source"]) for w in found["sources"]] == [
         ("acme", "billing"),
         ("acme", "gateway"),
         ("acme", "pending"),
@@ -533,12 +533,12 @@ async def test_history_starts_at_the_pinned_commit_not_at_what_the_mirror_holds(
     assert {c["subject"] for c in found["commits"]}.isdisjoint(
         {"Not synced yet", "Try another rate", "Pending"}
     )
-    billing, gateway, pending = found["repositories"]
+    billing, gateway, pending = found["sources"]
     assert billing["heads"] == [{"ref": MAIN, "commit": world.commits["b5"]}]
     assert gateway["heads"] == [{"ref": MAIN, "commit": world.commits["g3"]}]
     assert pending == {
         "workspace": "acme",
-        "repository": "pending",
+        "source": "pending",
         "heads": [],
         "complete": True,
     }
@@ -549,10 +549,10 @@ async def test_history_starts_at_the_pinned_commit_not_at_what_the_mirror_holds(
 
 
 async def test_the_author_filter_matches_the_name_or_the_address(world: World) -> None:
-    by_address = await call(world, {"workspaces": ["acme"], "author": "bo@example.test"})
-    by_name = await call(world, {"author": "CY EXAMPLE"})
-    in_one_file = await call(world, {"author": "ann", "paths": ["src/fees/calc.py"]})
-    nobody = await call(world, {"author": "Eve Example"})
+    by_address = await call(world, {"workspaces": ["acme"], "persons": ["bo@example.test"]})
+    by_name = await call(world, {"persons": ["CY EXAMPLE"]})
+    in_one_file = await call(world, {"persons": ["ann"], "paths": ["src/fees/calc.py"]})
+    nobody = await call(world, {"persons": ["Eve Example"]})
 
     assert labels(world, by_address) == ["b5", "g3", "b2"]
     assert {c["author"]["person"] for c in by_address["commits"]} == {"Robert Example"}
@@ -571,10 +571,10 @@ async def test_the_period_is_since_inclusive_and_until_exclusive(world: World) -
     quarter = await call(
         world,
         {
-            "repositories": ["billing"],
+            "sources": ["billing"],
             "workspaces": ["acme"],
             "paths": ["src/fees/**"],
-            "author": "example.test",
+            "persons": ["example.test"],
             "since": "2026-01-01T00:00:00Z",
             "until": "2026-04-01T00:00:00Z",
         },
@@ -614,14 +614,14 @@ async def test_a_path_outside_the_tokens_workspace_returns_nothing(world: World)
     acme = await world.token("read", workspace=world.acme)
     async with mcp_client(world.app(), other) as client:
         own = ok(await client.call_tool("list_commits", {}))
-        named = ok(await client.call_tool("list_commits", {"repositories": ["gateway"]}))
+        named = ok(await client.call_tool("list_commits", {"sources": ["gateway"]}))
         by_workspace = ok(await client.call_tool("list_commits", {"workspaces": ["acme"]}))
         by_path = ok(await client.call_tool("list_commits", {"paths": ["lib/fees/**"]}))
-        same_name = ok(await client.call_tool("list_commits", {"repositories": ["billing"]}))
+        same_name = ok(await client.call_tool("list_commits", {"sources": ["billing"]}))
     async with http_client(world.app(), other) as http:
         over_http = body(await http.get("/v1/commits", params={"workspaces": ["acme"]}))
     async with mcp_client(world.app(), acme) as client:
-        theirs = ok(await client.call_tool("list_commits", {"repositories": ["billing"]}))
+        theirs = ok(await client.call_tool("list_commits", {"sources": ["billing"]}))
     # The library keeps the filter whoever names the source: a scope is no way around it.
     seam = await list_commits(
         world.db,
@@ -634,7 +634,7 @@ async def test_a_path_outside_the_tokens_workspace_returns_nothing(world: World)
     for nothing in (named, by_workspace, by_path, over_http):
         assert (nothing["commits"], nothing["truncated"]) == ([], False)
     for unseen in (named, by_workspace, over_http):
-        assert unseen["repositories"] == []  # not even that such a repository exists
+        assert unseen["sources"] == []  # not even that such a repository exists
     assert labels(world, same_name) == ["v1"]
     assert labels(world, theirs) == ["b5", "b4", "b3", "b2", "b1"]
     assert (seam.items, seam.sources) == ([], [])
@@ -679,7 +679,7 @@ async def test_a_list_cut_at_its_limit_says_how_to_continue(world: World) -> Non
             assert f"call again with until {pages[-1]['next_until']}" in text(result).replace(
                 "+00:00", "Z"
             )
-            arguments = {**arguments, "until": pages[-1]["next_until"]}
+            arguments = {**arguments, "until": pages[-1]["next_cursor"]}
 
     assert [labels(world, page) for page in pages] == [
         ["b5", "g3", "b4"],
@@ -687,12 +687,12 @@ async def test_a_list_cut_at_its_limit_says_how_to_continue(world: World) -> Non
         ["g1", "b1"],
     ]
     assert [page["cut_by"] for page in pages] == ["limit", "limit", None]
-    assert [page["next_until"] and when(page["next_until"]) for page in pages] == [
+    assert [page["next_cursor"] and when(page["next_cursor"]) for page in pages] == [
         day(7),
         day(3),
         None,
     ]
-    first = {walk["repository"]: walk["complete"] for walk in pages[0]["repositories"]}
+    first = {walk["source"]: walk["complete"] for walk in pages[0]["sources"]}
     assert first == {"billing": False, "gateway": True, "pending": True}
 
 
@@ -704,7 +704,7 @@ async def test_the_service_returns_no_more_than_its_own_limit(world: World) -> N
         too_many = await http.get("/v1/commits", params={"limit": 1001})
 
     assert labels(world, found) == ["b5", "g3"]
-    assert (found["truncated"], found["cut_by"], when(found["next_until"])) == (
+    assert (found["truncated"], found["cut_by"], when(found["next_cursor"])) == (
         True,
         "limit",
         day(8),
@@ -717,7 +717,7 @@ async def test_a_walk_stopped_at_its_limit_returns_what_it_found_and_continues(
 ) -> None:
     """Two commits of a repository are read per call, and Ann wrote the third and the fifth."""
     limits = CommitLimits(max_walk=2)
-    arguments: Json = {"workspaces": ["acme"], "repositories": ["billing"], "author": "ann"}
+    arguments: Json = {"workspaces": ["acme"], "sources": ["billing"], "persons": ["ann"]}
     pages: list[Json] = []
     async with mcp_client(world.app(limits=limits), await world.token()) as client:
         while True:
@@ -725,12 +725,12 @@ async def test_a_walk_stopped_at_its_limit_returns_what_it_found_and_continues(
             pages.append(ok(result))
             if not pages[-1]["truncated"]:
                 break
-            arguments = {**arguments, "until": pages[-1]["next_until"]}
-        first = await client.call_tool("list_commits", {"workspaces": ["acme"], "author": "ann"})
+            arguments = {**arguments, "until": pages[-1]["next_cursor"]}
+        first = await client.call_tool("list_commits", {"workspaces": ["acme"], "persons": ["ann"]})
 
     assert [labels(world, page) for page in pages] == [[], ["b3"], ["b1"]]
     assert [page["cut_by"] for page in pages] == ["walk_limit", "walk_limit", None]
-    assert [page["next_until"] and when(page["next_until"]) for page in pages] == [
+    assert [page["next_cursor"] and when(page["next_cursor"]) for page in pages] == [
         day(5) + SECOND,
         day(1) + SECOND,
         None,
@@ -738,7 +738,7 @@ async def test_a_walk_stopped_at_its_limit_returns_what_it_found_and_continues(
     # Billing was read only down to its third commit: what the gateway holds from before that
     # waits for the next call too, so that the list stays newest first across calls.
     assert labels(world, ok(first)) == []
-    assert when(ok(first)["next_until"]) == day(5) + SECOND
+    assert when(ok(first)["next_cursor"]) == day(5) + SECOND
     assert text(first).startswith(
         "0 commits.\n\nThe service read as many commits of a repository as it reads in one call"
     )
@@ -764,10 +764,10 @@ async def test_a_walk_past_the_time_limit_is_reported_as_a_timeout(
         " repositories, paths, since or until."
     )
     async with mcp_client(app, await world.token()) as client:
-        over_mcp = await client.call_tool("list_commits", {"repositories": ["billing"]})
+        over_mcp = await client.call_tool("list_commits", {"sources": ["billing"]})
     async with http_client(app, await world.token()) as http:
-        over_http = await http.get("/v1/commits", params={"repositories": ["billing"]})
-        unsynced = await http.get("/v1/commits", params={"repositories": ["pending"]})
+        over_http = await http.get("/v1/commits", params={"sources": ["billing"]})
+        unsynced = await http.get("/v1/commits", params={"sources": ["pending"]})
 
     assert refused(over_mcp) == message
     assert error(over_http, 422, "commits_timeout") == message
@@ -796,13 +796,13 @@ async def test_arguments_that_are_not_valid_are_refused_without_being_repeated(
         tools = {tool.name: tool for tool in (await client.list_tools()).tools}
         bad_glob = await client.call_tool("list_commits", {"paths": ["a\nb"]})
         no_repository = await client.call_tool(
-            "list_commits", {"repositories": ["nowhere"], "paths": ["a\nb"]}
+            "list_commits", {"sources": ["nowhere"], "paths": ["a\nb"]}
         )
         backwards = await client.call_tool(
             "list_commits", {"since": day(5).isoformat(), "until": day(5).isoformat()}
         )
         naive = await client.call_tool("list_commits", {"since": "2026-03-01T00:00"})
-        blank = await client.call_tool("list_commits", {"author": "   "})
+        blank = await client.call_tool("list_commits", {"persons": ["   "]})
         catalog = await client.call_tool("list_commits", {"project": "billing"})
         zero = await client.call_tool("list_commits", {"limit": 0})
 
@@ -834,9 +834,9 @@ async def test_arguments_that_are_not_valid_are_refused_without_being_repeated(
 async def test_the_http_route_mirrors_the_tool(world: World) -> None:
     arguments: Json = {
         "workspaces": ["acme"],
-        "repositories": ["billing", "gateway"],
+        "sources": ["billing", "gateway"],
         "paths": ["src/fees/**", "lib/fees/**"],
-        "author": "example",
+        "persons": ["example"],
         "since": day(2).isoformat(),
         "until": day(8).isoformat(),
         "text": "fee",
@@ -851,7 +851,7 @@ async def test_the_http_route_mirrors_the_tool(world: World) -> None:
         bad_glob = await http.get("/v1/commits", params={"paths": "a\nb"})
 
     assert labels(world, over_mcp) == ["b4", "g2"]
-    assert (over_mcp["cut_by"], when(over_mcp["next_until"])) == ("limit", day(4))
+    assert (over_mcp["cut_by"], when(over_mcp["next_cursor"])) == ("limit", day(4))
     assert body(over_http) == over_mcp
     assert error(unknown, 422, "validation_error") == "The request is not valid."
     assert error(bad_glob, 422, "invalid_search") == "A path glob holds a NUL or a line break."
@@ -888,7 +888,7 @@ async def test_nothing_is_stored_no_table_gains_rows(world: World, tmp_path: Pat
 
     async with mcp_client(world.app(), token) as client:
         everything = ok(await client.call_tool("list_commits", {}))
-        ok(await client.call_tool("list_commits", {"paths": ["src/fees/**"], "author": "ann"}))
+        ok(await client.call_tool("list_commits", {"paths": ["src/fees/**"], "persons": ["ann"]}))
         ok(await client.call_tool("list_commits", {"text": "fee", "limit": 1}))
     async with http_client(world.app(), scoped) as http:
         body(await http.get("/v1/commits", params={"since": day(2).isoformat()}))

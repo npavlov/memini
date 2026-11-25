@@ -105,7 +105,7 @@ class FakeLlm:
         if body["response_format"]["json_schema"]["name"] == "decisions":
             items = self.extractions.pop(0) if self.extractions else []
             return chat_answer(json.dumps({"items": items}))
-        found = _BLOCK.search(body["messages"][-1]["content"])
+        found = _BLOCK.search(body["items"][-1]["content"])
         assert found is not None
         lines = [json.loads(line) for line in found.group(2).split("\n")][1:]
         self.shown.append([line["statement"] for line in lines])
@@ -168,7 +168,12 @@ async def push(db: Conn, world: World, external_id: str, text: str, day: int) ->
         payload={
             "channel": "orchard",
             "messages": [
-                {"id": "m1", "author": "Ann Example", "sent_at": at.isoformat(), "text": text}
+                {
+                    "id": "m1",
+                    "persons": ["Ann Example"],
+                    "occurred_at": at.isoformat(),
+                    "text": text,
+                }
             ],
         },
     )

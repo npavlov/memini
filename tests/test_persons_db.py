@@ -98,8 +98,8 @@ def mail(
             "messages": [
                 {
                     "id": "<m1@example.test>",
-                    "author": "Ann Example <ann@example.test>",
-                    "sent_at": iso(at),
+                    "persons": ["Ann Example <ann@example.test>"],
+                    "occurred_at": iso(at),
                     "text": text,
                     "recipients": ["Bo Sample <bo@example.test>"],
                 }
@@ -134,8 +134,8 @@ def chat(
             "messages": [
                 {
                     "id": "1772355600.000100",
-                    "author": "Ann Example",
-                    "sent_at": iso(at),
+                    "persons": ["Ann Example"],
+                    "occurred_at": iso(at),
                     "text": text,
                     "mentions": list(mentions),
                 }
@@ -227,7 +227,7 @@ async def records_of(env: Env, person: uuid.UUID, role: str) -> list[str]:
 async def snapshot(db: Conn) -> dict[str, list[tuple[Any, ...]]]:
     """Every row of the persons layer, and the knowledge participants, as they are."""
     tables: dict[str, LiteralString] = {
-        "person": "SELECT id, workspace_id, owner_id, display_name, principal_id, merged_into,"
+        "persons": ["SELECT id, workspace_id, owner_id, display_name, principal_id, merged_into,"]
         " merged_at, created_at FROM person ORDER BY id",
         "alias": "SELECT id, workspace_id, person_id, kind, value, normalized_value, created_at"
         " FROM alias ORDER BY id",

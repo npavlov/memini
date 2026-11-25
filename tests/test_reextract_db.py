@@ -72,7 +72,7 @@ _BLOCK = re.compile(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>",
 
 def data_lines(body: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The JSON lines of the data block of a request's user message."""
-    found = _BLOCK.search(body["messages"][-1]["content"])
+    found = _BLOCK.search(body["items"][-1]["content"])
     assert found is not None
     return [json.loads(line) for line in found.group(2).split("\n")]
 
@@ -169,8 +169,8 @@ def thread(external_id: str, start: datetime, *texts: str) -> RecordIn:
     messages = [
         {
             "id": f"m{n}",
-            "author": "Ann Example" if n % 2 else "Bo Sample",
-            "sent_at": iso(start + timedelta(minutes=n)),
+            "persons": ["Ann Example"] if n % 2 else "Bo Sample",
+            "occurred_at": iso(start + timedelta(minutes=n)),
             "text": text,
         }
         for n, text in enumerate(texts, start=1)
