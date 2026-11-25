@@ -19,7 +19,7 @@ on it.
 | MCP | The MCP address, whether the endpoint is on and the switch for the local server. The agent clients found on this computer, each with **Connect** and **Disconnect** (see [Agent clients](#agent-clients)). Configuration to paste by hand for any other client of [docs/mcp](../docs/mcp/README.md). | A connection; for Connect, a token with the `admin` scope |
 | Tokens | Lists, creates and revokes tokens. A new token is shown once. | A token with the `admin` scope |
 | Data | What the base holds: per workspace, each source with its kind, records and freshness. A console for the read tools: a form per tool, built from the arguments the server publishes, and the answer as cards and as raw JSON with the request that produced it. Read-only. | A token with the `read` scope |
-| Project map | The catalog of a workspace as a tree: each project's services with their repository, directory and files, and its domains and subdomains with their path masks and what each mask matches now. **Edit** changes a project's title and description, its domains and subdomains and their path masks, and saves the whole project against the version it was read at, so a newer change is refused and not overwritten. Links between services are shown when the server has them. | A token with the `read` scope; to save, `ingest` as well |
+| Project map | The catalog of a workspace as a tree: each project's services with their repository, directory and files, and its domains and subdomains with their path masks and what each mask matches now. **Edit** changes a project's title and description, its services (name, repository among the workspace's git sources, directory, description; adding and removing them), and its domains and subdomains with their path masks, and saves the whole project against the version it was read at, so a newer change is refused and not overwritten. A refusal of the server is said in the user's terms: a directory that is another project's service, a service another project names, a field that is not valid. **New project** creates an empty project, and refuses a name that exists. The links between services are shown in both directions, what the project's services use and which services of other projects use them; they are not edited here. | A token with the `read` scope; to save, `ingest` as well |
 
 A bar at the bottom of the window is always visible. It names the selected connection and says
 whether the server answers, its version, whether the base is current or behind, and whether MCP is
@@ -290,8 +290,10 @@ rule, not around it.
   names.
 - **The project map writes one thing**: a whole project, to
   `PUT /v1/workspaces/{workspace}/projects/{project}`, and only with the version it was read at.
-  Rust refuses a document without `if_version`. Titles and descriptions of the catalog are data:
-  they are shown as text and written back unchanged where the user did not edit them.
+  Rust refuses a document without `if_version`. A new project is written with `if_version` 0, which
+  the server accepts only while no project has that name. Titles, descriptions and the notes of
+  links are data: they are shown as text and written back unchanged where the user did not edit
+  them.
 - **The Data screen only reads.** A tool is one of a fixed table of read tools in
   `src-tauri/src/tools.rs`, each with the `GET` route that serves it. The front end names a tool
   and gives values; they become encoded path segments and query pairs of that route and cannot
@@ -365,7 +367,7 @@ On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3, Rust 1.10
 |---|---|
 | `uv run … python sidecar/freeze.py` | sidecar built; frozen and script print the same JSON |
 | `pnpm typecheck` | no errors |
-| `pnpm test` | 819 tests passed |
+| `pnpm test` | 888 tests passed |
 | `pnpm build` | built |
 | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` | clean |
 | `cargo test --locked` | 125 tests passed |
@@ -414,11 +416,14 @@ the button led to the token, and the MCP switch was worked with Space and Enter.
   `CODEX_HOME` or `COPILOT_HOME`. The version of OpenCode is asked when its file does not tell; the
   app does not run `opencode --version`. Devin Local and Pi are not offered. The line that loads a
   token into a client's variable is shown to copy; the app does not edit a shell profile.
-- **The project map was not run against a real server.** It reads `get_catalog` and `get_domain`
-  and writes `put_project` as they are on `main`. Services are shown and not edited, and a project
-  cannot be created or deleted here: an agent writes the first one. Links between services follow
-  the shape of the branch that adds them, which is not merged: they are shown, and sent back with a
-  save so that it does not remove them; check this when that branch lands.
+- **The project map was not run against a real server.** It reads `get_catalog`, `get_project` and
+  `get_domain` and writes `put_project` as they are on `main`; the server's refusals were shown
+  from a stand-in. A project cannot be deleted here, and links are shown but not edited: a save
+  sends them back as they were read, so that it does not remove them.
+- **A service added in the editor can be named by a domain after the project is saved with it**,
+  not before: what names a service keeps the name the service was read with until the save, which
+  is what lets a service be renamed without losing its code. A renamed service is a new one to the
+  server, so it refuses the rename while another project names the service.
 - **Signing, notarization, published installers and updates.** CI builds unsigned bundles to look
   at; a frozen launcher inside a signed app will need signing too. The application identifier
   should be confirmed before the first release: changing it later moves the settings.

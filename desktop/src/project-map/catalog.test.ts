@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { createFakeBackend } from "../ipc/fake-backend";
-import { parseCatalog, readCatalog, saveProject, serviceLabel, toProjectDocument } from "./catalog";
+import {
+  newProject,
+  parseCatalog,
+  readCatalog,
+  repositoriesOf,
+  saveProject,
+  serviceLabel,
+  toProjectDocument,
+} from "./catalog";
 import type { Catalog, Project } from "./catalog";
 
 const STAMP = {
@@ -66,6 +74,7 @@ const port: Project = {
   services: [
     {
       name: "harbour-code",
+      origin: "harbour-code",
       description: "Berth holds and their rules.",
       repository: "harbour-code",
       root: "",
@@ -184,6 +193,38 @@ describe("toProjectDocument", () => {
         uses: [{ service: "fees", kind: "library", note: "", paths: [] }],
       },
     ]);
+  });
+});
+
+describe("repositoriesOf", () => {
+  it("lists the git sources of the workspace once each, those of services and those in no project", () => {
+    const twice = { ...answer, unassigned_repositories: [{ repository: "pilot-notes" }, { repository: "harbour-code" }] };
+
+    const repositories = repositoriesOf(parseCatalog(twice));
+
+    expect(repositories).toEqual(["harbour-code", "pilot-notes"]);
+  });
+});
+
+describe("newProject", () => {
+  it("is an empty project at version 0, so saving it asks that no project of that name exists", () => {
+    const project = newProject({ name: " pilots ", title: " Pilots ", description: "Who brings ships in." });
+
+    expect(toProjectDocument(project)).toEqual({
+      title: "Pilots",
+      description: "Who brings ships in.",
+      services: [],
+      domains: [],
+      if_version: 0,
+    });
+  });
+
+  it("is saved under its name without the white space around it", async () => {
+    const backend = createFakeBackend({ answers: { api_project_put: () => ({ version: 1, created: true }) } });
+
+    await saveProject(backend, { id: "c1", workspace: "harbor" }, newProject({ name: " pilots ", title: "", description: "" }));
+
+    expect(backend.calls[0]?.args["write"]).toMatchObject({ workspace: "harbor", project: "pilots" });
   });
 });
 

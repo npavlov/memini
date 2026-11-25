@@ -47,6 +47,12 @@ export interface Link {
 
 export interface Service {
   readonly name: string;
+  /**
+   * The name the service was read with; null for one added in the editor. What names a
+   * service inside the project, the code of a domain or a link, keeps this name while the
+   * project is edited, so a service can be renamed without losing them.
+   */
+  readonly origin: string | null;
   readonly description: string;
   readonly repository: string;
   /** Its directory in the repository; empty for the whole of it. */
@@ -131,6 +137,7 @@ function parseService(value: unknown, own: string): Service {
   const uses = entry["uses"];
   return {
     name: text(entry["name"]),
+    origin: text(entry["name"]),
     description: text(entry["description"]),
     repository: text(entry["repository"]),
     root: text(entry["root"]),
@@ -170,6 +177,36 @@ export function parseCatalog(value: unknown): Catalog {
       const repository = readObject(item, "a repository of the catalog");
       return { repository: text(repository["repository"]), files: readNumber(repository["files"]) };
     }),
+  };
+}
+
+/** The git sources of the workspace, as the catalog names them: those of its services and those in no project. */
+export function repositoriesOf(catalog: Catalog): readonly string[] {
+  const used = catalog.projects.flatMap((project) => project.services.map((service) => service.repository));
+  const names = [...used, ...catalog.unassigned.map((repository) => repository.repository)];
+  return Array.from(new Set(names.filter((name) => name !== ""))).sort();
+}
+
+/** What the user enters for a new project. */
+export interface NewProject {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+}
+
+/**
+ * A project that does not exist yet: empty, at version 0. Saving it sends `if_version: 0`, which
+ * the server accepts only while no project has that name, so an existing one is never overwritten.
+ */
+export function newProject(entered: NewProject): Project {
+  return {
+    name: entered.name.trim(),
+    title: entered.title.trim(),
+    description: entered.description,
+    version: 0,
+    updatedAt: null,
+    services: [],
+    domains: [],
   };
 }
 

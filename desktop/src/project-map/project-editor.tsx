@@ -15,19 +15,24 @@ import {
   TextInput,
 } from "../components";
 import { useAction } from "../hooks/use-action";
+import type { AppError } from "../ipc/app-error";
 import { useBackend } from "../ipc/backend-context";
 import { displayText } from "../text/display-text";
 import { saveProject } from "./catalog";
 import type { Project, ProjectPlace } from "./catalog";
 import { EntryEditor } from "./entry-editor";
 import { addDomain, addSubdomain, checkProject, sameProject, tidyProject } from "./project-edit";
+import { describeRefusal } from "./save-refusal";
 import { isVersionConflict, parseSaveReport } from "./save-report";
 import type { SaveReport } from "./save-report";
+import { ServiceEditors } from "./service-editor";
 
 export interface ProjectEditorProps {
   readonly place: ProjectPlace;
   /** The project as it was read: the draft starts from it and is saved against its version. */
   readonly project: Project;
+  /** The git sources of the workspace, for the repository of a service. */
+  readonly repositories: readonly string[];
   readonly onSaved: (report: SaveReport) => void;
   readonly onCancel: () => void;
   /** Reads the catalog again and drops the draft, after someone else changed the project. */
@@ -35,7 +40,8 @@ export interface ProjectEditorProps {
 }
 
 /**
- * Edits a project: its title and description, its domains and subdomains and their path masks.
+ * Edits a project: its title and description, its services, and its domains and subdomains with
+ * their path masks.
  * Saving writes the whole project with the version it was read at, so a change someone else
  * made meanwhile is refused by the server and never overwritten.
  */
@@ -61,13 +67,10 @@ export function ProjectEditor(props: ProjectEditorProps): ReactElement {
           rows={3}
         />
       </Field>
+      <ServiceEditors draft={draft} repositories={props.repositories} onDraft={setDraft} />
       <DomainEditors draft={draft} onDraft={setDraft} />
       {problem === null ? null : <Text tone="failure">{problem}</Text>}
-      {isVersionConflict(saving.error) ? (
-        <Conflict onReload={props.onReload} />
-      ) : (
-        <ErrorNotice error={saving.error} />
-      )}
+      <SaveFailure error={saving.error} draft={draft} onReload={props.onReload} />
       <Actions>
         <Button variant="primary" submit disabled={idle}>
           {saving.pending ? "Saving…" : "Save the project"}
@@ -77,6 +80,33 @@ export function ProjectEditor(props: ProjectEditorProps): ReactElement {
         </Button>
       </Actions>
     </Form>
+  );
+}
+
+interface SaveFailureProps {
+  readonly error: AppError | null;
+  readonly draft: Project;
+  readonly onReload: () => void;
+}
+
+/** Why a save failed: a newer version, a refusal of the server in the user's terms, or the error as it is. */
+function SaveFailure({ error, draft, onReload }: SaveFailureProps): ReactElement | null {
+  if (isVersionConflict(error)) {
+    return <Conflict onReload={onReload} />;
+  }
+  const refusal = describeRefusal(error, draft);
+  if (refusal === null) {
+    return <ErrorNotice error={error} />;
+  }
+  return (
+    <Notice tone="bad" title={refusal.title}>
+      <Text>{refusal.text}</Text>
+      {refusal.said === null ? null : (
+        <Text tone="muted" small>
+          The server said: {displayText(refusal.said, 500)}
+        </Text>
+      )}
+    </Notice>
   );
 }
 

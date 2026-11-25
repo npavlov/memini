@@ -17,6 +17,7 @@ const COMMANDS: &[&str] = &[
     "api_sources",
     "api_catalog",
     "api_domain",
+    "api_project",
     "api_project_put",
     "api_tools",
     "api_tool_call",

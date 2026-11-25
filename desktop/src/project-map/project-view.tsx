@@ -10,6 +10,7 @@ import { serviceLabel } from "./catalog";
 import type { Code, Domain, Project, ProjectPlace, Service, Subdomain } from "./catalog";
 import { maskFiles, readDomainFiles } from "./domain-files";
 import type { EntryFiles } from "./domain-files";
+import { ProjectLinksSection } from "./project-links-section";
 
 const DESCRIPTION_LIMIT = 4000;
 
@@ -22,9 +23,8 @@ function filesText(files: number | null): string {
   return files === null ? "—" : countNoun(files, "file");
 }
 
-/** A project as a tree: its services, and its domains with their subdomains and code. */
+/** A project as a tree: its services, its domains with their subdomains and code, and its links. */
 export function ProjectView({ place, project }: ProjectViewProps): ReactElement {
-  const linked = project.services.some((service) => service.uses !== null);
   return (
     <>
       {project.description === "" ? null : <Text>{displayText(project.description, DESCRIPTION_LIMIT)}</Text>}
@@ -32,9 +32,9 @@ export function ProjectView({ place, project }: ProjectViewProps): ReactElement 
         {project.services.length === 0 ? (
           <Text tone="muted">The project names no service yet.</Text>
         ) : (
-          <DataTable columns={["Service", "Repository", "Directory", "Files", ...(linked ? ["Uses"] : [])]}>
+          <DataTable columns={["Service", "Repository", "Directory", "Files"]}>
             {project.services.map((service) => (
-              <ServiceLine key={service.name} service={service} linked={linked} />
+              <ServiceLine key={service.name} service={service} />
             ))}
           </DataTable>
         )}
@@ -50,18 +50,16 @@ export function ProjectView({ place, project }: ProjectViewProps): ReactElement 
           </Tree>
         )}
       </Section>
+      <ProjectLinksSection place={place} project={project.name} />
     </>
   );
 }
 
 interface ServiceLineProps {
   readonly service: Service;
-  /** Whether the table has the column of links. */
-  readonly linked: boolean;
 }
 
-function ServiceLine({ service, linked }: ServiceLineProps): ReactElement {
-  const uses = (service.uses ?? []).map((link) => `${serviceLabel(link)} (${link.kind})`);
+function ServiceLine({ service }: ServiceLineProps): ReactElement {
   return (
     <tr>
       <th scope="row">
@@ -75,7 +73,6 @@ function ServiceLine({ service, linked }: ServiceLineProps): ReactElement {
       <td>{displayText(service.repository)}</td>
       <td>{service.root === "" ? "the whole repository" : <Mono>{displayText(service.root)}</Mono>}</td>
       <td>{service.files === null ? "—" : String(service.files)}</td>
-      {linked ? <td>{uses.length === 0 ? "—" : displayText(uses.join(", "))}</td> : null}
     </tr>
   );
 }

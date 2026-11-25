@@ -474,6 +474,36 @@ pub async fn api_catalog(
         .await
 }
 
+/// Which project `api_project` reads.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectPlace {
+    pub workspace: String,
+    pub project: String,
+}
+
+/// `GET /v1/workspaces/{workspace}/projects/{project}`: a project and its links in both
+/// directions, what its services use and which services of other projects use them.
+#[tauri::command]
+pub async fn api_project(
+    state: State<'_, AppState>,
+    id: String,
+    place: ProjectPlace,
+) -> AppResult<Value> {
+    let segments = [
+        "v1",
+        "workspaces",
+        place.workspace.as_str(),
+        "projects",
+        place.project.as_str(),
+    ];
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    inner
+        .http
+        .call(&target, Some(&token), Method::GET, &segments, None)
+        .await
+}
+
 /// Which domain `api_domain` reads.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DomainPlace {
