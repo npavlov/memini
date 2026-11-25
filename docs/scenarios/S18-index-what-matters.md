@@ -2,7 +2,7 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Running Memini | Operator, engineer | partial | memini-qpk.20 |
+| Running Memini | Operator, engineer | ready | memini-qpk.20 |
 
 ## Who and pain
 
@@ -32,8 +32,11 @@ sync, and how long is left? Can it run without taking the whole machine?"
   read with `GET /v1/runs/{id}` while it runs, every few seconds. The Codebases tab draws a
   progress bar with "N of M files" and an estimate from the rate so far.
 - **Resources.** The managed server's model runs with a CPU limit the operator chooses on the
-  Server screen: half the cores by default, or a background mode of one or two. Syncs can be
-  paused and resumed.
+  Server screen: half the cores by default, or a background mode of one or two
+  (`memini-server indexing`). A code base can be paused on the Codebases tab: its schedule is
+  switched off, and Resume sets it back to every hour; a sync already running finishes.
+- **Work kept.** A first sync commits every 30 seconds of writing, so a sync stopped by an edit
+  or a restart keeps what it wrote, and the next one skips it.
 
 ## Data
 
