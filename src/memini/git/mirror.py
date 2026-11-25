@@ -36,6 +36,9 @@ git updates refs atomically and adds objects before refs point to them.
 Reads take full object ids (a pinned commit), except :meth:`MirrorManager.resolve`, which turns a
 ref name into one. Paths are checked (:func:`check_path`) before git sees them.
 
+History is read on demand and never stored: :meth:`MirrorManager.log` walks the commits reachable
+from the commits it is given, one ``git log`` process with a count and a time limit.
+
 Not handled yet: repositories with sha256 object ids (the mirror is created with sha1), the
 remote's default branch changing after the mirror was created, submodule contents.
 """
@@ -43,6 +46,7 @@ remote's default branch changing after the mirror was created, submodule content
 import asyncio
 import contextlib
 import logging
+import math
 import os
 import re
 import shutil
@@ -71,7 +75,11 @@ from memini.git.remote import Remote, parse_remote
 
 __all__ = [
     "INCOMING_NAMESPACE",
+    "MAX_LOG_OUTPUT",
     "ChangeTimes",
+    "Commit",
+    "CommitChange",
+    "CommitLog",
     "FetchResult",
     "FileChange",
     "Mirror",
@@ -93,6 +101,18 @@ _REFSPECS: Final = tuple(f"+{prefix}*:{INCOMING_NAMESPACE}{prefix[5:]}*" for pre
 _OID: Final = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _REF_FORBIDDEN: Final = re.compile(r"[\x00-\x20\x7f~^:?*\[\\]|\.\.|@\{|//")
 _SMALL_OUTPUT: Final = 1024**2
+
+MAX_LOG_OUTPUT: Final = 64 * 1024**2
+"""Bytes one history walk (:meth:`MirrorManager.log`) may print unless the caller says otherwise."""
+
+# What `git log -z` prints for a commit with the format below: the mark, the nine fields and the
+# format's own terminator, each ended by a NUL; then its changed paths, each as a status and a
+# path, both ended by a NUL. The first status follows a line break; a merge has an empty field
+# there instead, also when it lists no path. No field of a commit holds a NUL, and a status is
+# letters only, so the mark, a control character, can only be the start of the next commit.
+_LOG_MARK: Final = b"\x1e"
+_LOG_FIELDS: Final = 9
+_LOG_FORMAT: Final = "%x1e%x00%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%ct%x00%s%x00%b"
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +211,56 @@ class FileChange:
     new_mode: str | None
     old_oid: str | None
     new_oid: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CommitChange:
+    """A path a commit changed, against its parent. Renames are a deletion and an addition. For a
+    merge, a path that differs from every parent, which is what the merge itself changed: a
+    resolved conflict, not what the merged branch brought."""
+
+    status: ChangeStatus
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class Commit:
+    """One commit of a history walk (:meth:`MirrorManager.log`).
+
+    Names, messages and paths are what the repository holds, decoded as UTF-8 with U+FFFD for
+    bytes that are not: text to show, not a key to read a file back with."""
+
+    oid: str
+    abbrev: str
+    """The object id abbreviated as git abbreviates it: unique in the mirror, 7 digits or more."""
+    parents: tuple[str, ...]
+    """Object ids of the parents: none for a root commit, more than one for a merge."""
+    author_name: str
+    author_email: str
+    """The author as the commit object names it; no mailmap is applied."""
+    authored_at: datetime
+    committed_at: datetime
+    """The committer time, in UTC: what ``since`` and ``until`` compare and git orders by."""
+    subject: str
+    """The first paragraph of the message on one line."""
+    body: str
+    """The message after its subject, without the line breaks at its end; empty when it has
+    none."""
+    changes: tuple[CommitChange, ...]
+    """The paths changed, by path; within the paths the walk was limited to, if it was."""
+
+
+@dataclass(frozen=True, slots=True)
+class CommitLog:
+    """What one history walk read (:meth:`MirrorManager.log`)."""
+
+    commits: tuple[Commit, ...]
+    """As ``git log`` orders them: newest first by committer time, a commit before its parents
+    where the two disagree."""
+    complete: bool
+    """The walk ended by itself, below its limit: no other commit matches."""
+    starts: tuple[str, ...]
+    """The commits the walk started from: those given that the mirror holds."""
 
 
 def check_path(path: str) -> str:
@@ -782,6 +852,92 @@ class MirrorManager:
                 times.setdefault(_decode(field), current)
         return ChangeTimes(times, commits, commits < max_commits, current)
 
+    async def log(
+        self,
+        mirror: Mirror,
+        starts: Sequence[str],
+        *,
+        paths: Sequence[str] = (),
+        since: datetime | None = None,
+        until: datetime | None = None,
+        max_commits: int,
+        timeout: float | None = None,
+        max_output: int = MAX_LOG_OUTPUT,
+    ) -> CommitLog:
+        """The commits reachable from ``starts`` (object ids), newest first, each with its author,
+        times, message and the paths it changed: one ``git log`` of at most ``max_commits``
+        commits. Nothing but ``starts`` is walked from: no other branch or tag of the mirror.
+
+        Args:
+            starts: commits to walk from, their ancestors included. One the mirror no longer
+                holds (a pin that a force push and ``gc`` removed) is left out; with none left,
+                nothing is walked.
+            paths: only commits that changed one of these files, or a file below one of these
+                directories, and only those paths among a commit's changes. They are taken
+                literally (:func:`check_path`), never as patterns. Git then leaves out a merge
+                that agrees with one of its parents there, as ``git log -- <path>`` does; a
+                merge it prints may still list no path, when it changed none against every
+                parent.
+            since: only commits committed at or after this time.
+            until: only commits committed before this time.
+            max_commits: the most commits printed. Git stops there, so the walk is bounded by
+                the commits that match, not by the length of the history; ``timeout`` bounds
+                the rest.
+            timeout: seconds the walk may take; ``options.command_timeout`` by default.
+            max_output: bytes the walk may print.
+
+        With ``since``, git stops a line of history at its first commit older than that, as
+        ``git log --since`` does: a commit whose clock ran behind hides its ancestors.
+
+        Raises:
+            InvalidRevision: an id is malformed.
+            InvalidPath: see :func:`check_path`.
+            ValueError: ``max_commits`` is less than 1, or a time has no zone.
+            GitTimeout: the walk ran past ``timeout`` and was killed.
+            OutputTooLarge: the walk printed more than ``max_output``.
+        """
+        if max_commits < 1:
+            raise ValueError("a walk takes at least one commit")
+        for commit in starts:
+            _check_oid(commit)
+        for path in paths:
+            check_path(path)
+        args = [
+            "log",
+            "--no-renames",
+            "--name-status",
+            "--diff-merges=combined",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--encoding=UTF-8",
+            "-z",
+            f"--format={_LOG_FORMAT}",
+            f"--max-count={max_commits}",
+        ]
+        if since is not None:
+            first = _epoch(since)
+            if first > 0:  # no commit is older than the epoch
+                args.append(f"--since=@{first} +0000")
+        if until is not None:
+            # git's --until includes its second; a commit time has no fraction of one.
+            last = _epoch(until) - 1
+            if last < 0:
+                return CommitLog((), True, ())
+            args.append(f"--until=@{last} +0000")
+        present = [
+            commit for commit in dict.fromkeys(starts) if await self._peel(mirror, commit) == commit
+        ]
+        if not present:  # with no revision, git log would walk from HEAD
+            return CommitLog((), True, ())
+        output = await self._git.run(
+            [*args, "--end-of-options", *present, "--", *paths],
+            git_dir=mirror.path,
+            timeout=timeout,
+            max_output=max_output,
+        )
+        commits = _parse_log(output.stdout)
+        return CommitLog(tuple(commits), len(commits) < max_commits, tuple(present))
+
     async def diff_names(self, mirror: Mirror, old: str, new: str) -> list[FileChange]:
         """The files that differ from commit ``old`` to commit ``new`` (object ids).
 
@@ -837,6 +993,78 @@ def _tree_entry(record: bytes) -> TreeEntry:
         raise GitCommandError("ls-tree", 0, f"unexpected entry type {kind!r}")
     entry_kind: EntryKind = "blob" if kind == "blob" else "tree" if kind == "tree" else "commit"
     return TreeEntry(_decode(raw_path), mode, entry_kind, oid, int(size) if size != "-" else None)
+
+
+def _epoch(moment: datetime) -> int:
+    """The first whole second at or after ``moment``, as seconds since the epoch."""
+    if moment.utcoffset() is None:
+        raise ValueError("a time needs a zone")
+    return math.ceil(moment.timestamp())
+
+
+def _text(raw: bytes) -> str:
+    return raw.decode("utf-8", "replace")
+
+
+def _log_time(raw: bytes) -> datetime:
+    """A commit time as git prints it, in UTC; the epoch for one no calendar holds."""
+    try:
+        return datetime.fromtimestamp(int(raw), UTC)
+    except (ValueError, OverflowError, OSError):
+        return datetime.fromtimestamp(0, UTC)
+
+
+def _log_status(raw: bytes) -> ChangeStatus:
+    """The status of a changed path. A merge has one letter per parent: the path was added or
+    deleted when every parent says so, and modified otherwise."""
+    letters = set(raw.decode("ascii", "replace"))
+    if len(letters) == 1:
+        return _STATUS.get(letters.pop(), "modified")
+    return "modified"
+
+
+def _parse_log(output: bytes) -> list[Commit]:
+    """The commits ``git log -z`` printed with :data:`_LOG_FORMAT` and ``--name-status``."""
+    fields = output.split(b"\0")
+    end = len(fields)
+    commits: list[Commit] = []
+    index = 0
+    while index < end:
+        if not fields[index]:  # the end of the output
+            index += 1
+            continue
+        # A NUL ends the last field too, so after the fields of a whole commit comes one more.
+        if fields[index] != _LOG_MARK or index + _LOG_FIELDS + 2 > end:
+            raise GitCommandError("log", 0, "unexpected output of git log")
+        oid, abbrev, parents, name, email, authored, committed, subject, body = fields[
+            index + 1 : index + 1 + _LOG_FIELDS
+        ]
+        index += 1 + _LOG_FIELDS
+        changes: list[CommitChange] = []
+        while index < end and fields[index] != _LOG_MARK:
+            status = fields[index].removeprefix(b"\n")
+            if not status:  # what stands before a merge's paths, or the end of the output
+                index += 1
+                continue
+            if index + 1 >= end or not fields[index + 1]:  # a status without its path
+                raise GitCommandError("log", 0, "unexpected output of git log")
+            changes.append(CommitChange(_log_status(status), _text(fields[index + 1])))
+            index += 2
+        commits.append(
+            Commit(
+                oid=oid.decode("ascii", "replace"),
+                abbrev=abbrev.decode("ascii", "replace"),
+                parents=tuple(parents.decode("ascii", "replace").split()),
+                author_name=_text(name),
+                author_email=_text(email),
+                authored_at=_log_time(authored),
+                committed_at=_log_time(committed),
+                subject=_text(subject),
+                body=_text(body).rstrip("\n"),
+                changes=tuple(changes),
+            )
+        )
+    return commits
 
 
 def _transaction_line(update: RefUpdate) -> bytes:

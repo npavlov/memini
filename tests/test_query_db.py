@@ -290,6 +290,7 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
         "search_code",
         "read_source",
         "get_symbol",
+        "list_commits",
         "list_meetings",
         "get_meeting",
         "list_messages",
@@ -303,6 +304,7 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
         "search_code": {"query", "mode", "repositories", "paths", "languages", "case_sensitive"},
         "read_source": {"repository", "path", "workspace", "ref", "start_line", "end_line"},
         "get_symbol": {"name", "match", "repositories", "paths", "languages"},
+        "list_commits": {"repositories", "workspaces", "paths", "author", "since", "until", "text"},
     }
     for name, arguments in expected.items():
         tool = tools[name]

@@ -4,7 +4,19 @@ are synthetic; author and committer dates are fixed, so commit ids are the same 
 import os
 import subprocess
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
+
+
+def stamp(name: str, committed: datetime, *, authored: datetime | None = None) -> dict[str, str]:
+    """The ``env`` of a commit by the invented author ``name`` ("Ann Example" writes from
+    ``ann@example.test``) at ``committed``, written at ``authored`` if that is another time."""
+    return {
+        "GIT_AUTHOR_NAME": name,
+        "GIT_AUTHOR_EMAIL": f"{name.split()[0].lower()}@example.test",
+        "GIT_AUTHOR_DATE": (authored or committed).isoformat(),
+        "GIT_COMMITTER_DATE": committed.isoformat(),
+    }
 
 
 class SourceRepo:
@@ -19,10 +31,14 @@ class SourceRepo:
         self.git("config", "gc.auto", "0")
         self.git("config", "maintenance.auto", "false")
 
-    def git(self, *args: str, stdin: bytes | None = None) -> str:
+    def git(
+        self, *args: str, stdin: bytes | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        """Run git in the repository. ``env`` replaces variables of the fixed environment: a test
+        that needs its own authors or times sets ``GIT_AUTHOR_NAME``, ``GIT_COMMITTER_DATE`` …"""
         day = 1 + self._commits
         date = f"2026-01-{day:02d}T12:00:00+00:00"
-        env = {
+        fixed = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "HOME": "/nonexistent",
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -38,15 +54,22 @@ class SourceRepo:
         done = subprocess.run(  # noqa: S603 - fixed git arguments in a test
             ["git", *args],  # noqa: S607
             cwd=self.path,
-            env=env,
+            env={**fixed, **(env or {})},
             input=stdin,
             capture_output=True,
             check=True,
         )
         return done.stdout.decode().strip()
 
-    def commit(self, files: Mapping[str, str | bytes | None], message: str = "change") -> str:
-        """Write (or, for ``None``, delete) ``files`` and commit them; returns the commit id."""
+    def commit(
+        self,
+        files: Mapping[str, str | bytes | None],
+        message: str = "change",
+        *,
+        env: Mapping[str, str] | None = None,
+    ) -> str:
+        """Write (or, for ``None``, delete) ``files`` and commit them; returns the commit id.
+        ``env`` is passed to :meth:`git` for the commit."""
         for name, content in files.items():
             target = self.path / name
             if content is None:
@@ -61,7 +84,7 @@ class SourceRepo:
                 target.write_text(content)
             self.git("add", "--", name)
         self._commits += 1
-        self.git("commit", "--quiet", "--allow-empty", "-m", message)
+        self.git("commit", "--quiet", "--allow-empty", "-m", message, env=env)
         return self.head()
 
     def head(self, ref: str = "HEAD") -> str:

@@ -2,10 +2,11 @@
 
 One function per tool, for the MCP tools (:mod:`memini.mcp.query`) and the HTTP routes
 (:mod:`memini.api.query`) alike: :func:`run_search`, :func:`run_search_code`,
-:func:`run_get_symbol`, :func:`run_read_source`. Each takes a connection with no transaction open,
-the service's :class:`QueryServices`, the caller's :class:`~memini.auth.ReadFilter` and the
-arguments, and calls the library: :func:`memini.search.search` or
-:func:`memini.query.reader.read_source`.
+:func:`run_get_symbol`, :func:`run_read_source`, :func:`run_list_commits`. Each takes a connection
+with no transaction open, the service's :class:`QueryServices`, the caller's
+:class:`~memini.auth.ReadFilter` and the arguments, and calls the library:
+:func:`memini.search.search`, :func:`memini.query.reader.read_source` or
+:func:`memini.query.commits.list_commits`.
 
 Every refusal of the libraries becomes a :class:`QueryError` with an HTTP status, a stable code and
 a message that never repeats an argument or stored content:
@@ -15,6 +16,8 @@ a message that never repeats an argument or stored content:
 | a query, filter or regular expression that is not valid | 422 | ``invalid_search`` |
 | a filter not supported yet | 422 | ``unsupported_filter`` |
 | a statement ran past ``search_timeout`` | 422 | ``search_timeout`` |
+| the history walks of ``list_commits`` ran past ``git_log_timeout`` | 422 | ``commits_timeout`` |
+| a history walk printed more than is read | 422 | ``commits_too_large`` |
 | a path that is refused (absolute, ``..``, control characters) | 422 | ``invalid_path`` |
 | a ref that is refused (a revision expression) | 422 | ``invalid_ref`` |
 | a line range that is not valid | 422 | ``invalid_range`` |
@@ -25,7 +28,7 @@ a message that never repeats an argument or stored content:
 | an index built with another fingerprint (principle 9) | 503 | ``index_mismatch`` |
 | no embedding provider configured | 503 | ``embeddings_not_configured`` |
 | the query could not be embedded | 503 | ``embedding_failed`` |
-| no mirror directory (code cannot be read) | 503 | ``unavailable`` |
+| no mirror directory (code and history cannot be read) | 503 | ``unavailable`` |
 
 A timeout is the query's to fix (narrow it, or a more specific pattern), so it is a 422, not a
 server error. A stale index and a missing provider are the operator's: the message of a stale index
@@ -34,8 +37,8 @@ names ``memini reindex --workspace NAME``.
 Embeddings: every search mode checks the index fingerprint, and the fingerprint is made from the
 embedder's spec, so ``search``, ``search_code`` and ``get_symbol`` need the configured embedder in
 every mode, also exact, regex and symbol. Without an embedding provider no index is built either
-(code is synced only into an index), so there would be nothing to find. ``read_source`` reads the
-mirror and needs none.
+(code is synced only into an index), so there would be nothing to find. ``read_source`` and
+``list_commits`` read the mirror and need none.
 """
 
 import logging
@@ -56,10 +59,20 @@ from memini.git import GitOptions, MirrorManager
 from memini.ids import RecordKind
 from memini.ingest import DEFAULT_LIMITS, IngestLimits
 from memini.persons import parse_person_ref, resolve_persons
+from memini.query.commits import (
+    DEFAULT_COMMIT_LIMITS,
+    CommitLimits,
+    CommitList,
+    CommitsTimeoutError,
+    CommitsTooLargeError,
+    list_commits,
+    repository_scopes,
+)
 from memini.query.model import (
     CodeSearchArguments,
     Definition,
     GeneralSearchResult,
+    ListCommitsArguments,
     ReadSourceArguments,
     SearchArguments,
     SearchHit,
@@ -97,6 +110,7 @@ __all__ = [
     "QueryServices",
     "query_errors",
     "run_get_symbol",
+    "run_list_commits",
     "run_read_source",
     "run_search",
     "run_search_code",
@@ -123,6 +137,8 @@ class QueryServices:
     """The service's embedder; ``None`` when no embedding provider is configured, or the
     application is not running."""
     read_limits: ReadLimits = DEFAULT_READ_LIMITS
+    commit_limits: CommitLimits = DEFAULT_COMMIT_LIMITS
+    """The bounds of a ``list_commits`` call (the ``git_log_*`` settings)."""
     ingest_limits: IngestLimits = DEFAULT_LIMITS
     """The limits of a batch, for the ``add_document`` write (:mod:`memini.comms`)."""
     reranker: Reranker | None = None
@@ -136,6 +152,7 @@ class QueryServices:
         return cls(
             search_options=SearchOptions.from_settings(settings),
             mirrors=MirrorManager(GitOptions.from_settings(settings)),
+            commit_limits=CommitLimits.from_settings(settings),
             ingest_limits=IngestLimits.from_settings(settings),
         )
 
@@ -168,6 +185,10 @@ def query_errors() -> Generator[None]:
         raise QueryError(422, "invalid_search", _sentence(str(error))) from None
     except SearchTimeoutError as error:
         raise QueryError(422, "search_timeout", _sentence(str(error))) from None
+    except CommitsTimeoutError as error:
+        raise QueryError(422, "commits_timeout", _sentence(str(error))) from None
+    except CommitsTooLargeError as error:
+        raise QueryError(422, "commits_too_large", _sentence(str(error))) from None
     except IndexMismatchError as error:
         raise QueryError(503, "index_mismatch", _sentence(str(error))) from None
     except EmbeddingsNotConfiguredError:
@@ -366,4 +387,35 @@ async def run_read_source(
             start_line=arguments.start_line,
             end_line=arguments.end_line,
             limits=services.read_limits,
+        )
+
+
+async def run_list_commits(
+    conn: Conn, services: QueryServices, access: ReadFilter, arguments: ListCommitsArguments
+) -> CommitList:
+    """``list_commits``: the history of repositories, read from their mirrors on demand."""
+    mirrors = services.mirrors
+    if mirrors is None:
+        raise QueryError(
+            503, "unavailable", "Reading history is not available: there is no mirror."
+        )
+    with query_errors():
+        scopes = await repository_scopes(
+            conn,
+            access,
+            repositories=arguments.repositories,
+            workspaces=arguments.workspaces,
+            paths=tuple(arguments.paths or ()),
+        )
+        return await list_commits(
+            conn,
+            access,
+            mirrors,
+            scopes,
+            author=arguments.author,
+            since=arguments.since,
+            until=arguments.until,
+            text=arguments.text,
+            limit=arguments.limit,
+            limits=services.commit_limits,
         )

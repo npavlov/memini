@@ -1,11 +1,19 @@
+import email.message
 import hashlib
 import importlib.util
+import io
+import json
 import os
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -127,3 +135,540 @@ def test_packaged_assets_verified_before_start(
     with pytest.raises(ValueError, match="checksum mismatch"):
         invoke(monkeypatch, module, state, "start")
     assert not state.exists()
+
+
+# --- Output for programs (--json) and the MCP switch ---------------------------------------------
+#
+# The objects below are a contract with the programs that parse them (docs/install.md): a test
+# that has to change for a renamed field or another type also has to raise SCHEMA.
+
+OK = {"schema": 1, "ok": True, "error": None}
+STATUS_FIELDS = [
+    "schema",
+    "installed",
+    "running",
+    "api_url",
+    "mcp_url",
+    "mcp_enabled",
+    "image",
+    "directory",
+    "docker",
+    "services",
+]
+UP_MEMINI = ("up", "-d", "--no-build", "--wait", "memini")
+
+
+class FakeDocker:
+    """Stands in for ``subprocess.run``: records each command, answers ``ps`` with ``rows`` and
+    ``ollama list`` with the model, and raises ``fail`` instead while it is set."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+        self.rows: list[dict[str, object]] = []
+        self.one_array = False
+        self.fail: Exception | None = None
+
+    def __call__(
+        self, argv: list[str], *, env: dict[str, str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append(argv)
+        if self.fail is not None:
+            raise self.fail
+        response = ""
+        if argv[-4:] == ["ps", "--all", "--format", "json"]:
+            lines = "".join(json.dumps(row) + "\n" for row in self.rows)
+            response = json.dumps(self.rows) if self.one_array else lines
+        if argv[-1] == "list":
+            response = "NAME ID SIZE\nqwen3-embedding:0.6b c690 639MB\n"
+        return subprocess.CompletedProcess(argv, 0, response)
+
+    def ran(self, *command: str) -> bool:
+        return any(argv[-len(command) :] == list(command) for argv in self.calls)
+
+
+class FakeService:
+    """Stands in for ``mcp_served``: gives ``answer`` and records the addresses it was asked at."""
+
+    def __init__(self) -> None:
+        self.answer: bool | None = None
+        self.asked: list[str] = []
+
+    def __call__(self, api_url: str) -> bool | None:
+        self.asked.append(api_url)
+        return self.answer
+
+
+@dataclass(frozen=True)
+class Printed:
+    code: int
+    value: dict[str, Any]
+    text: str
+    """Everything the command wrote: stdout, then stderr."""
+
+
+def container(
+    service: str, state: str = "running", health: str = "healthy", port: int | None = None
+) -> dict[str, object]:
+    """A row of ``docker compose ps --format json``: the fields the manager reads, and one it has
+    no reason to print."""
+    publishers: list[dict[str, object]] = []
+    if port is not None:
+        publishers.append(
+            {"URL": "127.0.0.1", "TargetPort": 6364, "PublishedPort": port, "Protocol": "tcp"}
+        )
+    return {
+        "Service": service,
+        "State": state,
+        "Health": health,
+        "Image": f"registry.invalid/{service}:9",
+        "Publishers": publishers,
+        "Labels": "synthetic=label",
+    }
+
+
+@pytest.fixture
+def manager(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ModuleType:
+    """The launcher as a package holds it, next to compose files of this test."""
+    package = tmp_path / "package"
+    package.mkdir()
+    launcher = package / SCRIPT.name
+    shutil.copyfile(SCRIPT, launcher)
+    module = load_manager(launcher)
+    contents = b"services: {}\n"
+    for name in ("compose.yaml", "compose.release.yaml"):
+        (package / name).write_bytes(contents)
+        monkeypatch.setitem(module.COMPOSE_FILES, name, hashlib.sha256(contents).hexdigest())
+    return module
+
+
+@pytest.fixture
+def docker(monkeypatch: pytest.MonkeyPatch) -> FakeDocker:
+    fake = FakeDocker()
+
+    def locate(_name: str) -> str:
+        return "/fake/docker"
+
+    monkeypatch.setattr(subprocess, "run", fake)
+    monkeypatch.setattr(shutil, "which", locate)
+    return fake
+
+
+@pytest.fixture
+def service(monkeypatch: pytest.MonkeyPatch, manager: ModuleType) -> FakeService:
+    fake = FakeService()
+    monkeypatch.setattr(manager, "mcp_served", fake)
+    return fake
+
+
+@pytest.fixture
+def state(manager: ModuleType, tmp_path: Path) -> Path:
+    """The state directory of a managed server whose API is to be published on port 6399."""
+    directory = (tmp_path / "server").resolve()
+    manager.initialize(directory, 6399)
+    return directory
+
+
+@pytest.fixture
+def launch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], manager: ModuleType
+) -> Callable[..., Printed]:
+    """Runs a command with ``--json`` and checks the one promise of every such command: stdout
+    holds one JSON object on one line, and nothing else."""
+
+    def run(directory: Path, *args: str) -> Printed:
+        argv = [str(SCRIPT), "--state-dir", str(directory), *args, "--json"]
+        monkeypatch.setattr(sys, "argv", argv)
+        capsys.readouterr()
+        code = manager.main()
+        captured = capsys.readouterr()
+        assert captured.out.endswith("\n")
+        assert captured.out.count("\n") == 1
+        value: dict[str, Any] = json.loads(captured.out)
+        assert isinstance(value, dict)
+        return Printed(code, value, captured.out + captured.err)
+
+    return run
+
+
+def test_status_json_without_a_server_says_whether_docker_is_there(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+) -> None:
+    state = tmp_path / "nothing here"
+    nothing: dict[str, Any] = {
+        "schema": 1,
+        "installed": False,
+        "running": False,
+        "api_url": None,
+        "mcp_url": None,
+        "mcp_enabled": None,
+        "image": None,
+        "directory": None,
+        "docker": {"available": True, "error": None},
+        "services": [],
+    }
+
+    printed = launch(state, "status")
+
+    assert (printed.code, printed.value) == (0, nothing)
+    assert list(printed.value) == STATUS_FIELDS
+    # Nothing to list yet, so the engine is asked whether it is there.
+    assert docker.calls == [["/fake/docker", "version", "--format", "{{.Server.Version}}"]]
+
+    docker.fail = subprocess.CalledProcessError(1, "docker")
+    printed = launch(state, "status")
+    assert printed.code == 0
+    assert printed.value["docker"] == {
+        "available": False,
+        "error": "docker failed with exit status 1; start the Docker engine, with Compose 2.24"
+        " or later",
+    }
+
+    docker.fail = subprocess.TimeoutExpired("docker", 20)
+    printed = launch(state, "status")
+    assert printed.code == 0
+    assert printed.value["docker"] == {
+        "available": False,
+        "error": "docker did not answer in 20 seconds",
+    }
+
+    def missing(_name: str) -> None:
+        return None
+
+    monkeypatch.setattr(shutil, "which", missing)
+    printed = launch(state, "status")
+    assert printed.code == 0
+    assert printed.value == nothing | {
+        "docker": {
+            "available": False,
+            "error": "the docker command was not found; install Docker with Compose 2.24 or later",
+        }
+    }
+    assert not state.exists()
+
+
+@pytest.mark.parametrize("one_array", [False, True], ids=["a-line-each", "one-array"])
+def test_status_json_of_a_running_server_gives_the_published_address(
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+    one_array: bool,
+) -> None:
+    docker.rows = [container("ollama"), container("memini", port=36364), container("db")]
+    docker.one_array = one_array  # as Compose printed its answer before 2.21
+
+    printed = launch(state, "status")
+
+    assert printed.code == 0
+    assert printed.value == {
+        "schema": 1,
+        "installed": True,
+        "running": True,
+        # What Docker published, not the 6399 of the settings.
+        "api_url": "http://127.0.0.1:36364",
+        "mcp_url": "http://127.0.0.1:36364/mcp",
+        "mcp_enabled": True,
+        "image": "registry.invalid/memini:9",
+        "directory": str(state),
+        "docker": {"available": True, "error": None},
+        "services": [
+            {"name": "db", "state": "running", "health": "healthy"},
+            {"name": "memini", "state": "running", "health": "healthy"},
+            {"name": "ollama", "state": "running", "health": "healthy"},
+        ],
+    }
+    assert list(printed.value) == STATUS_FIELDS
+    assert docker.calls[-1][-4:] == ["ps", "--all", "--format", "json"]
+    # The private settings hold the database password: it is in no output, nor is anything else
+    # of Docker's answer.
+    password = manager.setting(state / ".env", "MEMINI_DB_PASSWORD")
+    assert len(password) == 48
+    assert password not in printed.text
+    assert "synthetic=label" not in printed.text
+
+
+def test_status_json_of_a_stopped_server_gives_the_configured_address(
+    manager: ModuleType,
+    tmp_path: Path,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+) -> None:
+    docker.rows = [container(name, "exited", "") for name in ("db", "memini", "ollama")]
+
+    stopped = launch(state, "status").value
+
+    assert (stopped["installed"], stopped["running"]) == (True, False)
+    assert stopped["api_url"] == "http://127.0.0.1:6399"
+    assert stopped["mcp_url"] == "http://127.0.0.1:6399/mcp"
+    assert stopped["services"][1] == {"name": "memini", "state": "exited", "health": None}
+
+    # Before the first container, the image is the one a start runs.
+    docker.rows = []
+    assert launch(state, "status").value["image"] == manager.IMAGE
+
+    # Docker is down: still an answer, from the settings alone.
+    docker.fail = subprocess.CalledProcessError(1, "docker")
+    down = launch(state, "status")
+    assert down.code == 0
+    assert down.value["docker"]["available"] is False
+    assert (down.value["running"], down.value["services"]) == (False, [])
+    assert down.value["api_url"] == "http://127.0.0.1:6399"
+    assert down.value["directory"] == str(state)
+
+    # Port 0: Docker chooses the port at every start, so a stopped server has no address.
+    docker.fail = None
+    any_port = (tmp_path / "any port").resolve()
+    manager.initialize(any_port, 0)
+    unknown = launch(any_port, "status").value
+    assert (unknown["api_url"], unknown["mcp_url"], unknown["mcp_enabled"]) == (None, None, True)
+
+
+def test_start_and_stop_print_one_result_object(
+    tmp_path: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    state = tmp_path / "new server"
+
+    started = launch(state, "start", "--http-port", "0")
+
+    assert (started.code, started.value) == (0, OK)
+    assert docker.ran("up", "-d", "--no-build", "--wait")
+    assert not docker.ran("port", "memini", "6364")  # the address is for status to give
+    assert b"MEMINI_HTTP_PORT=0" in (state / ".env").read_bytes()
+
+    stopped = launch(state, "stop")
+    assert (stopped.code, stopped.value) == (0, OK)
+    assert docker.calls[-1][-1] == "stop"
+
+    docker.fail = subprocess.CalledProcessError(17, "docker")
+    failed = launch(state, "stop")
+    assert failed.code == 17
+    assert failed.value == {
+        "schema": 1,
+        "ok": False,
+        "error": "docker compose failed with exit status 17",
+    }
+
+
+def test_a_refusal_is_a_result_object_and_exit_status_1(
+    tmp_path: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+
+    for command in (("start",), ("stop",), ("mcp", "off")):
+        refused = launch(foreign, *command)
+        assert refused.code == 1, command
+        assert refused.value["schema"] == 1
+        assert refused.value["ok"] is False
+        assert refused.value["error"].startswith("no managed server at ")
+    assert list(foreign.iterdir()) == []
+    assert docker.calls == []
+
+    # Nothing to stop is no failure.
+    nothing = launch(tmp_path / "nothing here", "stop")
+    assert (nothing.code, nothing.value) == (0, OK)
+
+
+def test_mcp_off_and_on_set_the_switch_and_restart_a_running_service(
+    state: Path, docker: FakeDocker, service: FakeService, launch: Callable[..., Printed]
+) -> None:
+    settings = state / ".env.memini"
+    settings.write_text("MEMINI_LOG_LEVEL=DEBUG\n", encoding="utf-8")
+    docker.rows = [container("db"), container("memini", port=36364), container("ollama")]
+
+    service.answer = False
+    switched = launch(state, "mcp", "off")
+
+    assert (switched.code, switched.value) == (0, OK)
+    assert settings.read_text(encoding="utf-8") == (
+        "MEMINI_LOG_LEVEL=DEBUG\nMEMINI_MCP_ENABLED=false\n"
+    )
+    assert docker.ran(*UP_MEMINI)
+    assert service.asked == ["http://127.0.0.1:36364"]
+    status = launch(state, "status").value
+    assert (status["mcp_enabled"], status["mcp_url"]) == (False, None)
+    assert status["api_url"] == "http://127.0.0.1:36364"  # the HTTP API stays
+    assert launch(state, "mcp", "status").value == status
+
+    docker.calls.clear()
+    service.answer = True
+    switched = launch(state, "mcp", "on")
+
+    assert (switched.code, switched.value) == (0, OK)
+    assert settings.read_text(encoding="utf-8") == (
+        "MEMINI_LOG_LEVEL=DEBUG\nMEMINI_MCP_ENABLED=true\n"
+    )
+    assert docker.ran(*UP_MEMINI)
+    status = launch(state, "status").value
+    assert (status["mcp_enabled"], status["mcp_url"]) == (True, "http://127.0.0.1:36364/mcp")
+
+
+def test_mcp_switch_of_a_stopped_server_waits_for_its_next_start(
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    service: FakeService,
+    launch: Callable[..., Printed],
+) -> None:
+    docker.rows = [container("memini", "exited", "")]
+
+    switched = launch(state, "mcp", "off")
+
+    assert (switched.code, switched.value) == (0, OK)
+    assert manager.mcp_enabled(state) is False
+    assert not docker.ran(*UP_MEMINI)
+    assert service.asked == []
+    if os.name != "nt":
+        assert (state / ".env.memini").stat().st_mode & 0o077 == 0
+
+    # The private settings may name another settings file: the switch goes where Compose reads.
+    with (state / ".env").open("a", encoding="utf-8") as private:
+        private.write("MEMINI_ENV_FILE=service.env\n")
+    assert launch(state, "mcp", "off").value == OK
+    assert (state / "service.env").read_text(encoding="utf-8") == "MEMINI_MCP_ENABLED=false\n"
+    assert launch(state, "status").value["mcp_enabled"] is False
+
+
+def test_mcp_switch_is_put_back_when_the_service_does_not_apply_it(
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    service: FakeService,
+    launch: Callable[..., Printed],
+) -> None:
+    """An image from before the switch ignores the setting: ``ok`` would not be true."""
+    docker.rows = [container("memini", port=36364)]
+    service.answer = True  # it serves MCP after the restart all the same
+
+    refused = launch(state, "mcp", "off")
+
+    assert refused.code == 1
+    assert refused.value["ok"] is False
+    assert "did not apply MEMINI_MCP_ENABLED" in refused.value["error"]
+    assert docker.ran(*UP_MEMINI)
+    assert not (state / ".env.memini").exists()  # as it was: no file
+    assert launch(state, "status").value["mcp_enabled"] is True
+
+    # No answer, or a refusal by the rate limit: nothing contradicts the setting.
+    service.answer = None
+    assert launch(state, "mcp", "off").value == OK
+    assert manager.mcp_enabled(state) is False
+
+
+def test_mcp_switch_changes_nothing_while_docker_does_not_answer(
+    state: Path, docker: FakeDocker, service: FakeService, launch: Callable[..., Printed]
+) -> None:
+    docker.fail = subprocess.CalledProcessError(1, "docker")
+
+    refused = launch(state, "mcp", "off")
+
+    assert refused.code == 1
+    assert refused.value == {
+        "schema": 1,
+        "ok": False,
+        "error": "docker compose failed with exit status 1",
+    }
+    assert not (state / ".env.memini").exists()
+    assert service.asked == []
+
+
+def test_mcp_commands_tell_a_person_in_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    service: FakeService,
+) -> None:
+    def said(*args: str) -> str:
+        capsys.readouterr()
+        invoke(monkeypatch, manager, state, *args)
+        return capsys.readouterr().out
+
+    docker.rows = [container("memini", port=36364)]
+    assert said("mcp", "status") == "MCP is on at http://127.0.0.1:36364/mcp\n"
+    service.answer = False
+    assert said("mcp", "off") == "MCP is off\n"
+    assert said("mcp", "status") == "MCP is off\n"
+    service.answer = True
+    assert said("mcp", "on") == "MCP is on at http://127.0.0.1:36364/mcp\n"
+
+    docker.rows = [container("memini", "exited", "")]
+    assert said("mcp", "off") == "MCP will be off when the server starts\n"
+    assert said("mcp", "status") == "MCP is off\n"
+
+
+def test_setting_reads_one_value_of_an_env_file_as_compose_reads_it(tmp_path: Path) -> None:
+    module = load_manager(SCRIPT)
+    path = tmp_path / ".env"
+    path.write_text(
+        '# NAME=commented\nNAME=first\nOTHER=plain # a comment\nexport NAME = "second value" # x\n',
+        encoding="utf-8",
+    )
+
+    assert module.setting(path, "NAME") == "second value"  # the last line wins
+    assert module.setting(path, "OTHER") == "plain"
+    assert module.setting(path, "ABSENT") is None
+    assert module.setting(tmp_path / "absent", "NAME") is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("", True),
+        ("# MEMINI_MCP_ENABLED=false\n", True),
+        ("MEMINI_MCP_ENABLED=\n", True),
+        ("MEMINI_MCP_ENABLED=TRUE\n", True),
+        ("MEMINI_MCP_ENABLED=false\n", False),
+        ("MEMINI_MCP_ENABLED=true\nMEMINI_MCP_ENABLED=0\n", False),
+        ("MEMINI_MCP_ENABLED=perhaps\n", None),
+    ],
+)
+def test_the_switch_is_read_as_the_service_reads_it(
+    tmp_path: Path, text: str, expected: bool | None
+) -> None:
+    module = load_manager(SCRIPT)
+    (tmp_path / ".env.memini").write_text(text, encoding="utf-8")
+
+    assert module.mcp_enabled(tmp_path) is expected
+
+
+def test_mcp_served_tells_a_switched_off_endpoint_from_one_that_asks_for_a_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_manager(SCRIPT)
+    outcome: list[tuple[int, bytes] | OSError | None] = [None]
+    asked: list[str] = []
+
+    def answer(
+        _opener: object, url: str, data: object = None, timeout: float | None = None
+    ) -> io.BytesIO:
+        asked.append(url)
+        result = outcome[0]
+        if result is None:
+            return io.BytesIO(b"{}")
+        if isinstance(result, OSError):
+            raise result
+        status, body = result
+        raise urllib.error.HTTPError(
+            url, status, "synthetic", email.message.Message(), io.BytesIO(body)
+        )
+
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", answer)
+
+    def served(result: tuple[int, bytes] | OSError | None) -> bool | None:
+        outcome[0] = result
+        return module.mcp_served("http://127.0.0.1:6399")
+
+    assert served((404, b'{"error": {"code": "mcp_disabled", "message": "Off."}}')) is False
+    assert served((401, b'{"error": {"code": "unauthorized"}}')) is True
+    assert served((404, b"<html>another server</html>")) is True
+    assert served((404, b"[]")) is True
+    assert served(None) is True
+    assert served((429, b'{"error": {"code": "rate_limited"}}')) is None
+    assert served(urllib.error.URLError("synthetic: connection refused")) is None
+    assert set(asked) == {"http://127.0.0.1:6399/mcp"}

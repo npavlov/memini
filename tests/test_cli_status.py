@@ -281,6 +281,22 @@ def test_status_json_is_the_answer(cli: Callable[..., Run]) -> None:
     assert json.loads(result.out) == body
 
 
+def test_status_says_when_the_mcp_endpoint_is_switched_off(cli: Callable[..., Run]) -> None:
+    body = a_status()
+    assert body["mcp_enabled"] is True  # the default: no line for it
+
+    served = cli(body).out.splitlines()
+    body["mcp_enabled"] = False
+    switched_off = cli(body).out.splitlines()
+
+    assert not any(line.startswith("mcp") for line in served)
+    assert switched_off[5] == "mcp       off: the MCP endpoint is switched off (mcp_enabled)"
+    assert [*switched_off[:5], *switched_off[6:]] == served
+    # A service from before the switch does not say: nothing is claimed for it.
+    del body["mcp_enabled"]
+    assert cli(body).out.splitlines() == served
+
+
 # --- The gate ------------------------------------------------------------------------------------
 
 

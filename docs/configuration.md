@@ -57,6 +57,14 @@ Where the server listens, and the limits of every HTTP and MCP request. A body o
 | `http_rate_limit_writes`<br>`MEMINI_HTTP_RATE_LIMIT_WRITES` | integer, 1 to 1000000 | `120` | restart | Writes (POST, PUT, PATCH, DELETE, and MCP calls of write tools) per minute per token, 1 to 1000000. |
 | `http_rate_limit_unauthenticated`<br>`MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED` | integer, 1 to 1000000 | `60` | restart | Requests per minute per client address whose token is not known to be valid, 1 to 1000000. |
 
+### MCP endpoint
+
+The service's own MCP endpoint, `/mcp` on the HTTP port: the tools agents call, behind the same tokens as the HTTP API. Switched off, it answers every request 404 `mcp_disabled`, with a token or without, and no tool runs; the HTTP API, which serves the same calls, stays. `GET /v1/status` says which it is (`mcp_enabled`). The `mcp_*` settings further down are another matter: the client that syncs mcp sources.
+
+| Setting | Values | Default | Change needs | Description |
+| --- | --- | --- | --- | --- |
+| `mcp_enabled`<br>`MEMINI_MCP_ENABLED` | boolean | `true` | restart | True or false: serve the MCP endpoint at /mcp. With the server launcher: `memini-server mcp on` and `memini-server mcp off` set it and restart the service. |
+
 ### Logging
 
 The service logs one JSON object per line, on stderr.
@@ -158,6 +166,9 @@ The service keeps a bare mirror of every git source and reads code from it. Remo
 | `git_https_token_hosts`<br>`MEMINI_GIT_HTTPS_TOKEN_HOSTS` | list of strings | empty | restart | Host names, comma-separated, that `git_https_token` is sent to; required when the token is set. |
 | `git_ssh_key_path`<br>`MEMINI_GIT_SSH_KEY_PATH` | path | unset | restart | The absolute path of the private key for ssh remotes. |
 | `git_ssh_known_hosts_path`<br>`MEMINI_GIT_SSH_KNOWN_HOSTS_PATH` | path | unset | restart | The absolute path of the known_hosts file that ssh remotes are checked against. |
+| `git_log_max_commits`<br>`MEMINI_GIT_LOG_MAX_COMMITS` | integer, 1 to 1000 | `100` | restart | The most commits one list_commits call returns, an integer from 1 to 1000. History is read from the mirrors when `list_commits` asks and is never stored. A call that asks for more gets this many and is told where to continue. |
+| `git_log_max_walk`<br>`MEMINI_GIT_LOG_MAX_WALK` | integer, 1 to 100000 | `2000` | restart | The most commits one list_commits call reads from the history of one repository, an integer from 1 to 100000. The filters git cannot apply (path globs, author, text) are applied to what it prints. A call that read this many commits of a repository returns what it found and where to continue. |
+| `git_log_timeout`<br>`MEMINI_GIT_LOG_TIMEOUT` | number, more than 0, at most 600 | `10` | restart | Seconds the history walks of one list_commits call may take, more than 0, at most 600. Past it the walk is killed and the call answers 422 `commits_timeout`: its caller narrows the question. |
 
 ### Ingest
 

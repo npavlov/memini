@@ -93,6 +93,8 @@ The ``mcp_*`` settings bound the service executor of MCP recipes (:mod:`memini.e
 endpoints an mcp source may name (hosts or URL prefixes), the internal networks they may resolve to
 all the same, plain http, the executables a stdio source may run, and how often one call is tried.
 Every list is empty by default, so no mcp source reaches anything until the operator lists it.
+``mcp_enabled`` is not one of them: it switches the service's own MCP endpoint
+(:mod:`memini.api.mcp`), on by default.
 
 ``metrics_token``, a secret, turns on ``GET /metrics`` (:mod:`memini.api.metrics`): a scraper sends
 it as its bearer token. ``log_slow_statement_threshold`` is the time after which a database
@@ -380,6 +382,12 @@ class Settings(BaseModel):
         description="the address the HTTP server binds to",
     )
     http_port: int = Field(default=6364, ge=1, le=65535, description="a TCP port from 1 to 65535")
+    # The service's own MCP endpoint (memini.api.mcp), not the executor of MCP recipes below
+    # (mcp_allowed_endpoints and the others). Off: /mcp answers 404 mcp_disabled, the API stays.
+    mcp_enabled: bool = Field(
+        default=True,
+        description="true or false: serve the MCP endpoint at /mcp",
+    )
     log_level: Annotated[LogLevel, BeforeValidator(_upper)] = Field(
         default="INFO",
         description="one of CRITICAL, ERROR, WARNING, INFO, DEBUG",
@@ -524,6 +532,28 @@ class Settings(BaseModel):
         default=None,
         description="the absolute path of the known_hosts file that ssh remotes are checked"
         " against",
+    )
+    # History is read from the mirrors on demand (list_commits, memini.query.commits) and never
+    # stored: what one call returns, what it reads from one repository, and how long it may run.
+    git_log_max_commits: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="the most commits one list_commits call returns, an integer from 1 to 1000",
+    )
+    git_log_max_walk: int = Field(
+        default=2000,
+        ge=1,
+        le=100000,
+        description="the most commits one list_commits call reads from the history of one"
+        " repository, an integer from 1 to 100000",
+    )
+    git_log_timeout: float = Field(
+        default=10.0,
+        gt=0,
+        le=600,
+        description="seconds the history walks of one list_commits call may take, more than 0, at"
+        " most 600",
     )
 
     # --- Credential store (memini.credentials) ----------------------------------------------------

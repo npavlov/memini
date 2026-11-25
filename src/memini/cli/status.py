@@ -4,7 +4,8 @@ One call to ``GET /v1/status`` (:mod:`memini.api.status`): the same answer as th
 tool, whose definitions are in :mod:`memini.status`. Needs a token with the ``read`` scope; a token
 limited to one workspace shows that workspace. ``--json`` prints the answer as it is.
 
-What it prints: the verdict, the database and the index across workspaces; a table of the streams
+What it prints: the verdict, the database and the index across workspaces, and a line when the
+service's MCP endpoint is switched off; a table of the streams
 (workspace, source, stream, last result, lag, how far back the history is loaded, index, current);
 then, if any, the streams whose runs fail with the first line of the last error, and the workspaces
 whose index is behind with the command that brings it up to date. It exits 0 whether or not the
@@ -148,15 +149,16 @@ def _print(body: Mapping[str, Any], *, as_json: bool) -> None:
     else:
         reached = "not reachable"
     index = as_mapping(body.get("index"))
-    print_fields(
-        [
-            ("current", text(body.get("current"))),
-            ("as of", when(body.get("as_of"))),
-            ("version", text(body.get("version"))),
-            ("database", reached),
-            ("index", f"{text(index.get('state'))}: {text(index.get('note'))}"),
-        ]
-    )
+    fields = [
+        ("current", text(body.get("current"))),
+        ("as of", when(body.get("as_of"))),
+        ("version", text(body.get("version"))),
+        ("database", reached),
+        ("index", f"{text(index.get('state'))}: {text(index.get('note'))}"),
+    ]
+    if body.get("mcp_enabled") is False:  # on by default, and not said by an older service
+        fields.append(("mcp", "off: the MCP endpoint is switched off (mcp_enabled)"))
+    print_fields(fields)
     workspaces = [as_mapping(w) for w in as_list(body.get("workspaces"))]
     rows: list[tuple[str, ...]] = []
     failing: list[str] = []

@@ -537,6 +537,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "search_code": query_values["/v1/search/code"],
         "read_source": {"workspace": "alpha", "repository": "source"},
         "get_symbol": {"name": "sample"},
+        "list_commits": {},
         "list_meetings": {},
         "list_messages": {},
         "get_meeting": {"record_id": "0" * 64},

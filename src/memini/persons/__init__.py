@@ -19,7 +19,8 @@ Who calls what:
   merged into it) give the persons one canonical person stands for,
   ``person_members(person_root(x))``. :func:`resolve_persons` finds the canonical persons a caller
   names ("me", a person id, an alias) and :func:`member_ids` the persons they stand for
-  (:mod:`memini.persons.lookup`).
+  (:mod:`memini.persons.lookup`). ``list_commits`` names the person behind a commit author with
+  :func:`resolve_git_authors`, by the author's mail address, else by a ``git_author`` alias.
 
 A merge is reversible: it marks the merged person and changes no other row, so a split restores
 exactly what was there. Persons are never deleted by it.
@@ -54,10 +55,12 @@ from memini.persons.identities import (
 )
 from memini.persons.lookup import (
     ME,
+    AuthorPerson,
     PersonRef,
     alias_keys,
     member_ids,
     parse_person_ref,
+    resolve_git_authors,
     resolve_persons,
 )
 from memini.persons.model import (
@@ -103,6 +106,7 @@ __all__ = [
     "AliasAdded",
     "AliasHeldError",
     "AliasKind",
+    "AuthorPerson",
     "Identity",
     "InvalidAliasError",
     "LinkCounts",
@@ -139,6 +143,7 @@ __all__ = [
     "person_lock_key",
     "remove_alias",
     "rename_person",
+    "resolve_git_authors",
     "resolve_persons",
     "set_me",
     "split_person",

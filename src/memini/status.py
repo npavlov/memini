@@ -64,6 +64,10 @@ reported, not counted as behind: the planner loads it a step per run on purpose.
 Every read of a workspace, source, stream, run, record, chunk or index state goes through the
 caller's :class:`~memini.auth.ReadFilter`. The schema version is service metadata, not data in a
 workspace, so it needs no filter.
+
+``mcp_enabled`` says whether the service serves its MCP endpoint (the setting of that name), for a
+client that manages the service or looks for the endpoint. It is no part of the verdict: a base is
+as current without MCP. The ``status`` tool always says true: an answer over MCP is proof of it.
 """
 
 import functools
@@ -297,6 +301,11 @@ class ServiceStatus(BaseModel):
         description="The workspaces the token may read, by name."
     )
     index: IndexStatus
+    mcp_enabled: bool = Field(
+        default=True,
+        description="Whether the service serves its MCP endpoint (the setting mcp_enabled). False:"
+        " the endpoint answers 404 mcp_disabled, and the HTTP API serves the same calls.",
+    )
 
 
 def stream_is_current(schedule_seconds: float | None, lag_seconds: float | None) -> bool | None:
@@ -334,12 +343,17 @@ def expected_schema_version() -> int:
 
 
 async def read_status(
-    pool: Pool | None, access: ReadFilter, *, fingerprint: IndexFingerprint | None = None
+    pool: Pool | None,
+    access: ReadFilter,
+    *,
+    fingerprint: IndexFingerprint | None = None,
+    mcp_enabled: bool = True,
 ) -> ServiceStatus:
     """The status of the base as ``access`` may see it.
 
     ``fingerprint`` is what the service indexes and searches with (:func:`service_fingerprint`);
     ``None`` when no embedding provider is configured: indexes are then reported ``off``.
+    ``mcp_enabled`` is the setting of that name, which the answer repeats.
 
     A database that cannot be reached is reported, not raised: the status is then not current and
     lists no workspaces. Without a pool the database counts as not reachable.
@@ -347,7 +361,8 @@ async def read_status(
     if pool is not None:
         try:
             async with pool.connection() as conn:
-                return await _read(conn, access, fingerprint)
+                read = await _read(conn, access, fingerprint)
+                return read.model_copy(update={"mcp_enabled": mcp_enabled})
         except psycopg.OperationalError as exc:
             # The type only: the text of a connection error can hold the URL with its password.
             _log.warning("status: the database is not reachable (%s)", type(exc).__name__)
@@ -362,6 +377,7 @@ async def read_status(
         ),
         workspaces=[],
         index=_service_index(fingerprint, [], reachable=False),
+        mcp_enabled=mcp_enabled,
     )
 
 
