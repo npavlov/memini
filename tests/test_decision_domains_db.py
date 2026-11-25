@@ -5,10 +5,11 @@ On a synthetic harbour workspace with two projects: a decision from a source wit
 listed under its project, and under the default's domain; a project and domains pushed with a
 record come before the default; a decision recorded with domains is listed under them, and an
 unlink removes one; a domain filter returns its subdomains' decisions newest first; the count of
-the project's decisions without a domain is right; get_domain lists the domain's decisions; a link
-made by hand survives a run of assign_domains again, and an answer, "none" included, is not asked
-again until the catalog changes; a source with llm_policy none is skipped and counted; the journal
-tables and their triggers do not change. The library's rules are in test_decision_context.py.
+the project's decisions without a domain is right; get_domain lists the domain's decisions; search
+returns the decisions of the projects and domains named, subdomains included, the same over HTTP
+and MCP; a link made by hand survives a run of assign_domains again, and an answer, "none"
+included, is not asked again until the catalog changes; a source with llm_policy none is skipped
+and counted; the journal tables and their triggers do not change. The library's rules are in test_decision_context.py.
 
 Every record, name and statement here is synthetic.
 """
@@ -26,6 +27,8 @@ from uuid import UUID
 import httpx2
 import pytest
 from fastapi import FastAPI
+from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
 from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow, dict_row
 from pydantic import SecretStr
@@ -36,11 +39,13 @@ from memini.auth import Scope, WriteAccess, create_token
 from memini.config import Settings
 from memini.db import Pool, connect, open_pool
 from memini.decisions.assign import LlmAssigner, assign_handler, assigner_name, run_assignment
+from memini.embeddings import FakeEmbedder
 from memini.evaluation.domains import LlmEvalAssigner, load_set, run_domain_eval
 from memini.jobs import ASSIGN_DOMAINS_KIND, execute_job
 from memini.jobs.queue import claim
 from memini.llm import LlmGate, create_llm_gate
 from memini.logs import clear_secrets
+from memini.mcp import MCP_PATH
 from memini.runs import wait_for_run_writes
 from memini.sources import NewPushSource, SourceUpdate, create_push_source, update_source
 from memini.workspaces import create_workspace, ensure_principal
@@ -442,6 +447,75 @@ async def test_a_domain_filter_returns_its_subdomains_newest_first_and_counts_th
         # get_decision carries the context too.
         chain = ok(await http.get(f"/v1/decisions/{said['pilot']['id']}"))
         assert placed(chain["item"]) == ("port", "manual", [("port", "fees/pilot", "manual")])
+
+
+# --- The decisions of search ---------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def search_clients(
+    migrated_database_url: str, pool: Pool, token: str
+) -> AsyncGenerator[tuple[httpx2.AsyncClient, Client]]:
+    """An HTTP and an MCP client of one application with an embedder, as search needs one."""
+    settings = Settings(database_url=SecretStr(migrated_database_url))
+    searching = create_app(settings, pool=pool, embedder=FakeEmbedder())
+    async with (
+        searching.router.lifespan_context(searching),
+        httpx2.AsyncClient(
+            transport=httpx2.ASGITransport(app=searching),
+            base_url=BASE_URL,
+            headers={"Authorization": f"Bearer {token}"},
+        ) as http,
+    ):
+        transport = streamable_http_client(f"{BASE_URL}{MCP_PATH}", http_client=http)
+        async with Client(transport, mode="legacy") as mcp:
+            yield http, mcp
+
+
+async def test_search_returns_the_decisions_of_the_projects_and_domains_named(
+    app: FastAPI, migrated_database_url: str, pool: Pool, world: World
+) -> None:
+    await push(app, world, "mail", thread("m1", T0, "Harbour matters."))
+    await push(app, world, "chat", thread("c1", T0, "Crew matters.", project="fleet"))
+    said: dict[str, str] = {}
+    for n, (name, source, external_id, place) in enumerate(
+        (
+            ("berth", "mail", "m1", {"project": "port", "domains": ["fees/berth"]}),
+            ("bookings", "mail", "m1", {"project": "port", "domains": ["bookings"]}),
+            # Its project comes by the record, its domain by a link: both count.
+            ("crew", "chat", "c1", {"domains": ["crew"]}),
+            ("nowhere", "mail", "m1", {}),
+        )
+    ):
+        item = await record(
+            app, world, source, external_id, f"Tide fees for {name}.", T0 + n * DAY, **place
+        )
+        said[item["id"]] = name
+
+    async with search_clients(migrated_database_url, pool, world.tokens["writer"]) as (http, mcp):
+
+        async def found(**filters: Any) -> list[str]:
+            arguments = {"query": "tide fees", "mode": "lexical", **filters}
+            over_http = ok(await http.get("/v1/search", params=arguments))
+            result = await mcp.call_tool("search", arguments)
+            assert not result.is_error, result.content
+            assert result.structured_content is not None
+            over_mcp: Json = result.structured_content
+            listed = [item["id"] for item in over_http["decisions"]]
+            assert [item["id"] for item in over_mcp["decisions"]] == listed
+            return sorted(said[item_id] for item_id in listed)
+
+        assert await found() == ["berth", "bookings", "crew", "nowhere"]
+        # A domain includes its subdomains; fees of fleet holds none of these.
+        assert await found(domains=["fees"]) == ["berth"]
+        assert await found(domains=["fees/berth"]) == ["berth"]
+        assert await found(domains=["fees/pilot"]) == []
+        assert await found(domains=["crew"]) == ["crew"]
+        assert await found(domains=["bookings", "crew"]) == ["bookings", "crew"]
+        assert await found(projects=["port"]) == ["berth", "bookings"]
+        assert await found(projects=["fleet"]) == ["crew"]
+        assert await found(projects=["fleet"], domains=["fees"]) == []
+        assert await found(domains=["fees"], kinds=["decision"]) == ["berth"]
 
 
 # --- assign_domains ------------------------------------------------------------------------------

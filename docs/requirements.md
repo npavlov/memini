@@ -266,7 +266,9 @@ catalog no longer holds is left out of the answers. What an item belongs to is c
 read (`memini.decisions.context`), so every decision carries a `context`: its project and domains
 and how each came (`push`, `default`, `manual`, `code`, `model`). A record that is gone (retention,
 forget) no longer gives its pushed names or its stream's default; its source's default and its
-code still count.
+code still count. `list_decisions`, `get_domain` and the decisions of `search` filter by this
+context: under a project when its project or one of its domains is of it, in a domain when one of
+its domains is that domain or one of its subdomains (section 6, Catalog tools).
 
 ## 4. Intake
 
@@ -1205,8 +1207,12 @@ only, and without it a name stands for every project that has it. A name the cat
 hold is an error, not an empty answer (422 `unknown_project`, `unknown_domain`,
 `unknown_service`; the message gives the position of the value, never the value): an empty
 answer would read as "this domain has no such code". A domain that exists and names no code
-gives no hits. With one of these filters, `search` returns journal items only through the
-records retrieved, as with `roles`: an item names no domain yet (memini-qpk.6). `context` is
+gives no hits. The journal items `search` returns with its hits follow `projects` and `domains`
+as `list_decisions` does (section 3, Decisions by project and domain): only items under one of the
+projects and in one of the domains, a domain with its subdomains, whichever way the item came by
+them; matches by statement words first, then items citing the records retrieved, both among those.
+`services` names code, not decisions: with it, as with `roles`, items come only through the records
+retrieved (memini-qpk.6). `context` is
 `{project, service, domains}`: the service whose root holds the file (the nearest, when one
 service is a directory of another) with its project, and every domain or subdomain whose masks
 match, each as `{project, domain}`, as a domain of another project may name the file; a file in

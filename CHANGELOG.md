@@ -30,6 +30,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   document. `get_project` and `GET /v1/workspaces/{workspace}/projects/{project}` return a
   project with its links in both directions and a filter by the other project; `get_catalog`
   shows them too. [Tool reference](docs/mcp/get_project.md).
+- Find decisions by project and domain. A decision takes them from the records its evidence is
+  in (named by whoever pushed them, or a default of the source or stream), from a link by hand,
+  from code evidence matched against the domain masks, or last from the `assign_domains` model,
+  and carries them as `context`. `list_decisions` and the decisions of `search` filter by
+  `projects` and `domains`, a domain with its subdomains; `get_domain` lists a domain's active
+  decisions. [Tool reference](docs/mcp/list_decisions.md).
 
 ## [0.1.0] - 2026-11-22
 

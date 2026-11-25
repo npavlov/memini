@@ -56,6 +56,7 @@ from psycopg.rows import TupleRow
 from memini import knowledge
 from memini.auth import ReadFilter
 from memini.config import Settings
+from memini.decisions import context as decision_context
 from memini.decisions.model import DecisionItem
 from memini.embeddings import Embedder, EmbeddingError, EmbeddingsNotConfiguredError
 from memini.git import GitOptions, MirrorManager
@@ -323,9 +324,17 @@ async def _decision_matches(
     hits: list[Hit],
 ) -> list[knowledge.Item]:
     matches: dict[UUID, knowledge.Item] = {}
-    # A journal item names no project or domain yet: with a filter of the catalog, as with roles,
-    # items match only through the records retrieved, which the filter did narrow.
-    by_statement = query.filters.roles is None and not query.filters.names_code
+    chosen = query.filters
+    if chosen.projects is not None or chosen.domains is not None:
+        # As list_decisions reads them (memini.decisions.context): an item under one of the
+        # projects and in one of the domains, a domain with its subdomains, by any way it came.
+        within = await _decisions_in_catalog(conn, access, chosen)
+        if not within:
+            return []
+        filters = replace(filters, item_ids=within)
+    # A service names code, not decisions: with services, as with roles, items match only through
+    # the records retrieved, which the filter did narrow.
+    by_statement = chosen.roles is None and chosen.services is None
     if query.mode != "dense" and by_statement:
         statements = filters
         if query.filters.persons is not None:
@@ -344,6 +353,24 @@ async def _decision_matches(
         for item in cited:
             matches.setdefault(item.id, item)
     return list(matches.values())[: filters.limit]
+
+
+async def _decisions_in_catalog(
+    conn: Conn, access: ReadFilter, chosen: SearchFilters
+) -> tuple[UUID, ...]:
+    """The active items of the workspaces searched under ``chosen.projects`` and in
+    ``chosen.domains``. The record search has refused a name no catalog holds already."""
+    spaces = await list_workspaces(conn, access)
+    workspace_ids = [
+        space.id for space in spaces if chosen.workspaces is None or space.name in chosen.workspaces
+    ]
+    found = await decision_context.load_contexts(conn, access, workspace_ids)
+    try:
+        return tuple(
+            found.select(projects=chosen.projects, domains=chosen.domains, statuses=("active",))
+        )
+    except decision_context.UnknownPlaceError:
+        return ()
 
 
 _CODE_MODES: dict[str, Mode] = {
