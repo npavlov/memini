@@ -402,6 +402,7 @@ async def test_a_database_token_lists_the_tools(app: FastAPI, db: Conn, world: W
         "get_symbol",
         "list_commits",
         "get_catalog",
+        "get_project",
         "get_domain",
         "catalog_guide",
         "list_meetings",

@@ -112,6 +112,7 @@ tools your token can call.
 | [`get_symbol`](get_symbol.md) | Get symbol | `read` |
 | [`list_commits`](list_commits.md) | List commits | `read` |
 | [`get_catalog`](get_catalog.md) | Get the catalog | `read` |
+| [`get_project`](get_project.md) | Get a project | `read` |
 | [`get_domain`](get_domain.md) | Get a domain | `read` |
 | [`catalog_guide`](catalog_guide.md) | Catalog guide | `read` |
 | [`list_meetings`](list_meetings.md) | List meetings | `read` |

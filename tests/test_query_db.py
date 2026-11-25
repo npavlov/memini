@@ -292,6 +292,7 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
         "get_symbol",
         "list_commits",
         "get_catalog",
+        "get_project",
         "get_domain",
         "catalog_guide",
         "list_meetings",

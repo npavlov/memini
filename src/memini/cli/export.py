@@ -1,11 +1,12 @@
 """Stream workspace records, decision history and the catalog to stdout as JSON Lines.
 
 A line is a ``record``, a ``knowledge_item`` or a ``project``. A project line is the project of
-the catalog as its document (requirements, section 3, Catalog): its services, and its domains
-with their subdomains and code, with the version and who changed each entry last and when. The
-catalog is authored data, so the export holds it whole; nothing in it is derived. Without
-``--include-private``, a service over a private source is left out, with the code entries that
-name it, as the records of that source are.
+the catalog as its document (requirements, section 3, Catalog): its services with the services
+they use, and its domains with their subdomains and code, with the version and who changed each
+entry last and when. The catalog is authored data, so the export holds it whole; nothing in it
+is derived. Without
+``--include-private``, a service over a private source is left out, with the code entries and
+the links that name it, as the records of that source are.
 """
 
 import argparse
@@ -145,6 +146,18 @@ async def _projects(
                     "description": service.description,
                     "repository": service.repository,
                     "root": service.root,
+                    "uses": [
+                        {
+                            "project": link.to_project,
+                            "service": link.to_service,
+                            "kind": link.kind,
+                            "note": link.note,
+                            "paths": list(link.paths),
+                            **_stamp(link.stamp),
+                        }
+                        for link in project.links
+                        if link.service_id == service.id and link.target_id in visible
+                    ],
                     **_stamp(service.stamp),
                 }
                 for service in project.services
