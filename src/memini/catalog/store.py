@@ -1,7 +1,8 @@
 """The catalog's rows: reading projects whole, the single writes ``put_project`` is made of, and
 what the index holds of the repositories the catalog names.
 
-Tables ``project``, ``service``, ``domain`` and ``domain_code`` (migration 0018). Every read
+Tables ``project``, ``service``, ``domain`` and ``domain_code`` (migration 0018), and
+``service_link`` (migration 0019). Every read
 takes the caller's :class:`~memini.auth.ReadFilter` or :class:`~memini.auth.WriteAccess` and puts
 it into the SQL that finds the rows; a workspace out of reach has no rows. The writes run inside
 the transaction of :func:`memini.catalog.service.run_put_project`, on a project row it has locked,
@@ -23,6 +24,7 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import TupleRow
 
 from memini.auth import ReadFilter, WriteAccess
+from memini.catalog.model import LinkKind
 from memini.gitsync import read_pin
 
 __all__ = [
@@ -32,25 +34,31 @@ __all__ = [
     "Stamp",
     "StoredCode",
     "StoredDomain",
+    "StoredLink",
     "StoredProject",
     "StoredService",
     "bump_project",
     "check_service_places",
     "delete_code",
     "delete_domains",
+    "delete_links",
     "delete_services",
     "ensure_project",
     "git_sources",
     "insert_code",
     "insert_domain",
+    "insert_link",
     "insert_service",
+    "read_links",
     "read_projects",
     "repositories",
+    "services_linked_elsewhere",
     "services_named_elsewhere",
     "services_of_others",
     "source_files",
     "update_code",
     "update_domain",
+    "update_link",
     "update_service",
 ]
 
@@ -113,6 +121,33 @@ class StoredCode:
 
 
 @dataclass(frozen=True, slots=True)
+class StoredLink:
+    """A service that uses another."""
+
+    id: UUID
+    service_id: UUID
+    """The service that uses."""
+    target_id: UUID
+    """The service it uses."""
+    from_project_id: UUID
+    from_project: str
+    from_service: str
+    to_project_id: UUID
+    to_project: str
+    to_service: str
+    kind: LinkKind
+    note: str
+    paths: tuple[str, ...]
+    """Read inside the root of the service that uses."""
+    stamp: Stamp
+    source_id: UUID
+    """The git source of the service that uses."""
+    repository: str
+    root: str
+    """The root of the service that uses."""
+
+
+@dataclass(frozen=True, slots=True)
 class StoredProject:
     """A project with everything in it."""
 
@@ -127,6 +162,8 @@ class StoredProject:
     domains: tuple[StoredDomain, ...]
     """Domains before their subdomains, each level by name."""
     code: tuple[StoredCode, ...]
+    links: tuple[StoredLink, ...] = ()
+    """The links of its services: what they use, by service and then by the service used."""
 
     def addresses(self) -> dict[UUID, tuple[str, ...]]:
         """Each domain's address by its id: ``(domain,)`` or ``(domain, subdomain)``."""
@@ -189,6 +226,56 @@ _CODE: Final = sql.SQL(
 )
 
 
+_LINKS: Final = sql.SQL(
+    "SELECT l.id, l.service_id, l.target_id, fs.project_id, fp.name, fs.name, ts.project_id,"
+    " tp.name, ts.name, l.kind, l.note, l.paths, l.updated_at, l.updated_by, l.updated_token,"
+    " fs.source_id, src.name, fs.root"
+    " FROM service_link l"
+    " JOIN service fs ON fs.id = l.service_id JOIN project fp ON fp.id = fs.project_id"
+    " JOIN source src ON src.id = fs.source_id"
+    " JOIN service ts ON ts.id = l.target_id JOIN project tp ON tp.id = ts.project_id"
+    " WHERE l.workspace_id = %(workspace)s AND {where} AND {access}"
+    " ORDER BY fp.name, fs.name, tp.name, ts.name"
+)
+
+
+def _link(row: Sequence[Any]) -> StoredLink:
+    return StoredLink(
+        id=row[0],
+        service_id=row[1],
+        target_id=row[2],
+        from_project_id=row[3],
+        from_project=row[4],
+        from_service=row[5],
+        to_project_id=row[6],
+        to_project=row[7],
+        to_service=row[8],
+        kind=row[9],
+        note=row[10],
+        paths=tuple(row[11]),
+        stamp=Stamp(*row[12:15]),
+        source_id=row[15],
+        repository=row[16],
+        root=row[17],
+    )
+
+
+async def read_links(
+    conn: Conn, access: Access, workspace_id: UUID, project_ids: Collection[UUID]
+) -> list[StoredLink]:
+    """The links of the workspace that ``access`` reaches whose service that uses, or service
+    used, is of one of ``project_ids``: by the project and service that uses, then the project
+    and service used."""
+    if not project_ids:
+        return []
+    query = _LINKS.format(
+        where=sql.SQL("(fs.project_id = ANY(%(ids)s) OR ts.project_id = ANY(%(ids)s))"),
+        access=_where(access, "l"),
+    )
+    cur = await conn.execute(query, {"workspace": workspace_id, "ids": list(project_ids)})
+    return [_link(row) for row in await cur.fetchall()]
+
+
 async def read_projects(
     conn: Conn,
     access: Access,
@@ -217,6 +304,7 @@ async def read_projects(
     services: dict[UUID, list[StoredService]] = {each: [] for each in ids}
     domains: dict[UUID, list[StoredDomain]] = {each: [] for each in ids}
     code: dict[UUID, list[StoredCode]] = {each: [] for each in ids}
+    links: dict[UUID, list[StoredLink]] = {each: [] for each in ids}
 
     cur = await conn.execute(_SERVICES.format(access=_where(access, "s")), (ids,))
     for row in await cur.fetchall():
@@ -256,6 +344,10 @@ async def read_projects(
                 stamp=Stamp(*row[7:10]),
             )
         )
+    query = _LINKS.format(where=sql.SQL("fs.project_id = ANY(%(ids)s)"), access=_where(access, "l"))
+    cur = await conn.execute(query, {"workspace": workspace_id, "ids": ids})
+    for row in await cur.fetchall():
+        links[row[3]].append(_link(row))
     return [
         StoredProject(
             id=row[0],
@@ -268,6 +360,7 @@ async def read_projects(
             services=tuple(services[row[0]]),
             domains=tuple(domains[row[0]]),
             code=tuple(code[row[0]]),
+            links=tuple(links[row[0]]),
         )
         for row in rows
     ]
@@ -423,11 +516,25 @@ async def services_named_elsewhere(
     return await cur.fetchone() is not None
 
 
+async def services_linked_elsewhere(
+    conn: Conn, project_id: UUID, service_ids: Sequence[UUID]
+) -> bool:
+    """Whether a service of another project declares it uses one of the project's services."""
+    if not service_ids:
+        return False
+    cur = await conn.execute(
+        "SELECT 1 FROM service_link l JOIN service s ON s.id = l.service_id"
+        " WHERE l.target_id = ANY(%s) AND s.project_id <> %s LIMIT 1",
+        (list(service_ids), project_id),
+    )
+    return await cur.fetchone() is not None
+
+
 async def services_of_others(
     conn: Conn, access: WriteAccess, workspace_id: UUID, names: Collection[tuple[str, str]]
 ) -> dict[tuple[str, str], UUID]:
     """The services ``names`` (``(project, service)``) of the workspace, by name: those a domain
-    of another project may name."""
+    or a link of another project may name."""
     if not names:
         return {}
     query = sql.SQL(
@@ -537,6 +644,49 @@ async def update_code(conn: Conn, author: Author, code_id: UUID, paths: Sequence
 async def delete_code(conn: Conn, code_ids: Sequence[UUID]) -> None:
     if code_ids:
         await conn.execute("DELETE FROM domain_code WHERE id = ANY(%s)", (list(code_ids),))
+
+
+async def insert_link(
+    conn: Conn,
+    author: Author,
+    project: StoredProject,
+    *,
+    service_id: UUID,
+    target_id: UUID,
+    kind: str,
+    note: str,
+    paths: Sequence[str],
+) -> None:
+    await conn.execute(
+        "INSERT INTO service_link (workspace_id, owner_id, service_id, target_id, kind, note,"
+        " paths, updated_by, updated_token) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (
+            project.workspace_id,
+            author.owner_id,
+            service_id,
+            target_id,
+            kind,
+            note,
+            list(paths),
+            author.owner_id,
+            author.token_id,
+        ),
+    )
+
+
+async def update_link(
+    conn: Conn, author: Author, link_id: UUID, *, kind: str, note: str, paths: Sequence[str]
+) -> None:
+    await conn.execute(
+        "UPDATE service_link SET kind = %s, note = %s, paths = %s, updated_at = now(),"
+        " updated_by = %s, updated_token = %s WHERE id = %s",
+        (kind, note, list(paths), author.owner_id, author.token_id, link_id),
+    )
+
+
+async def delete_links(conn: Conn, link_ids: Sequence[UUID]) -> None:
+    if link_ids:
+        await conn.execute("DELETE FROM service_link WHERE id = ANY(%s)", (list(link_ids),))
 
 
 async def _returned_id(cur: Any) -> UUID:

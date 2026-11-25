@@ -67,6 +67,7 @@ TOOL_NAMES = [
     "get_symbol",
     "list_commits",
     "get_catalog",
+    "get_project",
     "get_domain",
     "catalog_guide",
     "list_meetings",

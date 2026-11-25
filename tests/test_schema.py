@@ -181,6 +181,8 @@ LOOKUPS: list[tuple[str, str, tuple[str, ...], bool]] = [
     ),
     ("the code of a domain, one row per service", "domain_code", ("domain_id", "service_id"), True),
     ("the code that names a service", "domain_code", ("service_id",), False),
+    ("the links of a service, by service used", "service_link", ("service_id", "target_id"), True),
+    ("what uses a service: get_project's used_by", "service_link", ("target_id",), False),
     ("target of a service's key to its git source", "source", ("workspace_id", "id", "kind"), True),
 ]
 

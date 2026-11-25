@@ -3,11 +3,11 @@
 
 One function per tool, for the MCP tools (:mod:`memini.mcp.catalog`) and the HTTP routes
 (:mod:`memini.api.catalog`) alike: :func:`run_get_catalog`, :func:`run_get_domain`,
-:func:`run_put_project` and :func:`catalog_guide`. The reads take the caller's
-:class:`~memini.auth.ReadFilter`. The write takes its :class:`~memini.auth.WriteAccess` (the
-``ingest`` scope) and its ``ReadFilter`` (the ``read`` scope) both: its answer counts the files
-each mask matches, which is a read of the index, so a token that may only push records cannot
-probe a repository's paths through it.
+:func:`run_get_project`, :func:`run_put_project` and :func:`catalog_guide`. The reads take the
+caller's :class:`~memini.auth.ReadFilter`. The write takes its
+:class:`~memini.auth.WriteAccess` (the ``ingest`` scope) and its ``ReadFilter`` (the ``read``
+scope) both: its answer counts the files each mask matches, which is a read of the index, so a
+token that may only push records cannot probe a repository's paths through it.
 
 ``put_project`` in order:
 
@@ -15,13 +15,15 @@ probe a repository's paths through it.
    handles, a root is a relative directory, every mask is one the matcher takes; titles and
    descriptions have their secrets redacted, as ingest redacts a payload (principle 11). A name,
    a root or a mask is an identifier and is not rewritten: one that holds a secret is refused.
+   Link notes are redacted as descriptions are. A link names a service of the document, or of
+   another project of the same workspace: nothing else can be named.
 2. One transaction: the project's row is made if there is none, and locked; ``if_version`` is
    compared with its version; the document is compared with what is stored, entry by entry, and
    only what differs is written, each changed row stamped with who and when. If anything was
    written the project's version goes up by one. The same document again writes nothing and
    leaves the version.
 3. After it commits, the report: what each mask matches in the index as it is now
-   (:mod:`memini.catalog.report`). Nothing of the report is stored.
+   (:mod:`memini.catalog.report`), the masks of the links too. Nothing of the report is stored.
 
 Every refusal becomes a :class:`CatalogError` with an HTTP status, a stable code and a message
 that never repeats a name, a mask or a text of the document; it names the place in the document
@@ -33,7 +35,7 @@ that never repeats a name, a mask or a text of the document; it names the place 
 | no workspace named and the token reads several | 422 | ``ambiguous_workspace`` |
 | no such workspace, project, domain, repository or service in reach | 404 | ``not_found`` |
 | ``if_version`` is not the project's version | 409 | ``version_conflict`` |
-| the document removes a service a domain of another project names | 409 | ``service_in_use`` |
+| the document removes a service another project's domain or link names | 409 | ``service_in_use`` |
 | a service's directory is a service of another project already | 409 | ``service_conflict`` |
 | the catalog changed under the write (a service named was deleted) | 409 | ``catalog_conflict`` |
 """
@@ -54,6 +56,7 @@ from memini.catalog import store
 from memini.catalog.guide import CATALOG_GUIDE
 from memini.catalog.model import (
     MAX_DESCRIPTION_CHARS,
+    MAX_NOTE_CHARS,
     MAX_ROOT_CHARS,
     MAX_TITLE_CHARS,
     Catalog,
@@ -64,6 +67,13 @@ from memini.catalog.model import (
     DomainEntry,
     GetCatalogArguments,
     GetDomainArguments,
+    GetProjectArguments,
+    LinkDetail,
+    LinkDocument,
+    LinkEntry,
+    LinkMaskReport,
+    MaskFiles,
+    ProjectDetail,
     ProjectDocument,
     ProjectEntry,
     PutProjectResult,
@@ -75,7 +85,14 @@ from memini.catalog.model import (
     SubdomainEntry,
 )
 from memini.catalog.report import domain_code, languages, project_report
-from memini.catalog.store import Author, StoredCode, StoredDomain, StoredProject
+from memini.catalog.store import (
+    Author,
+    Repository,
+    StoredCode,
+    StoredDomain,
+    StoredLink,
+    StoredProject,
+)
 from memini.redaction import RedactionKind, redact_text
 from memini.search.catalog import CodeArea, domain_address, load_code_maps
 from memini.search.errors import InvalidSearchError
@@ -94,6 +111,7 @@ __all__ = [
     "InvalidProjectError",
     "NewCode",
     "NewDomain",
+    "NewLink",
     "NewProject",
     "NewService",
     "catalog_errors",
@@ -101,6 +119,7 @@ __all__ = [
     "normalize",
     "run_get_catalog",
     "run_get_domain",
+    "run_get_project",
     "run_put_project",
 ]
 
@@ -198,6 +217,20 @@ class NewDomain:
 
 
 @dataclass(frozen=True, slots=True)
+class NewLink:
+    where: str
+    service: str
+    """The service of the document that uses."""
+    project: str
+    """The project of the service used: the document's, unless the entry names another."""
+    target: str
+    """The service used."""
+    kind: str
+    note: str
+    paths: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class NewProject:
     name: str
     title: str
@@ -205,6 +238,8 @@ class NewProject:
     services: tuple[NewService, ...]
     domains: tuple[NewDomain, ...]
     """Every domain before its subdomains."""
+    links: tuple[NewLink, ...] = ()
+    """The links of its services, in the order of the document."""
 
 
 def _handle(field: str, kind: str, value: str) -> str:
@@ -242,15 +277,22 @@ def _title(field: str, value: str, counts: Counter[RedactionKind]) -> str:
     return title
 
 
-def _description(field: str, value: str, counts: Counter[RedactionKind]) -> str:
-    """A description: line ends are ``\\n``, the ends are trimmed; secrets are redacted."""
+def _description(
+    field: str,
+    value: str,
+    counts: Counter[RedactionKind],
+    *,
+    limit: int = MAX_DESCRIPTION_CHARS,
+) -> str:
+    """A description, or a link's note: line ends are ``\\n``, the ends are trimmed; secrets are
+    redacted."""
     cleaned = redact_text(value.replace("\r\n", "\n").replace("\r", "\n").strip())
     counts.update(cleaned.counts)
     description = cleaned.value
     if _controls(description, allowed="\n\t"):
         raise InvalidProjectError(field, "holds a control character")
-    if len(description) > MAX_DESCRIPTION_CHARS:
-        raise InvalidProjectError(field, f"longer than {MAX_DESCRIPTION_CHARS} characters")
+    if len(description) > limit:
+        raise InvalidProjectError(field, f"longer than {limit} characters")
     return description
 
 
@@ -315,6 +357,49 @@ def _code(
             paths=_masks(f"{where}.paths", entry.paths),
         )
     return tuple(found.values())
+
+
+def _links(
+    project: str,
+    services: dict[str, NewService],
+    uses: Sequence[Sequence[LinkDocument]],
+    counts: Counter[RedactionKind],
+) -> tuple[NewLink, ...]:
+    """The links of the services, ``uses`` in the order of ``services``."""
+    links: list[NewLink] = []
+    for service, entries in zip(services.values(), uses, strict=True):
+        found: set[tuple[str, str]] = set()
+        for index, entry in enumerate(entries):
+            where = f"{service.where}.uses[{index}]"
+            owner = (
+                project
+                if entry.project is None
+                else _handle(f"{where}.project", "project", entry.project)
+            )
+            target = _handle(f"{where}.service", "service", entry.service)
+            if owner == project and target not in services:
+                raise InvalidProjectError(
+                    f"{where}.service", "names a service the document does not have"
+                )
+            if (owner, target) == (project, service.name):
+                raise InvalidProjectError(f"{where}.service", "a service does not use itself")
+            if (owner, target) in found:
+                raise InvalidProjectError(
+                    where, "the service names this service twice; say both uses in one entry"
+                )
+            found.add((owner, target))
+            links.append(
+                NewLink(
+                    where=where,
+                    service=service.name,
+                    project=owner,
+                    target=target,
+                    kind=entry.kind,
+                    note=_description(f"{where}.note", entry.note, counts, limit=MAX_NOTE_CHARS),
+                    paths=_masks(f"{where}.paths", entry.paths),
+                )
+            )
+    return tuple(links)
 
 
 def normalize(
@@ -383,6 +468,7 @@ def normalize(
             services=tuple(services.values()),
             # A domain is in the mapping before its subdomains; sorting by depth keeps that.
             domains=tuple(sorted(domains.values(), key=lambda each: len(each.address))),
+            links=_links(name, services, [each.uses for each in document.services], counts),
         ),
         dict(counts),
     )
@@ -442,6 +528,77 @@ def _under(root: str, paths: Sequence[str]) -> list[str]:
     return [path for path in paths if below(path)]
 
 
+def _refs(repositories: Sequence[Repository]) -> dict[UUID, list[RefInfo]]:
+    return {
+        each.id: [RefInfo(ref=ref, commit=commit) for ref, commit in each.refs]
+        for each in repositories
+    }
+
+
+def _link_entry(link: StoredLink) -> LinkEntry:
+    return LinkEntry(
+        project=link.to_project,
+        service=link.to_service,
+        kind=link.kind,
+        note=link.note,
+        paths=list(link.paths),
+        updated_at=link.stamp.at,
+        updated_by=link.stamp.by,
+        updated_token=link.stamp.token,
+    )
+
+
+def _project_entry(
+    project: StoredProject, refs: dict[UUID, list[RefInfo]], files: dict[UUID, list[str]]
+) -> ProjectEntry:
+    """A stored project in the shape of its document, with what the index holds of it."""
+    addresses = project.addresses()
+    services: list[ServiceEntry] = []
+    for service in project.services:
+        below = _under(service.root, files.get(service.source_id, ()))
+        services.append(
+            ServiceEntry(
+                name=service.name,
+                description=service.description,
+                repository=service.repository,
+                root=service.root,
+                refs=refs.get(service.source_id, []),
+                files=len(below),
+                languages=languages(below),
+                uses=[_link_entry(link) for link in project.links if link.service_id == service.id],
+                updated_at=service.stamp.at,
+                updated_by=service.stamp.by,
+                updated_token=service.stamp.token,
+            )
+        )
+    domains: list[DomainEntry] = []
+    for domain in project.domains:
+        if domain.parent_id is not None:
+            continue
+        entry = _subdomain_entry(project, domain, addresses[domain.id])
+        domains.append(
+            DomainEntry(
+                **entry.model_dump(),
+                subdomains=[
+                    _subdomain_entry(project, part, addresses[part.id])
+                    for part in project.domains
+                    if part.parent_id == domain.id
+                ],
+            )
+        )
+    return ProjectEntry(
+        name=project.name,
+        title=project.title,
+        description=project.description,
+        version=project.version,
+        updated_at=project.stamp.at,
+        updated_by=project.stamp.by,
+        updated_token=project.stamp.token,
+        services=services,
+        domains=domains,
+    )
+
+
 async def run_get_catalog(
     conn: Conn, access: ReadFilter, arguments: GetCatalogArguments
 ) -> Catalog:
@@ -453,58 +610,8 @@ async def run_get_catalog(
             projects = await store.read_projects(conn, access, workspace.id)
             repositories = await store.repositories(conn, access, workspace.id)
             files = await store.source_files(conn, access, [each.id for each in repositories])
-    refs = {
-        each.id: [RefInfo(ref=ref, commit=commit) for ref, commit in each.refs]
-        for each in repositories
-    }
-    entries: list[ProjectEntry] = []
-    for project in projects:
-        addresses = project.addresses()
-        services: list[ServiceEntry] = []
-        for service in project.services:
-            below = _under(service.root, files.get(service.source_id, ()))
-            services.append(
-                ServiceEntry(
-                    name=service.name,
-                    description=service.description,
-                    repository=service.repository,
-                    root=service.root,
-                    refs=refs.get(service.source_id, []),
-                    files=len(below),
-                    languages=languages(below),
-                    updated_at=service.stamp.at,
-                    updated_by=service.stamp.by,
-                    updated_token=service.stamp.token,
-                )
-            )
-        domains: list[DomainEntry] = []
-        for domain in project.domains:
-            if domain.parent_id is not None:
-                continue
-            entry = _subdomain_entry(project, domain, addresses[domain.id])
-            domains.append(
-                DomainEntry(
-                    **entry.model_dump(),
-                    subdomains=[
-                        _subdomain_entry(project, part, addresses[part.id])
-                        for part in project.domains
-                        if part.parent_id == domain.id
-                    ],
-                )
-            )
-        entries.append(
-            ProjectEntry(
-                name=project.name,
-                title=project.title,
-                description=project.description,
-                version=project.version,
-                updated_at=project.stamp.at,
-                updated_by=project.stamp.by,
-                updated_token=project.stamp.token,
-                services=services,
-                domains=domains,
-            )
-        )
+    refs = _refs(repositories)
+    entries = [_project_entry(project, refs, files) for project in projects]
     in_a_service = {service.source_id for project in projects for service in project.services}
     return Catalog(
         workspace=workspace.name,
@@ -590,6 +697,81 @@ async def run_get_domain(
     )
 
 
+def _mask_files(root: str, masks: Sequence[str], paths: Sequence[str]) -> list[MaskFiles]:
+    """Each mask, read inside ``root``, with the number of ``paths`` it matches."""
+    counted: list[MaskFiles] = []
+    for mask in masks:
+        matches = path_matcher(glob_regex(mask, root=root))
+        counted.append(MaskFiles(path=mask, files=sum(1 for path in paths if matches(path))))
+    return counted
+
+
+def _other_end(link: StoredLink, project_id: UUID) -> UUID:
+    """The project at the other end of a link of ``project_id``: of the service used when the
+    project uses it, of the service that uses otherwise; ``project_id`` for a link between two
+    of its own services."""
+    return link.to_project_id if link.from_project_id == project_id else link.from_project_id
+
+
+async def run_get_project(
+    conn: Conn, access: ReadFilter, arguments: GetProjectArguments
+) -> ProjectDetail:
+    """``get_project``: a project in the shape of its document, and its links in both
+    directions, each mask with the files it matches now; with ``other_project``, only the links
+    whose other end is in that project (the project itself: the links between its own
+    services)."""
+    with catalog_errors():
+        async with conn.transaction():
+            workspace = await _readable_workspace(conn, access, arguments.workspace)
+            found = await store.read_projects(conn, access, workspace.id, name=arguments.project)
+            if not found:
+                raise NotFoundError("project")
+            project = found[0]
+            other_id: UUID | None = None
+            if arguments.other_project is not None:
+                other = await store.read_projects(
+                    conn, access, workspace.id, name=arguments.other_project
+                )
+                if not other:
+                    raise NotFoundError("project")
+                other_id = other[0].id
+            links = [
+                link
+                for link in await store.read_links(conn, access, workspace.id, [project.id])
+                if other_id is None or _other_end(link, project.id) == other_id
+            ]
+            repositories = await store.repositories(conn, access, workspace.id)
+            wanted = {service.source_id for service in project.services}
+            wanted |= {link.source_id for link in links}
+            files = await store.source_files(conn, access, wanted)
+
+    def detail(link: StoredLink) -> LinkDetail:
+        below = _under(link.root, files.get(link.source_id, ()))
+        return LinkDetail(
+            from_project=link.from_project,
+            from_service=link.from_service,
+            to_project=link.to_project,
+            to_service=link.to_service,
+            kind=link.kind,
+            note=link.note,
+            repository=link.repository,
+            root=link.root,
+            paths=_mask_files(link.root, link.paths, below),
+            updated_at=link.stamp.at,
+            updated_by=link.stamp.by,
+            updated_token=link.stamp.token,
+        )
+
+    uses = [detail(link) for link in links if link.from_project_id == project.id]
+    used_by = [detail(link) for link in links if link.from_project_id != project.id]
+    return ProjectDetail(
+        workspace=workspace.name,
+        project=_project_entry(project, _refs(repositories), files),
+        uses=uses,
+        used_by=used_by,
+    )
+
+
 def catalog_guide() -> CatalogGuide:
     """``catalog_guide``: the instruction for filling the catalog. Reads nothing."""
     return CatalogGuide(guide=CATALOG_GUIDE)
@@ -621,6 +803,13 @@ async def _write(
             409,
             "service_in_use",
             "The document removes a service that a domain of another project names code in."
+            " Change that project first, or keep the service.",
+        )
+    if await store.services_linked_elsewhere(conn, stored.id, removed):
+        raise CatalogError(
+            409,
+            "service_in_use",
+            "The document removes a service that a service of another project declares it uses."
             " Change that project first, or keep the service.",
         )
     await store.delete_services(conn, removed)
@@ -658,21 +847,27 @@ async def _write(
             changed = True
     await store.check_service_places(conn)
 
-    # The services of other projects the domains name.
+    # The services of other projects the domains and the links name.
     wanted_code = {
         (domain.address, code.project, code.service): code
         for domain in new.domains
         for code in domain.code
     }
+    named = {(code.project, code.service) for code in wanted_code.values()}
+    named |= {(link.project, link.target) for link in new.links}
     others = await store.services_of_others(
         conn,
         access,
         stored.workspace_id,
-        {(code.project, code.service) for code in wanted_code.values() if code.project != new.name},
+        {(project, service) for project, service in named if project != new.name},
     )
     for code in wanted_code.values():
         if code.project != new.name and (code.project, code.service) not in others:
             raise CatalogError(404, "not_found", f"No such service ({code.where}).")
+    for link in new.links:
+        # A service of another workspace is not there to name, as one that does not exist.
+        if link.project != new.name and (link.project, link.target) not in others:
+            raise CatalogError(404, "not_found", f"No such service ({link.where}).")
     service_ids.update(others)
 
     # Domains: the removed ones first (their subdomains and code go with them), then every
@@ -730,6 +925,36 @@ async def _write(
         elif old_code.paths != code.paths:
             await store.update_code(conn, author, old_code.id, code.paths)
             changed = True
+
+    # Links: what is still stored after the deletions above, against what the document says.
+    held_links = {
+        (link.from_service, link.to_project, link.to_service): link
+        for link in stored.links
+        if link.service_id not in gone and link.target_id not in gone
+    }
+    wanted_links = {(link.service, link.project, link.target): link for link in new.links}
+    unlinked = [held_links[key].id for key in held_links.keys() - wanted_links.keys()]
+    await store.delete_links(conn, unlinked)
+    changed = changed or bool(unlinked)
+    for key, link in wanted_links.items():
+        old_link = held_links.get(key)
+        if old_link is None:
+            await store.insert_link(
+                conn,
+                author,
+                stored,
+                service_id=service_ids[(new.name, link.service)],
+                target_id=service_ids[(link.project, link.target)],
+                kind=link.kind,
+                note=link.note,
+                paths=link.paths,
+            )
+            changed = True
+        elif (old_link.kind, old_link.note, old_link.paths) != (link.kind, link.note, link.paths):
+            await store.update_link(
+                conn, author, old_link.id, kind=link.kind, note=link.note, paths=link.paths
+            )
+            changed = True
     return changed
 
 
@@ -781,6 +1006,21 @@ async def run_put_project(
             }
             files = await store.source_files(conn, read, sources)
     report = project_report(catalog, new.name, files, names)
+    own = {service.name: service for service in catalog.services if service.project == new.name}
+    link_masks = [
+        LinkMaskReport(
+            service=link.service,
+            to_project=link.project,
+            to_service=link.target,
+            path=counted.path,
+            files=counted.files,
+        )
+        for link in new.links
+        if link.service in own
+        for counted in _mask_files(
+            own[link.service].root, link.paths, files.get(own[link.service].source_id, ())
+        )
+    ]
     return PutProjectResult(
         workspace=found.name,
         project=new.name,
@@ -792,4 +1032,6 @@ async def run_put_project(
         empty_masks=[mask for mask in report.masks if mask.files == 0],
         overlaps=report.overlaps,
         services=report.services,
+        link_masks=link_masks,
+        empty_link_masks=[mask for mask in link_masks if mask.files == 0],
     )

@@ -554,6 +554,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "list_decisions": {},
         "get_decision": {"item_id": str(SOME_TOKEN_ID)},
         "get_catalog": {"workspace": "alpha"},
+        "get_project": {"workspace": "alpha", "project": "sample"},
         "get_domain": {"workspace": "alpha", "project": "sample", "domain": "sample"},
         "catalog_guide": {},
     }
