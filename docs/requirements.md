@@ -865,6 +865,28 @@ before them. Line numbers and content are not in the key, so editing one functio
 content hash of its chunk and nothing else. The chunker version and the grammar versions are part
 of the index fingerprint.
 
+**Languages** (decided 2026-11-25, chunker 3). Twenty languages are parsed with tree-sitter, chosen
+by file extension: Python, JavaScript, TypeScript, Ruby, Go, Java, C#, C, C++ (a `.h` header too,
+which the C++ grammar also parses as C), PHP, Kotlin, Swift, Rust, Scala, Dart, Lua, shell (Bash),
+SQL, Objective-C and Elixir. Each language is a function over the node types its grammar uses for
+definitions, named after the `tags.scm` queries the grammars ship, under the rules of the first
+five: types, functions and modules are definitions at every level and a function in a class is a
+method; variables and constants count at file level only; class fields and properties are not
+symbols. A body that adds members to a type defined elsewhere (a Rust `impl`, a Swift or Dart
+`extension`, an Objective-C `@implementation`, a Kotlin extension function) defines no symbol of
+its own, and its members are named after that type (`Mill.grind`), as a Go method is after its
+receiver; so is a C++ member defined outside its class (`Dock::moor`). Header guards, other `#if`
+blocks and `extern "C" { }` are transparent: what they hold is at file level. The queries
+themselves are not run: four of the fifteen new grammar packages ship none, one ships them outside
+its package, and a query on every node of the walk would read the subtree each time. Each grammar
+is one PyPI package with wheels for macOS arm64, Linux x86_64 and aarch64, and Windows, under MIT
+(Elixir: Apache-2.0); R has no package and is not parsed, Elixir is the twentieth. The new grammars
+add about 50 MB to the image. The language of a chunk or symbol is checked for its shape only
+(migration 0021), so a further language needs no migration. Chunker 3 changes the index
+fingerprint, so after an upgrade search refuses each workspace until `memini reindex --workspace
+NAME` has rebuilt it; a vector is reused by its text hash, so the rebuild re-reads every file but
+embeds only the texts that changed: the files of the fifteen languages, until then line windows.
+
 **Document chunks** (decided 2026-11-18). A Markdown document is cut by its headings: ATX (`#` to
 `######`) and setext (a paragraph underlined with `=` or `-`), as CommonMark has them at the top
 level; no line of front matter, of a fenced code block or of an HTML comment is a heading. A

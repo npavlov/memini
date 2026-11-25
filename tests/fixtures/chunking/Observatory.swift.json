@@ -1,0 +1,200 @@
+{
+  "chunker_version": 3,
+  "language": "swift",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "0b8f2dfdfe5fde66d3cae4a9e7c565ab4f907c0caf72bd38fd1e07a2a1c1704c",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 19],
+      "bytes": [0, 334],
+      "content_hash": "4d5fc0d7191ae5701e49dc4ccfaa7cd6b4bd33741e18c918536ec4b14b87f320",
+      "text": [
+        "Observatory.swift: lightYearKilometres, Lens, Phase, Star",
+        "// Observatory.swift is a synthetic fixture for the chunker tests.",
+        "import Foundation",
+        "",
+        "let lightYearKilometres = 9_460_730_472_580.8",
+        "",
+        "/// Anything that gathers light.",
+        "protocol Lens {",
+        "    func magnify(_ value: Double) -> Double",
+        "}",
+        "",
+        "enum Phase {",
+        "    case new",
+        "    case full",
+        "}",
+        "",
+        "struct Star {",
+        "    let name: String",
+        "    var magnitude: Double",
+        "}"
+      ]
+    },
+    {
+      "key": "Telescope#0",
+      "id": "007941c3bf927b2584b09eac827129b51b9cab85a5a3814723389333addaebd1",
+      "kind": "class",
+      "symbol": "Telescope",
+      "lines": [21, 36],
+      "bytes": [336, 673],
+      "content_hash": "847e78a25d3e6257a7687478b46f3e5d16c15a2e6e49d3f6972429281bcb7476",
+      "text": [
+        "Observatory.swift: Telescope",
+        "final class Telescope: Lens {",
+        "    private var stars: [Star] = []",
+        "",
+        "    init(stars: [Star]) {",
+        "        self.stars = stars",
+        "    }",
+        "",
+        "    /// The brightest star in view.",
+        "    func brightest() -> Star? {",
+        "        return stars.min { $0.magnitude < $1.magnitude }",
+        "    }",
+        "",
+        "    func magnify(_ value: Double) -> Double {",
+        "        return value * 40",
+        "    }",
+        "}"
+      ]
+    },
+    {
+      "key": "Telescope#0+0",
+      "id": "b0d06cd72c8cd5ee92b0513e932421db4dc7a12517bfe586edd067bca77182c0",
+      "kind": "group",
+      "symbol": null,
+      "lines": [38, 46],
+      "bytes": [675, 877],
+      "content_hash": "5cf0d715b22c5d07a5f995bb8e067d49d3d90b24eff84cfbdbddf2d5ee820ad0",
+      "text": [
+        "Observatory.swift: observe",
+        "extension Telescope {",
+        "    func catalogue() -> [String] {",
+        "        return stars.map { $0.name }",
+        "    }",
+        "}",
+        "",
+        "func observe(_ telescope: Telescope) -> String {",
+        "    return telescope.brightest()?.name ?? \"none\"",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "lightYearKilometres",
+      "name": "lightYearKilometres",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [4, 4],
+      "bytes": [86, 131],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Lens",
+      "name": "Lens",
+      "kind": "interface",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [7, 9],
+      "bytes": [166, 227],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Lens.magnify",
+      "name": "magnify",
+      "kind": "method",
+      "parent": "Lens",
+      "ordinal": 0,
+      "lines": [8, 8],
+      "bytes": [186, 225],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Phase",
+      "name": "Phase",
+      "kind": "enum",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [11, 14],
+      "bytes": [229, 270],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Star",
+      "name": "Star",
+      "kind": "struct",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [16, 19],
+      "bytes": [272, 334],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Telescope",
+      "name": "Telescope",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [21, 36],
+      "bytes": [336, 673],
+      "chunk": "Telescope#0"
+    },
+    {
+      "qualified_name": "Telescope.init",
+      "name": "init",
+      "kind": "method",
+      "parent": "Telescope",
+      "ordinal": 0,
+      "lines": [24, 26],
+      "bytes": [406, 460],
+      "chunk": "Telescope#0"
+    },
+    {
+      "qualified_name": "Telescope.brightest",
+      "name": "brightest",
+      "kind": "method",
+      "parent": "Telescope",
+      "ordinal": 0,
+      "lines": [29, 31],
+      "bytes": [502, 592],
+      "chunk": "Telescope#0"
+    },
+    {
+      "qualified_name": "Telescope.magnify",
+      "name": "magnify",
+      "kind": "method",
+      "parent": "Telescope",
+      "ordinal": 0,
+      "lines": [33, 35],
+      "bytes": [598, 671],
+      "chunk": "Telescope#0"
+    },
+    {
+      "qualified_name": "Telescope.catalogue",
+      "name": "catalogue",
+      "kind": "method",
+      "parent": "Telescope",
+      "ordinal": 0,
+      "lines": [39, 41],
+      "bytes": [701, 774],
+      "chunk": "Telescope#0+0"
+    },
+    {
+      "qualified_name": "observe",
+      "name": "observe",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [44, 46],
+      "bytes": [778, 877],
+      "chunk": "Telescope#0+0"
+    }
+  ]
+}

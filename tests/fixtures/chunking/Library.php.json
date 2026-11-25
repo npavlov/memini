@@ -1,0 +1,233 @@
+{
+  "chunker_version": 3,
+  "language": "php",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "0e7ef99f46b8214da21421e07800fc33b292f51f0eec2333ebb8624b991ea9f7",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 11],
+      "bytes": [0, 181],
+      "content_hash": "80cdd464979644c08dea35d430ba6df39095c76419bd7542f3292d1527da4e3e",
+      "text": [
+        "Library.php: LOAN_DAYS, Lendable",
+        "<?php",
+        "// Library.php is a synthetic fixture for the chunker tests.",
+        "",
+        "namespace Town\\Library;",
+        "",
+        "const LOAN_DAYS = 21;",
+        "",
+        "interface Lendable",
+        "{",
+        "    public function dueIn(int $days): int;",
+        "}"
+      ]
+    },
+    {
+      "key": "Stamps#0",
+      "id": "41b6a4ec1e677792db2c6c841353afffc5d83f8d36fae8ccdd35be90cc08cabd",
+      "kind": "class",
+      "symbol": "Stamps",
+      "lines": [13, 19],
+      "bytes": [183, 297],
+      "content_hash": "11038404af5e1d5c4fb5442028c2ddd74b0d585a2b18c5c3aee6690fd4fb21d6",
+      "text": [
+        "Library.php: Stamps",
+        "trait Stamps",
+        "{",
+        "    public function stamp(string $title): string",
+        "    {",
+        "        return \"{$title} (stamped)\";",
+        "    }",
+        "}"
+      ]
+    },
+    {
+      "key": "Shelf#0",
+      "id": "945d6e8e1fa9c7f921820cb45ada063c5a1fd32a338c3b7141b46854144daa4e",
+      "kind": "enum",
+      "symbol": "Shelf",
+      "lines": [21, 25],
+      "bytes": [299, 367],
+      "content_hash": "cfffee88ec5dac093b5b52577a7af82f1631561c33335e24b9a65b031d844c47",
+      "text": [
+        "Library.php: Shelf",
+        "enum Shelf: string",
+        "{",
+        "    case Fiction = 'F';",
+        "    case Atlas = 'A';",
+        "}"
+      ]
+    },
+    {
+      "key": "Library#0",
+      "id": "c9039ecbed32e6dd97bcda8fb46eff182f7de3e2be6ee357106f7c36a4fb6185",
+      "kind": "class",
+      "symbol": "Library",
+      "lines": [27, 52],
+      "bytes": [369, 809],
+      "content_hash": "41ab298a227b03c2d449e18c28004503e51acb4cc7a72eda697bb2dd44a65371",
+      "text": [
+        "Library.php: Library",
+        "/**",
+        " * A small lending library.",
+        " */",
+        "class Library implements Lendable",
+        "{",
+        "    use Stamps;",
+        "",
+        "    public const OPENS_AT = 9;",
+        "",
+        "    private array $books = [];",
+        "",
+        "    public function __construct(private string $name)",
+        "    {",
+        "    }",
+        "",
+        "    public function dueIn(int $days): int",
+        "    {",
+        "        return $days + LOAN_DAYS;",
+        "    }",
+        "",
+        "    public function lend(string $title): string",
+        "    {",
+        "        $this->books[] = $title;",
+        "        return $this->stamp($title);",
+        "    }",
+        "}"
+      ]
+    },
+    {
+      "key": "overdue#0",
+      "id": "c5a7266728c6d501036b8964d9be45e294f7e40e79cd3caba0cf58393b1c51e0",
+      "kind": "function",
+      "symbol": "overdue",
+      "lines": [54, 57],
+      "bytes": [811, 878],
+      "content_hash": "5e6652a4d2819a112d57fd6fd841fa768ecddae1b8e66e35113422a895e112e1",
+      "text": [
+        "Library.php: overdue",
+        "function overdue(int $days): bool",
+        "{",
+        "    return $days > LOAN_DAYS;",
+        "}"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "LOAN_DAYS",
+      "name": "LOAN_DAYS",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [6, 6],
+      "bytes": [93, 114],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Lendable",
+      "name": "Lendable",
+      "kind": "interface",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [8, 11],
+      "bytes": [116, 181],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Lendable.dueIn",
+      "name": "dueIn",
+      "kind": "method",
+      "parent": "Lendable",
+      "ordinal": 0,
+      "lines": [10, 10],
+      "bytes": [141, 179],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Stamps",
+      "name": "Stamps",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [13, 19],
+      "bytes": [183, 297],
+      "chunk": "Stamps#0"
+    },
+    {
+      "qualified_name": "Stamps.stamp",
+      "name": "stamp",
+      "kind": "method",
+      "parent": "Stamps",
+      "ordinal": 0,
+      "lines": [15, 18],
+      "bytes": [202, 295],
+      "chunk": "Stamps#0"
+    },
+    {
+      "qualified_name": "Shelf",
+      "name": "Shelf",
+      "kind": "enum",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [21, 25],
+      "bytes": [299, 367],
+      "chunk": "Shelf#0"
+    },
+    {
+      "qualified_name": "Library",
+      "name": "Library",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [30, 52],
+      "bytes": [405, 809],
+      "chunk": "Library#0"
+    },
+    {
+      "qualified_name": "Library.__construct",
+      "name": "__construct",
+      "kind": "method",
+      "parent": "Library",
+      "ordinal": 0,
+      "lines": [38, 40],
+      "bytes": [526, 587],
+      "chunk": "Library#0"
+    },
+    {
+      "qualified_name": "Library.dueIn",
+      "name": "dueIn",
+      "kind": "method",
+      "parent": "Library",
+      "ordinal": 0,
+      "lines": [42, 45],
+      "bytes": [593, 676],
+      "chunk": "Library#0"
+    },
+    {
+      "qualified_name": "Library.lend",
+      "name": "lend",
+      "kind": "method",
+      "parent": "Library",
+      "ordinal": 0,
+      "lines": [47, 51],
+      "bytes": [682, 807],
+      "chunk": "Library#0"
+    },
+    {
+      "qualified_name": "overdue",
+      "name": "overdue",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [54, 57],
+      "bytes": [811, 878],
+      "chunk": "overdue#0"
+    }
+  ]
+}

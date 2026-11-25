@@ -1,12 +1,13 @@
 # The code suite of the retrieval eval (docs/requirements.md, section 10).
 #
-# Three synthetic repositories in two workspaces, and questions about them in English and Russian,
+# Four synthetic repositories in two workspaces, and questions about them in English and Russian,
 # each with the places in the fixture files that answer it. Everything here is written by hand:
 # the harbour, the lighthouse agent and the bakery do not exist.
 #
 #   repos/tidewater  workspace harbor  Python, English code and docs, one Russian doc
 #   repos/beacon     workspace harbor  Go and TypeScript, English names, Russian comments and README
 #   repos/zhernov    workspace mill    Python and TypeScript, Russian names, docstrings and docs
+#   repos/polyglot   workspace mill    a small file in each of fifteen more languages (chunker 3)
 #
 # Run it (the role of MEMINI_DATABASE_URL needs CREATEDB; nothing in its database is touched):
 #
@@ -28,7 +29,7 @@
 format = 1
 name = "code"
 version = 1
-description = "Code and Markdown of three synthetic repositories, questions in English and Russian"
+description = "Code and Markdown of four synthetic repositories, questions in English and Russian"
 
 [[repository]]
 name = "tidewater"
@@ -44,6 +45,11 @@ path = "repos/beacon"
 name = "zhernov"
 workspace = "mill"
 path = "repos/zhernov"
+
+[[repository]]
+name = "polyglot"
+workspace = "mill"
+path = "repos/polyglot"
 
 # --- Code, in natural language: tidewater (English code) ------------------------------------------
 
@@ -938,3 +944,144 @@ kind = "document"
 modes = ["hybrid", "dense", "lexical"]
 tags = ["cross-language"]
 expect = [{ repository = "zhernov", path = "docs/glossary.md", heading = "Proofing" }]
+
+# --- Symbols in fifteen more languages: polyglot (chunker 3) ---------------------------------------
+#
+# A definition in each language, by name or by the qualified name the chunker gives it: a method
+# added outside its type is named after it (Kite.launch, Telescope.catalogue, Press.stock). Exact
+# search only where the question is a substring of the source.
+
+[[question]]
+id = "sym-java"
+text = "prune"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["java"]
+expect = [{ repository = "polyglot", path = "java/Orchard.java", symbol = "Orchard.Tree.prune" }]
+
+[[question]]
+id = "sym-csharp"
+text = "Stock"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["csharp"]
+expect = [{ repository = "polyglot", path = "csharp/Pottery.cs", symbol = "Studio.Pottery.Pottery.Stock" }]
+
+[[question]]
+id = "sym-c"
+text = "lantern_kindle"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["c"]
+expect = [{ repository = "polyglot", path = "c/lantern.c", symbol = "lantern_kindle" }]
+
+[[question]]
+id = "sym-cpp"
+text = "tallest"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["cpp"]
+expect = [{ repository = "polyglot", path = "cpp/hangar.cpp", symbol = "airfield.tallest" }]
+
+[[question]]
+id = "sym-php"
+text = "overdue"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["php"]
+expect = [{ repository = "polyglot", path = "php/Library.php", symbol = "overdue" }]
+
+[[question]]
+id = "sym-kotlin"
+text = "Kite.launch"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["kotlin"]
+expect = [{ repository = "polyglot", path = "kotlin/Kite.kt", symbol = "Kite.launch" }]
+
+[[question]]
+id = "sym-swift"
+text = "Telescope.catalogue"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "lexical"]
+tags = ["swift"]
+expect = [{ repository = "polyglot", path = "swift/Observatory.swift", symbol = "Telescope.catalogue" }]
+
+[[question]]
+id = "sym-rust"
+text = "Press.stock"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "lexical"]
+tags = ["rust"]
+expect = [{ repository = "polyglot", path = "rust/press.rs", symbol = "Press.stock" }]
+
+[[question]]
+id = "sym-scala"
+text = "Depot.park"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "lexical"]
+tags = ["scala"]
+expect = [{ repository = "polyglot", path = "scala/Tram.scala", symbol = "Depot.park" }]
+
+[[question]]
+id = "sym-dart"
+text = "rainfall"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["dart"]
+expect = [{ repository = "polyglot", path = "dart/orchard.dart", symbol = "rainfall" }]
+
+[[question]]
+id = "sym-lua"
+text = "Inventory.count"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "lexical"]
+tags = ["lua"]
+expect = [{ repository = "polyglot", path = "lua/inventory.lua", symbol = "Inventory.count" }]
+
+[[question]]
+id = "sym-shell"
+text = "copy_build"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["shell"]
+expect = [{ repository = "polyglot", path = "shell/deploy.sh", symbol = "copy_build" }]
+
+[[question]]
+id = "sym-sql"
+text = "fahrenheit"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["sql"]
+expect = [{ repository = "polyglot", path = "sql/schema.sql", symbol = "fahrenheit" }]
+
+[[question]]
+id = "sym-objc"
+text = "Robot.walk"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "lexical"]
+tags = ["objc"]
+expect = [{ repository = "polyglot", path = "objc/Robot.m", symbol = "Robot.walk" }]
+
+[[question]]
+id = "sym-elixir"
+text = "simmer"
+language = "en"
+kind = "symbol"
+modes = ["symbol", "exact", "lexical"]
+tags = ["elixir"]
+expect = [{ repository = "polyglot", path = "elixir/kitchen.ex", symbol = "Kitchen.Stove.simmer" }]

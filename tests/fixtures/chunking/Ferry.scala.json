@@ -1,0 +1,203 @@
+{
+  "chunker_version": 3,
+  "language": "scala",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "03c1f33b22feaa6e5889a6311a3cce619aee73dd3fcc2b1b9c70b3d49630633e",
+      "kind": "group",
+      "symbol": null,
+      "lines": [1, 25],
+      "bytes": [0, 482],
+      "content_hash": "fe5b6e7a5967ffc9cf377282d92e96172f5159d7be74043d5d2fbe5d8e27bd35",
+      "text": [
+        "Ferry.scala: MaxPassengers, Vessel, Weather, Ferry",
+        "// Ferry.scala is a synthetic fixture for the chunker tests.",
+        "package town.ferries",
+        "",
+        "import scala.collection.mutable",
+        "",
+        "val MaxPassengers = 120",
+        "",
+        "/** Anything that floats and carries people. */",
+        "trait Vessel {",
+        "  def capacity: Int",
+        "}",
+        "",
+        "enum Weather {",
+        "  case Calm, Rough",
+        "}",
+        "",
+        "case class Ferry(name: String, decks: Int) extends Vessel {",
+        "  def capacity: Int = decks * 40",
+        "",
+        "  def board(people: Int): Boolean = people <= capacity",
+        "}",
+        "",
+        "object Ferry {",
+        "  def small(name: String): Ferry = Ferry(name, 1)",
+        "}"
+      ]
+    },
+    {
+      "key": "Pier#0",
+      "id": "d60ccacee95de5c1987b7e0e05397b59c5d67e252e5b1b0ec0c55fa7ea5d5970",
+      "kind": "class",
+      "symbol": "Pier",
+      "lines": [27, 37],
+      "bytes": [484, 699],
+      "content_hash": "a808e571b67fb0839643f08527422741abae571f1d073ed610072cbdc51b6f69",
+      "text": [
+        "Ferry.scala: Pier",
+        "class Pier(val berths: Int) {",
+        "  private val moored = mutable.Set.empty[String]",
+        "",
+        "  def dock(ferry: Ferry): Boolean = {",
+        "    if (moored.size >= berths) false",
+        "    else {",
+        "      moored += ferry.name",
+        "      true",
+        "    }",
+        "  }",
+        "}"
+      ]
+    },
+    {
+      "key": "crossing#0",
+      "id": "3806e51118694e91af46b652fc696438d936cdf661903a47fe1d2342e319942d",
+      "kind": "function",
+      "symbol": "crossing",
+      "lines": [39, 39],
+      "bytes": [701, 753],
+      "content_hash": "3c0d60f1804de46c6722d8758b23bfaf14a4136089d45ad361b6e498dfd8a08c",
+      "text": [
+        "Ferry.scala: crossing",
+        "def crossing(minutes: Int): String = s\"$minutes min\""
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "MaxPassengers",
+      "name": "MaxPassengers",
+      "kind": "constant",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [6, 6],
+      "bytes": [116, 139],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Vessel",
+      "name": "Vessel",
+      "kind": "interface",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [9, 11],
+      "bytes": [189, 225],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Vessel.capacity",
+      "name": "capacity",
+      "kind": "method",
+      "parent": "Vessel",
+      "ordinal": 0,
+      "lines": [10, 10],
+      "bytes": [206, 223],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Weather",
+      "name": "Weather",
+      "kind": "enum",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [13, 15],
+      "bytes": [227, 262],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Ferry",
+      "name": "Ferry",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [17, 21],
+      "bytes": [264, 414],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Ferry.capacity",
+      "name": "capacity",
+      "kind": "method",
+      "parent": "Ferry",
+      "ordinal": 0,
+      "lines": [18, 18],
+      "bytes": [326, 356],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Ferry.board",
+      "name": "board",
+      "kind": "method",
+      "parent": "Ferry",
+      "ordinal": 0,
+      "lines": [20, 20],
+      "bytes": [360, 412],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Ferry",
+      "name": "Ferry",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 1,
+      "lines": [23, 25],
+      "bytes": [416, 482],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Ferry.small",
+      "name": "small",
+      "kind": "method",
+      "parent": "Ferry",
+      "ordinal": 0,
+      "lines": [24, 24],
+      "bytes": [433, 480],
+      "chunk": "/+0"
+    },
+    {
+      "qualified_name": "Pier",
+      "name": "Pier",
+      "kind": "class",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [27, 37],
+      "bytes": [484, 699],
+      "chunk": "Pier#0"
+    },
+    {
+      "qualified_name": "Pier.dock",
+      "name": "dock",
+      "kind": "method",
+      "parent": "Pier",
+      "ordinal": 0,
+      "lines": [30, 36],
+      "bytes": [566, 697],
+      "chunk": "Pier#0"
+    },
+    {
+      "qualified_name": "crossing",
+      "name": "crossing",
+      "kind": "function",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [39, 39],
+      "bytes": [701, 753],
+      "chunk": "crossing#0"
+    }
+  ]
+}

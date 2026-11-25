@@ -9,14 +9,17 @@ records). All are pure: no database, no clock, no randomness; the same input giv
 on any machine.
 
 Languages
-    Python, JavaScript (with JSX), TypeScript (with TSX), Ruby and Go are parsed with tree-sitter,
+    Python, JavaScript (with JSX), TypeScript (with TSX), Ruby, Go, Java, C#, C, C++, PHP, Kotlin,
+    Swift, Rust, Scala, Dart, Lua, shell, SQL, Objective-C and Elixir are parsed with tree-sitter,
     chosen by file extension (:data:`memini.chunking.languages.EXTENSIONS`) or by the ``language``
-    argument. Any other file is cut into line windows, and so is a file larger than
-    ``max_parse_bytes``. A file with a NUL byte in its first 8000 bytes is binary and gives no
-    chunks. Bytes that are not UTF-8, and NUL bytes further on, are decoded with U+FFFD in their
-    place, so a chunk's text is what the database stores and its content hash is computed over
-    it; offsets are always into the original bytes. tree-sitter recovers from syntax errors; the
-    parts it cannot place become ``code`` chunks, and :attr:`FileChunks.syntax_errors` says so.
+    argument. :mod:`memini.chunking.languages` describes the first five,
+    :mod:`memini.chunking.more_languages` the others. Any other file is cut into line windows,
+    and so is a file larger than ``max_parse_bytes``. A file with a NUL byte in its first 8000
+    bytes is binary and gives no chunks. Bytes that are not UTF-8, and NUL bytes further on, are
+    decoded with U+FFFD in their place, so a chunk's text is what the database stores and its
+    content hash is computed over it; offsets are always into the original bytes. tree-sitter
+    recovers from syntax errors; the parts it cannot place become ``code`` chunks, and
+    :attr:`FileChunks.syntax_errors` says so.
 
 Chunks
     The members of a file are its top-level statements and definitions. Each definition is one

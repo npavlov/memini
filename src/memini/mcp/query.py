@@ -23,6 +23,7 @@ from psycopg.rows import TupleRow
 from pydantic import BaseModel
 
 from memini.auth import ReadFilter, authorization
+from memini.chunking import LANGUAGES
 from memini.mcp.decisions import summarize_item
 from memini.mcp.text import TEXT_NOTICE, fenced, inline
 from memini.mcp.tools import Tool, ToolCall, ToolError
@@ -339,8 +340,8 @@ SEARCH_CODE_TOOL = Tool(
         "default: a question or identifiers, by meaning and by words), exact (a substring), regex "
         "(a Postgres regular expression, matched line by line like grep), symbol (definitions by "
         "name, e.g. on, or qualified name, e.g. Lamp.on). Filters: repositories, workspaces, "
-        "paths (globs with .gitignore rules, e.g. src/**/*.py), languages (python, javascript, "
-        "typescript, ruby, go). case_sensitive applies to exact, regex and symbol. "
+        "paths (globs with .gitignore rules, e.g. src/**/*.py), "
+        f"languages ({', '.join(LANGUAGES)}). case_sensitive applies to exact, regex and symbol. "
         f"{_CATALOG_NOTE} "
         f"{_RESULT_NOTE} Hits also carry the ref, the commit, the symbol, and for exact and regex "
         "the line of the first match. Read more of a file with read_source."

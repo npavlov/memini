@@ -2,12 +2,12 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Code | Engineer on another stack | partial | memini-qpk.2 |
+| Code | Engineer on another stack | ready | memini-qpk.2 |
 
 ## Who and pain
 
-A repository in a language outside the five that are parsed is cut into line windows, and
-`get_symbol` does not see it.
+A repository in a language without a grammar is cut into line windows, and `get_symbol` does not
+see it. A team with Java, C# or Rust services could find their code by words only.
 
 ## Question
 
@@ -20,17 +20,22 @@ A repository in a language outside the five that are parsed is cut into line win
 ## Data
 
 Git sync as in S1. A classifier per language tells the chunker where definitions begin and end.
+Twenty languages are parsed: Python, JavaScript, TypeScript, Ruby, Go, Java, C#, C, C++, PHP,
+Kotlin, Swift, Rust, Scala, Dart, Lua, shell, SQL, Objective-C and Elixir. A method added to a type
+outside it (a Rust `impl`, a Swift `extension`, `Dock::moor` in C++) is named after the type.
 
 ## Check
 
-A chunking fixture per language; questions for new languages in the code eval.
+- A chunking fixture per language, with its golden file and the symbols it must define
+  (`tests/test_chunking.py`).
+- In the code eval, the repository `polyglot` and a symbol question per language: recall at 1 is
+  1.00 in symbol mode for each of the fifteen (`eval/code/baseline-fake.json`).
 
 ## Notes
 
-No work planned: the issue is deferred. Code in any language is already indexed as line windows,
-searched, and attached to domains by its path; only definition-sized chunks and `get_symbol` are
-limited to five languages. The owner sees no pain here now (2026-11-23). Before reopening, measure
-the code eval with window-only chunks.
+Other languages stay line windows: searched, and attached to domains by their path. R has no grammar
+package with wheels, so it is not parsed. An upgrade to chunker 3 takes `memini reindex` for each
+workspace; only the files of the new languages are embedded again.
 
 ## See also
 

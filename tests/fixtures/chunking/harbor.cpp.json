@@ -1,0 +1,238 @@
+{
+  "chunker_version": 3,
+  "language": "cpp",
+  "fallback": null,
+  "syntax_errors": false,
+  "chunks": [
+    {
+      "key": "/+0",
+      "id": "b24d6268b025d5f99c9f3695e9bf4a532a91aa820c82bfa349397968628fa138",
+      "kind": "code",
+      "symbol": null,
+      "lines": [1, 3],
+      "bytes": [0, 95],
+      "content_hash": "d6d663505af036c5464e7df0beeba14263834618fbd146481ed4e6abf1223b80",
+      "text": [
+        "harbor.cpp",
+        "// harbor.cpp is a synthetic fixture for the chunker tests.",
+        "#include <string>",
+        "#include <vector>"
+      ]
+    },
+    {
+      "key": "port.kBerths#0",
+      "id": "9bdc4c8b5ce05b92e58b40fb96e9a106077811a83108bc7f9d694b0e5b575f72",
+      "kind": "group",
+      "symbol": "port",
+      "lines": [5, 14],
+      "bytes": [97, 234],
+      "content_hash": "e7a4e921b7fc339690764ef8cb182b2d3c24b91cfeca4f1fca1c4aaba91f1aa2",
+      "text": [
+        "harbor.cpp: port, port.kBerths, port.Tide, port.Buoy",
+        "namespace port {",
+        "",
+        "constexpr int kBerths = 8;",
+        "",
+        "enum class Tide { Low, High };",
+        "",
+        "struct Buoy {",
+        "    double latitude;",
+        "    double longitude;",
+        "};"
+      ]
+    },
+    {
+      "key": "port.Dock#0",
+      "id": "4f8f1561e32988a1b7b6f0f51d8be850a64a907deeb68aa81c667b769567a0ec",
+      "kind": "class",
+      "symbol": "port.Dock",
+      "lines": [16, 26],
+      "bytes": [236, 492],
+      "content_hash": "238f51561fe028f929aa14ca2f2849922560af15f8a598e90dd9f4276d345ccd",
+      "text": [
+        "harbor.cpp: port.Dock",
+        "/// A dock with numbered berths.",
+        "class Dock {",
+        "public:",
+        "    explicit Dock(std::string name);",
+        "    bool moor(int berth);",
+        "    int free() const { return kBerths - static_cast<int>(taken_.size()); }",
+        "",
+        "private:",
+        "    std::string name_;",
+        "    std::vector<int> taken_;",
+        "};"
+      ]
+    },
+    {
+      "key": "port.Dock.Dock#1",
+      "id": "e8150bac0866f9e1f5d5a0f5144fa41a6197c2ee8d2a871be036b251cd69070c",
+      "kind": "method",
+      "symbol": "port.Dock.Dock",
+      "lines": [28, 28],
+      "bytes": [494, 550],
+      "content_hash": "6eb924d7304dfd2ef5b5210582cf43aa8a73c44c841548934e7a516a160ce27e",
+      "text": [
+        "harbor.cpp: port.Dock.Dock",
+        "Dock::Dock(std::string name) : name_(std::move(name)) {}"
+      ]
+    },
+    {
+      "key": "port.Dock.moor#1",
+      "id": "c1b3c38525cb9477020969bc9f5d906fd2246fd4e71009aab1d628545c4e82fd",
+      "kind": "method",
+      "symbol": "port.Dock.moor",
+      "lines": [30, 37],
+      "bytes": [552, 697],
+      "content_hash": "d968587fe2c475f1df4756f8fa4a74208ea15fee1f5b34a52a65596aa5275e3e",
+      "text": [
+        "harbor.cpp: port.Dock.moor",
+        "bool Dock::moor(int berth)",
+        "{",
+        "    if (berth < 0 || berth >= kBerths) {",
+        "        return false;",
+        "    }",
+        "    taken_.push_back(berth);",
+        "    return true;",
+        "}"
+      ]
+    },
+    {
+      "key": "port.deepest#0",
+      "id": "dfe549e23bb6a95439703ae78f76ce32c892f3dc7bc7cf8e4ee7d3d8e7460a62",
+      "kind": "function",
+      "symbol": "port.deepest",
+      "lines": [39, 51],
+      "bytes": [699, 938],
+      "content_hash": "08751a274f3ed58a344f25d20bcf7f01df3b8df44d138cf2f1aa0ff9d791aa50",
+      "text": [
+        "harbor.cpp: port.deepest",
+        "template <typename T>",
+        "T deepest(const std::vector<T>& depths)",
+        "{",
+        "    T best = depths.front();",
+        "    for (const T& depth : depths) {",
+        "        if (depth > best) {",
+        "            best = depth;",
+        "        }",
+        "    }",
+        "    return best;",
+        "}",
+        "",
+        "}  // namespace port"
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "qualified_name": "port",
+      "name": "port",
+      "kind": "module",
+      "parent": null,
+      "ordinal": 0,
+      "lines": [5, 51],
+      "bytes": [97, 919],
+      "chunk": "port.kBerths#0"
+    },
+    {
+      "qualified_name": "port.kBerths",
+      "name": "kBerths",
+      "kind": "constant",
+      "parent": "port",
+      "ordinal": 0,
+      "lines": [7, 7],
+      "bytes": [115, 141],
+      "chunk": "port.kBerths#0"
+    },
+    {
+      "qualified_name": "port.Tide",
+      "name": "Tide",
+      "kind": "enum",
+      "parent": "port",
+      "ordinal": 0,
+      "lines": [9, 9],
+      "bytes": [143, 172],
+      "chunk": "port.kBerths#0"
+    },
+    {
+      "qualified_name": "port.Buoy",
+      "name": "Buoy",
+      "kind": "struct",
+      "parent": "port",
+      "ordinal": 0,
+      "lines": [11, 14],
+      "bytes": [175, 233],
+      "chunk": "port.kBerths#0"
+    },
+    {
+      "qualified_name": "port.Dock",
+      "name": "Dock",
+      "kind": "class",
+      "parent": "port",
+      "ordinal": 0,
+      "lines": [17, 26],
+      "bytes": [269, 491],
+      "chunk": "port.Dock#0"
+    },
+    {
+      "qualified_name": "port.Dock.Dock",
+      "name": "Dock",
+      "kind": "method",
+      "parent": "port.Dock",
+      "ordinal": 0,
+      "lines": [19, 19],
+      "bytes": [294, 326],
+      "chunk": "port.Dock#0"
+    },
+    {
+      "qualified_name": "port.Dock.moor",
+      "name": "moor",
+      "kind": "method",
+      "parent": "port.Dock",
+      "ordinal": 0,
+      "lines": [20, 20],
+      "bytes": [331, 352],
+      "chunk": "port.Dock#0"
+    },
+    {
+      "qualified_name": "port.Dock.free",
+      "name": "free",
+      "kind": "method",
+      "parent": "port.Dock",
+      "ordinal": 0,
+      "lines": [21, 21],
+      "bytes": [357, 427],
+      "chunk": "port.Dock#0"
+    },
+    {
+      "qualified_name": "port.Dock.Dock",
+      "name": "Dock",
+      "kind": "method",
+      "parent": "port.Dock",
+      "ordinal": 1,
+      "lines": [28, 28],
+      "bytes": [494, 550],
+      "chunk": "port.Dock.Dock#1"
+    },
+    {
+      "qualified_name": "port.Dock.moor",
+      "name": "moor",
+      "kind": "method",
+      "parent": "port.Dock",
+      "ordinal": 1,
+      "lines": [30, 37],
+      "bytes": [552, 697],
+      "chunk": "port.Dock.moor#1"
+    },
+    {
+      "qualified_name": "port.deepest",
+      "name": "deepest",
+      "kind": "function",
+      "parent": "port",
+      "ordinal": 0,
+      "lines": [39, 49],
+      "bytes": [699, 916],
+      "chunk": "port.deepest#0"
+    }
+  ]
+}
