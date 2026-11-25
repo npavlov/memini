@@ -472,6 +472,8 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "record_id": "0" * 64,
         "path": "file.py",
         "external_id": "external",
+        "project": "sample",
+        "domain": "sample",
         **dict.fromkeys(("run_id", "person_id", "item_id"), str(SOME_TOKEN_ID)),
     }
     query_values = {
@@ -508,8 +510,18 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "retract_decision",
         "extract",
         "forget",
+        "put_project",
+        "link_decision_domains",
+        "unlink_decision_domain",
+        "unlink_decision_project",
+        "put_source_default",
+        "delete_source_default",
+        "assign_domains",
     }
     public_or_service = {"/healthz", "/readyz", "/version", "/metrics", "/openapi.json", "/mcp"}
+    # The service's own text, the same for every token: it reads no row to filter.
+    no_rows = {"/v1/catalog/guide"}
+    no_rows_tools = {"catalog_guide"}
     async with httpx2.AsyncClient(
         transport=httpx2.ASGITransport(app=app),
         base_url="http://memini.test",
@@ -528,6 +540,9 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
             observed.clear()
             response = await http.get(path.format_map(path_values), params=query_values.get(path))
             assert response.status_code in {200, 404}, (path, response.text)
+            if path in no_rows:
+                assert (response.status_code, observed) == (200, []), path
+                continue
             assert ("write" if path in scoped_metadata else "read") in observed, path
             assert str(world.beta) not in response.text, path
 
@@ -544,6 +559,10 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "get_thread": {"record_id": "0" * 64},
         "list_decisions": {},
         "get_decision": {"item_id": str(SOME_TOKEN_ID)},
+        "get_catalog": {"workspace": "alpha"},
+        "get_project": {"workspace": "alpha", "project": "sample"},
+        "get_domain": {"workspace": "alpha", "project": "sample", "domain": "sample"},
+        "catalog_guide": {},
     }
     writes = {
         "record_decision",
@@ -551,6 +570,7 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "retract_decision",
         "supersede_decision",
         "add_document",
+        "put_project",
     }
     assert {tool.name for tool in TOOLS if not tool.read_only} == writes
     assert {tool.name for tool in TOOLS if tool.read_only} == set(arguments)
@@ -563,5 +583,8 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
             ToolCall(principal=principal, pool=pool, services=app.state.services),
             arguments[tool.name],
         )
+        if tool.name in no_rows_tools:
+            assert (result.is_error, observed) == (False, []), tool.name
+            continue
         assert "read" in observed, (tool.name, result.content)
         assert str(world.beta) not in result.model_dump_json(), tool.name

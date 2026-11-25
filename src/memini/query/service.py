@@ -15,6 +15,9 @@ a message that never repeats an argument or stored content:
 |---|---|---|
 | a query, filter or regular expression that is not valid | 422 | ``invalid_search`` |
 | a filter not supported yet | 422 | ``unsupported_filter`` |
+| a ``projects`` value the catalog does not hold | 422 | ``unknown_project`` |
+| a ``domains`` value it does not hold (in the projects named) | 422 | ``unknown_domain`` |
+| a ``services`` value it does not hold (in the projects named) | 422 | ``unknown_service`` |
 | a statement ran past ``search_timeout`` | 422 | ``search_timeout`` |
 | the history walks of ``list_commits`` ran past ``git_log_timeout`` | 422 | ``commits_timeout`` |
 | a history walk printed more than is read | 422 | ``commits_too_large`` |
@@ -53,6 +56,7 @@ from psycopg.rows import TupleRow
 from memini import knowledge
 from memini.auth import ReadFilter
 from memini.config import Settings
+from memini.decisions import context as decision_context
 from memini.decisions.model import DecisionItem
 from memini.embeddings import Embedder, EmbeddingError, EmbeddingsNotConfiguredError
 from memini.git import GitOptions, MirrorManager
@@ -68,6 +72,7 @@ from memini.query.commits import (
     list_commits,
     repository_scopes,
 )
+from memini.query.context import CodeContext, code_contexts
 from memini.query.model import (
     CodeSearchArguments,
     Definition,
@@ -99,6 +104,7 @@ from memini.search import (
     SearchOptions,
     SearchQuery,
     SearchTimeoutError,
+    UnknownNameError,
     UnsupportedFilterError,
     search,
 )
@@ -181,6 +187,8 @@ def query_errors() -> Generator[None]:
         yield
     except UnsupportedFilterError as error:
         raise QueryError(422, "unsupported_filter", _sentence(str(error))) from None
+    except UnknownNameError as error:
+        raise QueryError(422, f"unknown_{error.kind}", _sentence(str(error))) from None
     except InvalidSearchError as error:
         raise QueryError(422, "invalid_search", _sentence(str(error))) from None
     except SearchTimeoutError as error:
@@ -233,6 +241,23 @@ async def _search(
     )
 
 
+async def _contexts(
+    conn: Conn, access: ReadFilter, hits: Sequence[Hit]
+) -> list[CodeContext | None]:
+    """What each hit's file belongs to, by the catalog; ``None`` for a hit that is no file of a
+    repository. Read after the search, from the catalog as it is then."""
+    return await code_contexts(
+        conn,
+        access,
+        [
+            (hit.workspace_id, hit.source_id, hit.path)
+            if hit.source_kind == "git" and hit.path is not None
+            else None
+            for hit in hits
+        ],
+    )
+
+
 async def run_search(
     conn: Conn, services: QueryServices, access: ReadFilter, arguments: SearchArguments
 ) -> GeneralSearchResult:
@@ -260,9 +285,13 @@ async def run_search(
                 if arguments.persons is None
                 else tuple(parse_person_ref(person) for person in arguments.persons),
                 roles=None if arguments.roles is None else tuple(arguments.roles),
+                projects=_names(arguments.projects),
+                domains=_names(arguments.domains),
+                services=_names(arguments.services),
             ),
         )
         hits = await _search(conn, services, access, query)
+        contexts = await _contexts(conn, access, hits)
         decisions = []
         if item_kinds or not arguments.kinds:
             filters = knowledge.ItemFilters(
@@ -280,7 +309,9 @@ async def run_search(
             except errors.QueryCanceled as error:
                 raise SearchTimeoutError(services.search_options.timeout) from error
     return GeneralSearchResult(
-        hits=[SearchHit.of(hit) for hit in hits] if record_kinds or not arguments.kinds else [],
+        hits=[SearchHit.of(hit, context) for hit, context in zip(hits, contexts, strict=True)]
+        if record_kinds or not arguments.kinds
+        else [],
         decisions=[DecisionItem.of(item) for item in decisions],
     )
 
@@ -293,7 +324,18 @@ async def _decision_matches(
     hits: list[Hit],
 ) -> list[knowledge.Item]:
     matches: dict[UUID, knowledge.Item] = {}
-    if query.mode != "dense" and query.filters.roles is None:
+    chosen = query.filters
+    if chosen.projects is not None or chosen.domains is not None:
+        # As list_decisions reads them (memini.decisions.context): an item under one of the
+        # projects and in one of the domains, a domain with its subdomains, by any way it came.
+        within = await _decisions_in_catalog(conn, access, chosen)
+        if not within:
+            return []
+        filters = replace(filters, item_ids=within)
+    # A service names code, not decisions: with services, as with roles, items match only through
+    # the records retrieved, which the filter did narrow.
+    by_statement = chosen.roles is None and chosen.services is None
+    if query.mode != "dense" and by_statement:
         statements = filters
         if query.filters.persons is not None:
             spaces = await list_workspaces(conn, access)
@@ -311,6 +353,24 @@ async def _decision_matches(
         for item in cited:
             matches.setdefault(item.id, item)
     return list(matches.values())[: filters.limit]
+
+
+async def _decisions_in_catalog(
+    conn: Conn, access: ReadFilter, chosen: SearchFilters
+) -> tuple[UUID, ...]:
+    """The active items of the workspaces searched under ``chosen.projects`` and in
+    ``chosen.domains``. The record search has refused a name no catalog holds already."""
+    spaces = await list_workspaces(conn, access)
+    workspace_ids = [
+        space.id for space in spaces if chosen.workspaces is None or space.name in chosen.workspaces
+    ]
+    found = await decision_context.load_contexts(conn, access, workspace_ids)
+    try:
+        return tuple(
+            found.select(projects=chosen.projects, domains=chosen.domains, statuses=("active",))
+        )
+    except decision_context.UnknownPlaceError:
+        return ()
 
 
 _CODE_MODES: dict[str, Mode] = {
@@ -337,10 +397,16 @@ async def run_search_code(
                 kinds=("code_file",),
                 languages=None if arguments.languages is None else tuple(arguments.languages),
                 paths=tuple(arguments.paths or ()),
+                projects=_names(arguments.projects),
+                domains=_names(arguments.domains),
+                services=_names(arguments.services),
             ),
         )
         hits = await _search(conn, services, access, query)
-    return SearchResult(hits=[SearchHit.of(hit) for hit in hits])
+        contexts = await _contexts(conn, access, hits)
+    return SearchResult(
+        hits=[SearchHit.of(hit, context) for hit, context in zip(hits, contexts, strict=True)]
+    )
 
 
 async def run_get_symbol(
@@ -363,8 +429,13 @@ async def run_get_symbol(
             ),
         )
         hits = await _search(conn, services, access, query)
+        contexts = await _contexts(conn, access, hits)
     return SymbolResult(
-        definitions=[Definition.of(hit) for hit in hits if hit.definition is not None]
+        definitions=[
+            Definition.of(hit, context)
+            for hit, context in zip(hits, contexts, strict=True)
+            if hit.definition is not None
+        ]
     )
 
 

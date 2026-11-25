@@ -1,7 +1,15 @@
 """Why a search did not run. :class:`memini.index.IndexMismatchError` is the other refusal: the
 index was built with another fingerprint (principle 9)."""
 
-__all__ = ["InvalidSearchError", "SearchError", "SearchTimeoutError", "UnsupportedFilterError"]
+from typing import Literal
+
+__all__ = [
+    "InvalidSearchError",
+    "SearchError",
+    "SearchTimeoutError",
+    "UnknownNameError",
+    "UnsupportedFilterError",
+]
 
 
 class SearchError(Exception):
@@ -15,6 +23,25 @@ class InvalidSearchError(SearchError, ValueError):
 
 class UnsupportedFilterError(InvalidSearchError):
     """A filter the query type accepts but this version cannot apply yet."""
+
+
+class UnknownNameError(InvalidSearchError):
+    """A ``projects``, ``domains`` or ``services`` filter names something the catalog of the
+    workspaces searched does not hold.
+
+    An error, not an empty answer: a search of a domain that does not exist would read as "this
+    domain has no such code". The message says which filter and which of its values (by
+    position, never the value), and where the names are listed.
+    """
+
+    def __init__(self, kind: Literal["project", "domain", "service"], position: int) -> None:
+        within = "" if kind == "project" else " in the projects searched"
+        super().__init__(
+            f"value {position} of the {kind}s filter names no {kind} of the catalog{within};"
+            " get_catalog lists the names"
+        )
+        self.kind = kind
+        self.position = position
 
 
 class SearchTimeoutError(SearchError):

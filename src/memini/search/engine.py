@@ -18,6 +18,10 @@
    names are resolved to ids within those workspaces, and the ``persons`` filter to the persons
    whose links count (:func:`memini.persons.resolve_persons`: each reference's canonical person
    and everyone merged into it); a filter that names nothing the caller may read gives no hits.
+   The ``projects``, ``domains`` and ``services`` filters are resolved from the catalog to
+   sources and path masks (:mod:`memini.search.catalog`); there a name the catalog does not hold
+   is an error (:class:`~memini.search.errors.UnknownNameError`), because an empty answer would
+   read as "this domain has no such code".
 4. The retrievers of the mode (:mod:`memini.search.retrieval`); for ``hybrid``, reciprocal rank
    fusion of the dense and lexical candidates (:mod:`memini.search.fusion`).
 5. One read of the hits' chunks, records and sources, under the same conditions.
@@ -61,6 +65,7 @@ from memini.auth import ReadFilter
 from memini.embeddings import Embedder, Vector
 from memini.index import IndexFingerprint, VectorIndex, check_index, current_fingerprint
 from memini.persons.lookup import member_ids, resolve_persons
+from memini.search.catalog import SourcePaths, code_groups, load_code_maps
 from memini.search.errors import InvalidSearchError, SearchTimeoutError
 from memini.search.fusion import reciprocal_rank_fusion
 from memini.search.model import (
@@ -119,6 +124,8 @@ async def search(
 
     Raises:
         InvalidSearchError: the regular expression of a ``regex`` query is not valid.
+        UnknownNameError: a ``projects``, ``domains`` or ``services`` filter names nothing in the
+            catalog of the workspaces searched.
         IndexMismatchError: the index of a workspace searched was built with another fingerprint;
             nothing in any workspace is searched until ``memini reindex`` rebuilds it.
         SearchTimeoutError: a statement ran longer than ``options.timeout``.
@@ -205,6 +212,16 @@ async def _scope(
 ) -> ChunkScope | None:
     """The chunks to search, or ``None`` if there are none. Checks every workspace's index."""
     workspaces = await _workspaces(conn, access, filters)
+    groups: tuple[tuple[SourcePaths, ...], ...] = ()
+    if filters.names_code:
+        # Before anything can end the search without hits: a name the catalog of no workspace in
+        # reach holds is an error also where nothing is indexed yet.
+        groups = code_groups(
+            await load_code_maps(conn, access, list(workspaces)),
+            projects=filters.projects,
+            domains=filters.domains,
+            services=filters.services,
+        )
     indexed: dict[UUID, str] = {}
     for workspace_id, name in workspaces.items():
         if await check_index(conn, workspace_id, expected) is not None:
@@ -220,6 +237,8 @@ async def _scope(
         person_ids = await member_ids(conn, [root for found in roots.values() for root in found])
         if not person_ids:
             return None
+    if any(not group for group in groups):
+        return None  # a project or a domain that names no code
     return ChunkScope(
         access=access,
         workspaces=indexed,
@@ -227,6 +246,7 @@ async def _scope(
         source_ids=source_ids,
         filters=filters,
         person_ids=person_ids,
+        code_groups=groups,
     )
 
 

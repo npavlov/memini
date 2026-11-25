@@ -22,6 +22,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the HTTP API keeps working. `GET /v1/status` and `memini status` say which it is.
 - Drive the server launcher from a program: `memini-server status`, `start`, `stop` and `mcp`
   print one JSON object with `--json`. [Output for programs](docs/install.md#output-for-programs).
+- A catalog of what code belongs to. A project has services (a repository, or one directory of
+  it) and domains with subdomains that name their code by path masks. An agent writes a project
+  as one document with `put_project`, following `catalog_guide`; `get_catalog` and `get_domain`
+  read it. `search` and `search_code` take `projects`, `domains` and `services`, and every code
+  hit, definition and `read_source` answer says what its file belongs to (`context`). Changing
+  the catalog needs no reindex. [MCP tool reference](docs/mcp/README.md#tool-reference).
+- Declare how projects are connected: a service of the catalog lists the services it uses, in
+  its own or another project of the workspace, each with a kind (`library`, `http`, `queue`,
+  `other`), a note and the places in its code that show the use, as part of the `put_project`
+  document. `get_project` and `GET /v1/workspaces/{workspace}/projects/{project}` return a
+  project with its links in both directions and a filter by the other project; `get_catalog`
+  shows them too. [Tool reference](docs/mcp/get_project.md).
+- Find decisions by project and domain. A decision takes them from the records its evidence is
+  in (named by whoever pushed them, or a default of the source or stream), from a link by hand,
+  from code evidence matched against the domain masks, or last from the `assign_domains` model,
+  and carries them as `context`. `list_decisions` and the decisions of `search` filter by
+  `projects` and `domains`, a domain with its subdomains; `get_domain` lists a domain's active
+  decisions. [Tool reference](docs/mcp/list_decisions.md).
 
 ## [0.1.0] - 2026-11-22
 

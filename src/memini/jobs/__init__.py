@@ -9,10 +9,17 @@
   source whose retention is due.
 - `enqueue_extraction` adds the decision extraction of one thread or meeting (`EXTRACT_KIND`);
   ingest calls it for the records it writes.
+- `enqueue_record_assignment` and `enqueue_workspace_assignment` add the domain assignment of a
+  record's items or a workspace's (`ASSIGN_DOMAINS_KIND`); the extract job calls the first.
 
 Every attempt runs through `execute_job`, which looks up the handler of the job's kind.
 """
 
+from memini.jobs.domains import (
+    ASSIGN_DOMAINS_KIND,
+    enqueue_record_assignment,
+    enqueue_workspace_assignment,
+)
 from memini.jobs.extraction import EXTRACT_KIND, enqueue_extraction, extraction_dedupe_key
 from memini.jobs.queue import (
     DEFAULT_MAX_ATTEMPTS,
@@ -36,6 +43,7 @@ from memini.jobs.scheduler import (
 from memini.jobs.worker import Handler, RetryPolicy, Worker, describe_error, execute_job
 
 __all__ = [
+    "ASSIGN_DOMAINS_KIND",
     "DEFAULT_MAX_ATTEMPTS",
     "DEFAULT_RETENTION_INTERVAL",
     "EXTRACT_KIND",
@@ -54,6 +62,8 @@ __all__ = [
     "enqueue_due_retention",
     "enqueue_due_streams",
     "enqueue_extraction",
+    "enqueue_record_assignment",
+    "enqueue_workspace_assignment",
     "execute_job",
     "extraction_dedupe_key",
     "source_dedupe_key",

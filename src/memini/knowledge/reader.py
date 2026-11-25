@@ -318,6 +318,9 @@ async def list_items(
             )
         )
         params["records"] = list(chosen.record_ids)
+    if chosen.item_ids is not None:
+        conditions.append(sql.SQL("i.id = ANY(%(item_ids)s)"))
+        params["item_ids"] = list(chosen.item_ids)
     if chosen.decided_from is not None:
         conditions.append(sql.SQL("i.decided_at >= %(decided_from)s"))
         params["decided_from"] = chosen.decided_from

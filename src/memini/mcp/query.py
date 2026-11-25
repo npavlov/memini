@@ -27,6 +27,7 @@ from memini.mcp.decisions import summarize_item
 from memini.mcp.text import TEXT_NOTICE, fenced, inline
 from memini.mcp.tools import Tool, ToolCall, ToolError
 from memini.query import (
+    CodeContext,
     CodeSearchArguments,
     CommitInfo,
     CommitList,
@@ -104,6 +105,20 @@ def _head(count: int, one: str, many: str) -> str:
     return f"{_count(count, one, many)}.{f' {TEXT_NOTICE}' if count else ''}"
 
 
+def _belongs(context: CodeContext | None) -> list[str]:
+    """What a file belongs to by the catalog, as one line. Nothing for a result without a
+    context, and nothing for a file in no service: without a catalog every file is one, and the
+    line would say nothing on every hit. The names are the catalog's handles."""
+    if context is None or context.service is None:
+        return []
+    where = f"project {inline(context.project or '')}, service {inline(context.service)}"
+    domains = ", ".join(
+        inline(ref.domain if ref.project == context.project else f"{ref.project}:{ref.domain}")
+        for ref in context.domains
+    )
+    return [f"belongs to: {where}; domains: {domains or 'none'}"]
+
+
 def _hit(number: int, hit: SearchHit) -> str:
     details = [
         f"{hit.kind} in {hit.workspace}/{hit.source} ({hit.source_kind})",
@@ -126,6 +141,7 @@ def _hit(number: int, hit: SearchHit) -> str:
         lines.append(f"link: {inline(hit.link)}")
     if hit.anchor is not None:
         lines.append(f"evidence: record_id {hit.record_id}, anchor {inline(hit.anchor)}")
+    lines += _belongs(hit.context)
     lines.append(fenced(hit.snippet, hit.language or ""))
     return "\n".join(lines)
 
@@ -148,10 +164,11 @@ def summarize_symbols(result: SymbolResult) -> str:
         start = (
             f"; snippet from line {found.snippet_start_line}" if found.snippet_start_line else ""
         )
+        belongs = "".join(f"{line}\n" for line in _belongs(found.context))
         parts.append(
             f"{number}. {found.kind} {inline(found.qualified_name)} at {inline(found.locator)}\n"
             f"in {found.workspace}/{found.repository}, {_time(found.occurred_at)}{start}{cut}\n"
-            f"{fenced(found.snippet, found.language or '')}"
+            f"{belongs}{fenced(found.snippet, found.language or '')}"
         )
     return "\n\n".join(parts)
 
@@ -170,7 +187,8 @@ def summarize_read(read: SourceRead) -> str:
     block."""
     at = f"{'pinned commit' if read.pinned else 'commit'} of {_time(read.occurred_at)}"
     ref = f", {inline(read.ref)}" if read.ref else ""
-    where = f"{inline(read.locator)} ({at}{ref})"
+    belongs = "".join(f"; {line}" for line in _belongs(read.context))
+    where = f"{inline(read.locator)} ({at}{ref}{belongs})"
     if read.kind == "directory":
         listed = read.entries or []
         shown = f"; the first {len(listed)} shown" if read.truncated else ""
@@ -263,6 +281,13 @@ _RESULT_NOTE = (
     " and until filter on), and the chunk's text as snippet."
 )
 
+_CATALOG_NOTE = (
+    "projects, domains (a domain includes its subdomains; one is domain/subdomain) and services "
+    "narrow to code the catalog names, by its path masks as they are now; a name it does not "
+    "hold is an error, get_catalog lists them. A hit of a file of a repository carries context: "
+    "the project and service it is in and the domains that name it."
+)
+
 _ANCHOR_NOTE = (
     "A hit of a thread, a meeting or a document also carries anchor, its place in the record "
     "(msg-<id>, seg-<id>, summary/<heading trail>, action-items, a heading trail), link (the "
@@ -283,6 +308,10 @@ SEARCH_TOOL = Tool(
         "a chat user id or a display name; merged persons count as one) and roles (with persons: "
         "author, recipient, mention, participant). Active items matching statement words or "
         "citing retrieved records are in decisions. Use get_decision for their full history. "
+        f"{_CATALOG_NOTE} "
+        "With projects or domains, decisions holds only items under those projects and in those "
+        "domains, as list_decisions reads them; with services, only items citing retrieved "
+        "records. "
         f"{_RESULT_NOTE} {_ANCHOR_NOTE} For exact, regex or symbol search in code use search_code."
         " For the meetings or the messages of a person, one result per meeting or message, use"
         " list_meetings and list_messages."
@@ -303,6 +332,7 @@ SEARCH_CODE_TOOL = Tool(
         "name, e.g. on, or qualified name, e.g. Lamp.on). Filters: repositories, workspaces, "
         "paths (globs with .gitignore rules, e.g. src/**/*.py), languages (python, javascript, "
         "typescript, ruby, go). case_sensitive applies to exact, regex and symbol. "
+        f"{_CATALOG_NOTE} "
         f"{_RESULT_NOTE} Hits also carry the ref, the commit, the symbol, and for exact and regex "
         "the line of the first match. Read more of a file with read_source."
     ),
@@ -319,7 +349,8 @@ GET_SYMBOL_TOOL = Tool(
         "Find where a symbol is defined in code: by name (on) or qualified name (Lamp.on: names "
         "from the outermost definition, joined by '.' in every language), whole or as a prefix. "
         "Each definition carries its kind, parent, location as repo@sha:path#Lstart-Lend, ref, "
-        "commit, occurred_at (the commit's time), and the code that defines it as snippet. "
+        "commit, occurred_at (the commit's time), the code that defines it as snippet, and "
+        "context: the project, service and domains its file belongs to by the catalog. "
         "Filters: repositories, workspaces, paths, languages."
     ),
     arguments=SymbolArguments,
@@ -340,8 +371,9 @@ READ_SOURCE_TOOL = Tool(
         f"{DEFAULT_READ_LIMITS.max_lines} lines and {DEFAULT_READ_LIMITS.max_chars} characters "
         "per call: when truncated, continue from end_line + 1. A binary file or one over the "
         "size limit returns no content; a symlink returns its target, not followed. The result "
-        "carries the commit, its time, a locator repo@sha:path#Lstart-Lend and the definitions "
-        "in the lines read."
+        "carries the commit, its time, a locator repo@sha:path#Lstart-Lend, the definitions "
+        "in the lines read, and context: the project, service and domains the path belongs to "
+        "by the catalog."
     ),
     arguments=ReadSourceArguments,
     result=SourceRead,

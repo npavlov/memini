@@ -12,10 +12,18 @@ ones it replaces or answers, closes an item, or retracts a wrong one (requiremen
 and 6). Every item recorded here is manual: extraction never supersedes or answers it, so a
 correction survives a re-extraction of the same record. The writes need the ``ingest`` scope and
 keep a token limited to one workspace inside it.
+
+Outside the journal (:mod:`memini.decisions.context`): what an item belongs to in the catalog,
+computed when it is read; links of items to projects and domains, by hand or by the
+``assign_domains`` model (:mod:`memini.decisions.assign`); the defaults of sources
+(:mod:`memini.decisions.defaults`).
 """
 
 from memini.decisions.model import (
+    ContextDomainInfo,
+    ContextInfo,
     DecisionItem,
+    DomainLinkBody,
     EvidenceArgument,
     EvidenceInfo,
     ItemArguments,
@@ -33,16 +41,21 @@ from memini.decisions.service import (
     DecisionError,
     decision_errors,
     run_close,
+    run_link_domains,
     run_record_decision,
     run_retract,
     run_supersede,
+    run_unlink_domain,
 )
 
 __all__ = [
     "NOT_ACTIVE_CONSTRAINT",
     "SUPERSESSION_CONSTRAINTS",
+    "ContextDomainInfo",
+    "ContextInfo",
     "DecisionError",
     "DecisionItem",
+    "DomainLinkBody",
     "EvidenceArgument",
     "EvidenceInfo",
     "ItemArguments",
@@ -55,7 +68,9 @@ __all__ = [
     "SupersedesArgument",
     "decision_errors",
     "run_close",
+    "run_link_domains",
     "run_record_decision",
     "run_retract",
     "run_supersede",
+    "run_unlink_domain",
 ]

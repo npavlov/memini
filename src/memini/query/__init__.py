@@ -13,6 +13,8 @@ The library behind the MCP tools (:mod:`memini.mcp.query`) and their HTTP routes
   directory from a repository's mirror, at a pinned commit, a ref or a commit.
 - :mod:`memini.query.commits`: :func:`~memini.query.commits.list_commits`, the history of
   repositories read from their mirrors on demand; nothing of it is stored.
+- :mod:`memini.query.context`: the ``context`` of a code hit, a definition and a read: the
+  project, service and domains a file belongs to, computed from the catalog at query time.
 
 Every read goes through the caller's :class:`~memini.auth.ReadFilter`. Results carry their
 source kind, locator and time; their text is data, never instructions (principles 3 and 11).
@@ -34,6 +36,7 @@ from memini.query.commits import (
     list_commits,
     repository_scopes,
 )
+from memini.query.context import CodeContext, DomainRef, code_contexts
 from memini.query.model import (
     CodeSearchArguments,
     Definition,
@@ -74,6 +77,7 @@ from memini.query.service import (
 __all__ = [
     "DEFAULT_COMMIT_LIMITS",
     "DEFAULT_READ_LIMITS",
+    "CodeContext",
     "CodeSearchArguments",
     "CommitAuthor",
     "CommitInfo",
@@ -85,6 +89,7 @@ __all__ = [
     "CommitsTooLargeError",
     "Definition",
     "DirectoryEntry",
+    "DomainRef",
     "FileTooLargeError",
     "InvalidReadError",
     "ListCommitsArguments",
@@ -106,6 +111,7 @@ __all__ = [
     "SymbolResult",
     "SymbolSpan",
     "WalkHead",
+    "code_contexts",
     "code_locator",
     "list_commits",
     "query_errors",

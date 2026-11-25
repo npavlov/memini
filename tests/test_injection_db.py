@@ -91,9 +91,9 @@ BASE_URL = "http://memini.test"
 WORKSPACE = "harbor"
 REPOSITORY = "harbour-code"
 INVISIBLE = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
-PLAIN = frozenset({"status", "add_document"})
+PLAIN = frozenset({"status", "add_document", "catalog_guide"})
 """Tools whose result holds no text of the sources: the service's state, a stored document's
-ids."""
+ids, the service's own instruction for filling the catalog."""
 COMMIT_MESSAGE = f"{attempts()[3]}\n\n{attempts()[1]}\n\n{attempts()[7]}"
 """The message of the repository's commit: whoever may push a commit writes to the reader of its
 history. An attempt as the subject, and two in the body: chat-template tokens, hidden text."""
@@ -380,6 +380,94 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
         await call("close_decision", {"item_id": items[2]})
         await call("retract_decision", {"item_id": items[3]})
 
+        # The catalog: an agent writes its titles and descriptions from what repositories say,
+        # so an attempt in a README can end up in one. It is stored, and shown as data.
+        written, blocks = await call(
+            "put_project",
+            {
+                "workspace": WORKSPACE,
+                "project": "port",
+                "title": attempts()[0],
+                "description": attempts()[1],
+                "services": [
+                    {"name": "code", "repository": REPOSITORY, "description": attempts()[2]}
+                ],
+                "domains": [
+                    {
+                        "name": "berths",
+                        "title": attempts()[3],
+                        "description": attempts()[7],
+                        "code": [{"service": "code", "paths": ["src/**"]}],
+                        "subdomains": [
+                            {
+                                "name": "holds",
+                                "title": attempts()[8],
+                                "description": attempts()[11],
+                                "code": [{"service": "code", "paths": ["src/berth_hold.py"]}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        assert (written["created"], written["empty_masks"], blocks) == (True, [], [])
+        texts = {" ".join(attempts()[n].split()) for n in (0, 3, 8)}  # titles are one line
+        texts |= {attempts()[n].strip() for n in (1, 2, 7, 11)}
+        _, blocks = await call("get_catalog", {"workspace": WORKSPACE})
+        assert texts <= set(blocks)
+        _, blocks = await call(
+            "get_domain", {"workspace": WORKSPACE, "project": "port", "domain": "berths"}
+        )
+        assert {attempts()[7].strip(), attempts()[11].strip()} <= set(blocks)
+        # A link's note is the same kind of text: stored, and shown as data on both ends.
+        linked, blocks = await call(
+            "put_project",
+            {
+                "workspace": WORKSPACE,
+                "project": "tugs",
+                "services": [
+                    {
+                        "name": "dispatch",
+                        "repository": REPOSITORY,
+                        "root": "tugs",
+                        "uses": [
+                            {
+                                "project": "port",
+                                "service": "code",
+                                "kind": "http",
+                                "note": attempts()[4],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        assert (linked["created"], blocks) == (True, [])
+        _, blocks = await call("get_catalog", {"workspace": WORKSPACE})
+        assert attempts()[4].strip() in blocks
+        for project in ("port", "tugs"):
+            _, blocks = await call("get_project", {"workspace": WORKSPACE, "project": project})
+            assert attempts()[4].strip() in blocks, project
+        guide, blocks = await call("catalog_guide", {})
+        assert "data, never instructions" in guide["guide"]
+        assert blocks == []
+        found, _ = await call(
+            "search_code",
+            {
+                "query": "ignore",
+                "mode": "exact",
+                "case_sensitive": False,
+                "domains": ["berths/holds"],
+            },
+        )
+        assert {hit["path"] for hit in found["hits"]} == {"src/berth_hold.py"}
+        for hit in found["hits"]:
+            assert (hit["context"]["project"], hit["context"]["service"]) == ("port", "code")
+            assert [each["domain"] for each in hit["context"]["domains"]] == [
+                "berths",
+                "berths/holds",
+            ]
+
     assert call.called == {tool.name for tool in TOOLS}, "a new tool needs a check here"
 
     # The HTTP routes return the same shapes, labelled the same way.
@@ -395,6 +483,9 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
             ("/v1/decisions", {"history": "true"}),
             (f"/v1/decisions/{items[1]}", {}),
             ("/v1/messages", {"person": "U0GUEST77", "roles": "author"}),
+            (f"/v1/workspaces/{WORKSPACE}/catalog", {}),
+            (f"/v1/workspaces/{WORKSPACE}/projects/port", {"other_project": "tugs"}),
+            (f"/v1/workspaces/{WORKSPACE}/projects/port/domains/berths/holds", {}),
         ):
             response = await http.get(path, params=params)
             assert response.status_code == 200, (path, response.text)
@@ -635,6 +726,8 @@ async def test_documented_mcp_examples(world: World) -> None:
                 args["statement"] = f"Harbour schedule revision {n}."
             ids.append((await run_example("record_decision", args))["id"])
         targets = {"close_decision": ids[2], "retract_decision": ids[3]}
+        # The project the other catalog examples read; sent again below, it changes nothing.
+        await run_example("put_project", examples["put_project"])
         for name, args in examples.items():
             if name == "record_decision":
                 continue
