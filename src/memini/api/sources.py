@@ -11,7 +11,7 @@
 | ``GET …/sources/{source}/streams`` | read | its streams with lag, last run and queued sync |
 | ``POST …/sources/{source}/sync`` | admin | enqueue a sync of its streams (202) |
 | ``POST …/sources/{source}/prune`` | admin | apply its filters to its stored records |
-| ``POST …/sources/{source}/preview`` | read | count what a git source would index |
+| ``GET …/sources/{source}/preview`` | read | count what a git source would index |
 
 A token limited to one workspace sees and changes nothing in another: such a workspace answers
 404, as one that does not exist. Errors are translated by :mod:`memini.api.admin_errors`.
@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from typing import Annotated, Literal, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from memini import prune, sources
@@ -733,24 +733,6 @@ class SyncRequest(BaseModel):
     )
 
 
-class PreviewRequest(BaseModel):
-    """Rules to try: each one left out is the source's own."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    ref: str | None = Field(
-        default=None,
-        min_length=6,
-        max_length=MAX_REF_LENGTH,
-        pattern=r"^refs/[^\s]+$",
-        description="The ref to look at, such as refs/heads/main: one the mirror holds. Left out:"
-        " the source's first tracked ref.",
-    )
-    include: _Patterns | None = Field(default=None, description=_PATTERNS)
-    exclude: _Patterns | None = Field(default=None, description=_PATTERNS)
-    builtin_excludes: bool | None = Field(default=None, description=_BUILTIN_EXCLUDES)
-
-
 class PreviewGroupInfo(BaseModel):
     key: str = Field(
         description="An extension in lower case with its dot (.go), (none) for a name without"
@@ -1019,46 +1001,65 @@ def build_sources_router() -> APIRouter:
             ]
         )
 
-    @router.post("/{source}/preview", summary="Preview what a git source indexes")
+    @router.get("/{source}/preview", summary="Preview what a git source indexes")
     async def preview_source(
         workspace: str,
         source: str,
         access: ReadAccess,
         options: GitSettings,
         conn: Connection,
-        body: PreviewRequest | None = None,
+        ref: Annotated[
+            str | None,
+            Query(
+                min_length=6,
+                max_length=MAX_REF_LENGTH,
+                pattern=r"^refs/[^\s]+$",
+                description="The ref to look at, such as refs/heads/main: one the mirror holds."
+                " Left out: the source's first tracked ref.",
+            ),
+        ] = None,
+        include: Annotated[
+            list[str] | None,
+            Query(description=_PATTERNS + " Left out: the source's own; an empty value clears."),
+        ] = None,
+        exclude: Annotated[
+            list[str] | None,
+            Query(description=_PATTERNS + " Left out: the source's own; an empty value clears."),
+        ] = None,
+        builtin_excludes: Annotated[
+            bool | None, Query(description=_BUILTIN_EXCLUDES + " Left out: the source's own.")
+        ] = None,
     ) -> PreviewInfo:
         """Count what a sync would index at a ref, with the source's rules or with the ones in the
-        body, by extension and by top-level folder, from the source's mirror. Writes nothing; the
-        rules are not saved (``PATCH`` saves them). 409 ``not_syncable`` for a source that is not
-        git, 409 ``not_fetched`` before its first fetch, 404 for a ref the mirror lacks."""
-        request = body or PreviewRequest()
+        query, by extension and by top-level folder, from the source's mirror. Writes nothing; the
+        rules are not saved (``PATCH`` saves them). ``include`` and ``exclude`` repeat, one glob
+        each; an empty one (``exclude=``) stands for an empty list. 409 ``not_syncable`` for a
+        source that is not git, 409 ``not_fetched`` before its first fetch, 404 for a ref the
+        mirror lacks."""
         with admin_errors():
             found = await sources.get_source(conn, access, workspace, source)
             if found.git is None:
                 raise sources.NotSyncableError
             config = found.git
-            include = (
+            include_rules = (
                 config.include
-                if request.include is None
-                else sources.check_patterns("include", request.include)
+                if include is None
+                else sources.check_patterns("include", [p for p in include if p])
             )
-            exclude = (
+            exclude_rules = (
                 config.exclude
-                if request.exclude is None
-                else sources.check_patterns("exclude", request.exclude)
+                if exclude is None
+                else sources.check_patterns("exclude", [p for p in exclude if p])
             )
-        ref = request.ref or (found.refs[0] if found.refs else None)
-        if ref is None:
+        chosen = ref or (found.refs[0] if found.refs else None)
+        if chosen is None:
             raise ApiError(409, "no_refs", "The source tracks no ref; name one in ref.")
-        builtin = request.builtin_excludes
-        if builtin is None:
-            builtin = config.builtin_excludes
+        builtin = config.builtin_excludes if builtin_excludes is None else builtin_excludes
         rules = FileRules(
             sources.GitConfig(
                 location=config.location,
-                include=include,
-                exclude=exclude,
+                include=include_rules,
+                exclude=exclude_rules,
                 builtin_excludes=builtin,
             ),
             options.max_blob_size,
@@ -1072,7 +1073,7 @@ def build_sources_router() -> APIRouter:
                 "The source has no mirror yet: its first sync fetches it. Try again then.",
             )
         try:
-            return PreviewInfo.of(await preview_ref(mirrors, mirror, ref, rules))
+            return PreviewInfo.of(await preview_ref(mirrors, mirror, chosen, rules))
         except RevisionNotFound:
             raise ApiError(404, "not_found", "No such ref in the source's mirror.") from None
         except GitError as error:

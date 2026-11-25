@@ -1654,7 +1654,7 @@ writes, those read, chunked and embedded so far, those committed, and the batch 
 saved from the run's own connection every few seconds, outside the sync's transactions, so a
 person sees a first sync move, which the counts alone, written per committed batch, did not show;
 a batch that rolls back takes its files out of the processed ones again. What a source would index
-is counted before a sync with `POST …/sources/{source}/preview`: the tree of a ref in the mirror,
+is counted before a sync with `GET …/sources/{source}/preview`: the tree of a ref in the mirror,
 asked file by file the question the sync asks (its rules, or rules to try), by extension and
 top-level folder. Binary files and forgotten ones count as kept, since only reading them tells.
 A stale index blocks the sync:

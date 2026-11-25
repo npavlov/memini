@@ -13,7 +13,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it writes, those read, chunked and embedded so far, and those committed, saved every few seconds
   (`GET /v1/runs/{id}`).
 - Preview what a git source indexes before a sync spends time on it:
-  `POST /v1/workspaces/{workspace}/sources/{source}/preview` counts the files of a ref that the
+  `GET /v1/workspaces/{workspace}/sources/{source}/preview` counts the files of a ref that the
   source's rules, or rules to try, keep, by extension and by top-level folder.
 
 ### Changed

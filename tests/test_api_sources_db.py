@@ -958,11 +958,11 @@ async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
         201,
     )
     url = "/v1/workspaces/alpha/sources/app/preview"
-    refused(await client.post(url, headers=admin), 409, "not_fetched")
+    refused(await client.get(url, headers=admin), 409, "not_fetched")
     mirrors = MirrorManager(GitOptions.from_settings(git_settings))
     await mirrors.sync(uuid.UUID(source["id"]), source["location"])
 
-    own = ok(await client.post(url, headers=admin))
+    own = ok(await client.get(url, headers=admin))
 
     assert own["ref"] == "refs/heads/main"
     assert (own["tracked"], own["indexed"]) == (7, 5)
@@ -972,9 +972,9 @@ async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
     assert own["by_folder"][0] == {"key": "web", "tracked": 3, "indexed": 2}
 
     tried = ok(
-        await client.post(
+        await client.get(
             url,
-            json={"exclude": ["**/*_test.go", "**/*.test.ts"], "builtin_excludes": True},
+            params={"exclude": ["**/*_test.go", "**/*.test.ts"], "builtin_excludes": "true"},
             headers=admin,
         )
     )
@@ -987,9 +987,13 @@ async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
     saved = ok(await client.get("/v1/workspaces/alpha/sources/app", headers=admin))
     assert saved["exclude"] == ["**/*.json"]
 
+    # An empty exclude clears the list: every file but the lock file is kept.
+    cleared = ok(await client.get(url, params={"exclude": ""}, headers=admin))
+    assert cleared["indexed"] == 6
+
     missing = {"ref": "refs/heads/nowhere"}
-    refused(await client.post(url, json=missing, headers=admin), 404, "not_found")
+    refused(await client.get(url, params=missing, headers=admin), 404, "not_found")
     option = {"ref": "--upload-pack=x"}
-    assert (await client.post(url, json=option, headers=admin)).status_code == 422
-    absolute = {"exclude": ["/srv/**"]}
-    refused(await client.post(url, json=absolute, headers=admin), 422, "invalid_source")
+    assert (await client.get(url, params=option, headers=admin)).status_code == 422
+    absolute = {"exclude": "/srv/**"}
+    refused(await client.get(url, params=absolute, headers=admin), 422, "invalid_source")

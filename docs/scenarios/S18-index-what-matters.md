@@ -19,9 +19,9 @@ sync, and how long is left? Can it run without taking the whole machine?"
 
 ## Answer
 
-- **Preview.** `POST /v1/workspaces/{workspace}/sources/{source}/preview` counts what a sync would
+- **Preview.** `GET /v1/workspaces/{workspace}/sources/{source}/preview` counts what a sync would
   index at a ref, from the source's mirror: files tracked and kept, by extension and by top-level
-  folder, and why the rest is left out. The body tries other `include`, `exclude` and
+  folder, and why the rest is left out. Its query tries other `include`, `exclude` and
   `builtin_excludes` without saving them. The Codebases tab shows it with presets that know the
   common languages: tests (Go `_test.go`, Python `test_*.py`, JS and TS `*.test.*` and `*.spec.*`,
   Ruby `spec/`, Java and Kotlin `src/test/`, C# `*.Tests/`, Rust and PHP `tests/`, Swift
