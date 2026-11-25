@@ -2,7 +2,7 @@
 
 | Area | Who | Status | Issue |
 |---|---|---|---|
-| Running Memini | Operator, team lead | planned | memini-qpk.9 |
+| Running Memini | Operator, team lead | ready | memini-qpk.9 |
 
 ## Who and pain
 

@@ -50,5 +50,8 @@ Create a workspace, import one example email conversation and find who proposed 
 - Locate an implementation by symbol and open its file at the indexed commit. [Code search](docs/mcp/search_code.md) · [Read source](docs/mcp/read_source.md)
 - Find who agreed to a change, read the evidence, and follow later decisions that replaced it. [Decision history](docs/mcp/get_decision.md)
 - Find messages addressed to a person or meetings they attended. [Messages](docs/mcp/list_messages.md) · [Meetings](docs/mcp/list_meetings.md)
+- Map what code belongs to: projects, domains and the services behind them, and how projects use each other. Search inside one domain across repositories. [Catalog](docs/mcp/get_catalog.md) · [Instruction for an agent](docs/mcp/catalog_guide.md)
+- See who changed a file, a service or a domain. [Commit history](docs/mcp/list_commits.md)
+- Run and connect Memini from a desktop app on macOS, Windows or Linux. [Desktop app](desktop/README.md)
 
 Browse the **[online user knowledge base](https://npavlov.github.io/memini/)** or its [version in this checkout](docs/index.md) for setup, Intake, CLI and MCP tools, security, backup, upgrades and troubleshooting. For development and project history, see [Contributing](CONTRIBUTING.md), the [changelog](CHANGELOG.md) and the [Apache-2.0 license](LICENSE). [Report a vulnerability privately](SECURITY.md).

@@ -337,13 +337,19 @@ Ollama's context lowered, unmeasured.
 
 ## Not measured, and next
 
-- **A small domain in a large index.** The `domains`, `projects` and `services` filters of the
-  catalog are a filter by source and path, and migration 0018 adds an index on `chunk (source_id,
-  path)` so that the planner can read a small domain directly instead of walking the HNSW index
-  past everything outside it. The benchmark times that case (step 5), but the runs quoted in this
-  document were made before it existed: run it on the reference machine, add the three rows to
-  Search above, and check with `EXPLAIN ANALYZE` which plan the dense statement takes for a
-  domain of a few dozen chunks among 77,000.
+- **A small domain in a large index: measured, recall not.** On 2026-11-25 (the reference
+  machine, fake embedder, the corpus of run R: 77,084 chunks, 5,000 threads, 1,000 meetings), a
+  domain of 20 chunks (0.03 % of the index), 134 queries at concurrency 1:
+
+  | Mode | No filter p50 | Small domain p50 | p95 | p99 |
+  |---|---|---|---|---|
+  | hybrid | 78.3 ms | 244.2 ms | 268.0 ms | 280.8 ms |
+  | dense | 9.5 ms | 112.7 ms | 132.6 ms | 138.2 ms |
+  | lexical | 68.5 ms | 131.0 ms | 144.3 ms | 148.0 ms |
+
+  No timeouts and no errors; the index `chunk_source_path_idx` is 0.9 MiB. Still open: whether a
+  domain this small gets its full list of hits from the dense leg (the benchmark times it, it does
+  not count the hits), and which plan `EXPLAIN ANALYZE` shows for it.
 - **The HNSW index on `halfvec`.** A third of the size (602 against 201 MiB for 77,084 vectors),
   a third faster to build (33 against 48 s at 1GB) and to scan (p50 4.9 against 6.6 ms, fake
   vectors); its recall was lower in run R (0.77 against 0.88 for the same build at `ef_search`

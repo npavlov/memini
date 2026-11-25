@@ -16,7 +16,7 @@ SCENARIOS = Path(__file__).resolve().parents[1] / "docs" / "scenarios"
 
 PARTS = ("Who and pain", "Question", "Answer", "Data", "Check")
 """The headings every scenario has, in this order; others may follow."""
-STATUSES = frozenset({"works", "partial", "planned", "to confirm"})
+STATUSES = frozenset({"works", "ready", "partial", "planned", "to confirm"})
 
 _FILE = re.compile(r"S(\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md")
 _HEADING = re.compile(r"# S(\d+)\. (.+)")
