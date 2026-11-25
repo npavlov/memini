@@ -81,6 +81,22 @@ def test_empty_environment_value_counts_as_not_set() -> None:
     assert settings.http_port == 6364
 
 
+def test_the_mcp_endpoint_is_on_unless_switched_off(tmp_path: Path) -> None:
+    config = write(tmp_path / "memini.toml", "mcp_enabled = false\n")
+
+    def enabled(**env: str) -> bool:
+        return load_settings({"MEMINI_DATABASE_URL": FAKE_URL, **env}).mcp_enabled
+
+    assert enabled() is True
+    assert enabled(MEMINI_MCP_ENABLED="") is True  # empty counts as not set
+    assert enabled(MEMINI_MCP_ENABLED="true") is True
+    assert enabled(MEMINI_MCP_ENABLED="false") is False
+    assert enabled(MEMINI_MCP_ENABLED="0") is False
+    assert enabled(**{CONFIG_FILE_VAR: str(config)}) is False
+    # The environment wins over the file, as for every setting.
+    assert enabled(**{CONFIG_FILE_VAR: str(config)}, MEMINI_MCP_ENABLED="true") is True
+
+
 def test_reads_the_config_file(tmp_path: Path) -> None:
     config = write(tmp_path / "memini.toml", 'http_host = "::1"\nhttp_port = 7003\n')
 
@@ -137,6 +153,8 @@ def test_missing_required_key_is_named() -> None:
         ("MEMINI_HTTP_PORT", "not-a-port"),
         ("MEMINI_HTTP_PORT", "0"),
         ("MEMINI_HTTP_PORT", "65536"),
+        ("MEMINI_MCP_ENABLED", "maybe"),
+        ("MEMINI_MCP_ENABLED", "2"),
         ("MEMINI_LOG_LEVEL", "LOUD"),
         ("MEMINI_PRINCIPAL", "Owner"),
         ("MEMINI_PRINCIPAL", "-owner"),

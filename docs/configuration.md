@@ -57,6 +57,14 @@ Where the server listens, and the limits of every HTTP and MCP request. A body o
 | `http_rate_limit_writes`<br>`MEMINI_HTTP_RATE_LIMIT_WRITES` | integer, 1 to 1000000 | `120` | restart | Writes (POST, PUT, PATCH, DELETE, and MCP calls of write tools) per minute per token, 1 to 1000000. |
 | `http_rate_limit_unauthenticated`<br>`MEMINI_HTTP_RATE_LIMIT_UNAUTHENTICATED` | integer, 1 to 1000000 | `60` | restart | Requests per minute per client address whose token is not known to be valid, 1 to 1000000. |
 
+### MCP endpoint
+
+The service's own MCP endpoint, `/mcp` on the HTTP port: the tools agents call, behind the same tokens as the HTTP API. Switched off, it answers every request 404 `mcp_disabled`, with a token or without, and no tool runs; the HTTP API, which serves the same calls, stays. `GET /v1/status` says which it is (`mcp_enabled`). The `mcp_*` settings further down are another matter: the client that syncs mcp sources.
+
+| Setting | Values | Default | Change needs | Description |
+| --- | --- | --- | --- | --- |
+| `mcp_enabled`<br>`MEMINI_MCP_ENABLED` | boolean | `true` | restart | True or false: serve the MCP endpoint at /mcp. With the server launcher: `memini-server mcp on` and `memini-server mcp off` set it and restart the service. |
+
 ### Logging
 
 The service logs one JSON object per line, on stderr.

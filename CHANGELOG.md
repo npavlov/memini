@@ -13,6 +13,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repository, path, author, period and message text, newest first, each with its author, the
   person the author resolves to and the changed paths. History is read from the repository
   mirror on demand and never stored. [Tool reference](docs/mcp/list_commits.md).
+- Switch the MCP endpoint off with the setting `mcp_enabled` (`MEMINI_MCP_ENABLED`), or with
+  `memini-server mcp off` on a managed server. While it is off, `/mcp` answers 404 `mcp_disabled`
+  and the HTTP API keeps working. `GET /v1/status` and `memini status` say which it is.
+- Drive the server launcher from a program: `memini-server status`, `start`, `stop` and `mcp`
+  print one JSON object with `--json`. [Output for programs](docs/install.md#output-for-programs).
 
 ## [0.1.0] - 2026-11-22
 

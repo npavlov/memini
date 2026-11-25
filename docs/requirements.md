@@ -1145,6 +1145,16 @@ way, and `memini status` exits 0: the answer is in the output.
   The credentials of sources are stored encrypted, under a key from the environment (section 9).
 - Health and status endpoints, structured logs, run reports, metrics for Prometheus, a log of slow
   database statements.
+- The MCP endpoint can be switched off (decided 2026-11-23; memini-qpk.5): `mcp_enabled`, a
+  setting like every other, on by default. Off, no MCP server is built: `/mcp` answers 404
+  `mcp_disabled` to every request before a token is looked at, so no tool runs, and the HTTP API,
+  which serves the same calls, stays; `GET /v1/status` says which it is. The service reads its
+  settings once, so the switch is a setting and a restart: on a managed server
+  `memini-server mcp on|off` writes it into `.env.memini` and recreates the service, then asks the
+  service whether it applied it. A switch through the API was not chosen: it needs settings in
+  the database. For a program that drives the launcher, `memini-server status`, `start`, `stop`
+  and `mcp` print one JSON object with `--json` (the install guide, "Output for programs"), which
+  holds no secret.
 - Backup is a database dump. Repository mirrors are re-cloned. The dump (`pg_dump`, custom format)
   holds every table and index, the HNSW indexes and the journal's triggers included, and
   credentials as ciphertext only; the credential key is backed up apart. `scripts/backup.sh` and

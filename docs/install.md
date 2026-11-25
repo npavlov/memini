@@ -212,6 +212,56 @@ exits 0 when everything is current and 6 when not, for scripts and health checks
 
 State holds the managed settings and generated database password. Docker volumes hold the database, mirrors and model. `memini-server path` prints the packaged **resources**, including sample records. [Backup and restore](operations/backup.md)
 
+### Switch the MCP endpoint off
+
+```sh
+memini-server mcp off
+memini-server mcp status
+memini-server mcp on
+```
+
+The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The launcher keeps it as `MEMINI_MCP_ENABLED` in `.env.memini` in the state directory and restarts a running server, which takes a few seconds; a stopped server takes it at its next start. While MCP is off, `/mcp` answers 404 `mcp_disabled` and agents cannot connect. The HTTP API and the CLI work as before. After the restart the launcher asks the server whether MCP is on. If the server did not apply the switch, as an image from before the switch does not, the command fails and the setting is put back.
+
+### Output for programs
+
+`status`, `start`, `stop` and `mcp` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file.
+
+`memini-server status --json` exits 0 whenever it can report, also for a stopped server, a missing installation and a missing Docker. Its object, on several lines here:
+
+```json
+{
+  "schema": 1,
+  "installed": true,
+  "running": true,
+  "api_url": "http://127.0.0.1:6364",
+  "mcp_url": "http://127.0.0.1:6364/mcp",
+  "mcp_enabled": true,
+  "image": "ghcr.io/npavlov/memini:0.1.0@sha256:a55fed2b…",
+  "directory": "/home/me/.local/share/memini/server",
+  "docker": {"available": true, "error": null},
+  "services": [
+    {"name": "db", "state": "running", "health": "healthy"},
+    {"name": "memini", "state": "running", "health": "healthy"},
+    {"name": "ollama", "state": "running", "health": "healthy"}
+  ]
+}
+```
+
+| Field | Value |
+|---|---|
+| `schema` | `1`. A field that is renamed, removed or changes its type raises it; a later version may add fields. |
+| `installed` | Whether the state directory holds a managed server. Without one, `api_url`, `mcp_url`, `mcp_enabled`, `image` and `directory` are `null`. |
+| `running` | Whether the container of the Memini service runs. It may still be starting: see its `health`. |
+| `api_url` | The address of the HTTP API on this computer. For a running server, the port Docker published. For a stopped one, the port its next start publishes, `MEMINI_HTTP_PORT` in the state directory's `.env`; `null` if that is 0, a port Docker chooses at every start. |
+| `mcp_url` | `api_url` with `/mcp`. `null` while `api_url` is `null` or MCP is not switched on. |
+| `mcp_enabled` | The MCP switch as the settings have it: what `mcp on` and `mcp off` set. `null` if its value is neither true nor false. |
+| `image` | The image of the service's container; before the first start, the image a start runs. |
+| `directory` | The state directory. |
+| `docker` | `available`: the `docker` command was found and the engine answered. If not, `error` says why in one line, and `running` and `services` read `false` and empty because they are not known. |
+| `services` | The containers of the server, by name. `state` is Docker's word: `running`, `exited`, `restarting` and others. `health` is `starting`, `healthy` or `unhealthy`, and `null` for a container that reports none. Empty before the first start. |
+
+`start`, `stop`, `mcp on` and `mcp off` print `{"schema": 1, "ok": true, "error": null}` and exit 0. On a failure `ok` is `false`, `error` is one line, and the exit status is not 0: Docker's own where Docker failed, otherwise 1. `mcp status --json` prints the status object. A wrong argument exits 2 with the usage on stderr, and a state directory that cannot be read exits 1 with a message there; stdout stays empty in both cases.
+
 ## Machine size
 
 See [machine requirements and measured performance](operations/performance.md#the-smallest-supported-machine).

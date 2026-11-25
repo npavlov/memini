@@ -95,6 +95,7 @@ Ask the agent: **“Call the Memini status tool and show which workspaces I can 
 | Connection refused | Run `memini-server status` on the server machine. Check the hostname, port and `/mcp` path from the client. |
 | HTTP 401 | Reload the token variable in the shell that starts the client, restart the client, and check whether the token was revoked. |
 | HTTP 403 or missing workspace | Ask the operator to check the token’s scopes and workspace. |
+| HTTP 404 `mcp_disabled` | The operator switched the MCP endpoint off. `memini-server mcp on` on the server machine switches it on again. [The MCP switch](../install.md#switch-the-mcp-endpoint-off) |
 
 ## Tool reference
 

@@ -19,6 +19,11 @@ token instead of the read budget every MCP request is counted against first
 (:func:`memini.api.limits.count_as_write`); over that budget it answers 429 ``rate_limited`` and the
 server never sees it. Which tool a request calls is known only from its body, so this is the first
 place it can be told. A body that is not JSON-RPC calls no tool here, and the server answers it.
+
+With ``mcp_enabled`` false there is no MCP server behind the path: :class:`McpSwitchedOff` answers
+every request 404 :data:`MCP_DISABLED`, before a token is looked at, so the answer is the same
+with a token and without, and no tool runs. The request limits count such a request as any other
+to the path. The HTTP API, which serves the same calls, is not affected.
 """
 
 import json
@@ -42,10 +47,31 @@ from memini.auth import (
 )
 from memini.mcp import MCP_PATH, TOOLS, McpEndpoint, bind_principal
 
-__all__ = ["WRITE_TOOLS", "CountWriteCalls", "RequireReadToken", "calls_a_tool", "mcp_route"]
+__all__ = [
+    "MCP_DISABLED",
+    "WRITE_TOOLS",
+    "CountWriteCalls",
+    "McpSwitchedOff",
+    "RequireReadToken",
+    "calls_a_tool",
+    "mcp_route",
+]
 
 WRITE_TOOLS: Final = frozenset(tool.name for tool in TOOLS if not tool.read_only)
 """The tools a call of which is counted as a write: those that are not read-only."""
+
+MCP_DISABLED: Final = "mcp_disabled"
+"""The code of the 404 every request to the endpoint gets while ``mcp_enabled`` is false."""
+
+
+class McpSwitchedOff:
+    """ASGI app: the endpoint of a service whose ``mcp_enabled`` is false; see the module."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        response = error_response(
+            404, MCP_DISABLED, "The MCP endpoint is switched off on this server."
+        )
+        await response(scope, receive, send)
 
 
 class RequireReadToken:
@@ -150,20 +176,21 @@ def _tool_called(message: object) -> str | None:
 
 
 def mcp_route(
-    endpoint: McpEndpoint,
+    endpoint: McpEndpoint | None,
     authenticator: Authenticator | None,
     *,
     write_tools: Collection[str] = WRITE_TOOLS,
 ) -> Route:
     """The route that serves ``endpoint`` at :data:`~memini.mcp.MCP_PATH`, behind the token check;
-    a call of one of ``write_tools`` is counted as a write.
+    a call of one of ``write_tools`` is counted as a write. Without an endpoint (``mcp_enabled``
+    is false), the route that answers :data:`MCP_DISABLED` instead.
 
     A route, not a mount: a mount matches only below its path, so ``/mcp`` itself would be
     redirected to ``/mcp/``.
     """
-    return Route(
-        MCP_PATH,
-        RequireReadToken(CountWriteCalls(endpoint, write_tools), authenticator),
-        name="mcp",
-        include_in_schema=False,
+    app: ASGIApp = (
+        McpSwitchedOff()
+        if endpoint is None
+        else RequireReadToken(CountWriteCalls(endpoint, write_tools), authenticator)
     )
+    return Route(MCP_PATH, app, name="mcp", include_in_schema=False)
