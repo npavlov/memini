@@ -45,8 +45,9 @@ decisions of `search` by domain over HTTP and MCP, and the job on a fake model; 
 
 ## Notes
 
-The model step chooses the right domains for 24 of 26 labelled items with `qwen3:4b-instruct`
-(`eval/domains/baseline-qwen3.json`); its errors give a domain to an item that has none. The set
+The model step chose the right domains for 24 of 26 labelled items with `qwen3:4b-instruct` and
+prompt `domains-v1` (`eval/domains/baseline-qwen3.json`); its errors give a domain to an item that
+has none. A domain named with one of its own subdomains is kept as the subdomain alone. The set
 holds two Russian items only.
 
 ## See also

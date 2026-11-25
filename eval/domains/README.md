@@ -4,7 +4,7 @@ How well the `assign_domains` job puts a decision or an open question under the 
 catalog (requirements, section 10, **Domain eval**; the job: `memini.decisions.assign`).
 
 - `set.json`: a synthetic harbour workspace, written by hand. Two projects (`port`, `fleet`), each
-  with domains and subdomains, titles and descriptions; 26 items in English and Russian, each with
+  with domains and subdomains, titles and descriptions; 27 items in English and Russian, each with
   the domains it belongs to (`project:domain`, `project:domain/subdomain`) or none. Some cite the
   message they were taken from; some have their project already, so only its domains are offered,
   as the job does when a project came by push, a default or a person.
@@ -25,16 +25,23 @@ The report gives `accuracy` (the answer is exactly the labelled set of domains, 
 when accuracy falls, or the none rate moves away from the labelled one, by more than `--margin`
 (0.02).
 
-The stub's baseline (accuracy 0.85, none rate 0.23 for 0.23 labelled) shows what word overlap
+The stub's baseline (accuracy 0.85, none rate 0.22 for 0.22 labelled) shows what word overlap
 gets right and where it fails: an item that shares a word with an unrelated description, an item
 of two domains, and the Russian items, whose words no English description shares.
+
+An answer is measured as the job keeps it: a domain named together with one of its own
+subdomains gives way to the subdomain, which already implies it (memini-qpk.12). Item `d27` is
+that case: the stub, and a model, may name both `port:fees` and `port:fees/berth`.
 
 ## The recommended local model
 
 `baseline-qwen3.json` is the report of `qwen3:4b-instruct` (the extractor's model) through Ollama,
-recorded on 2026-11-25 with prompt `domains-v1`: accuracy 0.92 (24 of 26), no item left without its
+recorded on 2026-11-25 with prompt `domains-v1` on the 26 items of that day: accuracy 0.92 (24 of
+26), no item left without its
 domain, and two items labelled none given a domain (a none rate of 0.15 for 0.23 labelled). Both
-runs gave the same answers. English items 0.96; the two Russian items 0.5, too few to judge. To
+runs gave the same answers. English items 0.96; the two Russian items 0.5, too few to judge. It
+predates prompt `domains-v2` (a subdomain implies its domain) and item `d27`, and needs a run again
+with the model. To
 record it again, run the `llm` assigner above with
 `--baseline eval/domains/baseline-qwen3.json --write-baseline`. A change of the prompt
 (`PROMPT_VERSION` in `memini.decisions.assign`) is compared with that baseline before it is merged.

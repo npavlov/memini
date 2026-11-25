@@ -194,6 +194,12 @@
       "language": "ru",
       "statement": "Планёрку перенесли на пятницу.",
       "expected": []
+    },
+    {
+      "id": "d27",
+      "statement": "Berth fees are invoiced with the taxes at the end of each stay.",
+      "said": [{"from": "Ann Example", "text": "Put the berth fee and its tax on one invoice when the ship leaves."}],
+      "expected": ["port:fees/berth"]
     }
   ]
 }

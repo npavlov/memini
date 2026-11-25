@@ -767,13 +767,16 @@ that has a domain by another way is not asked (`items_settled`); when only its p
 another way, only that project's domains are offered. One LLM call per item: the statement and the
 parts it cites (their records still stored; an item whose records are gone shows its statement
 only), and the domains of the catalog numbered with their project, address, title and description;
-the model says what the item is about, then the numbers of one to three domains, or none. Catalog
+the model says what the item is about, then the numbers of one to three domains, or none. A
+subdomain already implies its domain: the prompt says so, and when an answer still names a domain
+and one of its own subdomains, the job keeps only the subdomain before it stores the answer
+(memini-qpk.12). Catalog
 text enters the prompt as data with the protections record text has (principle 11): the same data
 block, markers, escapes and reminder as an extraction. The gate holds the call to the strictest
 policy of the workspace, of the sources of the item's evidence and of the repositories the
 catalog's services name (principle 8): `policy_none` and `no_provider` skip the item and are
 counted, and an item whose evidence names a source that is gone is skipped, its policy unknown.
-The assigner is the granted model and the prompt version (`domains-v1`); its last answer for an
+The assigner is the granted model and the prompt version (`domains-v2`); its last answer for an
 item, "none" included, is kept with a hash of the domains it was shown, so a run again asks
 nothing it has answered, and a change of the model, the prompt or the domains offered asks again.
 The model's earlier links of the item are replaced in the transaction that keeps the answer; a
