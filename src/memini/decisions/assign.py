@@ -26,7 +26,9 @@ first, and the model never changes what came by one of them. For each active ite
    each cut to :data:`CITED_PART_LIMIT` characters; an item whose records are gone shows its
    statement only) and the domains, numbered, with their project, address, title and description.
    It answers what the item is about, then the numbers of one to three domains, or none
-   (``items_assigned``, ``items_none``).
+   (``items_assigned``, ``items_none``). A subdomain already implies its domain, so when the
+   answer names a domain and one of its own subdomains, only the subdomain is kept
+   (:func:`most_specific`); the prompt says so too.
 5. **Writes** the model's links in one transaction with its answer: its earlier links of the item
    go, the new ones come (``links_written``), and a link a person made to the same domain stays a
    person's.
@@ -78,13 +80,14 @@ __all__ = [
     "assigner_name",
     "assignment_request",
     "catalog_hash",
+    "most_specific",
     "picked",
     "run_assignment",
 ]
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION: Final = "domains-v1"
+PROMPT_VERSION: Final = "domains-v2"
 """The version of the assignment prompt and of the reading of its answer. Change it with either:
 the answers kept name it, and a new version asks again about every item."""
 
@@ -177,9 +180,10 @@ Work in two steps:
 1. "about": in a few words, the business matter the item decides or asks about.
 2. "picks": the numbers of the domains that matter belongs to, usually one and at most three. \
 Pick a subdomain when the item concerns that part only, its domain when it concerns the area as \
-a whole. Pick nothing when no domain fits: an item about the team's own way of working, a \
-meeting, people, tools, or an area the catalog does not list belongs nowhere, and an empty list \
-is then the right answer. A word shared with a title is not enough.
+a whole. A subdomain already implies its domain: never pick a domain together with one of \
+its own subdomains. Pick nothing when no domain fits: an item about the team's own way of \
+working, a meeting, people, tools, or an area the catalog does not list belongs nowhere, and an \
+empty list is then the right answer. A word shared with a title is not enough.
 
 Reply with one JSON object: {{"about": ..., "picks": [...]}}."""
 
@@ -237,16 +241,28 @@ def assignment_request(question: DomainQuestion) -> ChatRequest[DomainPicks]:
     )
 
 
+def most_specific(chosen: Sequence[DomainChoice]) -> tuple[DomainChoice, ...]:
+    """``chosen`` without a domain whose own subdomain is chosen too: a subdomain already
+    implies its domain. The order is kept."""
+    return tuple(
+        choice
+        for choice in chosen
+        if not any(
+            other.project == choice.project and other.domain.startswith(f"{choice.domain}/")
+            for other in chosen
+        )
+    )
+
+
 def picked(output: DomainPicks, question: DomainQuestion) -> tuple[DomainChoice, ...]:
-    """The domains the answer names: a number not shown is ignored, a repeat counts once, and
-    at most :data:`MAX_PICKS` are kept."""
+    """The domains the answer names: a number not shown is ignored, a repeat counts once, a
+    domain named with one of its subdomains gives way to it (:func:`most_specific`), and at
+    most :data:`MAX_PICKS` are kept."""
     found: dict[int, DomainChoice] = {}
     for n in output.picks:
         if 1 <= n <= len(question.choices) and n not in found:
             found[n] = question.choices[n - 1]
-        if len(found) == MAX_PICKS:
-            break
-    return tuple(found.values())
+    return most_specific(list(found.values()))[:MAX_PICKS]
 
 
 class DomainAssigner(Protocol):
@@ -602,6 +618,8 @@ async def _run(
             outcome.skip(refusal.reason)
             continue
         name = assigner_name(grant.model)
+        # Whatever the assigner, the answer kept names a subdomain without its domain.
+        chosen = most_specific(chosen)
         outcome.links += await _store(
             conn,
             access,

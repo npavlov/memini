@@ -1,14 +1,14 @@
 {
   "assigner": "keyword-stub",
   "set": "harbour",
-  "items": 26,
-  "accuracy": 0.8462,
-  "none_rate": 0.2308,
-  "expected_none_rate": 0.2308,
+  "items": 27,
+  "accuracy": 0.8519,
+  "none_rate": 0.2222,
+  "expected_none_rate": 0.2222,
   "false_none": 1,
   "false_domain": 1,
   "by_language": {
-    "en": 0.875,
+    "en": 0.88,
     "ru": 0.5
   },
   "cases": [
@@ -249,6 +249,16 @@
       "language": "ru",
       "expected": [],
       "answered": []
+    },
+    {
+      "id": "d27",
+      "language": "en",
+      "expected": [
+        "port:fees/berth"
+      ],
+      "answered": [
+        "port:fees/berth"
+      ]
     }
   ]
 }

@@ -20,8 +20,10 @@ that have a domain. `get_domain` includes the domain's active decisions. Each de
 `context` with its project and domains and how each came (`push`, `default`, `manual`, `code`,
 `model`). The answer counts the project's decisions that have no domain (`without_domain`), so the
 caller knows the list may be incomplete. `search(query, domains=[...])` answers by relevance
-instead: its decisions are those of the domain, by statement words first, then those citing the
-code it retrieved.
+instead: its hits are the domain's code and the threads, meetings and pushed documents that belong
+to it (pushed with it, a source or stream default, or else the model's domains of the decisions
+taken from them), and its decisions are those of the domain, by statement words first, then those
+citing the records it retrieved.
 
 ## Data
 
@@ -39,14 +41,16 @@ it.
 ## Check
 
 `tests/test_decision_domains_db.py` for the filters, the order, the count, the links, the
-decisions of `search` by domain over HTTP and MCP, and the job on a fake model; `eval/domains` for
+decisions of `search` by domain over HTTP and MCP, the threads `search` finds by a domain (pushed
+with it, a subdomain, the model's), and the job on a fake model; `eval/domains` for
 `assign_domains`: a labelled synthetic set that reports accuracy and how often the model answers
 "none", against a baseline.
 
 ## Notes
 
-The model step chooses the right domains for 24 of 26 labelled items with `qwen3:4b-instruct`
-(`eval/domains/baseline-qwen3.json`); its errors give a domain to an item that has none. The set
+The model step chose the right domains for 24 of 26 labelled items with `qwen3:4b-instruct` and
+prompt `domains-v1` (`eval/domains/baseline-qwen3.json`); its errors give a domain to an item that
+has none. A domain named with one of its own subdomains is kept as the subdomain alone. The set
 holds two Russian items only.
 
 ## See also

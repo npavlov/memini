@@ -17,7 +17,9 @@ from the business area has nowhere to start.
 
 `get_domain(project, domain)`: the description, the services, their repositories, the path masks and
 how many files each mask matches. `search_code` and `search` take the filters `projects`, `domains`
-and `services`; a domain includes its subdomains.
+and `services`; a domain includes its subdomains. In `search`, `projects` and `domains` also bring
+the threads, meetings and pushed documents linked to them, so the conversation about a domain
+comes with its code.
 
 ## Data
 

@@ -85,6 +85,21 @@ _DOMAINS = (
     "Only code of these domains of the catalog: 'domain', which includes its subdomains, or"
     " 'domain/subdomain'. Membership is computed from the catalog's path masks as they are now."
 )
+_LINKED = (
+    " Threads, meetings and pushed documents count when they are linked to it: pushed with it, by"
+    " a default of their source or stream, or else by the domains the model gave the decisions"
+    " taken from them."
+)
+_SEARCH_PROJECTS = (
+    "Only results of these projects of the catalog, by name: the code of their services and"
+    " domains, and the records linked to them." + _LINKED + " With domains or services, the"
+    " projects those names are looked up in. A name the catalog does not hold is an error;"
+    " get_catalog lists the names."
+)
+_SEARCH_DOMAINS = (
+    "Only results of these domains of the catalog: 'domain', which includes its subdomains, or"
+    " 'domain/subdomain'. Code by the catalog's path masks as they are now." + _LINKED
+)
 _SERVICES = "Only code of these services of the catalog, by name: a repository or a directory."
 _CONTEXT = (
     "A file of a repository: the project and service it is in and the domains whose path masks"
@@ -127,8 +142,8 @@ class SearchArguments(BaseModel):
     )
     persons: Persons | None = Field(default=None, description=_PERSONS)
     roles: list[Role] | None = Field(default=None, description=_ROLES)
-    projects: Names | None = Field(default=None, description=_PROJECTS)
-    domains: Names | None = Field(default=None, description=_DOMAINS)
+    projects: Names | None = Field(default=None, description=_SEARCH_PROJECTS)
+    domains: Names | None = Field(default=None, description=_SEARCH_DOMAINS)
     services: Names | None = Field(default=None, description=_SERVICES)
     mode: SearchMode = Field(
         default="hybrid",
