@@ -55,3 +55,5 @@ export type {
   SectionProps,
 } from "./surfaces";
 export type { Tone } from "./tone";
+export { Tree, TreeItem } from "./tree";
+export type { TreeItemProps, TreeProps } from "./tree";

@@ -26,9 +26,10 @@ Gemini CLI, Windsurf, Zed, Cline and OpenCode. A client that is not installed is
 Each happens on a click for one client, never by itself. Only the entry named `memini` is touched:
 the rest of the file is kept, and the file is backed up before the first change. The token is
 passed the safest way the client offers, a token file or the client's own reference to an
-environment variable; where a client takes only a literal token, the app says so before it writes
-one. The state the screen shows is read from the client's file, not remembered. A configuration the
-app cannot read as that client's format is refused and left as it is.
+environment variable; where a client takes only a literal token, or the user asks for one because
+the client is not started from a shell, the app says so before it writes one. The state the screen
+shows is read from the client's file, not remembered. A configuration the app cannot read as that
+client's format is refused and left as it is.
 
 ## Data
 

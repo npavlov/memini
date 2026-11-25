@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "tide-tables": {
+      "type": "streamableHttp",
+      "url": "https://tides.example/mcp",
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

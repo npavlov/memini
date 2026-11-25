@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Servers the agent may call.
+  "mcp": {
+    "tide-tables": {
+      "type": "remote",
+      "url": "https://tides.example/mcp",
+      "oauth": false
+    }
+  }
+}

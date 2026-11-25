@@ -106,11 +106,10 @@ function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): Reac
       return <ConnectionsScreen view={view} info={info} onView={onView} />;
     case "server":
       return <ServerScreen view={view} info={info} onView={onView} />;
-    case "map":
-      return <ProjectMapScreen />;
     case "mcp":
     case "tokens":
     case "data":
+    case "map":
       return active === null ? (
         <EmptyState title="No connection is selected">
           <Text>Add a server on the Connection screen, or choose one of the saved connections.</Text>
@@ -122,7 +121,7 @@ function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): Reac
 }
 
 interface ConnectionScreenProps {
-  readonly screen: "mcp" | "tokens" | "data";
+  readonly screen: "mcp" | "tokens" | "data" | "map";
   readonly connection: Connection;
 }
 
@@ -136,5 +135,7 @@ function ConnectionScreen({ screen, connection }: ConnectionScreenProps): ReactE
       return <TokensScreen key={key} connection={connection} />;
     case "data":
       return <DataScreen key={key} connection={connection} />;
+    case "map":
+      return <ProjectMapScreen key={key} connection={connection} />;
   }
 }

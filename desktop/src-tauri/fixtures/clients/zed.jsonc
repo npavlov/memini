@@ -1,0 +1,12 @@
+// Settings of the editor.
+{
+  "theme": "One Dark",
+  "buffer_font_size": 14,
+  "context_servers": {
+    // The tide tables of the harbour.
+    "tide-tables": {
+      "url": "https://tides.example/mcp",
+    },
+  },
+  "vim_mode": false,
+}

@@ -1,0 +1,16 @@
+{
+  "numStartups": 12,
+  "theme": "dark",
+  "mcpServers": {
+    "tide-tables": {
+      "type": "http",
+      "url": "https://tides.example/mcp"
+    }
+  },
+  "projects": {
+    "/work/harbour": {
+      "allowedTools": ["Read"],
+      "history": []
+    }
+  }
+}

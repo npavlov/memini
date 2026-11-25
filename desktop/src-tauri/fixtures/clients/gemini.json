@@ -1,0 +1,11 @@
+{
+  "theme": "Default",
+  "mcpServers": {
+    "tide-tables": {
+      "httpUrl": "https://tides.example/mcp"
+    }
+  },
+  "ui": {
+    "hideBanner": true
+  }
+}

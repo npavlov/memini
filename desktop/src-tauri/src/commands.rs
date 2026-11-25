@@ -14,6 +14,8 @@
 //! Every command must also be listed in `build.rs` and allowed in `capabilities/default.json`;
 //! a command that is only registered here cannot be called.
 
+pub mod agent_clients;
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -47,6 +49,7 @@ pub struct Inner {
     secrets: Box<dyn SecretStore>,
     http: ApiClient,
     launcher_busy: AtomicBool,
+    clients_busy: AtomicBool,
 }
 
 impl AppState {
@@ -56,6 +59,7 @@ impl AppState {
             secrets,
             http: ApiClient::new()?,
             launcher_busy: AtomicBool::new(false),
+            clients_busy: AtomicBool::new(false),
         })))
     }
 
@@ -564,6 +568,119 @@ pub async fn api_sources(
         .await
 }
 
+/// `GET /v1/workspaces/{workspace}/catalog`: the project map of a workspace.
+#[tauri::command]
+pub async fn api_catalog(
+    state: State<'_, AppState>,
+    id: String,
+    workspace: String,
+) -> AppResult<Value> {
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    let segments = ["v1", "workspaces", workspace.as_str(), "catalog"];
+    inner
+        .http
+        .call(&target, Some(&token), Method::GET, &segments, None)
+        .await
+}
+
+/// Which domain `api_domain` reads.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DomainPlace {
+    pub workspace: String,
+    pub project: String,
+    /// The domain, or a subdomain as `domain/subdomain`.
+    pub domain: String,
+}
+
+/// The parts of a domain's address: one name, or two for a subdomain. Each becomes one segment
+/// of the route, so an address cannot name another route.
+fn domain_segments(address: &str) -> AppResult<Vec<&str>> {
+    let parts: Vec<&str> = address.split('/').collect();
+    let named = parts
+        .iter()
+        .all(|part| !part.is_empty() && *part != "." && *part != "..");
+    if !named || parts.len() > 2 {
+        return Err(AppError::invalid("That is not the address of a domain."));
+    }
+    Ok(parts)
+}
+
+/// `GET /v1/workspaces/{workspace}/projects/{project}/domains/{domain}`: a domain with its code
+/// and how many files of the index each path mask matches now.
+#[tauri::command]
+pub async fn api_domain(
+    state: State<'_, AppState>,
+    id: String,
+    place: DomainPlace,
+) -> AppResult<Value> {
+    let mut segments = vec![
+        "v1",
+        "workspaces",
+        place.workspace.as_str(),
+        "projects",
+        place.project.as_str(),
+        "domains",
+    ];
+    segments.extend(domain_segments(&place.domain)?);
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    inner
+        .http
+        .call(&target, Some(&token), Method::GET, &segments, None)
+        .await
+}
+
+/// What `api_project_put` writes: a project of one workspace, as one document.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectWrite {
+    pub workspace: String,
+    pub project: String,
+    /// The project as the user edited it, with `if_version`: the version it was read at.
+    pub document: Value,
+}
+
+/// Whether a project document says which version it was made from.
+fn has_version(document: &Value) -> bool {
+    document.get("if_version").is_some_and(Value::is_u64)
+}
+
+/// `PUT /v1/workspaces/{workspace}/projects/{project}`: writes a whole project of the catalog.
+/// It is the one write of the project map, to this one route. The document must carry
+/// `if_version`, so a change someone else made meanwhile is refused by the server (409
+/// `version_conflict`) and never overwritten.
+#[tauri::command]
+pub async fn api_project_put(
+    state: State<'_, AppState>,
+    id: String,
+    write: ProjectWrite,
+) -> AppResult<Value> {
+    if !has_version(&write.document) {
+        return Err(AppError::invalid(
+            "The project cannot be saved without the version it was read at.",
+        ));
+    }
+    let inner = state.shared();
+    let (target, token) = authorized(&inner, &id).await?;
+    let segments = [
+        "v1",
+        "workspaces",
+        write.workspace.as_str(),
+        "projects",
+        write.project.as_str(),
+    ];
+    inner
+        .http
+        .call(
+            &target,
+            Some(&token),
+            Method::PUT,
+            &segments,
+            Some(&write.document),
+        )
+        .await
+}
+
 /// The read tools the server has, from its OpenAPI document. The document is public, so no token
 /// is sent for it.
 #[tauri::command]
@@ -810,7 +927,7 @@ impl Change {
     }
 }
 
-/// Marks a launcher action as running until it is dropped.
+/// Marks an action as running until it is dropped.
 struct BusyGuard<'a>(&'a AtomicBool);
 
 impl<'a> BusyGuard<'a> {
@@ -1206,6 +1323,37 @@ mod tests {
         );
         drop(first);
         assert!(BusyGuard::begin(&flag).is_ok());
+    }
+
+    #[test]
+    fn a_project_is_written_only_with_the_version_it_was_read_at() {
+        let versions = [
+            has_version(&json!({"title": "Port", "if_version": 3})),
+            has_version(&json!({"title": "Port", "if_version": 0})),
+            has_version(&json!({"title": "Port"})),
+            has_version(&json!({"title": "Port", "if_version": null})),
+            has_version(&json!({"title": "Port", "if_version": "3"})),
+        ];
+
+        assert_eq!(versions, [true, true, false, false, false]);
+    }
+
+    #[test]
+    fn the_address_of_a_domain_is_one_name_or_two() {
+        let read = |address| domain_segments(address).ok();
+
+        assert_eq!(read("fees"), Some(vec!["fees"]));
+        assert_eq!(read("fees/berth"), Some(vec!["fees", "berth"]));
+        assert_eq!(
+            [
+                read(""),
+                read("fees/"),
+                read("../tokens"),
+                read("a/b/c"),
+                read("a/..")
+            ],
+            [None, None, None, None, None]
+        );
     }
 
     #[test]

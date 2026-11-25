@@ -751,3 +751,59 @@ pre,
 .step-title {
   font-weight: 600;
 }
+
+/* Tree */
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-inside {
+  margin-top: 6px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+
+.tree-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tree-kind {
+  color: var(--muted);
+  font-size: var(--font-size-small);
+}
+
+.tree-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tree-aside {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--font-size-small);
+}
+
+.tree-detail {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* A sentence under the name in the head cell of a row is a detail, not a heading. */
+th .text {
+  font-weight: 400;
+}

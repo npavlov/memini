@@ -10,14 +10,17 @@ export interface ClientGuidesProps {
   readonly address: string;
 }
 
-/** Configuration to paste into an MCP client. It names the token's variable, never a token. */
+/**
+ * Configuration to paste into an MCP client by hand: for a client the app does not connect, or
+ * one on another computer. It names the token's variable, never a token.
+ */
 export function ClientGuides({ address }: ClientGuidesProps): ReactElement {
   const guides = useMemo(() => clientGuides(address), [address]);
   const [chosen, setChosen] = useState(guides[0]?.id ?? "");
   const guide = guides.find((item) => item.id === chosen) ?? guides[0];
   return (
     <>
-      <Panel title="Before you start">
+      <Panel title="By hand: the token">
         <Text>
           A client needs a token with the read scope. Create one on the Tokens screen, save it to a
           file only you can read, and load it into {TOKEN_VARIABLE} in the shell that starts the
@@ -28,7 +31,7 @@ export function ClientGuides({ address }: ClientGuidesProps): ReactElement {
           <CodeBlock key={snippet.label} label={snippet.label} text={snippet.text} />
         ))}
       </Panel>
-      <Panel title="Client configuration">
+      <Panel title="By hand: client configuration">
         <Tabs
           label="MCP clients"
           items={guides.map((item) => ({ id: item.id, label: item.name }))}

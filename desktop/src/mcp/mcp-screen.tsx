@@ -22,6 +22,7 @@ import type { LauncherStatus } from "../server/launcher";
 import { readLauncherStatus } from "../server/launcher-api";
 import { movedLocalAddress } from "../server/local-address";
 import { useLoad } from "../hooks/use-load";
+import { AgentClientsPanel } from "./agent-clients-panel";
 import { ClientGuides } from "./client-guides";
 import {
   describeEndpoint,
@@ -73,7 +74,7 @@ export function McpScreen({ connection }: McpScreenProps): ReactElement {
   return (
     <Screen
       title="MCP"
-      lead="The address agents connect to, whether it is on, and configuration to paste into a client."
+      lead="The address agents connect to, whether it is on, the agent clients on this computer, and configuration to paste into any other."
     >
       <Panel
         title="Endpoint"
@@ -95,6 +96,7 @@ export function McpScreen({ connection }: McpScreenProps): ReactElement {
           <EndpointReport connection={connection} endpoint={loaded} onChanged={endpoint.reload} />
         )}
       </Panel>
+      <AgentClientsPanel connection={connection} />
       {address === null ? null : <ClientGuides address={address} />}
     </Screen>
   );

@@ -2,8 +2,8 @@
 
 A native application for macOS, Windows and Linux that manages a Memini server. It starts and stops
 the server on this computer through the `memini-server` launcher, connects to other servers by
-address and token, shows the MCP address with configuration to paste into a client, manages tokens,
-shows what the base holds, and runs the read tools by hand.
+address and token, connects the agent clients on this computer to it in one click each, manages
+tokens, shows what the base holds, runs the read tools by hand, and shows and edits the project map.
 
 It is built with Tauri 2: a Rust side that owns the tokens, every HTTP call and the launcher, and a
 React front end that shows what the Rust side returns. This is a first version; read
@@ -16,10 +16,10 @@ on it.
 |---|---|---|
 | Connection | Saved connections: this computer, or a server by its address. Stores, replaces and removes a connection's token. Checks a connection. | — |
 | Server | The local server. **Set up** in one button: checks Docker, installs and starts the server, creates its first admin token and makes this computer a connection, without a terminal. Then start, stop and restart, the state of each service, and which launcher is used. | Docker |
-| MCP | The MCP address, whether the endpoint is on, the switch for the local server, and configuration for the clients of [docs/mcp](../docs/mcp/README.md). | A connection |
+| MCP | The MCP address, whether the endpoint is on and the switch for the local server. The agent clients found on this computer, each with **Connect** and **Disconnect** (see [Agent clients](#agent-clients)). Configuration to paste by hand for any other client of [docs/mcp](../docs/mcp/README.md). | A connection; for Connect, a token with the `admin` scope |
 | Tokens | Lists, creates and revokes tokens. A new token is shown once. | A token with the `admin` scope |
 | Data | What the base holds: per workspace, each source with its kind, records and freshness. A console for the read tools: a form per tool, built from the arguments the server publishes, and the answer as cards and as raw JSON with the request that produced it. Read-only. | A token with the `read` scope |
-| Project map | A placeholder. The server has no catalog API yet. | — |
+| Project map | The catalog of a workspace as a tree: each project's services with their repository, directory and files, and its domains and subdomains with their path masks and what each mask matches now. **Edit** changes a project's title and description, its domains and subdomains and their path masks, and saves the whole project against the version it was read at, so a newer change is refused and not overwritten. Links between services are shown when the server has them. | A token with the `read` scope; to save, `ingest` as well |
 
 A bar at the bottom of the window is always visible. It names the selected connection and says
 whether the server answers, its version, whether the base is current or behind, and whether MCP is
@@ -96,6 +96,10 @@ desktop/
   public/licenses/      the licence notices of the bundled fonts, shipped with the app
   src-tauri/
     src/commands.rs     the commands the front end may call
+    src/commands/agent_clients.rs   Connect and Disconnect for agent clients
+    src/clients.rs      the agent clients: where each keeps its configuration, and its memini entry
+    src/jsonc.rs        JSON by position, to add or remove one member and keep every other byte
+    fixtures/clients/   a hand-written configuration of each client, for the tests
     src/api.rs          the HTTP client of the Memini API
     src/launcher.rs     finding and running memini-server, reading its JSON
     src/tools.rs        the read tools of the Data screen and the request a call becomes
@@ -109,6 +113,56 @@ desktop/
 A new command is added in three places, or it cannot be called: the function in
 `src-tauri/src/commands.rs` and its registration in `src-tauri/src/lib.rs`, the list in
 `src-tauri/build.rs`, and `allow-<command>` in `src-tauri/capabilities/main-window.json`.
+
+## Agent clients
+
+The MCP screen lists the clients installed on this computer, among those the
+[MCP guide](../docs/mcp/README.md) documents. A client counts as installed when its own directory
+exists; one that is not installed is not offered. What the screen says about a client is read from
+the client's file every time, never remembered.
+
+| Client | Its file | The entry | The token |
+|---|---|---|---|
+| Claude Code | `~/.claude.json` | `mcpServers.memini` | variable, or in the file |
+| Codex CLI | `~/.codex/config.toml` | `[mcp_servers.memini]` | variable only |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers.memini` | variable, or in the file |
+| VS Code with GitHub Copilot | `~/.copilot/mcp-config.json` | `mcpServers.memini` | variable, or in the file |
+| Gemini CLI | `~/.gemini/settings.json` | `mcpServers.memini` | variable, or in the file |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers.memini` | variable, or in the file |
+| Zed | `settings.json` of Zed | `context_servers.memini` | in the file only |
+| Cline | `cline_mcp_settings.json` in VS Code's storage of the extension | `mcpServers.memini` | variable, or in the file |
+| OpenCode | `~/.config/opencode/opencode.jsonc` or `opencode.json` | `mcp.memini` (1.x) or `mcp.servers.memini` (2.x) | variable, or in the file |
+
+**Connect**, on a click for one client, asks the server for a read token named for that client
+(`Cursor (Memini desktop)`), limited to the workspace chosen on the screen, and writes the entry.
+The entry is the one the MCP guide documents; a test compares each with the guide. An entry that
+is there already is left as it is, and no token is made: Connect twice changes nothing.
+
+**The token** is passed the safest way the client offers:
+
+- *By the client's own reference to an environment variable* (the default where the client has
+  one). The entry holds no token. The app keeps the token in
+  `~/.config/memini/clients/<client>.token`, a file only the user can read, and the screen shows
+  the line that loads it into the client's variable (`MEMINI_READ_TOKEN_CURSOR`, one variable per
+  client, because each client has its own token). The client must be started from a shell that
+  ran that line. A client started from the Dock or the Start menu does not see it.
+- *In the client's file*, when the user ticks it, and always for Zed, whose configuration takes a
+  literal value only. The app says so before it writes: the first click asks, naming the file. The
+  file is then readable by the user only. Codex CLI is not offered this.
+
+**Disconnect** removes the entry and the token file, and revokes the token the app made. An entry
+made by hand is removed too; the app has no token on record for it and says that none was revoked.
+When the server cannot be reached the entry still goes, the screen says that the token is still
+valid, and offers to revoke it again.
+
+**The rest of the file is kept.** In a JSON file the app changes the bytes of the `memini` member
+and nothing else: comments, order, indentation and line ends stay, and Disconnect after Connect
+gives the file back byte for byte. The Codex file is changed through a TOML editor that keeps the
+rest as it was. Before a change is written, the app checks that the new text says exactly what the
+old text said plus or minus the entry, and refuses otherwise. A file that is not in the client's
+format is refused and left alone, before any token is made. Before its first change the app copies
+the file beside itself as `<file>.memini-backup`; that copy is never overwritten. A file that is a
+link is changed where it points.
 
 ## Components
 
@@ -170,6 +224,7 @@ themes.
 | `StatusBarFrame`, `StatusBarActions` | The bar at the bottom of the window, its details, and its buttons. |
 | `Glyph`, `Icon` | The brand's mark in the colour of its text, and the small line icons. |
 | `StepList` | The steps of a process in their order, each with its state: waiting, running, done or failed. |
+| `Tree`, `TreeItem` | Things inside things: an item has a kind, a title, a count at the end of its line, a description, and the items inside it. |
 
 ## Brand
 
@@ -214,10 +269,22 @@ rule, not around it.
   because the launcher's server can come back on another port.
 - **Plain HTTP to another computer** needs a tick per connection: the token could be read on the
   network.
-- **The app runs one program**, `memini-server`, with one of five fixed argument vectors
-  (`status`, `start`, `stop`, `mcp on`, `mcp off`, each with `--json`), directly and never through
-  a shell. The front end names an action; nothing it sends becomes an argument. A path the user
-  sets must still end in `memini-server`.
+- **The app runs one program**, `memini-server`, with one of seven fixed argument vectors
+  (`status`, `start`, `stop`, `mcp on`, `mcp off`, `bootstrap`, `bootstrap --force`, each with
+  `--json`), directly and never through a shell. The front end names an action; nothing it sends
+  becomes an argument. A path the user sets must still end in `memini-server`. Connecting an agent
+  client runs nothing: the app writes the client's file itself.
+- **A token made for an agent client stays out of the front end too.** Rust asks the server for
+  it, and writes it to the client's token file or, on the user's word, to the client's own file.
+  The front end gets the state of the client; the settings keep the token's id, to revoke it.
+- **An agent client's file is changed on a click, for one client, one entry only.** The front end
+  names a client of a fixed table; no path, address or text of an entry comes from it. What a
+  client's file says is shown and never followed: the app runs no client and no command a file
+  names.
+- **The project map writes one thing**: a whole project, to
+  `PUT /v1/workspaces/{workspace}/projects/{project}`, and only with the version it was read at.
+  Rust refuses a document without `if_version`. Titles and descriptions of the catalog are data:
+  they are shown as text and written back unchanged where the user did not edit them.
 - **The Data screen only reads.** A tool is one of a fixed table of read tools in
   `src-tauri/src/tools.rs`, each with the `GET` route that serves it. The front end names a tool
   and gives values; they become encoded path segments and query pairs of that route and cannot
@@ -277,6 +344,11 @@ change the app reads the status again, because recreating the service can change
   (`~/Library/Application Support/io.github.npavlov.memini` on macOS,
   `~/.config/io.github.npavlov.memini` on Linux, `%APPDATA%\io.github.npavlov.memini` on Windows).
 - Tokens: the keychain, under the service `Memini Desktop`, one entry per connection.
+- For each agent client it connected by a variable: the client's token in
+  `~/.config/memini/clients/<client>.token`, readable by the user only, until Disconnect. The
+  settings keep the id of the token and of the connection it was made with, never the token.
+- Beside each client's file it changed: `<file>.memini-backup`, the file as it was before the
+  app's first change.
 
 ## What was verified
 
@@ -286,16 +358,24 @@ On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3, Rust 1.10
 |---|---|
 | `uv run … python sidecar/freeze.py` | sidecar built; frozen and script print the same JSON |
 | `pnpm typecheck` | no errors |
-| `pnpm test` | 674 tests passed |
+| `pnpm test` | 773 tests passed |
 | `pnpm build` | built |
 | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` | clean |
-| `cargo test --locked` | 72 tests passed |
+| `cargo test --locked` | 110 tests passed |
 | `pnpm tauri build --bundles app -- --locked` | `Memini.app` built, with the launcher inside |
 
 The built front end was also opened in a browser with a stand-in for the Rust side, under the
 production content security policy and with `Object.prototype` frozen as Tauri freezes it: the
 screens rendered without an error, and markup in a server's text stayed text. The launcher's new
 `bootstrap` command was run against a stand-in for Docker.
+
+Connect and Disconnect are tested on a fixture copy of each client's configuration
+(`src-tauri/fixtures/clients/`), and from the command down against a stand-in server that answers
+the two token routes: the entry, the token file and its permissions, the copy made before the
+first change, the one request to make a token and the one to revoke it, and that the token is in
+nothing the front end or the settings get. The project map was opened in the browser check with a
+stand-in catalog: the tree with its counts, an edit, a save the stand-in refused as a version
+conflict, and a save it accepted.
 
 ## What is not done
 
@@ -306,9 +386,21 @@ screens rendered without an error, and markup in a server's text stayed text. Th
   workflow step are written and wait for the first CI run.
 - **The link to Docker's install page is text to copy.** The app opens no link: that would need a
   capability it does not have.
-- **Agent clients in one click** (scenario S16, `memini-qpk.11`) and **the project map** (scenario
-  S12): not started. The MCP screen still gives configuration to copy, and the Project map screen
-  is a placeholder.
+- **No agent client was started against an entry the app wrote.** The entries are the documented
+  ones, and the files were fixtures. A client's own rules can differ from its documentation: which
+  file wins when several exist, whether the file may hold comments, and how a client that is
+  running treats a file changed under it. Claude Code rewrites `~/.claude.json` while it runs, so
+  connect it while it is closed.
+- **Agent clients, what is left out.** Only the user's own configuration of each client is
+  handled, not a project's (`.mcp.json`, `.cursor/mcp.json`), and not a directory moved with
+  `CODEX_HOME` or `COPILOT_HOME`. The version of OpenCode is asked when its file does not tell; the
+  app does not run `opencode --version`. Devin Local and Pi are not offered. The line that loads a
+  token into a client's variable is shown to copy; the app does not edit a shell profile.
+- **The project map was not run against a real server.** It reads `get_catalog` and `get_domain`
+  and writes `put_project` as they are on `main`. Services are shown and not edited, and a project
+  cannot be created or deleted here: an agent writes the first one. Links between services follow
+  the shape of the branch that adds them, which is not merged: they are shown, and sent back with a
+  save so that it does not remove them; check this when that branch lands.
 - **Signing, notarization, published installers and updates.** CI builds unsigned bundles to look
   at; a frozen launcher inside a signed app will need signing too. The application identifier
   should be confirmed before the first release: changing it later moves the settings.
