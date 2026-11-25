@@ -54,6 +54,7 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": ["binaries/memini-server"],
     "targets": ["app", "dmg", "deb", "appimage", "nsis"],
     "icon": [
       "icons/32x32.png",

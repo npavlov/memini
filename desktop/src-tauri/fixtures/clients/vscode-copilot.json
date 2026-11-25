@@ -1,0 +1,9 @@
+{
+	"mcpServers": {
+		"tide-tables": {
+			"type": "http",
+			"url": "https://tides.example/mcp",
+			"tools": ["*"]
+		}
+	}
+}

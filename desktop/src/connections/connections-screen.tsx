@@ -170,6 +170,8 @@ interface SelectionPanelsProps {
 
 function SelectionPanels(props: SelectionPanelsProps): ReactElement | null {
   const { view, info, selection, onSelect, onView } = props;
+  // Counts the clicks on the editor's Test button: a new number shows the test anew.
+  const [round, setRound] = useState(0);
   if (selection === null) {
     return null;
   }
@@ -195,11 +197,17 @@ function SelectionPanels(props: SelectionPanelsProps): ReactElement | null {
         onSelect={(id) => {
           onSelect(id === null ? null : { mode: "saved", id });
         }}
+        onTest={() => {
+          setRound(round + 1);
+        }}
       />
       {saved === null ? null : (
         <>
           <ConnectionToken key={`token:${saved.id}`} connection={saved} onView={onView} />
-          <ConnectionChecker key={`check:${saved.id}:${saved.url}`} connection={saved} />
+          <ConnectionChecker
+            key={`check:${saved.id}:${saved.url}:${String(saved.hasToken)}:${String(round)}`}
+            connection={saved}
+          />
         </>
       )}
     </>

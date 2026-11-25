@@ -28,6 +28,8 @@ export interface ConnectionEditorProps {
   readonly onView: (view: ConnectionsView) => void;
   /** Shows a saved connection after a save, or nothing after a delete or a cancel. */
   readonly onSelect: (id: string | null) => void;
+  /** Runs the test of the saved connection again; its steps are shown below the editor. */
+  readonly onTest: () => void;
 }
 
 function titleOf(form: ConnectionForm, saved: Connection | null): string {
@@ -38,7 +40,7 @@ function titleOf(form: ConnectionForm, saved: Connection | null): string {
 }
 
 export function ConnectionEditor(props: ConnectionEditorProps): ReactElement {
-  const { initial, saved, onView, onSelect } = props;
+  const { initial, saved, onView, onSelect, onTest } = props;
   const backend = useBackend();
   const [form, setForm] = useState(initial);
   const problem = checkConnectionForm(form);
@@ -68,6 +70,7 @@ export function ConnectionEditor(props: ConnectionEditorProps): ReactElement {
           blocked={problem !== null}
           saving={saving}
           removing={removing}
+          onTest={onTest}
           onCancel={() => {
             onSelect(null);
           }}
@@ -94,16 +97,18 @@ interface EditorButtonsProps {
   readonly blocked: boolean;
   readonly saving: Action<void>;
   readonly removing: Action<void>;
+  readonly onTest: () => void;
   readonly onCancel: () => void;
 }
 
 function EditorButtons(props: EditorButtonsProps): ReactElement {
-  const { saved, blocked, saving, removing, onCancel } = props;
+  const { saved, blocked, saving, removing, onTest, onCancel } = props;
   return (
     <Actions>
       <Button variant="primary" submit disabled={blocked || saving.pending}>
         {saved === null ? "Save connection" : "Save changes"}
       </Button>
+      {saved === null ? null : <Button onClick={onTest}>Test connection</Button>}
       {saved === null ? (
         <Button onClick={onCancel}>Cancel</Button>
       ) : (

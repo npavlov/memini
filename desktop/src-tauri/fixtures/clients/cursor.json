@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tide-tables": {
+      "url": "https://tides.example/mcp",
+      "headers": { "Authorization": "Bearer ${env:TIDES_TOKEN}" }
+    }
+  }
+}

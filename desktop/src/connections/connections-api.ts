@@ -46,6 +46,15 @@ export async function clearToken(backend: Backend, id: string): Promise<Connecti
   return parseConnectionsView(await backend.invoke("connection_token_clear", { id }));
 }
 
+/**
+ * The quick check the status bar repeats: whether the server answers and accepts the token. A
+ * server that does not answer is part of the answer, not a rejection.
+ */
 export async function checkConnection(backend: Backend, id: string): Promise<ConnectionCheck> {
-  return parseConnectionCheck(await backend.invoke("connection_check", { id }));
+  return parseConnectionCheck(await backend.invoke("connection_check", { id, scopes: false }));
+}
+
+/** The full test of a connection: the quick check, and the token's scopes where the API tells them. */
+export async function testConnection(backend: Backend, id: string): Promise<ConnectionCheck> {
+  return parseConnectionCheck(await backend.invoke("connection_check", { id, scopes: true }));
 }

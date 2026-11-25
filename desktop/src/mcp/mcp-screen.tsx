@@ -22,18 +22,23 @@ import type { LauncherStatus } from "../server/launcher";
 import { readLauncherStatus } from "../server/launcher-api";
 import { movedLocalAddress } from "../server/local-address";
 import { useLoad } from "../hooks/use-load";
+import { AgentClientsPanel } from "./agent-clients-panel";
+import type { AgentClientsPanelProps } from "./agent-clients-panel";
 import { ClientGuides } from "./client-guides";
 import {
   describeEndpoint,
   endpointAddress,
   launcherEndpointState,
   probeEndpoint,
+  switchUnavailable,
 } from "./mcp-endpoint";
 import type { EndpointState } from "./mcp-endpoint";
 import { McpSwitch } from "./mcp-switch";
 
 export interface McpScreenProps {
   readonly connection: Connection;
+  /** What keeps the connection from its data, if anything, and the way to the token. */
+  readonly token: AgentClientsPanelProps["token"];
 }
 
 interface Endpoint {
@@ -63,7 +68,7 @@ async function readEndpoint(backend: Backend, connection: Connection): Promise<E
   return { launcher, state };
 }
 
-export function McpScreen({ connection }: McpScreenProps): ReactElement {
+export function McpScreen({ connection, token }: McpScreenProps): ReactElement {
   const backend = useBackend();
   const endpoint = useLoad(
     useCallback(() => readEndpoint(backend, connection), [backend, connection]),
@@ -73,7 +78,7 @@ export function McpScreen({ connection }: McpScreenProps): ReactElement {
   return (
     <Screen
       title="MCP"
-      lead="The address agents connect to, whether it is on, and configuration to paste into a client."
+      lead="The address agents connect to, whether it is on, the agent clients on this computer, and configuration to paste into any other."
     >
       <Panel
         title="Endpoint"
@@ -92,9 +97,15 @@ export function McpScreen({ connection }: McpScreenProps): ReactElement {
         {endpoint.state.phase === "loading" ? <Text tone="muted">Asking the server…</Text> : null}
         {endpoint.state.phase === "failed" ? <ErrorNotice error={endpoint.state.error} /> : null}
         {loaded === null ? null : (
-          <EndpointReport connection={connection} endpoint={loaded} onChanged={endpoint.reload} />
+          <EndpointReport
+            connection={connection}
+            endpoint={loaded}
+            reading={endpoint.busy}
+            onChanged={endpoint.reload}
+          />
         )}
       </Panel>
+      <AgentClientsPanel connection={connection} token={token} />
       {address === null ? null : <ClientGuides address={address} />}
     </Screen>
   );
@@ -103,12 +114,14 @@ export function McpScreen({ connection }: McpScreenProps): ReactElement {
 interface EndpointReportProps {
   readonly connection: Connection;
   readonly endpoint: Endpoint;
+  /** The endpoint is being asked again. */
+  readonly reading: boolean;
   readonly onChanged: () => void;
 }
 
-function EndpointReport({ connection, endpoint, onChanged }: EndpointReportProps): ReactElement {
+function EndpointReport({ connection, endpoint, reading, onChanged }: EndpointReportProps): ReactElement {
   const summary = describeEndpoint(endpoint.state);
-  const switchable = endpoint.launcher !== null && endpoint.state !== "unknown";
+  const unavailable = switchUnavailable(connection, endpoint.launcher);
   const moved = movedLocalAddress(connection, endpoint.launcher);
   return (
     <>
@@ -131,14 +144,15 @@ function EndpointReport({ connection, endpoint, onChanged }: EndpointReportProps
           </Text>
         ) : null}
       </Notice>
-      {switchable ? (
-        <McpSwitch on={endpoint.state === "on"} onChanged={onChanged} />
+      {endpoint.state === "unknown" ? (
+        <Text tone="muted">{unavailable ?? "The state of the endpoint is not known, so it cannot be switched."}</Text>
       ) : (
-        <Text tone="muted">
-          {connection.kind === "local"
-            ? "The switch needs the memini-server launcher; see the Server screen."
-            : "The switch is on the computer that runs the server: its operator sets it."}
-        </Text>
+        <McpSwitch
+          on={endpoint.state === "on"}
+          unavailable={unavailable}
+          reading={reading}
+          onChanged={onChanged}
+        />
       )}
     </>
   );

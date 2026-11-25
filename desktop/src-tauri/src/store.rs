@@ -16,6 +16,7 @@
 //!   moves between addresses on this computer, because the launcher's server can come back on
 //!   another port.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -83,6 +84,17 @@ pub struct Settings {
     pub active_id: Option<String>,
     #[serde(default)]
     pub connections: Vec<Connection>,
+    /// The token the app made for each agent client it connected, by the client's id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub clients: BTreeMap<String, ClientLink>,
+}
+
+/// Which token the app made for an agent client: its id, never the token.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClientLink {
+    /// The saved connection of the server the token is of.
+    pub connection_id: String,
+    pub token_id: String,
 }
 
 /// What the webview gets of the settings' connections.

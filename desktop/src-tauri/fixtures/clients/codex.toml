@@ -1,0 +1,10 @@
+# Settings of the terminal agent.
+model = "harbour-large"
+approval_policy = "on-request"
+
+[mcp_servers.tide-tables]
+url = "https://tides.example/mcp"
+bearer_token_env_var = "TIDES_TOKEN"
+
+[tui]
+notifications = true

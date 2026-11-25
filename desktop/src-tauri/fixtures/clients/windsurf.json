@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "tide-tables": {
+            "serverUrl": "https://tides.example/mcp"
+        },
+        "berth-plan": {
+            "command": "berth-plan",
+            "args": ["--stdio"]
+        }
+    }
+}

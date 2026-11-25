@@ -9,17 +9,23 @@
 //! - [`launcher`]: finding and running `memini-server`, and reading its JSON.
 //! - [`keychain`]: tokens in the operating system's keychain.
 //! - [`store`]: the settings file with the saved connections; no secrets.
+//! - [`clients`], [`jsonc`]: the agent clients on this computer, and the one entry the app
+//!   keeps in each client's own configuration.
 //! - [`tools`]: the read tools the Data screen may run, and the request a call becomes.
 //! - [`secret`], [`error`]: the token type that cannot be serialized, and the error shape whose
 //!   text is masked before it leaves Rust.
 
 mod api;
+mod clients;
 mod commands;
 mod error;
+mod jsonc;
 mod keychain;
 mod launcher;
 mod secret;
 mod store;
+#[cfg(test)]
+mod stub;
 mod tools;
 
 use tauri::Manager;
@@ -44,20 +50,27 @@ pub fn run() {
             commands::connection_token_from_clipboard,
             commands::connection_token_from_file,
             commands::connection_token_clear,
-            commands::connection_check,
+            commands::checking::connection_check,
             commands::api_status,
             commands::api_workspaces,
             commands::api_sources,
+            commands::api_catalog,
+            commands::api_domain,
+            commands::api_project_put,
             commands::api_tools,
             commands::api_tool_call,
             commands::api_tokens_list,
             commands::api_token_create,
             commands::api_token_revoke,
             commands::mcp_probe,
+            commands::agent_clients::clients_list,
+            commands::agent_clients::client_connect,
+            commands::agent_clients::client_disconnect,
             commands::launcher_info,
             commands::launcher_set_path,
             commands::launcher_status,
             commands::launcher_change,
+            commands::launcher_setup_token,
         ])
         .run(tauri::generate_context!())
         .expect("the Memini desktop app could not start");

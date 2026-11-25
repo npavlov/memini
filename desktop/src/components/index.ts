@@ -42,6 +42,8 @@ export { Pill } from "./pill";
 export type { PillProps } from "./pill";
 export { StatusBarActions, StatusBarFrame } from "./status-bar";
 export type { StatusBarActionsProps, StatusBarFrameProps } from "./status-bar";
+export { StepList } from "./step-list";
+export type { Step, StepListProps, StepState } from "./step-list";
 export { Actions, Card, EmptyState, Mono, Panel, Screen, Section } from "./surfaces";
 export type {
   ActionsProps,
@@ -52,4 +54,8 @@ export type {
   ScreenProps,
   SectionProps,
 } from "./surfaces";
+export { Toggle } from "./toggle";
+export type { ToggleProps } from "./toggle";
 export type { Tone } from "./tone";
+export { Tree, TreeItem } from "./tree";
+export type { TreeItemProps, TreeProps } from "./tree";

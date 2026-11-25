@@ -15,16 +15,23 @@ const COMMANDS: &[&str] = &[
     "api_status",
     "api_workspaces",
     "api_sources",
+    "api_catalog",
+    "api_domain",
+    "api_project_put",
     "api_tools",
     "api_tool_call",
     "api_tokens_list",
     "api_token_create",
     "api_token_revoke",
     "mcp_probe",
+    "clients_list",
+    "client_connect",
+    "client_disconnect",
     "launcher_info",
     "launcher_set_path",
     "launcher_status",
     "launcher_change",
+    "launcher_setup_token",
 ];
 
 fn main() {

@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { Button, ErrorNotice, Fact, Facts, Field, Form, Mono, Panel, TextInput } from "../components";
 import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
+import { describeSource } from "./launcher";
 import type { LauncherInfo } from "./launcher";
 import { setLauncherPath } from "./launcher-api";
 
@@ -13,8 +14,9 @@ export interface LauncherPathProps {
 }
 
 /**
- * Where the launcher is. The app looks on PATH and where Homebrew and Scoop install; a path set
- * here must still name memini-server, the one program the app runs.
+ * Where the launcher is. The app carries its own; without it, it looks on PATH and where Homebrew
+ * and Scoop install. A path set here wins over both and must still name memini-server, the one
+ * program the app runs.
  */
 export function LauncherPath({ launcher, onLauncher }: LauncherPathProps): ReactElement {
   const backend = useBackend();
@@ -35,12 +37,10 @@ export function LauncherPath({ launcher, onLauncher }: LauncherPathProps): React
         <Fact name="In use">
           {launcher.resolvedPath === null ? "not found" : <Mono>{launcher.resolvedPath}</Mono>}
         </Fact>
-        <Fact name="Found by">
-          {launcher.configuredPath === null ? "PATH and the package managers’ folders" : "the path set here"}
-        </Fact>
+        <Fact name="It comes from">{describeSource(launcher.source)}</Fact>
       </Facts>
       <Form inline onSubmit={() => saving.run(empty ? null : path)}>
-        <Field label="Full path of memini-server, if it is somewhere else" grow>
+        <Field label="Full path of another memini-server, to use instead" grow>
           <TextInput
             kind="code"
             value={path}
@@ -49,7 +49,7 @@ export function LauncherPath({ launcher, onLauncher }: LauncherPathProps): React
           />
         </Field>
         <Button submit disabled={saving.pending}>
-          {empty ? "Look on PATH" : "Use this path"}
+          {empty ? "Use the app’s own" : "Use this path"}
         </Button>
       </Form>
       <ErrorNotice error={saving.error} />
