@@ -913,6 +913,56 @@ async def test_a_sync_with_nothing_to_write_reports_no_files(env: Env) -> None:
     }
 
 
+async def test_a_first_sync_commits_early_and_keeps_its_work_when_it_stops(env: Env) -> None:
+    env.repo.commit(
+        {
+            "src/a.py": module(function("alpha", 1)),
+            "src/b.py": module(function("beta", 2)),
+            "src/c.py": module(function("gamma", 3)),
+            "src/d.py": module(function("delta", 4)),
+        }
+    )
+    src = await add_source(env)
+    # No time to write before a commit: every file of the one batch commits on its own.
+    early = SyncLimits(commit_seconds=0)
+
+    with pytest.raises(EmbeddingError):
+        await sync(env, src, embedder=FlakyEmbedder(fail_at=3), limits=early)
+
+    stopped = await last_run(env, src)
+    assert progress(stopped) == {
+        "files_total": 4,
+        "files_processed": 2,
+        "files_committed": 2,
+        "batches": 1,
+        "batch": 1,
+    }
+    assert sorted(await live(env, src)) == [f"{MAIN}:src/a.py", f"{MAIN}:src/b.py"]
+    assert (await stream_row(env, src))[0] is None  # no pin until the last file is written
+    await assert_consistent(env, src)
+
+    run = await sync(env, src, limits=early)
+
+    assert run["status"] == "succeeded", run["error"]
+    assert file_counts(run)["files_unchanged"] == 2  # a.py and b.py are not embedded again
+    assert file_counts(run)["files_added"] == 2
+    await assert_consistent(env, src)
+
+
+async def test_a_diff_stays_all_or_nothing_whatever_the_commit_time(env: Env) -> None:
+    src, _ = await start_with_four_files(env)
+    cursor, checked_until = await stream_row(env, src)
+    before = await records(env, src)
+    change_three_delete_one(env.repo)
+
+    with pytest.raises(EmbeddingError):
+        await sync(env, src, embedder=FlakyEmbedder(fail_at=3), limits=SyncLimits(commit_seconds=0))
+
+    assert await stream_row(env, src) == (cursor, checked_until)
+    assert await records(env, src) == before
+    await assert_consistent(env, src)
+
+
 async def test_a_failed_read_of_a_later_batch_keeps_what_was_committed(env: Env) -> None:
     src, _ = await start_with_four_files(env)
     cursor, _ = await stream_row(env, src)

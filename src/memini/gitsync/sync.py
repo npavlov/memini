@@ -37,6 +37,13 @@ Transactions
     embedding nothing twice. A record and its chunks always change in one transaction, so no file
     is ever half written and no tombstone keeps chunks.
 
+    A full listing (a first sync, or one after the rules changed) also commits a transaction once
+    it has written for :attr:`SyncLimits.commit_seconds`, with the rest of its batch in the next
+    one. On a computer without a GPU a batch of a hundred files is embedded for half an hour, and
+    a sync stopped before its commit (an edit of the source, a restart) lost all of it; now it
+    loses at most that many seconds, since the next sync lists the ref and skips what committed.
+    A diff keeps one transaction per batch, so a small change stays all or nothing.
+
     The pin moves by compare-and-set on the cursor the sync started from; a stream changed by
     anyone else in between rolls the last transaction back.
 
@@ -68,6 +75,7 @@ A ref that is gone
 """
 
 import logging
+import time
 from collections import Counter
 from collections.abc import AsyncGenerator, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager
@@ -122,12 +130,18 @@ class SyncLimits:
     batch_files: int = 100
     batch_bytes: int = 8 * 1024**2
     history_commits: int = 1000
+    commit_seconds: float = 30.0
+    """In a full listing, how long one transaction writes before it commits with files of its
+    batch left: a first sync on a computer without a GPU embeds a batch for half an hour, and a
+    stop before its commit lost all of it."""
 
     def __post_init__(self) -> None:
         if self.batch_files < 1 or self.batch_bytes < 1:
             raise ValueError("a batch holds at least one file and one byte")
         if self.history_commits < 1:
             raise ValueError("a sync looks at least one commit back")
+        if self.commit_seconds < 0:
+            raise ValueError("a transaction writes for at least 0 seconds")
 
 
 DEFAULT_LIMITS: Final = SyncLimits()
@@ -494,6 +508,9 @@ class _Tally:
     deleted: int = 0
     binary: int = 0
     index: IndexCounts = field(default_factory=IndexCounts)
+    binary_live: list[str] = field(default_factory=list[str])
+    """Live records of files that turned out binary: they become tombstones in the same
+    transaction."""
 
     def tombstoned(self, done: tuple[int, IndexCounts]) -> None:
         records, counts = done
@@ -553,6 +570,57 @@ def _int(value: JsonValue) -> int:
     return value if isinstance(value, int) else 0
 
 
+async def _write_files(
+    conn: Conn,
+    embedder: Embedder,
+    *,
+    source: GitSource,
+    stream: GitStream,
+    files: Sequence[tuple[_File, FileChunks]],
+    occurred_at: Mapping[str, datetime],
+    step: _Tally,
+    progress: "_Progress",
+    deadline: float | None,
+) -> int:
+    """Write files of ``files`` in the caller's transaction, in order, until all are written or
+    ``deadline`` (a :func:`time.monotonic` time) has passed with files left. Returns how many were
+    taken; binary files among them are only counted, and their live records returned in
+    ``step``'s tally through the caller."""
+    taken = 0
+    for file, chunks in files:
+        taken += 1
+        if chunks.fallback == "binary":
+            step.binary += 1
+            if file.live:
+                step.binary_live.append(file.record_id)
+        else:
+            await conn.execute(
+                _UPSERT_RECORD,
+                (
+                    file.record_id,
+                    source.workspace_id,
+                    source.owner_id,
+                    source.id,
+                    stream.id,
+                    file.kind,
+                    code_external_id(stream.key, file.path),
+                    file.oid,
+                    occurred_at[file.path],
+                ),
+            )
+            step.index += await index_record(
+                conn, embedder, record_id=file.record_id, path=file.path, chunks=chunks
+            )
+            if file.live:
+                step.changed += 1
+            else:
+                step.added += 1
+        await progress.file_done()
+        if deadline is not None and time.monotonic() >= deadline and taken < len(files):
+            break
+    return taken
+
+
 async def _apply(
     conn: Conn,
     mirrors: MirrorManager,
@@ -566,7 +634,13 @@ async def _apply(
     occurred_at: Mapping[str, datetime],
     checked_until: datetime,
     limits: SyncLimits,
+    early_commits: bool,
 ) -> _Tally:
+    """Write the plan batch by batch, each batch in transactions of its own; the last one moves
+    the pin. With ``early_commits`` (a full listing: a first sync, or one after the rules
+    changed), a transaction also commits once ``limits.commit_seconds`` of writing have passed,
+    and the rest of its batch goes to the next one, so a long first sync keeps its work if it
+    stops (see the module)."""
     tally = _Tally()
     run = current_run()
     batches = list(_batches(plan.writes, limits)) or [[]]
@@ -575,86 +649,74 @@ async def _apply(
     progress = _Progress(len(plan.writes), len(batches) if plan.writes else 0)
     await progress.start()
     for number, batch in enumerate(batches, start=1):
-        last = number == len(batches)
+        last_batch = number == len(batches)
         if batch:
             await progress.batch(number)
         prepared = await _prepare(mirrors, mirror, batch) if batch else []
-        step = _Tally()
-        try:
-            async with conn.transaction():
-                binary: list[str] = []
-                for file, chunks in prepared:
-                    if chunks.fallback == "binary":
-                        step.binary += 1
-                        if file.live:
-                            binary.append(file.record_id)
-                        await progress.file_done()
-                        continue
-                    await conn.execute(
-                        _UPSERT_RECORD,
-                        (
-                            file.record_id,
-                            source.workspace_id,
-                            source.owner_id,
-                            source.id,
-                            stream.id,
-                            file.kind,
-                            code_external_id(stream.key, file.path),
-                            file.oid,
-                            occurred_at[file.path],
-                        ),
+        done = 0
+        while True:
+            step = _Tally()
+            deadline = time.monotonic() + limits.commit_seconds if early_commits else None
+            try:
+                async with conn.transaction():
+                    taken = await _write_files(
+                        conn,
+                        embedder,
+                        source=source,
+                        stream=stream,
+                        files=prepared[done:],
+                        occurred_at=occurred_at,
+                        step=step,
+                        progress=progress,
+                        deadline=deadline,
                     )
-                    step.index += await index_record(
-                        conn, embedder, record_id=file.record_id, path=file.path, chunks=chunks
-                    )
-                    if file.live:
-                        step.changed += 1
-                    else:
-                        step.added += 1
-                    await progress.file_done()
-                if binary:
-                    step.tombstoned(await _tombstone(conn, _TOMBSTONE, (binary,)))
-                if last:
-                    if plan.tombstones:
-                        gone = list(plan.tombstones)
-                        step.tombstoned(await _tombstone(conn, _TOMBSTONE, (gone,)))
-                    step.tombstoned(await _tombstone(conn, _UNTRACKED, (source.id,)))
-                    if plan.relinks:
-                        await conn.execute(
-                            "UPDATE record SET stream_id = %s WHERE id = ANY(%s)",
-                            (stream.id, plan.relinks),
+                    final = last_batch and done + taken == len(prepared)
+                    if step.binary_live:
+                        step.tombstoned(await _tombstone(conn, _TOMBSTONE, (step.binary_live,)))
+                    if final:
+                        if plan.tombstones:
+                            gone = list(plan.tombstones)
+                            step.tombstoned(await _tombstone(conn, _TOMBSTONE, (gone,)))
+                        step.tombstoned(await _tombstone(conn, _UNTRACKED, (source.id,)))
+                        if plan.relinks:
+                            await conn.execute(
+                                "UPDATE record SET stream_id = %s WHERE id = ANY(%s)",
+                                (stream.id, plan.relinks),
+                            )
+                        cur = await conn.execute(
+                            _MOVE_PIN, (Jsonb(pin.to_json()), checked_until, stream.id, expected)
                         )
-                    cur = await conn.execute(
-                        _MOVE_PIN, (Jsonb(pin.to_json()), checked_until, stream.id, expected)
-                    )
-                    if cur.rowcount != 1:
-                        raise StreamChangedError(f"stream {stream.id} changed while it synced")
-                elif previous is not None and not previous.partial:
-                    # Records past the pin are about to commit: if the sync stops before the pin
-                    # moves, the next one must compare everything, not diff from the pin.
-                    marked = Pin(previous.commit, previous.rules, partial=True).to_json()
-                    cur = await conn.execute(_MOVE_CURSOR, (Jsonb(marked), stream.id, expected))
-                    if cur.rowcount != 1:
-                        raise StreamChangedError(f"stream {stream.id} changed while it synced")
-                    expected, previous = Jsonb(marked), read_pin(marked)
-        except BaseException:
-            await progress.rolled_back()
-            raise
-        await progress.committed(len(batch))
-        # The batch has committed: only now do its counts go to the run report.
-        tally.added += step.added
-        tally.changed += step.changed
-        tally.deleted += step.deleted
-        tally.binary += step.binary
-        tally.index += step.index
-        step.index.report()
-        if run is not None:
-            run.count("files_added", step.added)
-            run.count("files_changed", step.changed)
-            run.count("files_deleted", step.deleted)
-            if step.binary:
-                run.count("files_skipped", step.binary)
-                run.count("files_skipped_binary", step.binary)
+                        if cur.rowcount != 1:
+                            raise StreamChangedError(f"stream {stream.id} changed while it synced")
+                    elif previous is not None and not previous.partial:
+                        # Records past the pin are about to commit: if the sync stops before the
+                        # pin moves, the next one must compare everything, not diff from the pin.
+                        marked = Pin(previous.commit, previous.rules, partial=True).to_json()
+                        cur = await conn.execute(_MOVE_CURSOR, (Jsonb(marked), stream.id, expected))
+                        if cur.rowcount != 1:
+                            raise StreamChangedError(f"stream {stream.id} changed while it synced")
+                        expected, previous = Jsonb(marked), read_pin(marked)
+            except BaseException:
+                await progress.rolled_back()
+                raise
+            done += taken
+            await progress.committed(taken)
+            # The transaction has committed: only now do its counts go to the run report.
+            tally.added += step.added
+            tally.changed += step.changed
+            tally.deleted += step.deleted
+            tally.binary += step.binary
+            tally.index += step.index
+            step.index.report()
+            if run is not None:
+                run.count("files_added", step.added)
+                run.count("files_changed", step.changed)
+                run.count("files_deleted", step.deleted)
+                if step.binary:
+                    run.count("files_skipped", step.binary)
+                    run.count("files_skipped_binary", step.binary)
+            if done >= len(prepared):
+                break
     return tally
 
 
@@ -835,6 +897,7 @@ async def sync_stream(
             occurred_at=occurred_at,
             checked_until=checked_until,
             limits=limits,
+            early_commits=listed,
         )
     skipped = Counter(plan.skipped)
     if tally.binary:

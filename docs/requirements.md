@@ -1643,7 +1643,12 @@ the pin and `checked_until` (the database time before the fetch), so a small cha
 nothing (principle 7). A larger one commits batch by batch and marks the pin partial first: a
 failure leaves the old pin, every record agrees with its chunks, and the next sync lists the ref in
 full and embeds nothing twice. One big transaction was not chosen: a first sync embeds for minutes
-to hours, and a failure at its end would throw all of that away. While the files are written, the
+to hours, and a failure at its end would throw all of that away. For the same reason a full listing
+(a first sync, or one after the rules changed) also commits a transaction after
+`commit_seconds` (30) of writing, with the rest of its batch in the next one (decided 2026-11-25):
+on the owner's laptop, without a GPU, one batch of a hundred files was embedded for over half an
+hour, and two first syncs stopped by an edit and a restart kept nothing. A diff keeps one
+transaction per batch, so a small change stays all or nothing. While the files are written, the
 run report says how far it is (`details.progress`, decided 2026-11-25, S18): the files the sync
 writes, those read, chunked and embedded so far, those committed, and the batch it is at. It is
 saved from the run's own connection every few seconds, outside the sync's transactions, so a
