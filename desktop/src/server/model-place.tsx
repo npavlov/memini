@@ -1,7 +1,18 @@
 import { useCallback, useEffect } from "react";
 import type { ReactElement } from "react";
 
-import { Actions, Button, CodeBlock, ConfirmButton, CopyButton, ErrorNotice, Mono, Notice, Text } from "../components";
+import {
+  Actions,
+  Button,
+  CodeBlock,
+  ConfirmButton,
+  CopyButton,
+  ErrorNotice,
+  Mono,
+  Notice,
+  ProgressBar,
+  Text,
+} from "../components";
 import { useAction } from "../hooks/use-action";
 import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
@@ -69,7 +80,12 @@ export function ModelPlace({ runtime, onMoved }: ModelPlaceProps): ReactElement 
         <InDocker host={found} disabled={busy} onMove={() => moving.run("host")} onInstall={() => installing.run()} />
       )}
       {busy && found.pull !== null && !found.pull.done ? (
-        <Text tone="muted">{describePull(found.pull, found.model)}</Text>
+        <ProgressBar
+          label="Download of the search model"
+          value={found.pull.completed}
+          max={found.pull.total}
+          detail={describePull(found.pull, found.model)}
+        />
       ) : null}
       {installing.pending ? <Text tone="muted">Homebrew is installing Ollama…</Text> : null}
       {found.install !== null && !found.install.ok && found.install.tail.length > 0 ? (

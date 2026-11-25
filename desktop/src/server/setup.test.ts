@@ -341,6 +341,9 @@ describe("runSetup on a Mac", () => {
 
     expect(looks).toBeGreaterThan(1);
     expect(result.progress.some((step) => step.note?.includes("50%, 320 of 639 MB"))).toBe(true);
+    expect(result.progress).toContainEqual(
+      expect.objectContaining({ download: { completed: 319_500_000, total: 639_000_000 } }),
+    );
     expect(result.commands).toContain("host_model_pull");
     expect(result.returned).toBe(true);
   });

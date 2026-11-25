@@ -67,6 +67,8 @@ export interface SetupProgress {
   readonly failure: string | null;
   /** What the running step reports of itself, such as how far a download is. */
   readonly note?: string | null;
+  /** The bytes of a download the running step waits for, for a progress bar. */
+  readonly download?: { readonly completed: number; readonly total: number } | null;
 }
 
 export const NOT_STARTED: SetupProgress = { at: null, failure: null };

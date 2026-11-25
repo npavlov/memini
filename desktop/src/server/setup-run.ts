@@ -69,7 +69,12 @@ async function pullWithProgress(backend: Backend, run: SetupRun, model: string):
     }
     const now = await readHostModel(backend);
     if (now.pull !== null) {
-      run.onProgress({ at: "model", failure: null, note: describePull(now.pull, model) });
+      run.onProgress({
+        at: "model",
+        failure: null,
+        note: describePull(now.pull, model),
+        download: { completed: now.pull.completed, total: now.pull.total },
+      });
     }
   }
   return pulling;

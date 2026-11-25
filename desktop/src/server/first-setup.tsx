@@ -11,6 +11,7 @@ import {
   Mono,
   Notice,
   Panel,
+  ProgressBar,
   StepList,
   Text,
 } from "../components";
@@ -82,6 +83,13 @@ export function FirstSetup(props: FirstSetupProps): ReactElement {
         than in Docker. No terminal is needed.
       </Text>
       <StepList steps={setupSteps(progress, servicesSeen)} />
+      {progress.at === "model" && progress.failure === null && progress.download ? (
+        <ProgressBar
+          label="Download of the search model"
+          value={progress.download.completed}
+          max={progress.download.total}
+        />
+      ) : null}
       {stopped.docker === null ? null : <DockerHelp advice={stopped.docker} />}
       {stopped.ollama === null ? null : (
         <OllamaHelp
