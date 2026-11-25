@@ -3,7 +3,7 @@
 
 import { readArray, readBoolean, readObject, readString } from "../json/read-json";
 import { displayText } from "../text/display-text";
-import type { Tone } from "../ui/tone";
+import type { Tone } from "../components";
 
 export interface ServiceState {
   readonly name: string;

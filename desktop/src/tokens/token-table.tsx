@@ -1,14 +1,11 @@
 import { useCallback } from "react";
 import type { ReactElement } from "react";
 
+import { ConfirmButton, DataTable, ErrorNotice, Mono, Pill, Text } from "../components";
 import type { Connection } from "../connections/connections";
+import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
 import { formatInstant } from "../text/format-time";
-import { ConfirmButton } from "../ui/confirm-button";
-import { DataTable } from "../ui/data-table";
-import { ErrorNotice } from "../ui/notice";
-import { Pill } from "../ui/pill";
-import { useAction } from "../ui/use-action";
 import { tokenTone } from "./tokens";
 import type { TokenInfo } from "./tokens";
 import { revokeToken } from "./tokens-api";
@@ -41,7 +38,7 @@ export function TokenTable({ connection, tokens, onChanged }: TokenTableProps): 
   );
   const revoking = useAction(revoke);
   if (tokens.length === 0) {
-    return <p className="muted">The server lists no token this one may see.</p>;
+    return <Text tone="muted">The server lists no token this one may see.</Text>;
   }
   return (
     <>
@@ -71,7 +68,7 @@ function TokenRow({ token, disabled, onRevoke }: TokenRowProps): ReactElement {
     <tr>
       <th scope="row">{token.name}</th>
       <td>
-        <code>{token.prefix}…</code>
+        <Mono>{token.prefix}…</Mono>
       </td>
       <td>{token.scopes.join(", ")}</td>
       <td>{token.workspace ?? "every workspace"}</td>

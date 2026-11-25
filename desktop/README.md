@@ -79,9 +79,13 @@ signed.
 ```
 desktop/
   src/                  the front end, by feature
+    components/         the component library: every control and surface, the tokens, the fonts
+    hooks/              loading data and running an action, shared by the screens
     ipc/                the one bridge to the Rust side, and the error shape
-    connections/  server/  mcp/  tokens/  data/  status/  project-map/
-    json/  text/  ui/   readers for outside values, text made safe to show, shared components
+    connections/  server/  mcp/  tokens/  data/  status/  project-map/   the screens
+    json/  text/        readers for outside values, text made safe to show
+  brand-src/            the mark: icon.svg for the app icon, glyph.svg for the sidebar
+  public/licenses/      the licence notices of the bundled fonts, shipped with the app
   src-tauri/
     src/commands.rs     the commands the front end may call
     src/api.rs          the HTTP client of the Memini API
@@ -97,6 +101,90 @@ desktop/
 A new command is added in three places, or it cannot be called: the function in
 `src-tauri/src/commands.rs` and its registration in `src-tauri/src/lib.rs`, the list in
 `src-tauri/build.rs`, and `allow-<command>` in `src-tauri/capabilities/main-window.json`.
+
+## Components
+
+Every screen is built from the component library in `src/components/`, imported through its one
+entry point, `src/components/index.ts`.
+
+**The rule.** Reuse an existing component. If one is close, change or extend it with a prop or a
+variant before making a new one. Create a new component only when none fits; it then goes into
+`src/components/`, is exported from `index.ts`, comes with its test beside it, and is added to the
+catalog below in the same change.
+
+What follows from it, and what `src/components/library-rule.test.ts` checks on the source:
+
+- A file outside `src/components/` holds no raw `<button>`, `<input>`, `<select>`, `<textarea>`,
+  `<table>`, `<label>`, `<fieldset>`, `<form>`, `<pre>` or `<svg>`, and no styling of its own: no
+  `className`, no inline `style`, no style sheet. When the test fails, fix the screen, not the test.
+- Components are imported from `src/components` only, never from a file inside it. The entry file
+  `src/main.tsx` alone loads the library's style sheets.
+- Every component of the library is exported from `index.ts` and has a test beside its file.
+
+**Tokens.** Colours, radii, shadows and fonts are CSS variables in `src/components/tokens.css`,
+for the light and the dark theme. `components.css` styles every component from them, and no other
+file writes a colour, a radius or a shadow. `src/components/tokens.test.ts` checks that, and that
+every text colour has a contrast of at least 4.5 to 1 against each ground it stands on, in both
+themes.
+
+**The catalog.**
+
+| Component | What it is for |
+|---|---|
+| `Button` | Every button. One size; the variant (`secondary`, `primary`, `danger`) changes colours only. `submit` for the button of a form. |
+| `IconButton` | A square button that shows an icon and names itself for a screen reader. |
+| `ConfirmButton` | An action that cannot be taken back: the first click asks, the second acts. |
+| `CopyButton` | Copies a text through the Rust side and says that it did; `secret` for a token. |
+| `TextInput` | A line of text: `prose`, `code` (an address, a path, an id: mono, uncorrected) or `number`. |
+| `TextArea` | Several lines of literal text, such as a list with one value per line. |
+| `Select` | One of several options. |
+| `Checkbox` | A box to tick, with its words. |
+| `Field` | A control with its label, a note beside the label and a hint under the control. |
+| `FieldGroup` | Several controls that answer one question, under a legend. |
+| `Form` | A form that calls `onSubmit` and never navigates; `inline` for a field with its button. |
+| `Screen` | The frame of a screen: its name and one sentence on what it is for. |
+| `Panel` | A titled surface for one subject of a screen, with actions beside the title. |
+| `Section` | A part of a panel with a heading of its own. |
+| `Card` | One item of a list of results. |
+| `EmptyState` | What stands where there is nothing to show yet. |
+| `Notice`, `ErrorNotice` | A message about a state, by tone; an error of a command with its advice and reference. |
+| `Pill` | A status chip: a few words coloured by their tone. |
+| `DataTable` | A table with headed columns that scrolls sideways instead of the page. |
+| `Facts`, `Fact` | A list of named values. |
+| `CodeBlock` | Literal text in mono, with a copy button when labelled; `wrap`, `bounded`, `secret`. |
+| `Tabs` | A row of choices of which one is shown. |
+| `RowList`, `SelectableRow` | A list from which one item is chosen. |
+| `Text` | A paragraph or a run of text: `muted`, `hint`, `failure`, `small`, `inline`. |
+| `Mono` | An address, a path or another literal value, in the mono font. |
+| `Actions`, `Stack`, `Columns`, `FieldGrid`, `NoWrap` | Layout: a row of buttons, things one under the other, two fields side by side, a grid of fields, a value kept on one line. |
+| `AppFrame`, `Splash` | The window: sidebar, screen and status bar; and what it shows before the app has loaded. |
+| `Sidebar`, `Brand`, `NavItem` | The navigation: the glyph and the name, and one item per screen. |
+| `StatusBarFrame`, `StatusBarActions` | The bar at the bottom of the window, its details, and its buttons. |
+| `Glyph`, `Icon` | The brand's mark in the colour of its text, and the small line icons. |
+
+## Brand
+
+The brand is direction B, "Meander". Its sources are in `brand-src/`:
+
+- `icon.svg` is the app icon. The icon set in `src-tauri/icons/` is generated from it and never
+  edited by hand:
+
+  ```sh
+  pnpm tauri icon brand-src/icon.svg
+  ```
+
+  The command also writes icons for mobile and for the Windows Store, which the desktop bundles do
+  not use; keep `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns`, `icon.ico` and
+  `icon.png` and remove the rest.
+- `glyph.svg` is the mark in one colour. The `Glyph` component reads its drawing from this file
+  when the app is built, so the sidebar follows the file.
+
+The interface is set in IBM Plex Sans; the name, code, paths and addresses in IBM Plex Mono. The
+font files are bundled with the app from the pinned `@fontsource` packages (Latin, extended Latin
+and Cyrillic; `src/components/fonts.css`), because the content security policy allows no remote
+font. Both families are licensed under the SIL Open Font License 1.1; their notices are in
+`public/licenses/` and are shipped inside the app. `src/components/fonts.test.ts` keeps the notices
+equal to the packages' own.
 
 ## Security rules
 
@@ -166,17 +254,19 @@ On macOS (Apple Silicon), 2026-11-25, with Node 24.22.0, pnpm 10.30.3 and Rust 1
 | Command | Result |
 |---|---|
 | `pnpm typecheck` | no errors |
-| `pnpm test` | 367 tests passed |
+| `pnpm test` | 640 tests passed |
 | `pnpm build` | built |
 | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` | clean |
 | `cargo test --locked` | 64 tests passed |
+| `pnpm tauri icon brand-src/icon.svg` | icon set written |
 | `pnpm tauri build --bundles app -- --locked` | `Memini.app` built |
 
 The built front end was also opened in a browser with a stand-in for the Rust side, under the
 production content security policy and with `Object.prototype` frozen as Tauri freezes it. Every
-screen rendered without an error; markup in a server's text stayed text; every button measured the
-same height, padding and font; and the forms of the ten read tools were built from the OpenAPI
-document of the service in this repository.
+screen rendered without an error; markup in a server's text stayed text; the bundled fonts loaded;
+every button measured the same height, padding, font and radius, the primary one without a border;
+a click with the mouse drew no focus ring and the Tab key drew one; and the forms of the ten read
+tools were built from the OpenAPI document of the service in this repository.
 
 ## What is not done
 
@@ -187,8 +277,8 @@ document of the service in this repository.
 - **The launcher's `--json` output and `mcp on|off`** arrive with another change. The app was
   tested against the contract above, not against the launcher.
 - **Signing, notarization, published installers and updates.** CI builds unsigned bundles to look
-  at. The icon is a placeholder, and the application identifier should be confirmed before the
-  first release: changing it later moves the settings.
+  at. The application identifier should be confirmed before the first release: changing it later
+  moves the settings.
 - **The first admin token still comes from a terminal** (`memini-server cli bootstrap`). The
   launcher contract has no command for it.
 - **`list_commits`** is in the table of read tools with the route `GET /v1/commits`, which is a

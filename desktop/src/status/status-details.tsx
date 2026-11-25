@@ -1,11 +1,9 @@
 import type { ReactElement } from "react";
 
+import { ErrorNotice, Fact, Facts, Notice, Panel, Pill, Text } from "../components";
 import { describeTokenCheck } from "../connections/connection-check";
 import { countNoun } from "../text/count-noun";
 import { formatInstant } from "../text/format-time";
-import { ErrorNotice, Notice } from "../ui/notice";
-import { Fact, Panel } from "../ui/panel";
-import { Pill } from "../ui/pill";
 import type { ConnectionHealth } from "./connection-health";
 import { indexVerdict, totals } from "./freshness";
 import type { ServiceStatus } from "./status";
@@ -49,7 +47,7 @@ function WithoutStatus({ health }: StatusDetailsProps): ReactElement {
   });
   return (
     <Notice tone={finding.tone} title={finding.text}>
-      <p>The freshness of the base is read with a token that has the read scope.</p>
+      <Text>The freshness of the base is read with a token that has the read scope.</Text>
     </Notice>
   );
 }
@@ -77,12 +75,12 @@ function Summary({ status }: SummaryProps): ReactElement {
         tone={status.current ? "good" : "bad"}
         title={status.current ? "The base is current" : "The base is not current"}
       >
-        <p>
+        <Text>
           {countNoun(counts.streams, "stream")} in {countNoun(counts.workspaces, "workspace")};{" "}
           {String(counts.behind)} behind, {String(counts.failing)} with failed runs.
-        </p>
+        </Text>
       </Notice>
-      <dl className="facts">
+      <Facts>
         <Fact name="Read at">{formatInstant(status.asOf)}</Fact>
         <Fact name="Server version">{status.version === "" ? "—" : status.version}</Fact>
         <Fact name="Database">
@@ -91,10 +89,10 @@ function Summary({ status }: SummaryProps): ReactElement {
         <Fact name="Index">
           <Pill tone={index.tone}>{index.label}</Pill> {status.indexModel ?? ""}
         </Fact>
-      </dl>
-      {status.indexNote === "" ? null : <p className="muted">{status.indexNote}</p>}
+      </Facts>
+      {status.indexNote === "" ? null : <Text tone="muted">{status.indexNote}</Text>}
       {counts.workspaces === 0 ? (
-        <p className="muted">The token may read no workspace, or none exists yet.</p>
+        <Text tone="muted">The token may read no workspace, or none exists yet.</Text>
       ) : null}
     </>
   );

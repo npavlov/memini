@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 
+import { Button } from "./button";
+
 export interface ConfirmButtonProps {
   readonly label: string;
   /** What the second click will do, in the user's words. */
@@ -15,16 +17,14 @@ export function ConfirmButton(props: ConfirmButtonProps): ReactElement {
   const [asking, setAsking] = useState(false);
   if (!asking) {
     return (
-      <button
-        type="button"
-        className="button"
+      <Button
         disabled={props.disabled === true}
         onClick={() => {
           setAsking(true);
         }}
       >
         {props.label}
-      </button>
+      </Button>
     );
   }
   const confirm = async (): Promise<void> => {
@@ -34,18 +34,16 @@ export function ConfirmButton(props: ConfirmButtonProps): ReactElement {
   return (
     <span className="confirm">
       <span>{props.question}</span>
-      <button type="button" className="button danger" onClick={confirm}>
+      <Button variant="danger" onClick={confirm}>
         {props.confirmLabel}
-      </button>
-      <button
-        type="button"
-        className="button"
+      </Button>
+      <Button
         onClick={() => {
           setAsking(false);
         }}
       >
         Cancel
-      </button>
+      </Button>
     </span>
   );
 }

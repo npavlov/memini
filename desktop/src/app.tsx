@@ -1,11 +1,13 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
+import { AppFrame, EmptyState, ErrorNotice, NavItem, Sidebar, Splash, Text } from "./components";
 import { activeConnection } from "./connections/connections";
 import type { Connection, ConnectionsView } from "./connections/connections";
 import { listConnections } from "./connections/connections-api";
 import { ConnectionsScreen } from "./connections/connections-screen";
 import { DataScreen } from "./data/data-screen";
+import { useLoad } from "./hooks/use-load";
 import { readAppInfo } from "./ipc/app-info";
 import type { AppInfo } from "./ipc/app-info";
 import type { Backend } from "./ipc/backend";
@@ -15,8 +17,6 @@ import { ProjectMapScreen } from "./project-map/project-map-screen";
 import { ServerScreen } from "./server/server-screen";
 import { StatusBar } from "./status/status-bar";
 import { TokensScreen } from "./tokens/tokens-screen";
-import { ErrorNotice, Notice } from "./ui/notice";
-import { useLoad } from "./ui/use-load";
 
 /** The screens of the navigation. The state of the connection is not one: it is the bar below. */
 const SCREENS = [
@@ -45,13 +45,17 @@ export function App(): ReactElement {
   const backend = useBackend();
   const boot = useLoad(useCallback(() => loadBoot(backend), [backend]));
   if (boot.state.phase === "loading") {
-    return <p className="boot muted">Starting…</p>;
+    return (
+      <Splash>
+        <Text tone="muted">Starting…</Text>
+      </Splash>
+    );
   }
   if (boot.state.phase === "failed") {
     return (
-      <div className="boot">
+      <Splash>
         <ErrorNotice error={boot.state.error} />
-      </div>
+      </Splash>
     );
   }
   return <Shell boot={boot.state.data} />;
@@ -66,32 +70,25 @@ function Shell({ boot }: ShellProps): ReactElement {
   const [screen, setScreen] = useState<ScreenId>(
     boot.view.connections.length === 0 ? "connection" : "data",
   );
+  const sidebar = (
+    <Sidebar footer={boot.info.version === "" ? "" : `Version ${boot.info.version}`}>
+      {SCREENS.map((item) => (
+        <NavItem
+          key={item.id}
+          current={item.id === screen}
+          onSelect={() => {
+            setScreen(item.id);
+          }}
+        >
+          {item.label}
+        </NavItem>
+      ))}
+    </Sidebar>
+  );
   return (
-    <div className="shell">
-      <nav className="sidebar" aria-label="Screens">
-        <p className="brand">Memini</p>
-        {SCREENS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={item.id === screen ? "nav-item current" : "nav-item"}
-            aria-current={item.id === screen ? "page" : undefined}
-            onClick={() => {
-              setScreen(item.id);
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-        <p className="version muted small">
-          {boot.info.version === "" ? "" : `Version ${boot.info.version}`}
-        </p>
-      </nav>
-      <main>
-        <CurrentScreen screen={screen} view={view} info={boot.info} onView={setView} />
-      </main>
-      <StatusBar connection={activeConnection(view)} />
-    </div>
+    <AppFrame sidebar={sidebar} statusBar={<StatusBar connection={activeConnection(view)} />}>
+      <CurrentScreen screen={screen} view={view} info={boot.info} onView={setView} />
+    </AppFrame>
   );
 }
 
@@ -115,9 +112,9 @@ function CurrentScreen({ screen, view, info, onView }: CurrentScreenProps): Reac
     case "tokens":
     case "data":
       return active === null ? (
-        <Notice tone="info" title="No connection is selected">
-          <p>Add a server on the Connection screen, or choose one of the saved connections.</p>
-        </Notice>
+        <EmptyState title="No connection is selected">
+          <Text>Add a server on the Connection screen, or choose one of the saved connections.</Text>
+        </EmptyState>
       ) : (
         <ConnectionScreen screen={screen} connection={active} />
       );

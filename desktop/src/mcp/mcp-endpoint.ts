@@ -5,7 +5,7 @@ import { isLoopbackAddress } from "../connections/connections";
 import type { Connection } from "../connections/connections";
 import type { Backend } from "../ipc/backend";
 import type { LauncherStatus } from "../server/launcher";
-import type { Tone } from "../ui/tone";
+import type { Tone } from "../components";
 import { mcpAddress, mcpAddressOf } from "./mcp-clients";
 
 export const ENDPOINT_STATES = ["on", "off", "unknown"] as const;
