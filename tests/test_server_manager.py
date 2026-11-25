@@ -171,14 +171,39 @@ class FakeDocker:
         self.fail: Exception | None = None
         self.token = ""
         """What the service's ``bootstrap`` prints."""
+        self.listing = "HEAD\nobjects\n"
+        """What ``ls`` in the service's container prints of a mounted folder."""
+        self.mount_fails = False
+        """Whether ``up`` fails while a local folder is mounted, as an unshared one does."""
+        self.locked_key = False
+        """Whether ``ssh-keygen -y`` refuses the key, as it does a key with a passphrase."""
+        self.scanned = "git.example.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIsynthetichost\n"
+        """What ``ssh-keyscan`` prints."""
 
     def __call__(
-        self, argv: list[str], *, env: dict[str, str], **kwargs: object
+        self, argv: list[str], *, env: dict[str, str] | None = None, **kwargs: object
     ) -> subprocess.CompletedProcess[str]:
         self.calls.append(argv)
         if self.fail is not None:
             raise self.fail
         response = ""
+        if self.mount_fails and "up" in argv and any("compose.local.yaml" in a for a in argv):
+            raise subprocess.CalledProcessError(1, argv)
+        if argv[-3:-1] == ["ls", "-A"]:
+            response = self.listing
+        if argv[1:4] == ["-y", "-P", ""]:
+            if self.locked_key:
+                raise subprocess.CalledProcessError(255, argv)
+            response = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIsynthetickey\n"
+        if argv[1:3] == ["-l", "-f"]:
+            known = argv[3].endswith("known_hosts")
+            response = (
+                "256 SHA256:hostprint git.example.org (ED25519)\n"
+                if known
+                else "256 SHA256:keyprint no comment (ED25519)\n"
+            )
+        if argv[1:3] == ["-T", "10"]:
+            response = self.scanned
         if argv[-4:] == ["ps", "--all", "--format", "json"]:
             lines = "".join(json.dumps(row) + "\n" for row in self.rows)
             response = json.dumps(self.rows) if self.one_array else lines
@@ -811,3 +836,287 @@ def test_mcp_served_tells_a_switched_off_endpoint_from_one_that_asks_for_a_token
     assert served((429, b'{"error": {"code": "rate_limited"}}')) is None
     assert served(urllib.error.URLError("synthetic: connection refused")) is None
     assert set(asked) == {"http://127.0.0.1:6399/mcp"}
+
+
+# --- Folders of this computer and git access ------------------------------------------------------
+
+# Not a key: the markers of one around a word, split so that no secret scanner takes the source
+# for a key.
+SYNTHETIC_KEY = (
+    "-----BEGIN OPENSSH PRIVATE"
+    + " KEY-----\nsynthetic\n-----END OPENSSH PRIVATE"
+    + (" KEY-----\n")
+)
+SYNTHETIC_GIT_TOKEN = "synthetic-git-token-0001"  # noqa: S105 - fake, checked by the test
+
+
+def working_copy(parent: Path, name: str, branch: str = "trunk") -> Path:
+    """A folder that looks like a git working copy, with ``branch`` checked out."""
+    folder = parent / name
+    (folder / ".git").mkdir(parents=True)
+    (folder / ".git" / "HEAD").write_text(f"ref: refs/heads/{branch}\n")
+    return folder
+
+
+def stdin_of(monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(text.encode())))
+
+
+def local_compose(state: Path) -> dict[str, Any]:
+    lines = (state / "compose.local.yaml").read_text().splitlines()
+    assert lines[0].startswith("# ")
+    value: dict[str, Any] = json.loads("\n".join(lines[1:]))
+    return value
+
+
+def up_calls(docker: FakeDocker) -> list[list[str]]:
+    return [argv for argv in docker.calls if argv[-len(UP_MEMINI) :] == list(UP_MEMINI)]
+
+
+def test_repos_add_mounts_a_folder_read_only_and_names_its_location(
+    tmp_path: Path, state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.rows = [container("memini", port=6399)]
+    folder = working_copy(tmp_path / "work", "Harbour App")
+
+    added = launch(state, "repos", "add", str(folder))
+
+    assert added.code == 0, added.text
+    repository = {
+        "name": "harbour-app",
+        "path": str(folder.resolve()),
+        "location": "/srv/local/harbour-app",
+        "branch": "trunk",
+        "present": True,
+    }
+    assert added.value == OK | {
+        "repository": repository,
+        "warning": None,
+        "repositories": [repository],
+    }
+    service = local_compose(state)["services"]["memini"]
+    assert service["environment"] == {"MEMINI_GIT_LOCAL_ROOTS": "/srv/local"}
+    assert service["volumes"] == [
+        {
+            "type": "bind",
+            "source": str(folder.resolve()),
+            "target": "/srv/local/harbour-app",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        }
+    ]
+    # The running service was recreated with the mount, and the mount was looked into.
+    assert str(state / "compose.local.yaml") in up_calls(docker)[-1]
+    assert docker.ran("exec", "-T", "memini", "ls", "-A", "/srv/local/harbour-app")
+
+    # The same folder again changes nothing; another of the same name gets a name of its own.
+    assert launch(state, "repos", "add", str(folder)).value["repositories"] == [repository]
+    other = working_copy(tmp_path / "elsewhere", "Harbour App", branch="main")
+    both = launch(state, "repos", "add", str(other)).value["repositories"]
+    assert [repo["name"] for repo in both] == ["harbour-app", "harbour-app-2"]
+    assert [repo["name"] for repo in launch(state, "repos", "list").value["repositories"]] == [
+        "harbour-app",
+        "harbour-app-2",
+    ]
+
+    removed = launch(state, "repos", "remove", "harbour-app")
+    assert [repo["name"] for repo in removed.value["repositories"]] == ["harbour-app-2"]
+    launch(state, "repos", "remove", "harbour-app-2")
+    assert not (state / "compose.local.yaml").exists()
+    assert not (state / "local-repos.json").exists()
+    gone = launch(state, "repos", "remove", "harbour-app")
+    assert (gone.code, gone.value["error"]) == (1, "no folder is named harbour-app")
+
+
+def test_repos_add_refuses_what_is_not_the_folder_of_a_repository(
+    tmp_path: Path, state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    (linked / ".git").write_text("gitdir: /elsewhere/.git/worktrees/linked\n")
+
+    for given, reason in [
+        ("relative/folder", "the folder is an absolute path"),
+        (str(tmp_path / "missing"), f"there is no folder at {tmp_path / 'missing'}"),
+        (str(plain), f"{plain.resolve()} is not a git repository"),
+        (str(linked), f"{linked.resolve()} is a linked worktree or a submodule"),
+    ]:
+        refused = launch(state, "repos", "add", given)
+        assert refused.code == 1, given
+        assert refused.value["ok"] is False
+        assert str(refused.value["error"]).startswith(reason), refused.value
+    assert not (state / "local-repos.json").exists()
+    assert docker.calls == []
+
+
+def test_repos_add_takes_back_a_folder_docker_does_not_share(
+    tmp_path: Path, state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.rows = [container("memini", port=6399)]
+    folder = working_copy(tmp_path, "outside")
+    docker.listing = ""  # Docker Desktop mounts a folder it does not share as an empty one
+
+    empty = launch(state, "repos", "add", str(folder))
+
+    assert empty.code == 1
+    assert "File sharing" in str(empty.value["error"])
+    assert not (state / "compose.local.yaml").exists()
+    # The service was made again without the folder.
+    assert len(up_calls(docker)) == 2
+    assert str(state / "compose.local.yaml") not in up_calls(docker)[-1]
+
+    docker.listing = "HEAD\n"
+    docker.mount_fails = True  # or Docker refuses to mount it at all
+    refused = launch(state, "repos", "add", str(folder))
+    assert refused.code == 1
+    assert "File sharing" in str(refused.value["error"])
+    assert launch(state, "repos", "list").value["repositories"] == []
+
+
+def test_repos_add_to_a_stopped_server_waits_for_its_start(
+    tmp_path: Path, state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.rows = [container("memini", "exited", "")]
+
+    added = launch(state, "repos", "add", str(working_copy(tmp_path, "app")))
+
+    assert added.code == 0
+    assert added.value["warning"] == "the server is stopped: it reads the folder once it starts"
+    assert up_calls(docker) == []
+    assert (state / "compose.local.yaml").is_file()
+
+
+def test_git_ssh_key_keeps_the_key_and_the_host_keys_and_prints_fingerprints_only(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+) -> None:
+    docker.rows = [container("memini", port=6399)]
+    stdin_of(monkeypatch, SYNTHETIC_KEY)
+
+    printed = launch(state, "git", "ssh-key", "--host", "git.example.org")
+
+    assert printed.code == 0, printed.text
+    assert printed.value == OK | {
+        "ssh": {
+            "key": {"type": "ED25519", "fingerprint": "SHA256:keyprint"},
+            "hosts": [
+                {
+                    "host": "git.example.org",
+                    "keys": [{"type": "ED25519", "fingerprint": "SHA256:hostprint"}],
+                }
+            ],
+        },
+        "https": None,
+    }
+    assert "PRIVATE KEY" not in printed.text
+    key = state / "secrets/git_ssh_key"
+    assert key.read_text() == SYNTHETIC_KEY
+    assert key.stat().st_mode & 0o777 == 0o600
+    assert "ssh-ed25519" in (state / "secrets/git_ssh_known_hosts").read_text()
+    env = state / ".env"
+    assert manager.setting(env, "MEMINI_GIT_SSH_KEY_PATH") == "./secrets/git_ssh_key"
+    assert manager.setting(env, "MEMINI_GIT_SSH_KNOWN_HOSTS_PATH") == (
+        "./secrets/git_ssh_known_hosts"
+    )
+    assert manager.setting(env, "MEMINI_DB_PASSWORD")  # the other lines stay
+    # Compose does not notice a changed secret file: the container is made anew.
+    assert docker.ran("up", "-d", "--no-build", "--wait", "--force-recreate", "memini")
+    assert launch(state, "git", "status").value["ssh"] == printed.value["ssh"]
+
+    removed = launch(state, "git", "remove", "ssh")
+    assert removed.value == OK | {"ssh": None, "https": None}
+    assert not key.exists()
+    assert manager.setting(env, "MEMINI_GIT_SSH_KEY_PATH") is None
+
+
+def test_git_ssh_key_refuses_a_key_with_a_passphrase_a_silent_host_and_a_bad_host(
+    monkeypatch: pytest.MonkeyPatch, state: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    docker.locked_key = True
+    stdin_of(monkeypatch, SYNTHETIC_KEY)
+    locked = launch(state, "git", "ssh-key", "--host", "git.example.org")
+    assert locked.code == 1
+    assert "passphrase" in str(locked.value["error"])
+
+    docker.locked_key = False
+    docker.scanned = ""
+    stdin_of(monkeypatch, SYNTHETIC_KEY)
+    silent = launch(state, "git", "ssh-key", "--host", "git.example.org")
+    assert silent.value["error"] == "ssh-keyscan got no host key from git.example.org"
+
+    stdin_of(monkeypatch, SYNTHETIC_KEY)
+    option = launch(state, "git", "ssh-key", "--host=-oProxyCommand=x")
+    assert option.value["error"] == "'-oProxyCommand=x' is not a host name"
+    stdin_of(monkeypatch, SYNTHETIC_KEY)
+    assert launch(state, "git", "ssh-key").value["error"] == "name at least one host with --host"
+    stdin_of(monkeypatch, "not a key")
+    assert launch(state, "git", "ssh-key", "--host", "git.example.org").value["error"] == (
+        "stdin holds no ssh private key"
+    )
+    assert not (state / "secrets/git_ssh_key").exists()
+
+
+def test_git_https_token_is_kept_for_its_hosts_and_never_printed(
+    monkeypatch: pytest.MonkeyPatch,
+    manager: ModuleType,
+    state: Path,
+    docker: FakeDocker,
+    launch: Callable[..., Printed],
+) -> None:
+    stdin_of(monkeypatch, SYNTHETIC_GIT_TOKEN + "\n")
+
+    printed = launch(
+        state,
+        "git",
+        "https-token",
+        "--host",
+        "git.example.org",
+        "--host",
+        "code.example.org",
+        "--username",
+        "oauth2",
+    )
+
+    assert printed.code == 0, printed.text
+    assert printed.value["https"] == {
+        "hosts": ["git.example.org", "code.example.org"],
+        "username": "oauth2",
+    }
+    assert SYNTHETIC_GIT_TOKEN not in printed.text
+    assert (state / "secrets/git_https_token").read_text() == SYNTHETIC_GIT_TOKEN
+    assert manager.setting(state / ".env", "MEMINI_GIT_HTTPS_TOKEN_FILE") == (
+        "./secrets/git_https_token"
+    )
+    settings = state / ".env.memini"
+    assert manager.setting(settings, "MEMINI_GIT_HTTPS_TOKEN_HOSTS") == (
+        "git.example.org,code.example.org"
+    )
+    # The server is stopped: it takes the token at its next start.
+    assert not docker.ran("--force-recreate", "memini")
+
+    removed = launch(state, "git", "remove", "https")
+    assert removed.value["https"] is None
+    assert manager.setting(settings, "MEMINI_GIT_HTTPS_TOKEN_HOSTS") is None
+    assert not (state / "secrets/git_https_token").exists()
+
+    stdin_of(monkeypatch, "two words")
+    spaced = launch(state, "git", "https-token", "--host", "git.example.org")
+    assert spaced.value["error"] == (
+        "stdin holds no token: one line of printable characters, no spaces"
+    )
+
+
+def test_repos_and_git_need_a_managed_server(
+    tmp_path: Path, docker: FakeDocker, launch: Callable[..., Printed]
+) -> None:
+    nothing = tmp_path / "nothing here"
+    for command in (("repos", "list"), ("git", "status")):
+        refused = launch(nothing, *command)
+        assert refused.code == 1
+        assert str(refused.value["error"]).startswith("no managed server at ")
+    assert not nothing.exists()

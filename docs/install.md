@@ -138,7 +138,58 @@ The first hits are in `src/memini/cli/admin.py`, each with its locator
 
 ### Your own repositories
 
-Use a repository's HTTPS URL or SSH remote for a managed server. For private remotes, see [Git connector settings and credentials](configuration.md#git-connector). To mount host repositories in a custom Compose setup, see [local repositories](configuration.md#local-repositories).
+Use a repository's HTTPS URL or SSH remote, or a folder of this computer. The launcher gives a
+managed server both the folders and the access to private remotes, as below; the desktop app does
+the same on its Repositories and Server screens, without a terminal. For a custom Compose setup,
+see [Git connector settings and credentials](configuration.md#git-connector) and
+[local repositories](configuration.md#local-repositories).
+
+### Repositories and git access
+
+**A folder of this computer.** Give it to the server, then add the git source at the location the
+launcher prints:
+
+```sh
+memini-server repos add /Users/sam/src/harbour
+# harbour: /Users/sam/src/harbour as /srv/local/harbour
+memini source add demo harbour --location /srv/local/harbour --ref main
+memini-server repos list
+memini-server repos remove harbour
+```
+
+The launcher keeps the folders in `local-repos.json` in its state directory. It writes
+`compose.local.yaml` there, which mounts each folder read-only at `/srv/local/<name>` and sets
+`MEMINI_GIT_LOCAL_ROOTS=/srv/local`, and it recreates the running service. The server reads the
+folder's git history and never writes to it. It sees new commits once they are committed or
+pulled in that folder.
+
+Check the folder's place before you add it:
+
+- Docker Desktop shows a container only the folders listed under **Settings → Resources → File
+  sharing**. A folder outside them, such as a disk under `/Volumes` taken out of the list, is
+  mounted empty, or not at all. The launcher looks into the mount, and when it is empty it takes the
+  folder back and says so.
+- On Linux the service runs as uid 10001 and must be able to read the folder.
+- A linked worktree or a submodule has a `.git` file that points elsewhere, so add the repository
+  it belongs to.
+
+**A private remote.** The server has one ssh key and one https token. Each is read on stdin, never
+from an argument, and the launcher prints only fingerprints and hosts:
+
+```sh
+memini-server git ssh-key --host git.example.org < ~/.ssh/memini_deploy_key
+memini-server git https-token --host git.example.org --username oauth2 < ~/memini-git.token
+memini-server git status
+memini-server git remove ssh
+```
+
+For `ssh-key`, use a key without a passphrase, best a deploy key with read access made for
+Memini. The launcher fetches the host keys of each `--host` with `ssh-keyscan`; compare the
+fingerprints it prints with the ones your git server publishes. The key, the host keys and the
+token go under `secrets/` in the state directory, for their owner only, as the compose secrets of
+`.env`. The token's hosts go into `.env.memini`, and the service is recreated. Both need the
+OpenSSH client (`ssh-keygen`, `ssh-keyscan`) on this computer. On Linux the secret files must also be
+readable by uid 10001 (`sudo chown 10001 FILE`). The launcher does not change their owner.
 
 ## 7. Push a chat thread
 
@@ -232,7 +283,7 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
 
 ### Output for programs
 
-`status`, `start`, `stop`, `mcp`, `bootstrap` and `uninstall` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
+`status`, `start`, `stop`, `mcp`, `bootstrap`, `uninstall`, `repos` and `git` take `--json` after the command, for a program that drives the launcher. Each then prints one JSON object on one line of stdout and nothing else there. Docker's progress and errors go to stderr. No output holds a token, a password or the content of a secret file, with one exception: the object of `bootstrap`, whose purpose is to hand over a token.
 
 `memini-server status --json` exits 0 whenever it can report, also for a stopped server, a missing installation and a missing Docker. Its object, on several lines here:
 
@@ -271,6 +322,33 @@ The switch is the setting [`mcp_enabled`](configuration.md#mcp-endpoint). The la
 `start`, `stop`, `mcp on` and `mcp off` print `{"schema": 1, "ok": true, "error": null}` and exit 0. On a failure `ok` is `false`, `error` is one line, and the exit status is not 0: Docker's own where Docker failed, otherwise 1. `mcp status --json` prints the status object. A wrong argument exits 2 with the usage on stderr, and a state directory that cannot be read exits 1 with a message there; stdout stays empty in both cases.
 
 `memini-server bootstrap` creates the first admin token of the managed server, as `memini-server cli bootstrap` does, and prints it alone on stdout. With `--json` it prints `{"schema": 1, "ok": true, "error": null, "token": "memini_…"}`: the one object that holds a secret, meant for a program that reads it from the pipe and stores it. When the service refuses, because an active admin token exists or the server is not running, `ok` is `false`, `token` is `null`, `error` is the service's reason and the exit status is 1. `--force` creates another admin token although one exists.
+
+`repos list|add|remove --json` prints `ok` and `error`, then `repositories`, every folder given to
+the server, as below. `repository` is the folder just added, or the one already listed for that
+path, and `null` otherwise. `warning` is one line, for example when the server is stopped and
+reads the folder at its next start. On a failure `ok` is `false`, `repositories` is missing, and
+the exit status is 1.
+
+```json
+{"schema": 1, "ok": true, "error": null, "repository": null, "warning": null,
+ "repositories": [{"name": "harbour", "path": "/Users/sam/src/harbour",
+   "location": "/srv/local/harbour", "branch": "main", "present": true}]}
+```
+
+`location` is what a git source names as its location. `branch` is the one checked out in the
+folder, `null` for a detached HEAD. `present` is `false` once the folder is gone.
+
+`git status|ssh-key|https-token|remove --json` prints `ok` and `error`, then the server's git
+access, which holds no secret:
+
+```json
+{"schema": 1, "ok": true, "error": null,
+ "ssh": {"key": {"type": "ED25519", "fingerprint": "SHA256:…"},
+         "hosts": [{"host": "git.example.org", "keys": [{"type": "ED25519", "fingerprint": "SHA256:…"}]}]},
+ "https": {"hosts": ["git.example.org"], "username": "x-access-token"}}
+```
+
+`ssh` and `https` are `null` while that access is not set.
 
 ## Machine size
 

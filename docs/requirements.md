@@ -1343,7 +1343,11 @@ way, and `memini status` exits 0: the answer is in the output.
   through `MEMINI_*_FILE` (or the path setting), so no secret shows in `docker inspect`; a secret
   that is not set gets an empty placeholder file and an empty variable. A local repository is a
   source only once its directory is mounted into the container. Needs Docker Compose 2.24.0, for
-  an optional `env_file`.
+  an optional `env_file`. For a managed server the launcher does both (decided 2026-11-25,
+  scenario S17). `memini-server repos add` mounts a folder read-only at `/srv/local/<name>` through
+  a generated `compose.local.yaml` in its state directory, which sets
+  `MEMINI_GIT_LOCAL_ROOTS=/srv/local`. `memini-server git` keeps one ssh key with the scanned host
+  keys and one https token as those compose secrets, each read on stdin.
 - A CLI wraps the API for setup and operations (decided 2026-11-18). Its commands are HTTP clients of
   the running service, with a service URL and a token: the service is the one place that checks scopes,
   applies the authorization filter, touches the mirrors and writes run reports, and no database

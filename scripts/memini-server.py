@@ -3,6 +3,7 @@
 
 import argparse
 import codecs
+import contextlib
 import hashlib
 import json
 import os
@@ -44,6 +45,32 @@ TOKEN = re.compile(r"memini_[A-Za-z0-9_-]{43}")
 BOOTSTRAP_NAME = "memini-server bootstrap"
 # Seconds the service's bootstrap may take: one transaction in a database that is up.
 BOOTSTRAP_TIMEOUT = 60
+# Folders of this computer the server may read as git sources (docs/install.md, "Repositories on
+# this computer"): their list in the state directory, and the Compose file made from it, which
+# mounts each one read-only under LOCAL_ROOT and lists LOCAL_ROOT in MEMINI_GIT_LOCAL_ROOTS.
+LOCAL_REPOS = "local-repos.json"
+LOCAL_COMPOSE = "compose.local.yaml"
+LOCAL_ROOT = "/srv/local"
+# The name of a local folder: a handle, as the names of the service are.
+HANDLE = re.compile(r"[a-z0-9][a-z0-9_-]{0,62}")
+# A host name or an IPv4 address: what ssh-keyscan and the https token are given.
+HOST = re.compile(
+    r"(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
+)
+# The files of git access in the state directory, as the compose secrets in .env name them.
+SSH_KEY = "secrets/git_ssh_key"
+SSH_KNOWN_HOSTS = "secrets/git_ssh_known_hosts"
+HTTPS_TOKEN = "secrets/git_https_token"  # noqa: S105 - the path of a file, not a token
+# The most bytes of an ssh key or an https token read from stdin.
+MAX_SECRET = 16384
+# Seconds one run of ssh-keygen, or ssh-keyscan per host, may take.
+SSH_TIMEOUT = 20
+NOT_SHARED = (
+    "Docker could not mount the folder, or mounted it empty. With Docker Desktop, add the folder"
+    " or a folder above it in Settings, Resources, File sharing (a disk under /Volumes"
+    " included), then add it again"
+)
 
 
 def resources() -> Path:
@@ -190,6 +217,8 @@ class Project:
         ]
         for filename in COMPOSE_FILES:
             self.arguments.extend(["-f", str(directory / filename)])
+        if (directory / LOCAL_COMPOSE).is_file():
+            self.arguments.extend(["-f", str(directory / LOCAL_COMPOSE)])
         self.env = environment()
 
     def run(self, *argv: str, capture: bool = False, timeout: float | None = None) -> str:
@@ -507,6 +536,370 @@ def uninstall(directory: Path, *, quiet: bool = False) -> int:
     return 0
 
 
+def set_lines(path: Path, values: dict[str, str | None]) -> None:
+    """Set the ``NAME=value`` line of each name in the env file at ``path``, ``None`` removing
+    it, and keep every other line."""
+    before = path.read_text(encoding="utf-8") if path.is_file() else ""
+    kept = [line for line in before.splitlines() if assigned(line) not in values]
+    added = [f"{name}={value}" for name, value in values.items() if value is not None]
+    write_private(path, "\n".join([*kept, *added]) + "\n")
+
+
+def managed(directory: Path) -> Path:
+    if not (directory / MARKER).is_file():
+        raise ValueError(f"no managed server at {directory}; set one up first")
+    return directory
+
+
+def recreate(project: Project, *, force: bool = False) -> bool:
+    """Recreate the service's container while it runs, so it takes changed mounts and settings;
+    ``force`` also for a changed secret file, which Compose does not notice. Returns whether the
+    service runs."""
+    if memini_service(project.services()).get("State") != "running":
+        return False
+    command = ["up", "-d", "--no-build", "--wait"]
+    if force:
+        command.append("--force-recreate")
+    project.run(*command, "memini")
+    return True
+
+
+def local_repos(directory: Path) -> list[dict[str, str]]:
+    """The local folders the server may read, with their names, in the order they were added."""
+    path = directory / LOCAL_REPOS
+    if not path.is_file():
+        return []
+    try:
+        value: object = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        raise ValueError(f"{path} is not the launcher's list of folders") from None
+    found: list[dict[str, str]] = []
+    for item in objects(value):
+        name, folder = item.get("name"), item.get("path")
+        if isinstance(name, str) and HANDLE.fullmatch(name) and isinstance(folder, str):
+            found.append({"name": name, "path": folder})
+    return found
+
+
+def save_local_repos(directory: Path, repos: list[dict[str, str]]) -> None:
+    """Write the list of folders and the Compose file that mounts them; no file for none."""
+    compose_file = directory / LOCAL_COMPOSE
+    if not repos:
+        (directory / LOCAL_REPOS).unlink(missing_ok=True)
+        compose_file.unlink(missing_ok=True)
+        return
+    write_private(directory / LOCAL_REPOS, json.dumps(repos, indent=2) + "\n")
+    service = {
+        "environment": {"MEMINI_GIT_LOCAL_ROOTS": LOCAL_ROOT},
+        "volumes": [
+            {
+                "type": "bind",
+                "source": repo["path"],
+                "target": f"{LOCAL_ROOT}/{repo['name']}",
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            }
+            for repo in repos
+        ],
+    }
+    # JSON is YAML: each path is a quoted string, whatever characters it holds.
+    text = json.dumps({"services": {"memini": service}}, indent=2)
+    header = (
+        "# Made by memini-server from local-repos.json; change it with `memini-server repos`.\n"
+    )
+    write_private(compose_file, header + text + "\n")
+
+
+def check_folder(text: str) -> Path:
+    """The folder of a git repository at ``text``: an absolute path, resolved, of a working copy
+    with its own ``.git`` directory, or of a bare repository."""
+    if not text or any(ord(c) < 32 or ord(c) == 127 for c in text):
+        raise ValueError("the folder is an absolute path without control characters")
+    given = Path(text)
+    if not given.is_absolute():
+        raise ValueError("the folder is an absolute path")
+    try:
+        folder = given.resolve(strict=True)
+    except OSError:
+        raise ValueError(f"there is no folder at {given}") from None
+    if not folder.is_dir():
+        raise ValueError(f"{folder} is not a folder")
+    if (folder / ".git").is_file():
+        raise ValueError(
+            f"{folder} is a linked worktree or a submodule; add the repository it belongs to"
+        )
+    bare = (folder / "HEAD").is_file() and (folder / "objects").is_dir()
+    if not (folder / ".git").is_dir() and not bare:
+        raise ValueError(f"{folder} is not a git repository")
+    return folder
+
+
+def current_branch(folder: Path) -> str | None:
+    """The branch checked out in ``folder``, from its HEAD; ``None`` for a detached HEAD."""
+    head = folder / ".git" / "HEAD"
+    if not head.is_file():
+        head = folder / "HEAD"
+    try:
+        line = head.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    ref = line.removeprefix("ref: ")
+    return ref.removeprefix("refs/heads/") if ref.startswith("refs/heads/") else None
+
+
+def folder_name(folder: Path, taken: set[str]) -> str:
+    """A name for ``folder`` from its own, unique among ``taken``."""
+    base = re.sub(r"[^a-z0-9_-]+", "-", folder.name.lower()).strip("-_")[:56] or "repository"
+    name, number = base, 2
+    while name in taken:
+        name, number = f"{base}-{number}", number + 1
+    return name
+
+
+def describe_repo(repo: dict[str, str]) -> dict[str, object]:
+    folder = Path(repo["path"])
+    present = folder.is_dir()
+    return {
+        "name": repo["name"],
+        "path": repo["path"],
+        # What a git source names as its location: the folder where the service sees it.
+        "location": f"{LOCAL_ROOT}/{repo['name']}",
+        "branch": current_branch(folder) if present else None,
+        "present": present,
+    }
+
+
+def mounted_empty(project: Project, repo: dict[str, str]) -> bool:
+    """Whether the folder is empty in the container, as Docker Desktop mounts a folder it does
+    not share."""
+    target = f"{LOCAL_ROOT}/{repo['name']}"
+    return not project.run("exec", "-T", "memini", "ls", "-A", target, capture=True).strip()
+
+
+def repos(directory: Path, action: str, target: str | None, quiet: bool) -> dict[str, object]:
+    """``repos add|remove|list``: the fields of the object --json prints."""
+    managed(directory)
+    listed = local_repos(directory)
+    answer: dict[str, object] = {"repository": None, "warning": None}
+    if action == "add":
+        folder = check_folder(target or "")
+        existing = next((repo for repo in listed if repo["path"] == str(folder)), None)
+        if existing is not None:
+            answer["repository"] = describe_repo(existing)
+        else:
+            repo = {"name": folder_name(folder, {r["name"] for r in listed}), "path": str(folder)}
+            project = Project(directory, quiet=quiet)
+            # Docker first: a failure to answer is not a failure to mount.
+            running = memini_service(project.services()).get("State") == "running"
+            save_local_repos(directory, [*listed, repo])
+            empty = False
+            if running:
+                try:
+                    project = Project(directory, quiet=quiet)
+                    project.run("up", "-d", "--no-build", "--wait", "memini")
+                    empty = mounted_empty(project, repo)
+                except subprocess.CalledProcessError:
+                    empty = True
+            if empty:
+                # Back to the folders that worked, and the service with them.
+                save_local_repos(directory, listed)
+                with contextlib.suppress(subprocess.CalledProcessError):
+                    recreate(Project(directory, quiet=quiet))
+                raise ValueError(NOT_SHARED)
+            answer["repository"] = describe_repo(repo)
+            if not running:
+                answer["warning"] = "the server is stopped: it reads the folder once it starts"
+    elif action == "remove":
+        kept = [repo for repo in listed if repo["name"] != target]
+        if len(kept) == len(listed):
+            raise ValueError(f"no folder is named {target}")
+        save_local_repos(directory, kept)
+        recreate(Project(directory, quiet=quiet))
+    answer["repositories"] = [describe_repo(repo) for repo in local_repos(directory)]
+    return answer
+
+
+def openssh(program: str) -> str:
+    found = shutil.which(program)
+    if not found:
+        raise ValueError(f"{program} was not found; install the OpenSSH client")
+    return found
+
+
+def fingerprints(path: Path) -> list[dict[str, str]]:
+    """What ``ssh-keygen -l`` says of the keys in ``path``: each one's type, SHA256 fingerprint
+    and, in a known_hosts file, the host it is for. Never a key itself."""
+    result = subprocess.run(  # noqa: S603 - resolved ssh-keygen, argument vector only
+        [openssh("ssh-keygen"), "-l", "-f", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=SSH_TIMEOUT,
+        stdin=subprocess.DEVNULL,
+    )
+    found: list[dict[str, str]] = []
+    for line in result.stdout.splitlines():
+        # 256 SHA256:abc… git.example.org (ED25519)
+        parts = line.split()
+        if len(parts) >= 3 and parts[1].startswith("SHA256:"):
+            typed = parts[-1].startswith("(") and parts[-1].endswith(")")
+            label = parts[2:-1] if typed else parts[2:]
+            found.append(
+                {
+                    "type": parts[-1].strip("()") if typed else "",
+                    "fingerprint": parts[1],
+                    "for": " ".join(label),
+                }
+            )
+    return found
+
+
+def git_access(directory: Path) -> dict[str, object]:
+    """What the server holds to reach private remotes: only what identifies a secret."""
+    env = directory / ".env"
+    ssh: dict[str, object] | None = None
+    if setting(env, "MEMINI_GIT_SSH_KEY_PATH") and (directory / SSH_KEY).is_file():
+        known = directory / SSH_KNOWN_HOSTS
+        hosts: dict[str, list[dict[str, str]]] = {}
+        for item in fingerprints(known) if known.is_file() else []:
+            hosts.setdefault(item["for"], []).append(
+                {"type": item["type"], "fingerprint": item["fingerprint"]}
+            )
+        public = directory / (SSH_KEY + ".pub")
+        key = fingerprints(public) if public.is_file() else []
+        ssh = {
+            "key": {"type": key[0]["type"], "fingerprint": key[0]["fingerprint"]} if key else None,
+            "hosts": [{"host": host, "keys": keys} for host, keys in hosts.items()],
+        }
+    https: dict[str, object] | None = None
+    if setting(env, "MEMINI_GIT_HTTPS_TOKEN_FILE") and (directory / HTTPS_TOKEN).is_file():
+        settings = settings_file(directory)
+        hosts_line = setting(settings, "MEMINI_GIT_HTTPS_TOKEN_HOSTS") or ""
+        https = {
+            "hosts": [host for host in hosts_line.split(",") if host],
+            "username": setting(settings, "MEMINI_GIT_HTTPS_USERNAME") or "x-access-token",
+        }
+    return {"ssh": ssh, "https": https}
+
+
+def read_secret(kind: str) -> str:
+    """The secret on stdin: an ssh private key or an https token, never an argument."""
+    data = sys.stdin.buffer.read(MAX_SECRET + 1)
+    if len(data) > MAX_SECRET:
+        raise ValueError(f"the {kind} on stdin is longer than {MAX_SECRET} bytes")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError(f"the {kind} on stdin is not text") from None
+
+
+def check_hosts(hosts: list[str]) -> list[str]:
+    if not hosts:
+        raise ValueError("name at least one host with --host")
+    for host in hosts:
+        if not HOST.fullmatch(host):
+            raise ValueError(f"{host!r} is not a host name")
+    return list(dict.fromkeys(host.lower() for host in hosts))
+
+
+def set_ssh_key(directory: Path, hosts: list[str], text: str) -> None:
+    """Keep the private key and the host keys of ``hosts`` as the server's ssh access. The host
+    keys are fetched now, and the user compares their fingerprints with the ones the host
+    publishes."""
+    key = text.strip() + "\n"
+    if "-----BEGIN" not in key or "PRIVATE KEY-----" not in key:
+        raise ValueError("stdin holds no ssh private key")
+    keygen = openssh("ssh-keygen")
+    with tempfile.TemporaryDirectory(dir=directory) as scratch:
+        staged = Path(scratch) / "key"
+        write_private(staged, key)
+        try:
+            public = subprocess.run(  # noqa: S603 - resolved ssh-keygen, argument vector only
+                [keygen, "-y", "-P", "", "-f", str(staged)],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=SSH_TIMEOUT,
+                stdin=subprocess.DEVNULL,
+            ).stdout
+        except subprocess.CalledProcessError:
+            raise ValueError(
+                "ssh-keygen could not read the key: it is not a private key, or it has a"
+                " passphrase, which the server cannot type; use a key without one, such as a"
+                " deploy key made for Memini"
+            ) from None
+    scanned = subprocess.run(  # noqa: S603 - resolved ssh-keyscan, argument vector only
+        [openssh("ssh-keyscan"), "-T", "10", "-t", "ed25519,ecdsa,rsa", *hosts],
+        capture_output=True,
+        text=True,
+        timeout=SSH_TIMEOUT * len(hosts),
+        stdin=subprocess.DEVNULL,
+        check=False,
+    ).stdout
+    lines = [line for line in scanned.splitlines() if line.strip() and not line.startswith("#")]
+    missing = [host for host in hosts if not any(line.split()[0] == host for line in lines)]
+    if missing:
+        raise ValueError(f"ssh-keyscan got no host key from {', '.join(missing)}")
+    write_private(directory / SSH_KEY, key)
+    write_private(directory / (SSH_KEY + ".pub"), public)
+    write_private(directory / SSH_KNOWN_HOSTS, "\n".join(lines) + "\n")
+    set_lines(
+        directory / ".env",
+        {
+            "MEMINI_GIT_SSH_KEY_PATH": f"./{SSH_KEY}",
+            "MEMINI_GIT_SSH_KNOWN_HOSTS_PATH": f"./{SSH_KNOWN_HOSTS}",
+        },
+    )
+
+
+def set_https_token(directory: Path, hosts: list[str], username: str | None, text: str) -> None:
+    """Keep the token as the server's https access, sent only to ``hosts``."""
+    token = text.strip()
+    if not re.fullmatch(r"[\x21-\x7e]{1,4096}", token):
+        raise ValueError("stdin holds no token: one line of printable characters, no spaces")
+    if username is not None and not re.fullmatch(r"[\x21-\x7e]{1,200}", username):
+        raise ValueError("the user name is printable ASCII without spaces")
+    write_private(directory / HTTPS_TOKEN, token)
+    set_lines(directory / ".env", {"MEMINI_GIT_HTTPS_TOKEN_FILE": f"./{HTTPS_TOKEN}"})
+    set_lines(
+        settings_file(directory),
+        {"MEMINI_GIT_HTTPS_TOKEN_HOSTS": ",".join(hosts), "MEMINI_GIT_HTTPS_USERNAME": username},
+    )
+
+
+def remove_access(directory: Path, kind: str) -> None:
+    if kind == "ssh":
+        set_lines(
+            directory / ".env",
+            {"MEMINI_GIT_SSH_KEY_PATH": None, "MEMINI_GIT_SSH_KNOWN_HOSTS_PATH": None},
+        )
+        for name in (SSH_KEY, SSH_KEY + ".pub", SSH_KNOWN_HOSTS):
+            (directory / name).unlink(missing_ok=True)
+        return
+    set_lines(directory / ".env", {"MEMINI_GIT_HTTPS_TOKEN_FILE": None})
+    set_lines(
+        settings_file(directory),
+        {"MEMINI_GIT_HTTPS_TOKEN_HOSTS": None, "MEMINI_GIT_HTTPS_USERNAME": None},
+    )
+    (directory / HTTPS_TOKEN).unlink(missing_ok=True)
+
+
+def git(directory: Path, choice: argparse.Namespace, quiet: bool) -> dict[str, object]:
+    """``git status|ssh-key|https-token|remove``: the fields of the object --json prints. The
+    secret of ssh-key and https-token is read from stdin."""
+    managed(directory)
+    action: str = choice.action
+    if action == "ssh-key":
+        set_ssh_key(directory, check_hosts(choice.host), read_secret("ssh key"))
+    elif action == "https-token":
+        set_https_token(directory, check_hosts(choice.host), choice.username, read_secret("token"))
+    elif action == "remove":
+        remove_access(directory, choice.kind)
+    if action != "status":
+        recreate(Project(directory, quiet=quiet), force=True)
+    return git_access(directory)
+
+
 def manage(
     directory: Path, command: str, args: list[str], port: int | None, *, quiet: bool = False
 ) -> int:
@@ -532,18 +925,107 @@ def manage(
     return compose(directory, command, args, quiet=quiet)
 
 
+def configuration_parser(prog: str, command: str) -> argparse.ArgumentParser:
+    """The arguments of ``repos`` and ``git``."""
+    details = argparse.ArgumentParser(prog=f"{prog} {command}")
+    details.add_argument(
+        "--json", action="store_true", help="print one JSON object on stdout, for programs"
+    )
+    if command == "repos":
+        details.add_argument("action", choices=("list", "add", "remove"))
+        details.add_argument("target", nargs="?", help="add: the folder; remove: its name")
+        return details
+    details.add_argument("action", choices=("status", "ssh-key", "https-token", "remove"))
+    details.add_argument("kind", nargs="?", choices=("ssh", "https"), help="remove: which")
+    details.add_argument(
+        "--host",
+        action="append",
+        default=[],
+        help="ssh-key: a host whose key is trusted; https-token: a host the token is sent to",
+    )
+    details.add_argument("--username", help="https-token: the user name sent with the token")
+    return details
+
+
+def configure(directory: Path, command: str, choice: argparse.Namespace) -> int:
+    """``repos`` and ``git``: one object on stdout with --json, lines for a person without."""
+    failure: str | None = None
+    answer: dict[str, object] = {}
+    try:
+        if command == "repos":
+            answer = repos(directory, choice.action, choice.target, quiet=choice.json)
+        else:
+            answer = git(directory, choice, quiet=choice.json)
+    except subprocess.CalledProcessError as error:
+        failure = f"{Path(str(error.cmd[0])).name} failed with exit status {error.returncode}"
+    except subprocess.TimeoutExpired as error:
+        failure = f"{Path(str(error.cmd[0])).name} did not answer in {error.timeout:g} seconds"
+    except (ValueError, OSError) as error:
+        failure = str(error)
+    if choice.json:
+        print(json.dumps({"schema": SCHEMA, "ok": failure is None, "error": failure, **answer}))
+        return 0 if failure is None else 1
+    if failure is not None:
+        raise ValueError(failure)
+    for line in describe_configuration(command, answer):
+        print(line)
+    return 0
+
+
+def describe_configuration(command: str, answer: dict[str, object]) -> list[str]:
+    if command == "repos":
+        lines = [
+            f"{repo['name']}: {repo['path']} as {repo['location']}"
+            + ("" if repo["present"] else " (the folder is gone)")
+            for repo in objects(answer["repositories"])
+        ]
+        warning = answer.get("warning")
+        return (lines or ["No folder of this computer is given to the server"]) + (
+            [str(warning)] if warning else []
+        )
+    lines: list[str] = []
+    ssh = answer.get("ssh")
+    if isinstance(ssh, dict):
+        ssh_access = cast(dict[str, object], ssh)
+        key = ssh_access.get("key")
+        printed = cast(dict[str, object], key)["fingerprint"] if isinstance(key, dict) else "?"
+        lines.append(f"ssh key {printed}")
+        for host in objects(ssh_access.get("hosts")):
+            for item in objects(host.get("keys")):
+                lines.append(f"  {host['host']}: {item['type']} {item['fingerprint']}")
+    https = answer.get("https")
+    if isinstance(https, dict):
+        https_access = cast(dict[str, object], https)
+        hosts = cast(list[str], https_access.get("hosts") or [])
+        lines.append(f"https token for {', '.join(hosts)} as {https_access.get('username')}")
+    return lines or ["No git access is set: public remotes and local folders only"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
         epilog="`mcp on`, `mcp off` and `mcp status` switch or show the server's MCP endpoint."
         " `bootstrap` prints the first admin token of the server. start, status, stop, mcp and"
         " bootstrap take --json after the command: one JSON object on stdout. `uninstall --yes`"
-        " removes the server with its data.",
+        " removes the server with its data. `repos list|add PATH|remove NAME` gives the server"
+        " folders of this computer as git sources; `git status|ssh-key|https-token|remove` sets"
+        " its access to private remotes, the secret on stdin.",
     )
     parser.add_argument("--state-dir", type=Path, help="directory for this local server")
     parser.add_argument(
         "command",
-        choices=("start", "status", "stop", "mcp", "bootstrap", "uninstall", "path", "cli"),
+        choices=(
+            "start",
+            "status",
+            "stop",
+            "mcp",
+            "bootstrap",
+            "uninstall",
+            "repos",
+            "git",
+            "path",
+            "cli",
+        ),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     options = parser.parse_args()
@@ -595,6 +1077,14 @@ def main() -> int:
         print(resources())
         return 0
     directory = (options.state_dir or state_directory()).expanduser().resolve()
+    if command in {"repos", "git"}:
+        details = configuration_parser(parser.prog, command)
+        choice = details.parse_args(args)
+        if command == "repos" and (choice.action == "list") != (choice.target is None):
+            details.error("add takes a folder and remove a name; list takes nothing")
+        if command == "git" and (choice.action == "remove") != (choice.kind is not None):
+            details.error("remove takes ssh or https; the other actions take neither")
+        return configure(directory, command, choice)
     if command == "bootstrap":
         return bootstrap(directory, force=force, as_json=as_json)
     if (command == "status" and as_json) or (command == "mcp" and args == ["status"]):
