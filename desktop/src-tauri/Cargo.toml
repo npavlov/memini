@@ -1,0 +1,42 @@
+[package]
+name = "memini-desktop"
+version = "0.1.0"
+description = "Desktop app that manages a Memini server"
+license = "Apache-2.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+# The `_lib` suffix keeps the library's file names apart from the binary's on Windows.
+[lib]
+name = "memini_desktop_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "memini-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.6", features = [] }
+
+# Direct dependencies are pinned to exact versions; Cargo.lock pins the rest.
+[dependencies]
+tauri = { version = "=2.12.7", features = [] }
+tauri-plugin-clipboard-manager = "=2.5.0"
+# The operating system's keychain: Keychain Services on macOS, Credential Manager on Windows,
+# the Secret Service on Linux (over zbus, so no libdbus is needed to build).
+keyring = "=4.2.0"
+# TLS through rustls, verified against the operating system's trust store. No cookies, no
+# compression, HTTP/1.1 only: the Memini service speaks nothing else.
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "system-proxy"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+tokio = { version = "=1.54.1", features = ["process", "time"] }
+url = "=2.5.9"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

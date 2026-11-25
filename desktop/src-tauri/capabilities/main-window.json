@@ -1,0 +1,32 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "What the app's one window may ask of the Rust side: the app's own commands, and writing text to the clipboard. Nothing of Tauri's core, no shell, no file system, no network, no reading of the clipboard. The window shows local content only, so no remote origin is listed.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-app-info",
+    "allow-connections-list",
+    "allow-connection-save",
+    "allow-connection-delete",
+    "allow-connection-activate",
+    "allow-connection-token-from-clipboard",
+    "allow-connection-token-from-file",
+    "allow-connection-token-clear",
+    "allow-connection-check",
+    "allow-api-status",
+    "allow-api-workspaces",
+    "allow-api-sources",
+    "allow-api-tools",
+    "allow-api-tool-call",
+    "allow-api-tokens-list",
+    "allow-api-token-create",
+    "allow-api-token-revoke",
+    "allow-mcp-probe",
+    "allow-launcher-info",
+    "allow-launcher-set-path",
+    "allow-launcher-status",
+    "allow-launcher-change",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-write-secret"
+  ]
+}

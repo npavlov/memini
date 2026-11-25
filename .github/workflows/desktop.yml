@@ -1,0 +1,158 @@
+name: Desktop
+
+# The desktop app (desktop/): its front end, its Rust side, and an unsigned build on the three
+# platforms. docs/mcp is watched too: a test compares the app's client configuration with it.
+on:
+  push:
+    branches: [main, "release/**"]
+    paths:
+      - "desktop/**"
+      - "docs/mcp/**"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "docs/mcp/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+# Read-only token. No job writes to the repository, and no job needs a secret: nothing is signed,
+# notarized or published here.
+permissions:
+  contents: read
+
+# A new push to the same branch or pull request cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The versions the app was last built with. Update them together with desktop/README.md.
+  NODE_VERSION: "24.22.0"
+  RUST_TOOLCHAIN: "1.100.0"
+  # Windows only: the TLS library's assembly comes prebuilt, so the runner needs no NASM.
+  AWS_LC_SYS_PREBUILT_NASM: "1"
+
+defaults:
+  run:
+    shell: bash
+    working-directory: desktop
+
+jobs:
+  frontend:
+    name: Front end (types, tests, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The version of pnpm is the one package.json names in packageManager.
+      - name: Install pnpm
+        run: npm install --global "$(node -p "require('./package.json').packageManager")"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build the front end
+        run: pnpm build
+
+  # The Rust side is linted and tested on each platform, because parts of it are compiled for one
+  # platform only (how the launcher is found and started), and then the app is built as that
+  # platform's bundle. Unsigned: the bundles are for looking at, not for distribution. No build
+  # cache: a cold build takes several minutes, and a cache of the target directory is larger than
+  # it is worth while the app changes rarely.
+  app:
+    name: App (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            bundle: app
+          - os: ubuntu-24.04
+            bundle: deb
+          - os: windows-2022
+            bundle: nsis
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # What Tauri 2 needs to build on Linux: the system webview and its companions.
+      - name: Install system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential file libayatana-appindicator3-dev librsvg2-dev libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev patchelf
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
+            --component clippy --component rustfmt --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          rustc --version
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pnpm
+        run: npm install --global "$(node -p "require('./package.json').packageManager")"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The Rust side embeds the built front end, so it is built first.
+      - name: Build the front end
+        run: pnpm build
+
+      - name: Format check (rustfmt)
+        working-directory: desktop/src-tauri
+        run: cargo fmt --check
+
+      # --locked: Cargo fails if Cargo.lock is stale instead of rewriting it.
+      - name: Lint (clippy)
+        working-directory: desktop/src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Unit tests (cargo test)
+        working-directory: desktop/src-tauri
+        run: cargo test --locked
+
+      - name: Build the app, unsigned
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+        run: pnpm tauri build --bundles "$BUNDLE" -- --locked
+
+      # One archive, so that file modes survive: an artifact alone drops the executable bit.
+      # A relative name: GNU tar on Windows reads the colon of "D:\..." as a remote host.
+      - name: Pack the bundle
+        run: tar -czf memini-desktop-unsigned.tar.gz -C src-tauri/target/release bundle
+
+      - name: Upload the unsigned bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: memini-desktop-unsigned-${{ matrix.os }}
+          path: desktop/memini-desktop-unsigned.tar.gz
+          if-no-files-found: error
+          retention-days: 7
