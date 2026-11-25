@@ -107,7 +107,8 @@ growing slowly with the index (3.7 ms per chunk for the first 10,000 in run R). 
 run alone on the machine wrote 9.1 and 13.2 ms per chunk (410 and 447 s); run C, with 2 CPUs,
 12.6 and 14.7: a sync writes on one connection, so more cores do not make it faster.
 
-**The model.** Qwen3-Embedding 0.6B through Ollama, on the reference machine's GPU:
+**The model.** Qwen3-Embedding 0.6B through Ollama, on the reference machine's GPU (for the
+model in Docker on a Mac, see [below](#the-model-in-docker-on-a-mac)):
 
 | Measured | Texts a second | Note |
 |---|---|---|
@@ -366,3 +367,19 @@ Ollama's context lowered, unmeasured.
   hybrid latency on larger corpora, measured with the retrieval eval.
 - HTTP and MCP overhead, several workspaces and users, a CPU-only Ollama on a small machine with
   real workloads, Postgres settings other than the image's.
+
+## The model in Docker on a Mac
+
+Measured on 2026-11-25 on an Apple silicon Mac with OrbStack, during a first sync of a repository
+of about 1,500 files, with the same model build in both places (digest `ac6da0df…`). Chunk texts
+are up to 3,000 characters, as the chunker cuts them.
+
+| Where the model runs | Measured | Per chunk |
+|---|---|---|
+| the managed server's ollama container, limited to 4 cores | 50 s for a batch of 4 (34 requests in 30 minutes) | about 12.5 s |
+| Ollama on the Mac, warm | 0.50 s for 4, 3.55 s for 32 | about 0.11 s |
+
+Docker on macOS gives containers no GPU, so a model in a container runs on the CPU of Docker's
+virtual machine, about a hundred times slower than Ollama on the Mac with Metal. Run the model on
+the Mac with `memini-server embedding host` ([install guide](../install.md#run-the-search-model-in-ollama-on-a-mac));
+the desktop app does it in its first setup.

@@ -7,6 +7,7 @@ import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
 import { INDEXING_MODES, MODE_LABELS, describeIndexing, readIndexing, setIndexing } from "./indexing";
 import type { IndexingAnswer, IndexingMode } from "./indexing";
+import { ModelPlace } from "./model-place";
 
 function isMode(value: string): value is IndexingMode {
   return INDEXING_MODES.some((mode) => mode === value);
@@ -43,7 +44,12 @@ export function IndexingPanel(): ReactElement {
       ) : null}
       {current === null ? null : (
         <>
-          <Text tone="muted">{describeIndexing(current)}</Text>
+          <ModelPlace runtime={current.runtime} onMoved={setShown} />
+          <Text tone="muted">
+            {current.runtime === "host"
+              ? "The limit below applies when the model runs in Docker; Ollama on the Mac manages its own."
+              : describeIndexing(current)}
+          </Text>
           <Field label="Cores for the search model">
             <Select
               value={selected}
