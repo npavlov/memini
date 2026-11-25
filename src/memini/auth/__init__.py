@@ -18,6 +18,7 @@ from memini.auth.authentication import (
 from memini.auth.authorization import (
     InsufficientScopeError,
     ReadFilter,
+    SensitiveNotAllowedError,
     WorkspaceLimitError,
     WriteAccess,
     authorize_read,
@@ -51,6 +52,7 @@ __all__ = [
     "Principal",
     "ReadFilter",
     "Scope",
+    "SensitiveNotAllowedError",
     "TokenInfo",
     "TokenNotFoundError",
     "TokenStatus",

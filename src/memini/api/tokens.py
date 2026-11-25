@@ -43,7 +43,8 @@ class NewTokenRequest(BaseModel):
         min_length=1,
         max_length=len(SCOPES),
         description="What the token may do: read (queries), ingest (writes of content), admin"
-        " (workspaces, sources, tokens). Scopes do not imply each other.",
+        " (workspaces, sources, tokens), sensitive (with read: records marked sensitive, when a"
+        " read asks for them). Scopes do not imply each other.",
     )
     name: str = Field(
         min_length=1,

@@ -144,8 +144,12 @@ def chunk_conditions(scope: ChunkScope, param: Params) -> sql.Composable:
     """The conditions on ``chunk c`` joined with ``record r`` that every statement shares."""
     filters = scope.filters
     parts: list[sql.Composable] = [
+        # A chunk of a record marked sensitive is left out unless the access includes them.
         scope.access.where(
-            workspace_id=_c("workspace_id"), owner_id=_c("owner_id"), source_id=_c("source_id")
+            workspace_id=_c("workspace_id"),
+            owner_id=_c("owner_id"),
+            source_id=_c("source_id"),
+            sensitive=sql.Identifier("r", "sensitive"),
         ),
         sql.SQL("c.workspace_id = ANY({})").format(param(sorted(scope.workspaces))),
         scope.index.predicate("c"),

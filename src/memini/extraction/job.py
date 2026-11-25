@@ -183,6 +183,8 @@ FROM record r
 JOIN workspace w ON w.id = r.workspace_id
 JOIN source s ON s.id = r.source_id
 WHERE r.id = %s AND r.workspace_id = %s
+  -- A record marked sensitive is never sent to a model (memini.sensitivity): as if gone.
+  AND NOT r.sensitive
 """
 
 

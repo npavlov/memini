@@ -22,6 +22,11 @@ that every read already passes. Putting it anywhere else would make each route r
 Writes are limited the same way: a token limited to one workspace changes nothing outside it, and
 creates no workspace. A row it may not change looks like a row that does not exist, as for reads.
 
+Records marked sensitive (requirements, section 8, Sensitive records) are a second thing the read
+filter decides: they are left out unless the request asks for them (``include_sensitive``) with a
+token that has the ``sensitive`` scope. A read of records passes the record's ``sensitive`` column
+to :meth:`ReadFilter.where`, so the rule is in one place, as the workspace limit is.
+
 Growing to several users (section 8) fills :meth:`ReadFilter.where` and :meth:`WriteAccess.where`
 in, not their callers: they already receive the owner column and, on rows that belong to a source,
 the source column, so they can add "owned by the principal, or in a source with
@@ -40,6 +45,7 @@ from memini.auth.principal import Principal, Scope
 __all__ = [
     "InsufficientScopeError",
     "ReadFilter",
+    "SensitiveNotAllowedError",
     "WorkspaceLimitError",
     "WriteAccess",
     "authorize_read",
@@ -76,6 +82,8 @@ class ReadFilter:
     principal: Principal
     workspace_ids: frozenset[UUID] | None
     """The workspaces reads are limited to; ``None`` for no limit by workspace."""
+    include_sensitive: bool = False
+    """Whether records marked sensitive are read too: asked for, with the ``sensitive`` scope."""
 
     def where(
         self,
@@ -83,6 +91,7 @@ class ReadFilter:
         workspace_id: sql.Composable,
         owner_id: sql.Composable,
         source_id: sql.Composable | None = None,
+        sensitive: sql.Composable | None = None,
     ) -> sql.Composable:
         """A SQL condition that holds for exactly the rows the principal may read.
 
@@ -94,21 +103,49 @@ class ReadFilter:
                          owner_id=sql.Identifier("r", "owner_id"),
                          source_id=sql.Identifier("r", "source_id"))
 
+        A read of records (or of what is derived from one record, such as its chunks) passes the
+        record's ``sensitive`` column too: a record marked sensitive is then left out unless
+        :attr:`include_sensitive`.
+
         Values are embedded as SQL literals, so the condition needs no query parameters. They are
         uuids only, which hold no ``%`` that could be taken for a placeholder.
         """
         # v1: one principal owns every row and may read every source, so owner_id and source_id
         # narrow nothing yet. They are taken now so that callers need no change when they do.
         del owner_id, source_id
+        hidden = (
+            sql.SQL("NOT {}").format(sensitive)
+            if sensitive is not None and not self.include_sensitive
+            else None
+        )
         if self.workspace_ids is None:
-            return _TRUE
-        if not self.workspace_ids:
+            workspaces: sql.Composable = _TRUE
+        elif not self.workspace_ids:
             return _FALSE
-        return sql.SQL("{} = ANY({})").format(workspace_id, sql.Literal(sorted(self.workspace_ids)))
+        else:
+            workspaces = sql.SQL("{} = ANY({})").format(
+                workspace_id, sql.Literal(sorted(self.workspace_ids))
+            )
+        if hidden is None:
+            return workspaces
+        if workspaces is _TRUE:
+            return hidden
+        return sql.SQL("({} AND {})").format(workspaces, hidden)
+
+
+class SensitiveNotAllowedError(InsufficientScopeError):
+    """A read asked for records marked sensitive with a token that lacks the ``sensitive``
+    scope."""
+
+    def __init__(self) -> None:
+        super().__init__("sensitive")
 
 
 def authorize_read(
-    principal: Principal, *, workspaces: Collection[UUID] | None = None
+    principal: Principal,
+    *,
+    workspaces: Collection[UUID] | None = None,
+    include_sensitive: bool = False,
 ) -> ReadFilter:
     """The authorization filter: what ``principal`` may read, as a :class:`ReadFilter`.
 
@@ -120,14 +157,23 @@ def authorize_read(
         workspaces: the workspaces the request asks for, e.g. a search filter; ``None`` for all.
             The result never reaches beyond them; asking for a workspace the principal may not read
             gives no rows from it, not an error, so a caller cannot tell it from a missing one.
+        include_sensitive: read records marked sensitive too.
+
+    Raises:
+        SensitiveNotAllowedError: ``include_sensitive`` without the ``sensitive`` scope. Asking is
+            an error, not an empty answer, so a caller knows why nothing more came back.
     """
+    if include_sensitive and not principal.has_scope("sensitive"):
+        raise SensitiveNotAllowedError
     allowed: frozenset[UUID] | None = None
     if principal.workspace_id is not None:
         allowed = frozenset({principal.workspace_id})
     if workspaces is not None:
         requested = frozenset(workspaces)
         allowed = requested if allowed is None else allowed & requested
-    return ReadFilter(principal=principal, workspace_ids=allowed)
+    return ReadFilter(
+        principal=principal, workspace_ids=allowed, include_sensitive=include_sensitive
+    )
 
 
 class WorkspaceLimitError(Exception):

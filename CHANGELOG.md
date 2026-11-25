@@ -14,6 +14,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   vector that did not change. Until a workspace is done, search answers `index_rebuilding` with
   how far it is, `GET /v1/status` and `memini status` show it, and the desktop app shows a bar
   on its Server and Codebases screens. [Upgrade the server](docs/install.md#upgrade-the-server).
+- Mark a record sensitive instead of forgetting it: it stays stored and indexed, and every read
+  leaves it out (search, code search, symbols, messages, meetings, threads, decisions supported
+  only by it, the export) unless it asks with `include_sensitive` and a token with the new scope
+  `sensitive`. No model reads a marked record. An admin marks or clears one with
+  `PUT /v1/workspaces/{workspace}/records/sensitive` or `memini sensitive mark|unmark|list`, a push
+  with `"sensitive": true`, and the desktop app on its Data screen. Scenario S19.
 - See how far a git sync is while it runs: its run report carries `details.progress`, the files
   it writes, those read, chunked and embedded so far, and those committed, saved every few seconds
   (`GET /v1/runs/{id}`).

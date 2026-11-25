@@ -6,7 +6,9 @@ they use, and its domains with their subdomains and code, with the version and w
 entry last and when. The catalog is authored data, so the export holds it whole; nothing in it
 is derived. Without
 ``--include-private``, a service over a private source is left out, with the code entries and
-the links that name it, as the records of that source are.
+the links that name it, as the records of that source are. Without ``--include-sensitive``, a
+record marked sensitive is left out, with the knowledge items whose only evidence it is
+(:mod:`memini.sensitivity`); with it, a record line says ``sensitive`` and its reason.
 """
 
 import argparse
@@ -32,9 +34,10 @@ type Conn = AsyncConnection[TupleRow]
 _RECORDS: Final = """
 SELECT r.id, r.source_id::text AS source_id, s.name AS source, s.kind AS source_kind,
        s.visibility, r.kind, r.external_id,
-       r.external_url, r.content_hash, r.occurred_at, r.deleted_at, r.payload, r.normalized_text
+       r.external_url, r.content_hash, r.occurred_at, r.deleted_at, r.payload, r.normalized_text,
+       r.sensitive, r.sensitive_reason
 FROM record r JOIN source s ON s.id = r.source_id AND s.workspace_id = r.workspace_id
-WHERE r.workspace_id = %s AND (%s OR s.visibility = 'workspace')
+WHERE r.workspace_id = %s AND (%s OR s.visibility = 'workspace') AND (%s OR NOT r.sensitive)
 ORDER BY r.id
 """
 
@@ -43,13 +46,22 @@ i.workspace_id = %(workspace)s AND (%(private)s OR NOT EXISTS (
     SELECT 1 FROM knowledge_evidence e
     LEFT JOIN source s ON s.id = e.source_id AND s.workspace_id = e.workspace_id
     WHERE e.item_id = i.id AND s.visibility IS DISTINCT FROM 'workspace'
+)) AND (%(sensitive)s OR NOT (
+    EXISTS (SELECT 1 FROM knowledge_evidence e WHERE e.item_id = i.id)
+    AND NOT EXISTS (
+        SELECT 1 FROM knowledge_evidence e
+        LEFT JOIN record r ON r.id = e.record_id AND r.workspace_id = e.workspace_id
+        WHERE e.item_id = i.id AND (r.id IS NULL OR NOT r.sensitive)
+    )
 ))
 """)
 
 
-async def _records(conn: Conn, workspace: UUID, private: bool) -> AsyncIterator[dict[str, Any]]:
+async def _records(
+    conn: Conn, workspace: UUID, private: bool, sensitive: bool
+) -> AsyncIterator[dict[str, Any]]:
     async with conn.cursor(name="export_records", row_factory=dict_row) as cursor:
-        await cursor.execute(_RECORDS, (workspace, private))
+        await cursor.execute(_RECORDS, (workspace, private, sensitive))
         async for row in cursor:
             payload: bytes | None = row.pop("payload")
             if payload is not None:
@@ -60,21 +72,23 @@ async def _records(conn: Conn, workspace: UUID, private: bool) -> AsyncIterator[
             for key in ("occurred_at", "deleted_at"):
                 if row[key] is not None:
                     row[key] = row[key].isoformat()
+            if not row["sensitive"]:  # the line of a record that is not marked is as it was
+                del row["sensitive"], row["sensitive_reason"]
             yield row
 
 
 async def _journal(
-    conn: Conn, workspace: UUID, owner: UUID, private: bool
+    conn: Conn, workspace: UUID, owner: UUID, private: bool, sensitive: bool
 ) -> AsyncIterator[dict[str, Any]]:
     access = WriteAccess(owner, frozenset({workspace}))
-    params: dict[str, Any] = {"workspace": workspace, "private": private}
+    params: dict[str, Any] = {"workspace": workspace, "private": private, "sensitive": sensitive}
     condition = _VISIBLE
     while items := await select_items(
         conn, access, condition, params, order=sql.SQL("i.id"), limit=100
     ):
         linked = {link.supersedes_id for item in items for link in item.supersedes}
         linked.update(item.superseded_by.item_id for item in items if item.superseded_by)
-        if linked and not private:
+        if linked and not (private and sensitive):
             cursor = await conn.execute(
                 sql.SQL(
                     "SELECT i.id FROM knowledge_item i WHERE {} AND i.id = ANY(%(linked)s)"
@@ -179,7 +193,12 @@ async def _projects(
 
 
 async def export_workspace(
-    conn: Conn, principal: str, name: str, *, include_private: bool = False
+    conn: Conn,
+    principal: str,
+    name: str,
+    *,
+    include_private: bool = False,
+    include_sensitive: bool = False,
 ) -> AsyncIterator[str]:
     async with conn.transaction():
         await conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
@@ -193,8 +212,11 @@ async def export_workspace(
             raise CommandError("No such workspace for the configured principal.")
         workspace_id, owner_id = workspace
         for kind, rows in [
-            ("record", _records(conn, workspace_id, include_private)),
-            ("knowledge_item", _journal(conn, workspace_id, owner_id, include_private)),
+            ("record", _records(conn, workspace_id, include_private, include_sensitive)),
+            (
+                "knowledge_item",
+                _journal(conn, workspace_id, owner_id, include_private, include_sensitive),
+            ),
             ("project", _projects(conn, workspace_id, owner_id, include_private)),
         ]:
             async for row in rows:
@@ -205,7 +227,11 @@ async def export_command(args: argparse.Namespace, settings: Settings) -> int:
     async with connect(settings.database_url.get_secret_value(), autocommit=True) as conn:
         await require_migrated(conn, "run `memini migrate` first")
         async for line in export_workspace(
-            conn, settings.principal, args.workspace, include_private=args.include_private
+            conn,
+            settings.principal,
+            args.workspace,
+            include_private=args.include_private,
+            include_sensitive=args.include_sensitive,
         ):
             print(line)
     return EXIT_OK

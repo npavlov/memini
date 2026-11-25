@@ -299,6 +299,9 @@ class Api:
     def patch(self, path: str, body: Json) -> Json:
         return self._expect_body(self.request("PATCH", path, body=body), path)
 
+    def put(self, path: str, body: Json) -> Json:
+        return self._expect_body(self.request("PUT", path, body=body), path)
+
     def delete(self, path: str) -> Json | None:
         return self.request("DELETE", path)
 

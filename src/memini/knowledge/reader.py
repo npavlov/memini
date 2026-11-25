@@ -28,6 +28,7 @@ from memini.knowledge.model import (
 )
 from memini.search.patterns import lexical_terms
 from memini.search.retrieval import Params, lexical_statement
+from memini.sensitivity import hidden_items
 from memini.workspaces import NotFoundError
 
 __all__ = ["get_item", "list_items"]
@@ -40,7 +41,7 @@ SELECT i.id, i.workspace_id, w.name, i.kind, i.statement, i.decided_at, i.status
        i.recorded_at, i.invalidated_at, i.extractor, i.extraction_id
 FROM knowledge_item i
 JOIN workspace w ON w.id = i.workspace_id
-WHERE {access} AND {condition}
+WHERE {access} AND {shown} AND {condition}
 ORDER BY {order}
 {limit}
 """)
@@ -52,6 +53,7 @@ _EVIDENCE: Final = sql.SQL("""
 SELECT e.item_id, e.record_id, e.source_id, s.name, e.record_kind, e.external_id,
        e.external_url, e.anchor,
        CASE WHEN r.id IS NOT NULL AND r.deleted_at IS NOT NULL THEN 'deleted'
+            WHEN r.id IS NOT NULL AND r.sensitive AND NOT {include_sensitive} THEN 'sensitive'
             WHEN r.id IS NOT NULL THEN 'stored'
             WHEN f.record_id IS NOT NULL THEN 'forgotten'
             WHEN x.record_id IS NOT NULL THEN 'expired'
@@ -138,6 +140,8 @@ async def select_items(
     participants and links."""
     query = _ITEMS.format(
         access=_scope(access, "i"),
+        # An item whose every piece of evidence is a sensitive record is left out.
+        shown=hidden_items(access),
         condition=condition,
         order=order,
         limit=sql.SQL("") if limit is None else sql.SQL("LIMIT {}").format(sql.Literal(limit)),
@@ -151,6 +155,9 @@ async def select_items(
 
     cur = await conn.execute(
         _EVIDENCE.format(
+            include_sensitive=sql.Literal(
+                not isinstance(access, ReadFilter) or access.include_sensitive
+            ),
             record_access=_scope(access, "r", source="source_id"),
             source_access=_scope(access, "s", source="id"),
             forgotten_access=_scope(access, "f", source="source_id"),

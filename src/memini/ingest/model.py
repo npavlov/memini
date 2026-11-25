@@ -73,6 +73,9 @@ class RecordIn:
     (:mod:`memini.ingest.catalog`); ``None``: the source's or stream's default, if any."""
     domains: Sequence[str] = ()
     """Domains of ``project`` the record belongs to: ``domain`` or ``domain/subdomain``."""
+    sensitive: bool = False
+    """Mark the record sensitive as it is stored (:mod:`memini.sensitivity`). A push only sets
+    the mark: false, or left out, keeps the mark the record has."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -151,6 +154,8 @@ class PreparedRecord:
     project: str | None = None
     """The project the record was pushed with, checked; see :class:`RecordIn`."""
     domains: tuple[str, ...] = ()
+    sensitive: bool = False
+    """Mark the record sensitive; see :class:`RecordIn`."""
 
 
 @dataclass(frozen=True, slots=True)

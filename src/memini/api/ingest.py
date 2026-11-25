@@ -148,6 +148,14 @@ class RecordBody(BaseModel):
         description="Domains of the project the record belongs to: domain or domain/subdomain,"
         " as get_catalog names them. Needs project.",
     )
+    sensitive: bool = Field(
+        default=False,
+        strict=True,
+        description="true: mark the record sensitive (a salary, a diagnosis): it is stored and"
+        " indexed, but left out of answers unless a reader asks for sensitive records with a"
+        " token that has the sensitive scope, and no model reads it. A push only sets the mark;"
+        " false or left out keeps the record's mark, which an admin clears.",
+    )
 
     def to_record(self) -> ingest.RecordIn:
         return ingest.RecordIn(
@@ -159,6 +167,7 @@ class RecordBody(BaseModel):
             deleted=self.deleted,
             project=self.project,
             domains=tuple(self.domains),
+            sensitive=self.sensitive,
         )
 
 

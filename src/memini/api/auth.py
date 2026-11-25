@@ -162,10 +162,20 @@ IngestPrincipal = Annotated[Principal, Depends(require_scope("ingest"))]
 AdminPrincipal = Annotated[Principal, Depends(require_scope("admin"))]
 
 
-async def read_access(principal: ReadPrincipal) -> ReadFilter:
-    """The ``read`` scope and the authorization filter for the caller, for a read route."""
-    # Called through its module, so a test can watch the read path call the filter.
-    return authorization.authorize_read(principal)
+_YES: Final = frozenset({"true", "1", "yes", "on"})
+
+
+async def read_access(principal: ReadPrincipal, request: Request) -> ReadFilter:
+    """The ``read`` scope and the authorization filter for the caller, for a read route.
+
+    The query parameter ``include_sensitive`` of a read that takes it asks for records marked
+    sensitive too; it needs the ``sensitive`` scope (403 ``insufficient_scope`` without it)."""
+    include = request.query_params.get("include_sensitive", "").strip().lower() in _YES
+    try:
+        # Called through its module, so a test can watch the read path call the filter.
+        return authorization.authorize_read(principal, include_sensitive=include)
+    except authorization.SensitiveNotAllowedError:
+        raise insufficient_scope_error("sensitive") from None
 
 
 ReadAccess = Annotated[ReadFilter, Depends(read_access)]

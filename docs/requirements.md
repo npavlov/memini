@@ -63,7 +63,7 @@ raw nor derived (Catalog, below).
 |---|---|
 | Workspace | Isolation unit: a company or a project. Every row carries `workspace_id`. Holds `llm_policy` (`none`, `local`, `cloud`); `cloud` is its opt-in to a cloud LLM (section 9). |
 | Principal | The user. One in v1. Every row carries `owner_id`. |
-| Token | Bearer token (stored hashed) bound to a principal, with scopes `read`, `ingest`, `admin`; optionally limited to one workspace. |
+| Token | Bearer token (stored hashed) bound to a principal, with scopes `read`, `ingest`, `admin` and `sensitive` (with `read`, records marked sensitive when a read asks for them); optionally limited to one workspace. |
 
 ### Raw layer
 
@@ -1030,6 +1030,32 @@ undone; deleting the source clears its entries' effect, since a source added aga
 ids. It is not an MCP tool: MCP tools are called by agents acting on retrieved text, which is data
 and never instructions (principle 11), and an irreversible hard delete is the user's decision, made
 with an admin token.
+
+**Sensitive records** (decided 2026-11-25, S19, memini-qpk.30). A record can be marked sensitive (a
+salary, a diagnosis, a date of birth) instead of forgotten: it stays stored and indexed, and reads
+leave it out unless they ask. The mark is a column of the record with an optional reason of at most
+200 characters (redacted as any text an agent writes) and the time it was set (migration 0022), so
+marking and clearing touch no chunk or vector and need no reindex. An admin sets or clears it with
+`PUT /v1/workspaces/{workspace}/records/sensitive` and `memini sensitive mark|unmark`, naming the
+record as forget does, and lists the marked records, names and reasons only, with `GET` on the same
+route and `memini sensitive list`; the desktop app does both on its Data screen. A push marks a
+record with `"sensitive": true` and never clears a mark: a record sent again without it keeps it.
+The rule is in the read filter (section 8): a read of records passes the record's `sensitive`
+column to `ReadFilter.where`, which leaves a marked record out, and with it its chunks, unless the
+filter includes sensitive records. Every read of record content does: `search` in every mode and
+its journal items, `search_code`, `get_symbol`, `list_messages`, `list_meetings`, `get_thread` and
+`get_meeting` (404 `sensitive_record`, so the reader knows to ask), and the HTTP routes behind them.
+A knowledge item whose every piece of evidence is a stored record marked sensitive is left out as
+well; an item with other evidence shows the marked one as `record_state: sensitive`, with its
+reference only. A read asks with `include_sensitive=true` (an argument of those tools, a query
+parameter of those routes, `--include-sensitive` of the CLI); the filter grants it only to a token
+with the scope `sensitive`, which no other scope implies, and refuses the request otherwise (403
+`insufficient_scope`, or a tool error). Model steps never read a marked record, whatever the token:
+the extraction job, re-extraction and the domain step leave it out, and a push queues no
+extraction for it. `memini export` leaves marked records out, with the items only they support,
+unless `--include-sensitive`. `read_source` reads files from the repository's mirror, not records,
+so a code file marked sensitive is left out of search but still read by path, as a forgotten file
+is; a file kept out of the service is excluded from the source.
 
 **Source administration** (decided 2026-11-18, open question 4). Source configuration lives in the
 database and is managed through the HTTP API and the CLI; there is no configuration file applied on

@@ -2,7 +2,7 @@
 
 Find where a symbol is defined in code: by name (on) or qualified name (Lamp.on: names from the outermost definition, joined by '.' in every language), whole or as a prefix. Each definition carries its kind, parent, location as repo@sha:path#Lstart-Lend, ref, commit, occurred_at (the commit's time), the code that defines it as snippet, and context: the project, service and domains its file belongs to by the catalog. Filters: repositories, workspaces, paths, languages.
 
-Token scope: `read`.
+Token scope: `read`; `sensitive` too for `include_sensitive`.
 
 | Argument | Required | Description |
 |---|---|---|
@@ -14,6 +14,7 @@ Token scope: `read`.
 | `repositories` | no | Only these repositories (git sources), by name. |
 | `paths` | no | Only paths that match one of these globs, with the rules of .gitignore: * and ? within a directory, ** across directories (src/**/*.py); a glob without / matches at any depth (*.py); a directory matches everything below it (src/memini). |
 | `languages` | no | Only code parsed as one of these languages. |
+| `include_sensitive` | no | Also read records marked sensitive (a salary, a diagnosis), which are left out by default. Needs a token with the `sensitive` scope; without it the call is refused. |
 
 ## Example
 

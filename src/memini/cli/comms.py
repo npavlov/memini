@@ -44,6 +44,7 @@ def _params(args: argparse.Namespace) -> dict[str, str | int | list[str] | None]
         "workspaces": args.workspace,
         "sources": args.source,
         "limit": args.limit,
+        "include_sensitive": "true" if args.include_sensitive else None,
     }
 
 
@@ -126,6 +127,11 @@ def _common(parser: argparse.ArgumentParser, what: str) -> None:
     )
     parser.add_argument(
         "--since", type=parse_time, metavar="TIME", help="from this time on (ISO 8601, with Z)"
+    )
+    parser.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="also records marked sensitive; needs a token with the sensitive scope",
     )
     parser.add_argument("--until", type=parse_time, metavar="TIME", help="before this time")
     parser.add_argument(

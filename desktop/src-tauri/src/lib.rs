@@ -60,6 +60,8 @@ pub fn run() {
             commands::api_domain,
             commands::api_project,
             commands::api_project_put,
+            commands::api_sensitive_list,
+            commands::api_sensitive_mark,
             commands::api_tools,
             commands::api_tool_call,
             commands::api_tokens_list,

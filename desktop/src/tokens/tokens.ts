@@ -6,7 +6,7 @@ import { ShapeError, readArray, readObject, readString, readStrings } from "../j
 import { displayText } from "../text/display-text";
 import type { Tone } from "../components";
 
-export const SCOPES = ["read", "ingest", "admin"] as const;
+export const SCOPES = ["read", "ingest", "admin", "sensitive"] as const;
 
 export type Scope = (typeof SCOPES)[number];
 
@@ -14,6 +14,7 @@ export const SCOPE_MEANINGS: Readonly<Record<Scope, string>> = {
   read: "Search and read: what an agent needs over MCP.",
   ingest: "Write content: push records, record decisions.",
   admin: "Manage workspaces, sources and tokens.",
+  sensitive: "With read: also records marked sensitive, when a read asks for them.",
 };
 
 export interface TokenInfo {

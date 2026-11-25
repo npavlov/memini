@@ -339,6 +339,7 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
                 or item.occurred_at is not None
                 or item.project is not None
                 or item.domains
+                or item.sensitive
             ):
                 raise InvalidBatchError(
                     field, "a tombstone has a kind and an external id, no payload or time"
@@ -389,6 +390,7 @@ def prepare_batch(batch: Batch, limits: IngestLimits) -> PreparedBatch:
                 normalized_text=normalized_text,
                 project=project,
                 domains=domains,
+                sensitive=item.sensitive is True,
             )
         )
     return PreparedBatch(

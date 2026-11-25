@@ -6,12 +6,14 @@ from uuid import UUID
 
 __all__ = ["SCOPES", "Principal", "Scope", "is_scope"]
 
-Scope = Literal["read", "ingest", "admin"]
+Scope = Literal["read", "ingest", "admin", "sensitive"]
 """What a token may do (requirements, section 3).
 
 - ``read``: query routes and tools.
 - ``ingest``: write tools and the push API.
 - ``admin``: workspaces, sources, tokens.
+- ``sensitive``: with ``read``, records marked sensitive when a read asks for them
+  (``include_sensitive``); without it they are left out (requirements, section 8).
 
 Scopes do not imply each other: a token needs each scope it uses.
 """

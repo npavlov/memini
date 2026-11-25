@@ -20,6 +20,8 @@
     "allow-api-domain",
     "allow-api-project",
     "allow-api-project-put",
+    "allow-api-sensitive-list",
+    "allow-api-sensitive-mark",
     "allow-api-tools",
     "allow-api-tool-call",
     "allow-api-tokens-list",

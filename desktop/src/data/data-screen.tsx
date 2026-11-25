@@ -21,18 +21,22 @@ import { countNoun } from "../text/count-noun";
 import { formatDuration } from "../text/format-time";
 import { readOverview } from "./data-api";
 import type { SourceRow, WorkspaceOverview } from "./overview";
+import { SensitiveRecords } from "./sensitive-records";
 import { ToolConsole } from "./tool-console";
 
 export interface DataScreenProps {
   readonly connection: Connection;
 }
 
-/** What the base holds, and the read tools to try by hand. Nothing on this screen can write. */
+/**
+ * What the base holds, and the read tools to try by hand. The one write here is the mark of a
+ * record as sensitive, which an admin token may set or clear.
+ */
 export function DataScreen({ connection }: DataScreenProps): ReactElement {
   return (
     <Screen
       title="Data"
-      lead="What the base holds, and what its read tools answer, without an AI agent. Read-only."
+      lead="What the base holds, and what its read tools answer, without an AI agent. An admin token can also mark records sensitive."
     >
       {connection.hasToken ? (
         <>
@@ -64,23 +68,30 @@ function Overview({ connection }: DataScreenProps): ReactElement {
     >
       {loaded.state.phase === "loading" ? <Text tone="muted">Asking the server…</Text> : null}
       {loaded.state.phase === "failed" ? <ErrorNotice error={loaded.state.error} /> : null}
-      {loaded.state.phase === "ready" ? <Workspaces workspaces={loaded.state.data} /> : null}
+      {loaded.state.phase === "ready" ? (
+        <Workspaces connection={connection} workspaces={loaded.state.data} />
+      ) : null}
     </Panel>
   );
 }
 
 interface WorkspacesProps {
+  readonly connection: Connection;
   readonly workspaces: readonly WorkspaceOverview[];
 }
 
-function Workspaces({ workspaces }: WorkspacesProps): ReactElement {
+function Workspaces({ connection, workspaces }: WorkspacesProps): ReactElement {
   if (workspaces.length === 0) {
     return <EmptyState title="The token may read no workspace, or none exists yet" />;
   }
   return (
     <>
       {workspaces.map((workspace, position) => (
-        <WorkspaceSources key={`${String(position)}:${workspace.name}`} workspace={workspace} />
+        <WorkspaceSources
+          key={`${String(position)}:${workspace.name}`}
+          connection={connection}
+          workspace={workspace}
+        />
       ))}
       <Text tone="muted" small>
         Chunks are counted per workspace: no route of the server counts them per source.
@@ -90,12 +101,13 @@ function Workspaces({ workspaces }: WorkspacesProps): ReactElement {
 }
 
 interface WorkspaceSourcesProps {
+  readonly connection: Connection;
   readonly workspace: WorkspaceOverview;
 }
 
 const SOURCE_COLUMNS = ["Source", "Kind", "Streams", "Records", "Not indexed", "Syncs every", "Freshness"];
 
-function WorkspaceSources({ workspace }: WorkspaceSourcesProps): ReactElement {
+function WorkspaceSources({ connection, workspace }: WorkspaceSourcesProps): ReactElement {
   const counts = (
     <>
       <Text tone="muted" inline>
@@ -116,6 +128,7 @@ function WorkspaceSources({ workspace }: WorkspaceSourcesProps): ReactElement {
           ))}
         </DataTable>
       )}
+      <SensitiveRecords connection={connection} workspace={workspace.name} />
     </Section>
   );
 }

@@ -46,7 +46,7 @@ Refusals, beyond those of search (:func:`memini.query.query_errors`):
 import logging
 from collections.abc import Collection, Generator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Final, cast
 from uuid import UUID
@@ -87,6 +87,7 @@ from memini.persons import ME, member_ids, parse_person_ref, resolve_persons
 from memini.query import QueryError, QueryServices, query_errors
 from memini.search import MAX_LIMIT, Hit, SearchFilters, SearchQuery, search
 from memini.search.model import source_kind
+from memini.sensitivity import sensitive_message
 
 __all__ = [
     "DOCUMENT_ID_DOMAIN",
@@ -133,6 +134,16 @@ def _scope(access: ReadFilter | WriteAccess, alias: str, *, source: bool = False
         workspace_id=sql.Identifier(alias, "workspace_id"),
         owner_id=sql.Identifier(alias, "owner_id"),
         source_id=sql.Identifier(alias, "source_id") if source else None,
+    )
+
+
+def _record_scope(access: ReadFilter, alias: str = "r") -> sql.Composable:
+    """:func:`_scope` of a record: a record marked sensitive is read only when asked for."""
+    return access.where(
+        workspace_id=sql.Identifier(alias, "workspace_id"),
+        owner_id=sql.Identifier(alias, "owner_id"),
+        source_id=sql.Identifier(alias, "source_id"),
+        sensitive=sql.Identifier(alias, "sensitive"),
     )
 
 
@@ -259,7 +270,7 @@ async def _records(conn: Conn, access: ReadFilter, ids: Collection[str]) -> dict
         return {}
     query = sql.SQL(
         "SELECT {columns} FROM {from_} WHERE r.id = ANY(%s) AND r.deleted_at IS NULL AND {access}"
-    ).format(columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_scope(access, "r", source=True))
+    ).format(columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_record_scope(access))
     cur = await conn.execute(query, (sorted(ids),))
     return {row[0]: _record(row) for row in await cur.fetchall()}
 
@@ -358,7 +369,7 @@ async def run_list_meetings(
     if arguments.query is None:
         async with conn.transaction():
             query = _MEETINGS.format(
-                columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_scope(access, "r", source=True)
+                columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_record_scope(access)
             )
             cur = await conn.execute(
                 query,
@@ -444,7 +455,7 @@ async def _message_links(
     records: Sequence[str] | None,
     limit: int | None,
 ) -> list[_Link]:
-    query = _MESSAGE_LINKS.format(access=_scope(access, "r", source=True))
+    query = _MESSAGE_LINKS.format(access=_record_scope(access))
     cur = await conn.execute(
         query,
         {
@@ -635,20 +646,28 @@ _KIND_TOOLS: Final = {"meeting": "get_meeting", "thread": "get_thread"}
 async def _find(conn: Conn, access: ReadFilter, arguments: RecordArguments, kind: str) -> _Record:
     """The live record the arguments name, of ``kind``; see the module for the refusals."""
     template = _BY_REFERENCE if arguments.record_id is None else _BY_ID
+    params = {
+        "id": arguments.record_id,
+        "source": arguments.source,
+        "external_id": arguments.external_id,
+        "kind": kind,
+        "workspace": arguments.workspace,
+    }
     query = template.format(
-        columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_scope(access, "r", source=True)
+        columns=_RECORD_COLUMNS, from_=_RECORD_FROM, access=_record_scope(access)
     )
-    cur = await conn.execute(
-        query,
-        {
-            "id": arguments.record_id,
-            "source": arguments.source,
-            "external_id": arguments.external_id,
-            "kind": kind,
-            "workspace": arguments.workspace,
-        },
-    )
+    cur = await conn.execute(query, params)
     rows = await cur.fetchall()
+    if not rows and not access.include_sensitive:
+        # Say why, so the reader knows to ask: the record is there, marked sensitive.
+        marked = template.format(
+            columns=_RECORD_COLUMNS,
+            from_=_RECORD_FROM,
+            access=_record_scope(replace(access, include_sensitive=True)),
+        )
+        cur = await conn.execute(marked, params)
+        if await cur.fetchall():
+            raise QueryError(404, "sensitive_record", sensitive_message(kind))
     if not rows:
         raise QueryError(404, "not_found", f"No such {kind}.")
     if len(rows) > 1:

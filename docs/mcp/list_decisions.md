@@ -2,7 +2,7 @@
 
 Read active decisions and open questions, newest first unless a query ranks them. Set history to include earlier states. Filter by workspace, statement words, participant ids, decision time, and projects and domains of the catalog (a domain includes its subdomains). Each item carries its context: its project and domains and how each came (push, default, manual, code, model). With projects or domains, without_domain counts the project's items that no domain holds.
 
-Token scope: `read`.
+Token scope: `read`; `sensitive` too for `include_sensitive`.
 
 | Argument | Required | Description |
 |---|---|---|
@@ -15,6 +15,7 @@ Token scope: `read`.
 | `until` | no | Until |
 | `history` | no | Include superseded, closed and retracted items. |
 | `limit` | no | Limit |
+| `include_sensitive` | no | Also read records marked sensitive (a salary, a diagnosis), which are left out by default. Needs a token with the `sensitive` scope; without it the call is refused. |
 
 ## Example
 

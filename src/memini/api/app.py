@@ -12,10 +12,10 @@ Layout of the application :func:`create_app` builds:
   for the authorization filter and a write route for its write access, through
   :mod:`memini.api.auth`. Administration: workspaces (:mod:`memini.api.workspaces`), sources and
   streams (:mod:`memini.api.sources`), runs (:mod:`memini.api.runs`), tokens
-  (:mod:`memini.api.tokens`), forgetting a record (:mod:`memini.api.forget`), persons and
-  aliases (:mod:`memini.api.persons`). Freshness:
-  ``GET /v1/status`` (:mod:`memini.api.status`), the same answer as the MCP ``status`` tool.
-  Intake: batches of records for push sources (:mod:`memini.api.ingest`), and the agent
+  (:mod:`memini.api.tokens`), forgetting a record (:mod:`memini.api.forget`), marking a record
+  sensitive (:mod:`memini.api.sensitive`), persons and aliases (:mod:`memini.api.persons`).
+  Freshness: ``GET /v1/status`` (:mod:`memini.api.status`), the same answer as the MCP ``status``
+  tool. Intake: batches of records for push sources (:mod:`memini.api.ingest`), and the agent
   executor's runs of mcp sources (:mod:`memini.api.agent_runs`). Queries: search, code
   search, symbols and reading files (:mod:`memini.api.query`), the same calls as the MCP tools;
   meetings, messages, threads and adding a document (:mod:`memini.api.comms`), the same calls as
@@ -75,6 +75,7 @@ from memini.api.persons import build_persons_router
 from memini.api.query import build_query_router
 from memini.api.request_id import RequestIdMiddleware
 from memini.api.runs import build_runs_router
+from memini.api.sensitive import build_sensitive_router
 from memini.api.sources import build_sources_router
 from memini.api.status import build_status_router
 from memini.api.tokens import build_tokens_router
@@ -269,6 +270,7 @@ def create_app(
         build_decisions_router(),
         build_extract_router(),
         build_forget_router(),
+        build_sensitive_router(),
     ):
         v1.include_router(router)
         templates.add(router.routes, V1_PREFIX)

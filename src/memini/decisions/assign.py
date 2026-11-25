@@ -392,6 +392,7 @@ _RECORDS: Final = """
 SELECT r.id, r.kind, r.external_id, r.occurred_at, r.payload, s.name, w.name
 FROM record r JOIN source s ON s.id = r.source_id JOIN workspace w ON w.id = r.workspace_id
 WHERE r.id = ANY(%s) AND r.workspace_id = %s AND r.deleted_at IS NULL AND r.payload IS NOT NULL
+  AND NOT r.sensitive -- never sent to a model (memini.sensitivity)
 """
 
 _ANSWER: Final = """

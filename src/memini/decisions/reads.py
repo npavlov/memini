@@ -22,6 +22,7 @@ from memini.decisions.model import DecisionItem, Name
 from memini.decisions.service import decision_errors
 from memini.provenance import Labelled
 from memini.search.model import MAX_FILTER_VALUES, MAX_QUERY_CHARS
+from memini.sensitive_option import include_sensitive_field
 from memini.workspaces import list_workspaces
 
 __all__ = [
@@ -38,6 +39,8 @@ __all__ = [
 
 class ListDecisionsArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    include_sensitive: bool = include_sensitive_field()
 
     workspaces: Annotated[list[Name], Field(max_length=MAX_FILTER_VALUES)] | None = None
     person_ids: Annotated[list[UUID], Field(max_length=MAX_FILTER_VALUES)] | None = None
@@ -62,6 +65,8 @@ class ListDecisionsArguments(BaseModel):
 
 class GetDecisionArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    include_sensitive: bool = include_sensitive_field()
 
     item_id: UUID
 

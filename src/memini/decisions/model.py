@@ -315,7 +315,8 @@ class EvidenceInfo(BaseModel):
     external_url: str | None
     anchor: str | None = Field(description="Where in the record; null: the whole record.")
     record_state: knowledge.RecordState = Field(
-        description="stored; deleted: the source deleted it, kept until retention; expired:"
+        description="stored; sensitive: stored and marked sensitive, not read without"
+        " include_sensitive; deleted: the source deleted it, kept until retention; expired:"
         " removed by the source's retention; forgotten: removed by hand; gone: its source"
         " deleted. Without the record, the reference is what is left."
     )

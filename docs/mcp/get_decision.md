@@ -2,11 +2,12 @@
 
 Read an item and its supersession chain with evidence links and raw record states.
 
-Token scope: `read`.
+Token scope: `read`; `sensitive` too for `include_sensitive`.
 
 | Argument | Required | Description |
 |---|---|---|
 | `item_id` | yes | Item Id |
+| `include_sensitive` | no | Also read records marked sensitive (a salary, a diagnosis), which are left out by default. Needs a token with the `sensitive` scope; without it the call is refused. |
 
 ## Example
 

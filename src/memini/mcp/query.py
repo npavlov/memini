@@ -22,11 +22,11 @@ from psycopg import AsyncConnection
 from psycopg.rows import TupleRow
 from pydantic import BaseModel
 
-from memini.auth import ReadFilter, authorization
+from memini.auth import ReadFilter
 from memini.chunking import LANGUAGES
 from memini.mcp.decisions import summarize_item
 from memini.mcp.text import TEXT_NOTICE, fenced, inline
-from memini.mcp.tools import Tool, ToolCall, ToolError
+from memini.mcp.tools import Tool, ToolCall, ToolError, read_access
 from memini.query import (
     CodeContext,
     CodeSearchArguments,
@@ -76,8 +76,7 @@ def _tool_run[A: BaseModel, R: BaseModel](
     """A tool's ``run``: authorize, borrow a connection, call ``run``, report a refusal."""
 
     async def tool_run(call: ToolCall, arguments: A) -> R:
-        # Called through its module, so a test can watch the tool go through the filter.
-        access = authorization.authorize_read(call.principal)
+        access = read_access(call, arguments)
         pool = call.pool
         if pool is None:
             raise ToolError("The database is not available.")

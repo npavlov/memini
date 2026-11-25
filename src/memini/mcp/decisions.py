@@ -47,7 +47,7 @@ from memini.decisions.reads import (
     run_list_decisions,
 )
 from memini.mcp.text import TEXT_NOTICE, fenced, inline
-from memini.mcp.tools import Tool, ToolCall, ToolError
+from memini.mcp.tools import Tool, ToolCall, ToolError, read_access
 
 __all__ = [
     "CLOSE_DECISION_TOOL",
@@ -262,7 +262,7 @@ def _read_run[A: BaseModel, R: BaseModel](
     run: Callable[[Conn, ReadFilter, A], Awaitable[R]],
 ) -> Callable[[ToolCall, A], Awaitable[R]]:
     async def tool_run(call: ToolCall, arguments: A) -> R:
-        access = authorization.authorize_read(call.principal)
+        access = read_access(call, arguments)
         if call.pool is None:
             raise ToolError("The database is not available.")
         try:
