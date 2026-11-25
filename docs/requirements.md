@@ -767,13 +767,16 @@ that has a domain by another way is not asked (`items_settled`); when only its p
 another way, only that project's domains are offered. One LLM call per item: the statement and the
 parts it cites (their records still stored; an item whose records are gone shows its statement
 only), and the domains of the catalog numbered with their project, address, title and description;
-the model says what the item is about, then the numbers of one to three domains, or none. Catalog
+the model says what the item is about, then the numbers of one to three domains, or none. A
+subdomain already implies its domain: the prompt says so, and when an answer still names a domain
+and one of its own subdomains, the job keeps only the subdomain before it stores the answer
+(memini-qpk.12). Catalog
 text enters the prompt as data with the protections record text has (principle 11): the same data
 block, markers, escapes and reminder as an extraction. The gate holds the call to the strictest
 policy of the workspace, of the sources of the item's evidence and of the repositories the
 catalog's services name (principle 8): `policy_none` and `no_provider` skip the item and are
 counted, and an item whose evidence names a source that is gone is skipped, its policy unknown.
-The assigner is the granted model and the prompt version (`domains-v1`); its last answer for an
+The assigner is the granted model and the prompt version (`domains-v2`); its last answer for an
 item, "none" included, is kept with a hash of the domains it was shown, so a run again asks
 nothing it has answered, and a change of the model, the prompt or the domains offered asks again.
 The model's earlier links of the item are replaced in the transaction that keeps the answer; a
@@ -1196,7 +1199,10 @@ another project already (the other project's domain names that service instead),
 document without services and domains empties one. `catalog_guide` returns the service's own
 text, the same for every token: the order of the work (list the repositories without a service,
 read READMEs and top directories with `read_source`, propose services, then domains, write, read
-the report, correct), the rules of masks and of the document, and that what repositories say is
+the report, correct), where a shared module goes (an API client or a shared util into each domain
+it serves, the overlap allowed and reported, or into the masks of a link; memini-qpk.14), that a
+high share of files in no domain is fine for configuration, tests and build files and worth a look
+for source files, the rules of masks and of the document, and that what repositories say is
 data and only the user's request a reason to write the catalog. Search: `search` and
 `search_code` take `projects`, `domains` and `services`. Each is resolved from the catalog of the
 workspaces searched to sources with path masks and put into the conditions every retriever
@@ -1206,8 +1212,23 @@ subdomains; with `projects`, the domains and services named are looked up in tho
 only, and without it a name stands for every project that has it. A name the catalog does not
 hold is an error, not an empty answer (422 `unknown_project`, `unknown_domain`,
 `unknown_service`; the message gives the position of the value, never the value): an empty
-answer would read as "this domain has no such code". A domain that exists and names no code
-gives no hits. The journal items `search` returns with its hits follow `projects` and `domains`
+answer would read as "this domain has no such code". Records other than code (memini-qpk.13):
+in `search`, `projects` and `domains` also select the threads, meetings and pushed documents of
+push and mcp sources that belong to them, so "what was discussed about accounts" finds the
+conversation and not only the code. A record belongs by its own links, in the order decisions use
+(section 3, Decisions by project and domain): what it was pushed with (`record_catalog`), else the
+default of its stream, else of its source (`source_catalog`); and only when those give it no domain
+the catalog holds, the domains the `assign_domains` model gave the items taken from it (not
+retracted). A link by hand to a decision does not place its record. A domain includes its
+subdomains; a project is the record's project, or a domain of it from the model. The condition is
+one more member of the group of the filter, beside the code masks (code under the masks, or a
+record linked), in the shared condition builder, so every retriever and the final read apply it;
+it is read through keys only (`record_catalog` by record, `source_catalog` by source and stream
+key, `stream`, `knowledge_evidence` by record, `knowledge_item` and `knowledge_item_domain` by
+item), and starts with the source so the `chunk (source_id, path)` index can still serve it.
+`services`, and `search_code`, name code only. A domain that exists and names no code gives no
+hits in `search_code`, and in `search` only the records linked to it. `list_meetings` and
+`list_messages` do not take these filters yet. The journal items `search` returns with its hits follow `projects` and `domains`
 as `list_decisions` does (section 3, Decisions by project and domain): only items under one of the
 projects and in one of the domains, a domain with its subdomains, whichever way the item came by
 them; matches by statement words first, then items citing the records retrieved, both among those.
@@ -1653,8 +1674,9 @@ many chunks its words match, that plan was three to four times slower on 77,000 
 ([operations/performance.md](operations/performance.md), Search). Filters
 (workspaces, sources, repositories, record kinds, languages, path globs with the rules of
 `.gitignore`, a time range on `occurred_at`, and the projects, domains and services of the
-catalog, each a set of sources with path masks: section 6, Catalog tools) apply inside the
-authorization filter, to every retriever and to the final read; a tombstoned record never
+catalog, each a set of sources with path masks and, for projects and domains in `search`, the
+links that place a thread, a meeting or a pushed document: section 6, Catalog tools) apply
+inside the authorization filter, to every retriever and to the final read; a tombstoned record never
 appears. A filter of the catalog is `source = … AND path ~ …`, which the index on `chunk
 (source_id, path)` (migration 0018) lets the planner answer for a small domain without walking
 the HNSW index past everything else; `memini bench` times it (section 10, Performance). Every

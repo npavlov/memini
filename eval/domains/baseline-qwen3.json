@@ -1,14 +1,14 @@
 {
-  "assigner": "qwen3:4b-instruct@domains-v1",
+  "assigner": "qwen3:4b-instruct@domains-v2",
   "set": "harbour",
-  "items": 26,
-  "accuracy": 0.9231,
-  "none_rate": 0.1538,
-  "expected_none_rate": 0.2308,
+  "items": 27,
+  "accuracy": 0.9259,
+  "none_rate": 0.1481,
+  "expected_none_rate": 0.2222,
   "false_none": 0,
   "false_domain": 2,
   "by_language": {
-    "en": 0.9583,
+    "en": 0.96,
     "ru": 0.5
   },
   "cases": [
@@ -252,6 +252,16 @@
       "expected": [],
       "answered": [
         "port:bookings"
+      ]
+    },
+    {
+      "id": "d27",
+      "language": "en",
+      "expected": [
+        "port:fees/berth"
+      ],
+      "answered": [
+        "port:fees/berth"
       ]
     }
   ]

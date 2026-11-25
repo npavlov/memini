@@ -29,6 +29,7 @@ from memini.decisions.assign import (
     assigner_name,
     assignment_request,
     catalog_hash,
+    most_specific,
     picked,
 )
 from memini.evaluation.domains import (
@@ -60,6 +61,11 @@ def test_the_set_labels_domains_subdomains_none_and_both_languages() -> None:
     assert any("/" in address for each in expected for _, address in each)
     assert {case.language for case in data.cases} == {"en", "ru"}
     assert {case.kind for case in data.cases} == {"decision", "open_question"}
+    # d27: an answer of a domain and its own subdomain is measured as the subdomain alone.
+    pair = next(case for case in data.cases if case.id == "d27")
+    assert pair.expected == {("port", "fees/berth")}
+    raw = asyncio.run(KeywordAssigner().assign(data.question(pair)))
+    assert {c.key for c in raw} == {("port", "fees"), ("port", "fees/berth")}
     fixed = next(case for case in data.cases if case.project is not None)
     assert {c.project for c in data.question(fixed).choices} == {fixed.project}
 
@@ -219,6 +225,47 @@ def test_an_answer_keeps_shown_numbers_once_and_at_most_three() -> None:
     many = question(choices=tuple(DomainChoice("port", f"d{n}") for n in range(6)))
     chosen = picked(DomainPicks(about="all", picks=[1, 2, 3, 4, 5]), many)
     assert len(chosen) == MAX_PICKS
+
+
+def test_a_domain_named_with_its_own_subdomain_gives_way_to_it() -> None:
+    asked = question()
+    # fees and fees/berth: the subdomain already implies its domain.
+    assert [c.key for c in picked(DomainPicks(about="berth", picks=[1, 2, 3]), asked)] == [
+        ("port", "fees/berth"),
+        ("fleet", "crew"),
+    ]
+    assert [c.key for c in picked(DomainPicks(about="fees", picks=[1]), asked)] == [
+        ("port", "fees")
+    ]
+
+    # Only a subdomain of the same project counts, and a name that only starts alike does not.
+    choices = (
+        DomainChoice("port", "fees"),
+        DomainChoice("fleet", "fees/charter"),
+        DomainChoice("port", "feeds"),
+        DomainChoice("port", "fees/pilot"),
+        DomainChoice("port", "fees/berth"),
+    )
+    assert [c.key for c in most_specific(choices)] == [
+        ("fleet", "fees/charter"),
+        ("port", "feeds"),
+        ("port", "fees/pilot"),
+        ("port", "fees/berth"),
+    ]
+    # Normalised before the cap: the domain does not take a place a subdomain would keep.
+    many = question(choices=choices)
+    kept = picked(DomainPicks(about="fees", picks=[1, 4, 5, 3]), many)
+    assert [c.key for c in kept] == [
+        ("port", "fees/pilot"),
+        ("port", "fees/berth"),
+        ("port", "feeds"),
+    ]
+
+
+def test_the_prompt_says_a_subdomain_implies_its_domain() -> None:
+    system = assignment_request(question()).messages[0].content
+    assert "A subdomain already implies its domain" in system
+    assert PROMPT_VERSION == "domains-v2"
 
 
 def test_the_catalog_hash_follows_what_is_shown() -> None:

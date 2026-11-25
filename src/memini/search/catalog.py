@@ -22,6 +22,17 @@ Both expressions come from :func:`memini.search.patterns.glob_regex`, the dialec
 filter, so a file a filter finds is a file whose context names the filter's domain;
 tests/test_catalog_db.py asks Postgres and Python about the same paths.
 
+**Records other than code** (memini-qpk.13). A thread, a meeting or a pushed document is in no
+service, so no mask names it; it belongs to a project and domains by its links (migration 0020),
+in the order :mod:`memini.decisions.context` reads them for a decision: what it was pushed with
+(``record_catalog``), else the default of its stream, else of its source (``source_catalog``);
+and only when those give it no domain of the catalog, the domains the ``assign_domains`` model
+gave the decisions taken from it (``knowledge_item_domain``, origin ``model``, of an item that is
+not retracted). :func:`catalog_groups` adds these to the ``projects`` and ``domains`` groups as
+:class:`RecordPlaces`, keys the shared condition builder compares with the links in SQL; a
+chunk passes such a group when it is code under the masks or its record is linked. The
+``services`` filter names code only.
+
 How names are read:
 
 - A project is its services and the code its domains name, which may be in a service of another
@@ -43,7 +54,7 @@ its repository the mask is written in.
 import logging
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 from uuid import UUID
 
 from psycopg import AsyncConnection, sql
@@ -54,14 +65,18 @@ from memini.search.errors import InvalidSearchError, UnknownNameError
 from memini.search.patterns import directory_regex, globs_regex, path_matcher
 
 __all__ = [
+    "CatalogGroup",
     "CodeArea",
     "CodeMap",
     "FileContext",
+    "RecordPlaces",
     "ServiceArea",
     "SourcePaths",
+    "catalog_groups",
     "code_groups",
     "domain_address",
     "load_code_maps",
+    "place_key",
 ]
 
 type Conn = AsyncConnection[TupleRow]
@@ -118,6 +133,44 @@ class SourcePaths:
 
     source_id: UUID
     regex: str | None
+
+
+def place_key(workspace_id: UUID, project: str, address: str | None = None) -> str:
+    """How a project (``workspace:project``) or a domain (``workspace:project:address``) is
+    compared with the links of a record in SQL, where the same text is made from
+    ``workspace_id::text`` and the names the links hold."""
+    return f"{workspace_id}:{project}" if address is None else f"{workspace_id}:{project}:{address}"
+
+
+@dataclass(frozen=True, slots=True)
+class RecordPlaces:
+    """The records other than code a ``projects`` or ``domains`` filter names, by their links
+    (see the module)."""
+
+    level: Literal["project", "domain"]
+    names: tuple[str, ...]
+    """:func:`place_key` of each project named (``project``), or of each domain named with each
+    of its subdomains (``domain``)."""
+    known: tuple[str, ...]
+    """:func:`place_key` of every domain and subdomain of the catalogs searched: a link to a name
+    none of them holds does not count, and does not keep the model's domains out."""
+    sources: tuple[UUID, ...]
+    """The sources whose records may have links: every push and mcp source searched."""
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogGroup:
+    """One filter of the catalog: the code it names and, for ``projects`` and ``domains``, the
+    records linked to them. A chunk passes when it is in one member of ``code`` or ``records``
+    names its record."""
+
+    code: tuple[SourcePaths, ...]
+    records: RecordPlaces | None = None
+
+    @property
+    def empty(self) -> bool:
+        """Whether nothing can pass: no code, and no record that may be linked."""
+        return not self.code and self.records is None
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,6 +346,62 @@ def code_groups(
                 raise UnknownNameError("service", position)
         groups.append(group.build())
     return tuple(groups)
+
+
+def catalog_groups(
+    maps: Mapping[UUID, CodeMap],
+    *,
+    projects: Sequence[str] | None = None,
+    domains: Sequence[str] | None = None,
+    services: Sequence[str] | None = None,
+    sources: Sequence[UUID] = (),
+) -> tuple[CatalogGroup, ...]:
+    """The filters as :class:`CatalogGroup`, in the order of :func:`code_groups`: its code, and
+    for ``projects`` and ``domains`` the records of ``sources`` linked to them (none when
+    ``sources`` is empty, as for a search of code only).
+
+    Raises:
+        UnknownNameError: a value names nothing in any of ``maps``.
+    """
+    code = code_groups(maps, projects=projects, domains=domains, services=services)
+    linkable = tuple(sorted(set(sources), key=lambda each: each.hex))
+    known = tuple(
+        sorted(
+            place_key(workspace_id, project, domain_address(domain, subdomain))
+            for workspace_id, catalog in maps.items()
+            for project, domain, subdomain in catalog.domains
+        )
+    )
+    within = None if projects is None else frozenset(projects)
+    places: list[RecordPlaces | None] = []
+    if projects is not None:
+        names = {
+            place_key(workspace_id, name)
+            for name in projects
+            for workspace_id, catalog in maps.items()
+            if name in catalog.projects
+        }
+        places.append(RecordPlaces("project", tuple(sorted(names)), known, linkable))
+    if domains is not None:
+        names = set[str]()
+        for address in domains:
+            domain, _, rest = address.partition("/")
+            subdomain = rest or None
+            for workspace_id, catalog in maps.items():
+                for project, held, part in catalog.domains:
+                    if (
+                        held == domain
+                        and (subdomain is None or part == subdomain)
+                        and (within is None or project in within)
+                    ):
+                        names.add(place_key(workspace_id, project, domain_address(held, part)))
+        places.append(RecordPlaces("domain", tuple(sorted(names)), known, linkable))
+    if services is not None:
+        places.append(None)
+    return tuple(
+        CatalogGroup(group, place if place is not None and linkable else None)
+        for group, place in zip(code, places, strict=True)
+    )
 
 
 # --- Reading -------------------------------------------------------------------------------------

@@ -9,7 +9,9 @@ the job does), and the domains it belongs to, ``project:address``, or none. Ever
 synthetic, written by hand.
 
 Each item becomes the :class:`~memini.decisions.assign.DomainQuestion` the job would ask, and the
-assigner answers it. The metrics:
+assigner answers it. The answer is measured as the job keeps it: a domain named with one of its
+own subdomains gives way to the subdomain (:func:`~memini.decisions.assign.most_specific`). The
+metrics:
 
 - ``accuracy``: the items whose answer is exactly the labelled set of domains, none included.
 - ``none_rate``: the items answered with no domain, against ``expected_none_rate``, the items
@@ -50,6 +52,7 @@ from memini.decisions.assign import (
     LlmAssigner,
     SaidPart,
     assigner_name,
+    most_specific,
 )
 from memini.evaluation.runner import scratch_database
 from memini.llm import LlmOutputError, configured_providers, create_llm_gate
@@ -398,7 +401,7 @@ async def run_domain_eval(data: DomainSet, assigner: EvalAssigner) -> DomainRepo
     """Ask ``assigner`` about every item of ``data`` and measure the answers."""
     results: list[CaseResult] = []
     for case in data.cases:
-        answer = await assigner.assign(data.question(case))
+        answer = most_specific(await assigner.assign(data.question(case)))
         results.append(
             CaseResult(
                 id=case.id,

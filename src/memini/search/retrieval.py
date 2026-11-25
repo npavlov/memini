@@ -48,7 +48,7 @@ from memini.embeddings import Vector
 from memini.gitsync.model import read_pin
 from memini.ids import RecordKind
 from memini.index import VectorIndex
-from memini.search.catalog import SourcePaths
+from memini.search.catalog import CatalogGroup, RecordPlaces
 from memini.search.model import (
     Hit,
     SearchFilters,
@@ -128,11 +128,12 @@ class ChunkScope:
     person_ids: tuple[UUID, ...] | None = None
     """The persons the ``persons`` filter names, resolved: each canonical person and everyone
     merged into it, whose links (``record_person``) count; ``None`` for no such filter."""
-    code_groups: tuple[tuple[SourcePaths, ...], ...] = ()
+    catalog_groups: tuple[CatalogGroup, ...] = ()
     """The ``projects``, ``domains`` and ``services`` filters, resolved from the catalog
-    (:func:`memini.search.catalog.code_groups`): one group per filter given, each a set of
-    sources with a regular expression over paths. A chunk passes when it is in one member of
-    every group; an empty group (a domain that names no code) lets nothing through."""
+    (:func:`memini.search.catalog.catalog_groups`): one group per filter given, each a set of
+    sources with a regular expression over paths and, for projects and domains, the links that
+    place a record other than code. A chunk passes when it is in one member of every group; an
+    empty group (a domain that names no code, in a search of code) lets nothing through."""
 
 
 def _c(column: str) -> sql.Identifier:
@@ -159,17 +160,19 @@ def chunk_conditions(scope: ChunkScope, param: Params) -> sql.Composable:
         parts.append(sql.SQL("c.language = ANY({})").format(param(list(filters.languages))))
     if filters.paths:
         parts.append(sql.SQL("c.path ~ {}").format(param(globs_regex(filters.paths))))
-    for group in scope.code_groups:
+    for group in scope.catalog_groups:
         # (source, path masks) pairs, any of them. The source comes first: the index on
         # (source_id, path) of migration 0018 reads a small domain without the rest.
-        members = [
+        members: list[sql.Composable] = [
             sql.SQL("c.source_id = {}").format(param(member.source_id))
             if member.regex is None
             else sql.SQL("(c.source_id = {} AND c.path ~ {})").format(
                 param(member.source_id), param(member.regex)
             )
-            for member in group
+            for member in group.code
         ]
+        if group.records is not None:
+            members.append(_linked(group.records, param))
         parts.append(
             sql.SQL("({})").format(sql.SQL(" OR ").join(members)) if members else sql.SQL("FALSE")
         )
@@ -190,6 +193,70 @@ def chunk_conditions(scope: ChunkScope, param: Params) -> sql.Composable:
             ).format(param(list(scope.person_ids)), roles)
         )
     return sql.SQL(" AND ").join(parts)
+
+
+# The links of the record of ``chunk c``, ``record r``: what it was pushed with, else the default
+# of its stream, else of its source; at most one row (memini.decisions.context, the same order).
+# Each is one lookup: record_catalog by its key, source_catalog by its key (source_id,
+# stream_key), stream by its key.
+_PLACE: Final = sql.SQL(
+    "SELECT rc.project, rc.domains FROM record_catalog rc WHERE rc.record_id = c.record_id"
+    " UNION ALL (SELECT d.project, d.domains FROM source_catalog d"
+    " WHERE d.source_id = c.source_id"
+    " AND (d.stream_key IS NULL"
+    " OR d.stream_key = (SELECT st.key FROM stream st WHERE st.id = r.stream_id))"
+    " AND NOT EXISTS (SELECT 1 FROM record_catalog rc WHERE rc.record_id = c.record_id)"
+    " ORDER BY d.stream_key NULLS LAST LIMIT 1)"
+)
+
+_WORKSPACE_KEY: Final = sql.SQL("c.workspace_id::text")
+
+
+def _linked(places: RecordPlaces, param: Params) -> sql.Composable:
+    """Whether the record of ``chunk c`` is linked to what ``places`` names
+    (:mod:`memini.search.catalog`, Records other than code).
+
+    Its links are compared as :func:`memini.search.catalog.place_key` makes them. The domains of
+    the model count only when the record's own links give it no domain the catalog holds; they
+    are found through the evidence of the record (knowledge_evidence by record_id) and the
+    model's links of each item (knowledge_item_domain by its key, which starts with item_id), so
+    each test of a chunk is a few index lookups. The sources come first: like the code members,
+    this one starts with ``c.source_id``, which the index on (source_id, path) serves."""
+    if not places.sources or not places.names:
+        return sql.SQL("FALSE")
+    names = param(list(places.names))
+    known = param(list(places.known))
+    ws = _WORKSPACE_KEY
+    if places.level == "domain":
+        held = sql.SQL("k.held && {}::text[]").format(names)
+        model = sql.SQL(
+            "{ws} || ':' || l.project || ':' || l.domain = ANY({names}::text[])"
+        ).format(ws=ws, names=names)
+    else:
+        held = sql.SQL("{ws} || ':' || p.project = ANY({names}::text[])").format(ws=ws, names=names)
+        model = sql.SQL(
+            "{ws} || ':' || l.project = ANY({names}::text[])"
+            " AND {ws} || ':' || l.project || ':' || l.domain = ANY({known}::text[])"
+        ).format(ws=ws, names=names, known=known)
+    return sql.SQL(
+        "(c.source_id = ANY({sources}) AND EXISTS ("
+        "SELECT 1 FROM (SELECT 1) AS one LEFT JOIN LATERAL ({place}) AS p ON TRUE"
+        " CROSS JOIN LATERAL (SELECT ARRAY("
+        "SELECT {ws} || ':' || p.project || ':' || a.address"
+        " FROM unnest(p.domains) AS a (address)) AS held) AS k"
+        " WHERE {held} OR (NOT (k.held && {known}::text[]) AND EXISTS ("
+        "SELECT 1 FROM knowledge_evidence e"
+        " JOIN knowledge_item i ON i.id = e.item_id AND i.status <> 'retracted'"
+        " JOIN knowledge_item_domain l ON l.item_id = e.item_id AND l.origin = 'model'"
+        " WHERE e.record_id = c.record_id AND e.workspace_id = c.workspace_id AND {model}))))"
+    ).format(
+        sources=param(list(places.sources)),
+        place=_PLACE,
+        ws=ws,
+        held=held,
+        known=known,
+        model=model,
+    )
 
 
 _FROM: Final = sql.SQL("chunk c JOIN record r ON r.id = c.record_id")

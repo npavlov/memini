@@ -19,9 +19,10 @@
    whose links count (:func:`memini.persons.resolve_persons`: each reference's canonical person
    and everyone merged into it); a filter that names nothing the caller may read gives no hits.
    The ``projects``, ``domains`` and ``services`` filters are resolved from the catalog to
-   sources and path masks (:mod:`memini.search.catalog`); there a name the catalog does not hold
-   is an error (:class:`~memini.search.errors.UnknownNameError`), because an empty answer would
-   read as "this domain has no such code".
+   sources and path masks and, for projects and domains, to the links that place a thread, a
+   meeting or a pushed document (:mod:`memini.search.catalog`); there a name the catalog does not
+   hold is an error (:class:`~memini.search.errors.UnknownNameError`), because an empty answer
+   would read as "this domain has no such code".
 4. The retrievers of the mode (:mod:`memini.search.retrieval`); for ``hybrid``, reciprocal rank
    fusion of the dense and lexical candidates (:mod:`memini.search.fusion`).
 5. One read of the hits' chunks, records and sources, under the same conditions.
@@ -65,7 +66,7 @@ from memini.auth import ReadFilter
 from memini.embeddings import Embedder, Vector
 from memini.index import IndexFingerprint, VectorIndex, check_index, current_fingerprint
 from memini.persons.lookup import member_ids, resolve_persons
-from memini.search.catalog import SourcePaths, code_groups, load_code_maps
+from memini.search.catalog import CatalogGroup, catalog_groups, load_code_maps
 from memini.search.errors import InvalidSearchError, SearchTimeoutError
 from memini.search.fusion import reciprocal_rank_fusion
 from memini.search.model import (
@@ -212,15 +213,17 @@ async def _scope(
 ) -> ChunkScope | None:
     """The chunks to search, or ``None`` if there are none. Checks every workspace's index."""
     workspaces = await _workspaces(conn, access, filters)
-    groups: tuple[tuple[SourcePaths, ...], ...] = ()
+    groups: tuple[CatalogGroup, ...] = ()
     if filters.names_code:
         # Before anything can end the search without hits: a name the catalog of no workspace in
         # reach holds is an error also where nothing is indexed yet.
-        groups = code_groups(
+        linkable = await _linkable_sources(conn, access, list(workspaces), filters)
+        groups = catalog_groups(
             await load_code_maps(conn, access, list(workspaces)),
             projects=filters.projects,
             domains=filters.domains,
             services=filters.services,
+            sources=linkable,
         )
     indexed: dict[UUID, str] = {}
     for workspace_id, name in workspaces.items():
@@ -237,8 +240,8 @@ async def _scope(
         person_ids = await member_ids(conn, [root for found in roots.values() for root in found])
         if not person_ids:
             return None
-    if any(not group for group in groups):
-        return None  # a project or a domain that names no code
+    if any(group.empty for group in groups):
+        return None  # a project or a domain that names no code, in a search of code
     return ChunkScope(
         access=access,
         workspaces=indexed,
@@ -246,7 +249,7 @@ async def _scope(
         source_ids=source_ids,
         filters=filters,
         person_ids=person_ids,
-        code_groups=groups,
+        catalog_groups=groups,
     )
 
 
@@ -274,6 +277,30 @@ async def _workspaces(conn: Conn, access: ReadFilter, filters: SearchFilters) ->
         params,
     ).rows(conn)
     return {row[0]: row[1] for row in rows}
+
+
+async def _linkable_sources(
+    conn: Conn, access: ReadFilter, workspace_ids: list[UUID], filters: SearchFilters
+) -> tuple[UUID, ...]:
+    """The sources whose records a project or a domain may name by their links: the push and
+    mcp sources in reach (a git source's files belong by the masks). None in a search of code
+    only."""
+    if not workspace_ids or (
+        filters.kinds is not None and all(kind == "code_file" for kind in filters.kinds)
+    ):
+        return ()
+    query = sql.SQL(
+        "SELECT s.id FROM source s WHERE {access} AND s.workspace_id = ANY(%(workspaces)s)"
+        " AND s.kind <> 'git' ORDER BY s.id"
+    ).format(
+        access=access.where(
+            workspace_id=sql.Identifier("s", "workspace_id"),
+            owner_id=sql.Identifier("s", "owner_id"),
+            source_id=sql.Identifier("s", "id"),
+        )
+    )
+    rows = await Statement(query, {"workspaces": workspace_ids}).rows(conn)
+    return tuple(row[0] for row in rows)
 
 
 async def _sources(
