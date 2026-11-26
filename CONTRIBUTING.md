@@ -75,7 +75,7 @@ from the host: health, the localhost-only port, a non-root user, the first admin
 | `make lint` | `ruff check` and `ruff format --check` |
 | `make format` | `ruff format` and `ruff check --fix` |
 | `make typecheck` | `pyright` |
-| `make test` | unit tests (`pytest -m "not integration"`); no database needed |
+| `make test` | unit tests (`pytest -m "not integration"`, in parallel); no database needed |
 | `make test-integration` | tests marked `integration`, against Postgres (`make db` first) |
 | `make check` | lint, typecheck and unit tests together |
 | `make hooks` | use the versioned git hooks and fetch the secret scanner |
@@ -84,9 +84,10 @@ from the host: health, the localhost-only port, a non-root user, the first admin
 
 `make check` and `make test-integration` must pass before you open a pull request. Integration tests read
 the server from `MEMINI_TEST_DATABASE_URL` (default: the `make db` database), create a new empty database
-per test and drop it afterwards, so the role needs the right to create databases. They run in parallel,
-one worker process per CPU (pytest-xdist); `make test-integration INTEGRATION_WORKERS=0` runs them in one
-process.
+per test and drop it afterwards, so the role needs the right to create databases. A test that needs the
+schema gets a copy of a template database that its worker process migrated once. Both targets run in
+parallel, one worker process per CPU (pytest-xdist); `make test UNIT_WORKERS=0` and
+`make test-integration INTEGRATION_WORKERS=0` run the tests in one process.
 
 ## Project rules
 

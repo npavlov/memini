@@ -150,8 +150,27 @@ jobs:
             exit 1
           fi
 
+      # In parallel, one worker per CPU (Makefile, UNIT_WORKERS).
       - name: Unit tests
         run: make test
+
+      # The integration tests create and drop a database per test, and most of that time is spent
+      # writing and syncing to disk. The service container is thrown away after the job, so it may
+      # skip durability: no fsync, no full-page images, commits that do not wait for the WAL. The
+      # tests that crash a server use one of their own (tests/disposable_postgres.py).
+      - name: Run the test server without durability
+        env:
+          MEMINI_TEST_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
+        run: |
+          uv run python - <<'EOF'
+          import os
+          import psycopg
+
+          with psycopg.connect(os.environ["MEMINI_TEST_DATABASE_URL"], autocommit=True) as db:
+              for setting in ("fsync", "full_page_writes", "synchronous_commit"):
+                  db.execute(f"ALTER SYSTEM SET {setting} = off")
+              db.execute("SELECT pg_reload_conf()")
+          EOF
 
       # In parallel, one worker per CPU (Makefile, INTEGRATION_WORKERS); the slowest tests are
       # listed at the end, to show where the time goes.

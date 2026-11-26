@@ -18,6 +18,9 @@ QWEN3_MARGIN ?= 0.05
 # --dist loadfile keeps the tests of one file on one worker: a module's fixtures (such as the
 # Postgres container of test_failures_db.py) start once, and a file's tests run in their order.
 INTEGRATION_WORKERS ?= auto
+# Worker processes of make test, as above. Unit tests share no database, so any test may run on
+# any worker (--dist load); each must leave the process (environment, cwd, logging) as it found it.
+UNIT_WORKERS ?= auto
 
 .PHONY: help sync lint format typecheck test test-integration check eval eval-qwen3 eval-decisions db db-down smoke
 
@@ -39,7 +42,7 @@ typecheck: ## Type check (pyright, strict)
 	$(UV_RUN) pyright
 
 test: ## Run unit tests (pytest); no database needed
-	$(UV_RUN) pytest -m "not integration"
+	$(UV_RUN) pytest -m "not integration" -n $(UNIT_WORKERS) --dist load
 
 test-integration: ## Run integration tests against Postgres (make db, or MEMINI_TEST_DATABASE_URL)
 	$(UV_RUN) pytest -m integration -n $(INTEGRATION_WORKERS) --dist loadfile
