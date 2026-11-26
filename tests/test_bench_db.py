@@ -4,14 +4,15 @@ test run (docs/operations/performance.md). Every value is synthetic."""
 
 import json
 import shutil
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Iterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import psycopg
 import pytest
 
 from git_helpers import SourceRepo
-from memini.bench import SCRATCH_PREFIX
+from memini.bench import SCRATCH_PREFIX, runner
 from memini.cli import main
 from memini.cli.common import EXIT_FAILURE, EXIT_OK, EXIT_USAGE
 from memini.config import environment_variables
@@ -58,12 +59,24 @@ def scratch_databases(url: str) -> set[str]:
 
 @pytest.fixture
 def server(monkeypatch: pytest.MonkeyPatch, postgres_url: str) -> Iterator[str]:
+    """The test server in ``MEMINI_DATABASE_URL``; no other setting from the shell. Checks that
+    every scratch database the test made is gone afterwards: only those it made, since a benchmark
+    running elsewhere on the same server (another test worker) may have one of its own then."""
     for name in (*environment_variables(), "MEMINI_PRINCIPAL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("MEMINI_DATABASE_URL", postgres_url)
-    before = scratch_databases(postgres_url)
+    created: list[str] = []
+    original = runner._scratch_database  # pyright: ignore[reportPrivateUsage]
+
+    @asynccontextmanager
+    async def recording(server_url: str, *, keep: bool) -> AsyncGenerator[tuple[str, str]]:
+        async with original(server_url, keep=keep) as (name, url):
+            created.append(name)
+            yield name, url
+
+    monkeypatch.setattr(runner, "_scratch_database", recording)
     yield postgres_url
-    assert scratch_databases(postgres_url) <= before  # its own scratch database is gone
+    assert not scratch_databases(postgres_url) & set(created)
 
 
 @pytest.fixture

@@ -47,6 +47,46 @@ defaults:
     working-directory: desktop
 
 jobs:
+  # Which parts a pull request touches. The front end runs on every run of this workflow; the app
+  # matrix (three platforms, the slowest checks of a pull request) only when the pull request
+  # changes what the app is built from: desktop/, the launcher, its packaging recipe or this
+  # workflow. A change of docs/mcp alone needs the front end's test only. A job-level `if` rather
+  # than a narrower `paths:` above, so that a skipped App job still reports, as skipped (which a
+  # required check counts as passed). A push and a manual run build the app always. The diff is
+  # git's, on the merge commit that a pull request checks out: its first parent is the base.
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+    steps:
+      - name: Check out (the merge commit and its parents)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Changed paths
+        id: diff
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "${EVENT}" != "pull_request" ]; then
+            echo "app=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          changed="$(git diff --name-only HEAD^1 HEAD)"
+          printf '%s\n' "${changed}"
+          pattern='^(desktop/|scripts/memini-server\.py$|packaging/server/|\.github/workflows/desktop\.yml$)'
+          if printf '%s\n' "${changed}" | grep -Eq "${pattern}"; then
+            echo "app=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "app=false" >> "${GITHUB_OUTPUT}"
+            echo "No app files changed: the App jobs are skipped."
+          fi
+
   frontend:
     name: Front end (types, tests, build)
     runs-on: ubuntu-24.04
@@ -80,11 +120,15 @@ jobs:
 
   # The Rust side is linted and tested on each platform, because parts of it are compiled for one
   # platform only (how the launcher is found and started), and then the app is built as that
-  # platform's bundle. Unsigned: the bundles are for looking at, not for distribution. No build
-  # cache: a cold build takes several minutes, and a cache of the target directory is larger than
-  # it is worth while the app changes rarely.
+  # platform's bundle. Unsigned: the bundles are for looking at, not for distribution. Cargo's
+  # registry and the compiled dependencies are cached (Swatinem/rust-cache), per platform and
+  # Cargo.lock: a cold build compiles a few hundred crates three times (clippy, test, release) and
+  # took up to 11 minutes on Windows. The cache holds dependencies only, never the app's own crate,
+  # so every run still lints, tests and builds the app from its sources.
   app:
     name: App (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +165,15 @@ jobs:
             --component clippy --component rustfmt --no-self-update
           rustup default "$RUST_TOOLCHAIN"
           rustc --version
+
+      # After the toolchain, which is part of the key. A pull request restores the cache of main
+      # (or its own, from an earlier run) and saves its own; main's is saved on push. A pull
+      # request cannot write main's cache, and nothing published reads this one: the bundles
+      # here are unsigned previews, and no release workflow builds the app or restores the cache.
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop/src-tauri -> target
 
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0

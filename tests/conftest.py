@@ -3,6 +3,8 @@
 Database fixtures are for tests marked `integration`. They need a Postgres server with pgvector:
 `make db` starts one, or `MEMINI_TEST_DATABASE_URL` points to another. The role in the URL must be
 allowed to create databases. Each test gets a new, empty database, which is dropped afterwards.
+`make test-integration` runs them in parallel worker processes (pytest-xdist) against the same
+server, so a test may look only at databases it created itself, never at the server as a whole.
 """
 
 import io
