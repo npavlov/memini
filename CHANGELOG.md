@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The repository's launcher pin and the Homebrew and Scoop packages move to 0.2.0-rc.5.
+
 ## [0.2.0-rc.5] - 2026-11-26
 
 ### Added
