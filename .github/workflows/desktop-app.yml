@@ -1,0 +1,221 @@
+name: Desktop app
+
+# The desktop app (desktop/) built on each platform, unsigned: its Rust side linted and tested,
+# the launcher frozen into its sidecar, then the bundles a user installs. Called by two workflows:
+# desktop.yml, which checks a pull request or a push, and release.yml, which attaches the bundles
+# to the draft release of a tag. Each platform uploads one artifact, memini-desktop-<os>, holding
+# the files a release carries:
+#
+#   Memini-<version>-macos-arm64.dmg      (and -macos-x86_64.dmg with intel-mac)
+#   Memini-<version>-windows-x64-setup.exe
+#   Memini-<version>-linux-x86_64.AppImage
+#   Memini-<version>-linux-amd64.deb
+#
+# <version> is the app's own (desktop/package.json and Cargo.toml, written by
+# scripts/bump-version.py); with a tag, the run fails unless it is the tag's.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: A release tag (vX.Y.Z[-rc.N]). The checkout must be its commit, and the app's version its version.
+        type: string
+        default: ""
+      cache:
+        description: Restore and save the cache of Rust dependencies.
+        type: boolean
+        default: true
+      intel-mac:
+        description: Build for Intel Macs too (macos-15-intel), next to Apple silicon.
+        type: boolean
+        default: false
+
+# Read-only token. Nothing here writes to the repository or needs a secret: nothing is signed,
+# notarized or published here; the caller uploads what it publishes.
+permissions:
+  contents: read
+
+env:
+  # The versions the app was last built with. Update them together with desktop/README.md and the
+  # front end's job in desktop.yml.
+  NODE_VERSION: "24.22.0"
+  RUST_TOOLCHAIN: "1.100.0"
+  # What freezes the launcher into the sidecar (desktop/sidecar/freeze.py).
+  UV_VERSION: "0.13.9"
+  PYINSTALLER_VERSION: "6.22.3"
+  # Windows only: the TLS library's assembly comes prebuilt, so the runner needs no NASM.
+  AWS_LC_SYS_PREBUILT_NASM: "1"
+
+defaults:
+  run:
+    shell: bash
+    working-directory: desktop
+
+jobs:
+  # The Rust side is linted and tested on each platform, because parts of it are compiled for one
+  # platform only (how the launcher is found and started), and then the app is built as that
+  # platform's bundles. Cargo's registry and the compiled dependencies are cached
+  # (Swatinem/rust-cache), per platform and Cargo.lock: a cold build compiles a few hundred crates
+  # three times (clippy, test, release) and took up to 11 minutes on Windows. The cache holds
+  # dependencies only, never the app's own crate, so every run still lints, tests and builds the
+  # app from its sources. A release turns the cache off: what it publishes is built from nothing
+  # restored.
+  app:
+    name: App (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, ubuntu-24.04, windows-2022]
+        exclude:
+          - os: ${{ inputs.intel-mac && 'none' || 'macos-15-intel' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      # The whole history: the sidecar takes the compose files of the launcher's pinned release
+      # from that release's tag.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the commit against the tag
+        if: inputs.tag != ''
+        working-directory: .
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-list -1 "refs/tags/$TAG")"
+
+      # What Tauri 2 needs to build on Linux: the system webview and its companions.
+      - name: Install system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential file libayatana-appindicator3-dev librsvg2-dev libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev patchelf
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
+            --component clippy --component rustfmt --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          rustc --version
+
+      # After the toolchain, which is part of the key. A pull request restores the cache of main
+      # (or its own, from an earlier run) and saves its own; main's is saved on push. A pull
+      # request cannot write main's cache. A release does not restore it (inputs.cache).
+      - name: Cache Rust dependencies
+        if: inputs.cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      # The launcher, scripts/memini-server.py, frozen into one program for this platform: the
+      # app carries it as a sidecar, so a user needs no Homebrew, Scoop or Python. PyInstaller
+      # lives in a throwaway environment, not in the project's. The script fails unless the
+      # frozen program prints the same JSON as the launcher itself. The Rust build below needs
+      # the sidecar to be there.
+      - name: Freeze the launcher (sidecar)
+        working-directory: .
+        run: >-
+          uv run --no-project --python 3.12 --with "pyinstaller==$PYINSTALLER_VERSION"
+          python desktop/sidecar/freeze.py
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The version of pnpm is the one package.json names in packageManager.
+      - name: Install pnpm
+        run: npm install --global "$(node -p "require('./package.json').packageManager")"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The Rust side embeds the built front end, so it is built first.
+      - name: Build the front end
+        run: pnpm build
+
+      - name: Format check (rustfmt)
+        working-directory: desktop/src-tauri
+        run: cargo fmt --check
+
+      # --locked: Cargo fails if Cargo.lock is stale instead of rewriting it.
+      - name: Lint (clippy)
+        working-directory: desktop/src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Unit tests (cargo test)
+        working-directory: desktop/src-tauri
+        run: cargo test --locked
+
+      # The bundles of this platform. A disk image needs the .app it packs. On CI Tauri skips
+      # the Finder layout of the disk image, which needs a desktop session.
+      - name: Build the app, unsigned
+        run: |
+          case "$RUNNER_OS" in
+            macOS) bundles=app,dmg ;;
+            Linux) bundles=deb,appimage ;;
+            Windows) bundles=nsis ;;
+            *) echo "no bundles for $RUNNER_OS" >&2; exit 1 ;;
+          esac
+          pnpm tauri build --bundles "$bundles" -- --locked
+
+      # The files a release carries, under names that say the platform. Exactly one file of each
+      # kind, or the step fails.
+      - name: Collect the bundles
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ -n "$TAG" ] && [ "v$version" != "$TAG" ]; then
+            echo "the app's version is $version, the tag $TAG: scripts/bump-version.py" >&2
+            exit 1
+          fi
+          bundle=src-tauri/target/release/bundle
+          rm -rf release && mkdir release
+          # take PATTERN NAME: the one file PATTERN matches, copied as release/NAME.
+          take() {
+            # shellcheck disable=SC2086 # the pattern is meant to expand
+            set -- $1 "$2"
+            if [ "$#" -ne 2 ] || [ ! -f "$1" ]; then
+              echo "expected one bundle, found: $*" >&2
+              exit 1
+            fi
+            cp "$1" "release/$2"
+          }
+          case "$RUNNER_OS" in
+            macOS)
+              case "$(uname -m)" in
+                arm64) arch=arm64 ;;
+                x86_64) arch=x86_64 ;;
+                *) echo "unknown machine $(uname -m)" >&2; exit 1 ;;
+              esac
+              take "$bundle/dmg/*.dmg" "Memini-$version-macos-$arch.dmg"
+              ;;
+            Linux)
+              take "$bundle/appimage/*.AppImage" "Memini-$version-linux-x86_64.AppImage"
+              take "$bundle/deb/*.deb" "Memini-$version-linux-amd64.deb"
+              ;;
+            Windows)
+              take "$bundle/nsis/*-setup.exe" "Memini-$version-windows-x64-setup.exe"
+              ;;
+          esac
+          ls -l release
+
+      - name: Upload the bundles
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: memini-desktop-${{ matrix.os }}
+          path: desktop/release/
+          if-no-files-found: error
+          retention-days: 7

@@ -30,6 +30,20 @@ desktop app and changelog section), builds and tests the distributions, publishe
 `ghcr.io/npavlov/memini:<version>` for amd64 and arm64, builds the installers, and opens a draft
 release, a pre-release for an `-rc.N` tag.
 
+It also builds the desktop app from the tag on each platform
+([desktop-app.yml](../.github/workflows/desktop-app.yml), the workflow that checks the app on a
+pull request, here without the Rust cache) and attaches it, unsigned, with `desktop-SHA256SUMS`:
+
+- `Memini-<version>-macos-arm64.dmg`, `Memini-<version>-macos-x86_64.dmg`
+- `Memini-<version>-windows-x64-setup.exe`
+- `Memini-<version>-linux-x86_64.AppImage`, `Memini-<version>-linux-amd64.deb`
+
+The build fails unless the app's version is the tag's. The release notes end with how to open the
+unsigned app the first time (`DESKTOP_APP` in `scripts/release-notes.py`).
+
+This app carries the launcher of the previous release until step 3 points it at the new image;
+the app that carries the new launcher comes with the next tag.
+
 ## 3. Point the launcher at the image
 
 When the Release run has passed, read the digest of the published image:

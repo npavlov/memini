@@ -7,6 +7,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The Release workflow builds the desktop app from the tag and attaches it, unsigned, to the
+  draft release with `desktop-SHA256SUMS`: `.dmg` for macOS (Apple silicon and Intel),
+  `-setup.exe` for Windows x64, `.AppImage` and `.deb` for Linux x86_64. The release notes and
+  [Desktop app](docs/install.md#desktop-app) say how to open it the first time.
+
+### Changed
+
+- The app's build moved to the reusable workflow `desktop-app.yml`, which the Desktop workflow
+  calls for a pull request and the Release workflow for a tag. Its CI artifacts are the bundles a
+  release carries (`memini-desktop-<os>`) instead of an archive of the bundle folder.
+
 ### Changed
 
 - The server launcher, and the desktop app that carries it, install and start the image of
