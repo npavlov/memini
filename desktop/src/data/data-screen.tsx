@@ -63,8 +63,8 @@ function Overview({ connection, workspace }: DataScreenProps): ReactElement {
     <Panel
       title={workspace === null ? "What the base holds" : `What ${workspace} holds`}
       actions={
-        <Button disabled={loaded.busy} onClick={loaded.reload}>
-          {loaded.busy ? "Refreshing…" : "Refresh"}
+        <Button busy={loaded.busy ? "Refreshing…" : null} onClick={loaded.reload}>
+          Refresh
         </Button>
       }
     >

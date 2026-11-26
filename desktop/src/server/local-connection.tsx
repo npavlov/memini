@@ -42,7 +42,7 @@ export function LocalConnection(props: LocalConnectionProps): ReactElement | nul
           Save it to see its status and manage its tokens here. Its address will be{" "}
           <Mono>{form.url}</Mono>.
         </Text>
-        <Button disabled={saving.pending} onClick={() => saving.run(form)}>
+        <Button busy={saving.pending ? "Adding…" : null} onClick={() => saving.run(form)}>
           Add this computer as a connection
         </Button>
         <ErrorNotice error={saving.error} />
@@ -60,7 +60,7 @@ export function LocalConnection(props: LocalConnectionProps): ReactElement | nul
         <Mono>{saved.url}</Mono>. The server can come back on another port, for example after its
         MCP endpoint was switched. The token is kept: it is the same server on this computer.
       </Text>
-      <Button disabled={saving.pending} onClick={() => saving.run({ ...formOf(saved), url: moved })}>
+      <Button busy={saving.pending ? "Saving…" : null} onClick={() => saving.run({ ...formOf(saved), url: moved })}>
         Use the launcher’s address
       </Button>
       <ErrorNotice error={saving.error} />

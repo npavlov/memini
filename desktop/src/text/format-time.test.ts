@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatAgo, formatClock, formatDuration, formatInstant } from "./format-time";
+import { formatAgo, formatClock, formatDay, formatDuration, formatInstant } from "./format-time";
 
 describe("formatDuration", () => {
   it.each([
@@ -64,7 +64,13 @@ describe("formatClock", () => {
     expect(formatClock("2026-11-25T07:37:00Z", noon, format)).toMatch(/^25 Nov 2026,? 07:37$/u);
   });
 
+  it("shows a day without the time, and its year only when it is another year", () => {
+    expect(formatDay("2026-11-01T09:15:00Z", noon, format)).toBe("1 Nov");
+    expect(formatDay("2025-12-31T09:15:00Z", noon, format)).toBe("31 Dec 2025");
+  });
+
   it("shows a dash for no instant, or one that is not a date", () => {
+    expect(formatDay(null, noon, format)).toBe("—");
     expect(formatClock(null, noon, format)).toBe("—");
     expect(formatClock("soon", noon, format)).toBe("—");
   });

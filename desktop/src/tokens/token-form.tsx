@@ -66,8 +66,8 @@ export function TokenForm({ connection, workspaces, onCreated }: TokenFormProps)
         {form.name === "" || problem === null ? null : <Text tone="hint">{problem}</Text>}
         <ErrorNotice error={creating.error} />
         <Actions>
-          <Button variant="primary" submit disabled={problem !== null || creating.pending}>
-            {creating.pending ? "Creating…" : "Create token"}
+          <Button variant="primary" submit disabled={problem !== null} busy={creating.pending ? "Creating…" : null}>
+            Create token
           </Button>
         </Actions>
       </Form>

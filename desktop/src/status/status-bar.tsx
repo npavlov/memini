@@ -53,9 +53,9 @@ function ConnectionBar({ connection, watch }: ConnectionBarProps): ReactElement 
       <BarStates health={health} />
       <StatusBarActions>
         <IconButton
-          label={busy ? "Checking the connection" : "Check the connection now"}
+          label="Check the connection now"
           icon="refresh"
-          disabled={busy}
+          busy={busy ? "Checking the connection…" : null}
           onClick={reload}
         />
         <Button

@@ -75,6 +75,7 @@ export function FirstSetup(props: FirstSetupProps): ReactElement {
   );
   const setup = useAction(start);
   const idle = !setup.pending && !disabled;
+  const busy = setup.pending ? "Setting up…" : null;
   return (
     <Panel title="Set up Memini on this computer">
       <Text>
@@ -103,7 +104,7 @@ export function FirstSetup(props: FirstSetupProps): ReactElement {
       ) : null}
       <ErrorNotice error={setup.error} />
       <Actions>
-        <Button variant="primary" disabled={!idle} onClick={() => setup.run(FIRST)}>
+        <Button variant="primary" disabled={!idle} busy={busy} onClick={() => setup.run(FIRST)}>
           {progress.at === null ? "Set up" : "Set up again"}
         </Button>
         {setup.pending ? (
@@ -167,6 +168,7 @@ function OllamaHelp({ missing, disabled, onChoose }: OllamaHelpProps): ReactElem
             label="Install Ollama with Homebrew"
             question="Run brew install ollama, then brew services start ollama? It downloads about 1 GB."
             confirmLabel="Install and start it"
+            working="Installing Ollama…"
             disabled={disabled}
             onConfirm={() => onChoose("install")}
           />
@@ -203,6 +205,7 @@ function TokenExists({ disabled, onForce }: TokenExistsProps): ReactElement {
         label="Create another admin token"
         question="Create a second admin token for this server?"
         confirmLabel="Create it"
+        working="Creating the token…"
         disabled={disabled}
         onConfirm={onForce}
       />

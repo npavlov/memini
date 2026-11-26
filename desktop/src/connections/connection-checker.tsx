@@ -25,8 +25,8 @@ export function ConnectionChecker({ connection }: ConnectionCheckerProps): React
     <Panel
       title="Connection test"
       actions={
-        <Button disabled={tested.busy} onClick={tested.reload}>
-          {tested.busy ? "Testing…" : "Test connection"}
+        <Button busy={tested.busy ? "Testing…" : null} onClick={tested.reload}>
+          Test connection
         </Button>
       }
     >

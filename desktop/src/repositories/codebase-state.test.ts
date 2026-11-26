@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { describeCheck, describeCoverage, describeHeld, parseCoverage, parseRunCheck, progressLabel } from "./codebases";
+import {
+  describeCheck,
+  describeCoverage,
+  describeHeld,
+  describeOutcome,
+  endedSyncs,
+  parseCoverage,
+  parseRunCheck,
+  progressLabel,
+  syncPhase,
+} from "./codebases";
 import { folderOf, parseRefStates, unusedFolders } from "./repositories";
+import type { RefState } from "./repositories";
 
 function run(steps: readonly string[], counts: Record<string, number>, details: unknown = null): unknown {
   return {
@@ -130,5 +141,103 @@ describe("the folders of this computer", () => {
 
   it("leaves out of the Server screen's list the folders a code base of any workspace reads", () => {
     expect(unusedFolders([folder, spare], ["/srv/local/quay", "https://git.example.org/x.git"])).toEqual([spare]);
+  });
+});
+
+describe("Sync now", () => {
+  const format = { locale: "en-GB", timeZone: "UTC" };
+  const noon = Date.parse("2026-11-26T12:30:00Z");
+  const index = { records: 1472, chunks: 9310, commit: "0327a55e9b1c", committed_at: "2026-11-01T09:15:00Z" };
+  const finished = { id: "run-2", status: "succeeded", error: null, finished_at: "2026-11-26T12:26:00Z" };
+
+  function stream(fields: Record<string, unknown>): Record<string, unknown> {
+    return { key: "refs/heads/main", pending_sync: null, last_run: null, index, ...fields };
+  }
+
+  function mainOf(fields: Record<string, unknown>): RefState {
+    const [main] = parseRefStates({ items: [stream(fields)] });
+    if (main === undefined) {
+      throw new Error("no stream");
+    }
+    return main;
+  }
+
+  it.each([
+    ["queued", { status: "queued", attempts: 0, last_error: null }, "info", "queued", true],
+    ["running", { status: "running", attempts: 1, last_error: null }, "info", "syncing", false],
+    ["queued again after a failed attempt", { status: "queued", attempts: 1, last_error: "fetch failed" }, "warn", "retrying", true],
+  ])("labels a sync that is %s from the stream's job", (_state, job, tone, label, queued) => {
+    const main = mainOf({ pending_sync: job, last_run: finished });
+
+    expect([main.tone, main.label, main.queued]).toEqual([tone, label, queued]);
+  });
+
+  it("never says the sync waits once the stream has no job: its run says how it ended", () => {
+    const main = mainOf({ last_run: finished });
+
+    expect([main.label, main.queued, main.running]).toEqual(["synced", false, false]);
+    expect(syncPhase([main])).toBeNull();
+  });
+
+  it("says that a sync without changes left the branch at its commit, and when that was made", () => {
+    const check = parseRunCheck(run(["fetch", "diff", "index"], {}));
+
+    expect(describeOutcome(mainOf({ last_run: finished }), check, noon, format)).toBe(
+      "Checked 12:26 — no changes; main is still at 0327a55, committed 1 Nov",
+    );
+  });
+
+  it("counts what a sync changed and names the commit it reached", () => {
+    const check = parseRunCheck(run(["diff", "index"], { files_changed: 3, files_deleted: 1 }));
+
+    expect(describeOutcome(mainOf({ last_run: finished }), check, noon, format)).toBe(
+      "Checked 12:26 — 3 changed, 1 deleted; main is at 0327a55, committed 1 Nov",
+    );
+  });
+
+  it("gives the reason of a sync that failed", () => {
+    const main = mainOf({ last_run: { ...finished, status: "failed", error: "fetch failed" } });
+
+    expect(describeOutcome(main, undefined, noon, format)).toBe("Checked 12:26 — failed: fetch failed");
+  });
+
+  it("has no outcome while a sync waits", () => {
+    const main = mainOf({ pending_sync: { status: "queued", attempts: 0 }, last_run: finished });
+
+    expect(describeOutcome(main, undefined, noon, format)).toBeNull();
+  });
+
+  it("knows a sync is under way while one ref waits and another runs", () => {
+    const refs = parseRefStates({
+      items: [
+        stream({ key: "refs/heads/main", pending_sync: { status: "queued", attempts: 0 } }),
+        stream({ key: "refs/heads/next", pending_sync: { status: "running", attempts: 1 } }),
+      ],
+    });
+
+    expect(syncPhase(refs)).toBe("running");
+    expect(syncPhase(refs.slice(0, 1))).toBe("queued");
+  });
+
+  it("ends the sync asked for when a new run finished, or every ref once it was seen under way", () => {
+    const refs = parseRefStates({
+      items: [
+        stream({ key: "refs/heads/main", last_run: finished }),
+        stream({ key: "refs/heads/next", last_run: { ...finished, id: "run-1" } }),
+      ],
+    });
+    const before = new Map([
+      ["refs/heads/main", "run-1"],
+      ["refs/heads/next", "run-1"],
+    ]);
+
+    expect(endedSyncs(refs, before, false).map((ref) => ref.ref)).toEqual(["refs/heads/main"]);
+    expect(endedSyncs(refs, before, true).map((ref) => ref.ref)).toEqual(["refs/heads/main", "refs/heads/next"]);
+  });
+
+  it("has not ended the sync asked for while it is still under way", () => {
+    const refs = parseRefStates({ items: [stream({ pending_sync: { status: "running", attempts: 1 } })] });
+
+    expect(endedSyncs(refs, new Map(), true)).toEqual([]);
   });
 });

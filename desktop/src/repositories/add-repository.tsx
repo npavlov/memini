@@ -150,8 +150,8 @@ function FolderForm({ connection, info, workspace, onAdded }: AddRepositoryProps
       {warning === null ? null : <Notice tone="info" title={warning} />}
       <ErrorNotice error={adding.error} />
       <Actions>
-        <Button variant="primary" submit disabled={!ready || !named || adding.pending}>
-          {adding.pending ? "Adding…" : "Add the folder"}
+        <Button variant="primary" submit disabled={!ready || !named} busy={adding.pending ? "Adding…" : null}>
+          Add the folder
         </Button>
       </Actions>
     </Form>
@@ -212,8 +212,8 @@ function RemoteForm({ connection, workspace, local, onAdded }: AddRepositoryProp
       {location === "" || problem === null ? null : <Text tone="hint">{problem}</Text>}
       <ErrorNotice error={adding.error} />
       <Actions>
-        <Button variant="primary" submit disabled={problem !== null || adding.pending}>
-          {adding.pending ? "Adding…" : "Add the repository"}
+        <Button variant="primary" submit disabled={problem !== null} busy={adding.pending ? "Adding…" : null}>
+          Add the repository
         </Button>
       </Actions>
     </Form>

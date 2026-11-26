@@ -48,7 +48,7 @@ export function LauncherPath({ launcher, onLauncher }: LauncherPathProps): React
             onChange={setPath}
           />
         </Field>
-        <Button submit disabled={saving.pending}>
+        <Button submit busy={saving.pending ? "Saving…" : null}>
           {empty ? "Use the app’s own" : "Use this path"}
         </Button>
       </Form>

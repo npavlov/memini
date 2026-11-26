@@ -75,7 +75,7 @@ function ConnectControls(props: AgentClientCardProps): ReactElement {
     [backend, client, connection, onChanged],
   );
   const connecting = useAction(connect);
-  const blocked = connectProblem(client, choice) !== null || connecting.pending;
+  const blocked = connectProblem(client, choice) !== null;
   return (
     <>
       {needsVariant(client) ? <VariantChoice client={client} value={variant} onChange={setVariant} /> : null}
@@ -93,12 +93,18 @@ function ConnectControls(props: AgentClientCardProps): ReactElement {
             label="Connect"
             question={literalQuestion(client)}
             confirmLabel="Write the token"
-            disabled={blocked}
+            working="Connecting…"
+            disabled={blocked || connecting.pending}
             onConfirm={() => connecting.run(choice)}
           />
         ) : (
-          <Button variant="primary" disabled={blocked} onClick={() => connecting.run(choice)}>
-            {connecting.pending ? "Connecting…" : "Connect"}
+          <Button
+            variant="primary"
+            disabled={blocked}
+            busy={connecting.pending ? "Connecting…" : null}
+            onClick={() => connecting.run(choice)}
+          >
+            Connect
           </Button>
         )}
       </Actions>
@@ -159,6 +165,7 @@ function ConnectedControls(props: AgentClientCardProps): ReactElement {
           label="Disconnect"
           question={`Remove the memini entry from the file of ${client.name}${client.hasToken ? " and revoke its token" : ""}?`}
           confirmLabel="Disconnect"
+          working="Disconnecting…"
           disabled={disconnecting.pending}
           onConfirm={() => disconnecting.run()}
         />
@@ -175,8 +182,8 @@ function LeftoverToken(props: AgentClientCardProps): ReactElement {
     <Notice tone="warn" title="A token made for this client is still valid">
       <Text>The entry is gone, but its token was not revoked. Revoke it when the server answers.</Text>
       <Actions>
-        <Button disabled={disconnecting.pending} onClick={() => disconnecting.run()}>
-          {disconnecting.pending ? "Revoking…" : "Revoke the token"}
+        <Button busy={disconnecting.pending ? "Revoking…" : null} onClick={() => disconnecting.run()}>
+          Revoke the token
         </Button>
       </Actions>
       <ErrorNotice error={disconnecting.error} />

@@ -4,6 +4,9 @@
 
 import { readArray, readNumber, readObject, readString, readStrings } from "../json/read-json";
 import { displayText } from "../text/display-text";
+import { formatClock, formatDay } from "../text/format-time";
+import type { InstantFormat } from "../text/format-time";
+import type { RefState } from "./repositories";
 
 // --- Scope -------------------------------------------------------------------------------------
 
@@ -305,6 +308,79 @@ export function describeCheck(check: RunCheck): string {
     check.deleted > 0 ? `${NUMBER.format(check.deleted)} deleted` : "",
   ].filter((part) => part !== "");
   return parts.length === 0 ? "no changes" : parts.join(", ");
+}
+
+// --- Sync now ----------------------------------------------------------------------------------
+
+/** "main" for refs/heads/main, "v1.2" for refs/tags/v1.2. */
+export function shortRef(ref: string): string {
+  return ref.replace(/^refs\/(heads|tags)\//u, "");
+}
+
+/** Said beside Sync now for a folder of this computer: the server reads its branch, not the remote. */
+export const LOCAL_FOLDER_SYNC =
+  "The server reads the branch of this folder, not its remote: new commits appear here after you pull them into the working copy (git pull).";
+
+/** What the syncs of a code base do now: one runs, one waits in the queue, or none is under way. */
+export function syncPhase(refs: readonly RefState[]): "running" | "queued" | null {
+  if (refs.some((ref) => ref.running)) {
+    return "running";
+  }
+  return refs.some((ref) => ref.queued) ? "queued" : null;
+}
+
+function unchanged(check: RunCheck | undefined): boolean {
+  return check !== undefined && check.mode === "diff" && describeCheck(check) === "no changes";
+}
+
+/** "; main is still at 0327a55, committed 1 Nov"; empty when the index holds no complete commit. */
+function whereNow(ref: RefState, check: RunCheck | undefined, nowMs: number, format: InstantFormat): string {
+  const commit = ref.index?.commit ?? null;
+  if (commit === null) {
+    return "";
+  }
+  const committedAt = ref.index?.committedAt ?? null;
+  const day = committedAt === null ? "" : `, committed ${formatDay(committedAt, nowMs, format)}`;
+  const at = unchanged(check) ? "is still at" : "is at";
+  return `; ${shortRef(ref.ref)} ${at} ${commit.slice(0, 7)}${day}`;
+}
+
+/**
+ * How the newest sync of a ref ended, in one line: "Checked 12:26 — no changes; main is still at
+ * 0327a55, committed 1 Nov", "Checked 12:26 — 3 changed, 1 deleted; main is at 9f8e7d6, …", or
+ * "Checked 12:26 — failed: why". Null while a sync waits or runs, and before the first one.
+ */
+export function describeOutcome(
+  ref: RefState,
+  check: RunCheck | undefined,
+  nowMs: number,
+  format: InstantFormat = {},
+): string | null {
+  if (ref.running || ref.queued || ref.finishedAt === null) {
+    return null;
+  }
+  const at = `Checked ${formatClock(ref.finishedAt, nowMs, format)}`;
+  if (ref.detail !== null) {
+    return `${at} — ${ref.label}: ${ref.detail}`;
+  }
+  const what = check === undefined ? ref.label : describeCheck(check);
+  return `${at} — ${what}${whereNow(ref, check, nowMs, format)}`;
+}
+
+/**
+ * The refs whose sync, asked for with Sync now, has ended: none while one still waits or runs;
+ * then every ref whose newest run is not the one it had when the sync was asked for, or, once a
+ * sync was seen under way, every ref.
+ */
+export function endedSyncs(
+  refs: readonly RefState[],
+  before: ReadonlyMap<string, string | null>,
+  seenUnderWay: boolean,
+): readonly RefState[] {
+  if (syncPhase(refs) !== null) {
+    return [];
+  }
+  return refs.filter((ref) => seenUnderWay || ref.runId !== (before.get(ref.ref) ?? null));
 }
 
 /** The label of a running sync's bar: which kind of sync it is. */

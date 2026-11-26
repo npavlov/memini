@@ -88,8 +88,8 @@ function Tokens({ connection }: TokensScreenProps): ReactElement {
       <Panel
         title="Tokens"
         actions={
-          <Button disabled={loaded.busy} onClick={reload}>
-            {loaded.busy ? "Refreshing…" : "Refresh"}
+          <Button busy={loaded.busy ? "Refreshing…" : null} onClick={reload}>
+            Refresh
           </Button>
         }
       >

@@ -46,8 +46,8 @@ export function AgentClientsPanel({ connection, token }: AgentClientsPanelProps)
     <Panel
       title="Agent clients on this computer"
       actions={
-        <Button disabled={clients.busy} onClick={reload}>
-          {clients.busy ? "Looking…" : "Look again"}
+        <Button busy={clients.busy ? "Looking…" : null} onClick={reload}>
+          Look again
         </Button>
       }
     >

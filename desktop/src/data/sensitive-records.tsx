@@ -6,6 +6,7 @@ import {
   Button,
   ConfirmButton,
   DataTable,
+  ActionOutcome,
   ErrorNotice,
   Field,
   Form,
@@ -49,9 +50,10 @@ export function SensitiveRecords({ connection, workspace }: SensitiveRecordsProp
   const { reload } = loaded;
   const unmark = useAction(
     useCallback(
-      async (recordId: string): Promise<void> => {
+      async (recordId: string): Promise<string> => {
         await changeMark(backend, connection.id, { workspace, recordId, sensitive: false });
         reload();
+        return "Unmarked: answers include the record again.";
       },
       [backend, connection.id, workspace, reload],
     ),
@@ -92,7 +94,7 @@ export function SensitiveRecords({ connection, workspace }: SensitiveRecordsProp
       {loaded.state.phase === "ready" ? (
         <MarkedTable records={loaded.state.data} busy={unmark.pending} onUnmark={unmark.run} />
       ) : null}
-      <ErrorNotice error={unmark.error} />
+      <ActionOutcome of={unmark} />
     </Section>
   );
 }
@@ -129,6 +131,7 @@ function MarkedTable({ records, busy, onUnmark }: MarkedTableProps): ReactElemen
               label="Unmark"
               question="Answers will include this record again, and models may read it."
               confirmLabel="Unmark it"
+              working="Unmarking…"
               disabled={busy}
               onConfirm={() => onUnmark(record.recordId)}
             />
@@ -178,10 +181,12 @@ function MarkForm({ connection, workspace, onDone, onCancel }: MarkFormProps): R
       ) : null}
       <ErrorNotice error={mark.error} />
       <Actions>
-        <Button variant="primary" submit disabled={!valid || mark.pending}>
-          {mark.pending ? "Marking…" : "Mark sensitive"}
+        <Button variant="primary" submit disabled={!valid} busy={mark.pending ? "Marking…" : null}>
+          Mark sensitive
         </Button>
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button disabled={mark.pending} onClick={onCancel}>
+          Cancel
+        </Button>
       </Actions>
     </Form>
   );

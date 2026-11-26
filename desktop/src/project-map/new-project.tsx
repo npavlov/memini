@@ -65,8 +65,8 @@ export function NewProjectPanel({ place, onCreated }: NewProjectPanelProps): Rea
         {entered.name === "" || named ? null : <Text tone="hint">A project needs a name of {NAME_RULE}.</Text>}
         {isNameTaken(creating.error) ? <NameTaken /> : <ErrorNotice error={creating.error} />}
         <Actions>
-          <Button variant="primary" submit disabled={!named || creating.pending}>
-            {creating.pending ? "Creating…" : "Create the project"}
+          <Button variant="primary" submit disabled={!named} busy={creating.pending ? "Creating…" : null}>
+            Create the project
           </Button>
           <Button disabled={creating.pending} onClick={() => setOpen(false)}>
             Cancel

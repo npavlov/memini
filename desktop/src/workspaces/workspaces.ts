@@ -2,9 +2,6 @@
 // apart in a workspace; the app chooses one in the sidebar, and every screen about the server's
 // data shows that one. Pure: the hook in use-workspaces.ts asks Rust for the names.
 
-/** One line under the switcher. */
-export const WORKSPACE_HINT = "A separate space for one company or client.";
-
 /** What a workspace is and why to add one, for the screens and their empty states. */
 export const WORKSPACE_MEANING =
   "A workspace is a separate space for one company or client: its code, mail, decisions and project map are kept apart from every other workspace, and a token can be limited to it.";

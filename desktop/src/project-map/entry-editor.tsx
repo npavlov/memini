@@ -52,6 +52,7 @@ export function EntryEditor({ draft, place, onDraft }: EntryEditorProps): ReactE
           label={`Remove the ${what}`}
           question={`Remove this ${what} from the project? It is gone from the server when you save.`}
           confirmLabel="Remove"
+          working="Removing…"
           onConfirm={async () => {
             onDraft(removeEntry(draft, place));
           }}

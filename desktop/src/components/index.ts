@@ -37,8 +37,8 @@ export type {
   TabItem,
   TabsProps,
 } from "./navigation";
-export { ErrorNotice, Notice } from "./notice";
-export type { ErrorNoticeProps, NoticeProps } from "./notice";
+export { ActionOutcome, ErrorNotice, Notice } from "./notice";
+export type { ActionOutcomeProps, ErrorNoticeProps, NoticeProps } from "./notice";
 export { Pill } from "./pill";
 export type { PillProps } from "./pill";
 export { ProgressBar } from "./progress-bar";

@@ -8,7 +8,13 @@ const confirm = async (): Promise<void> => undefined;
 describe("ConfirmButton", () => {
   it("shows one ordinary button before it is clicked, and no question", () => {
     const markup = markupOf(
-      <ConfirmButton label="Delete" question="Delete this?" confirmLabel="Yes, delete" onConfirm={confirm} />,
+      <ConfirmButton
+        label="Delete"
+        question="Delete this?"
+        confirmLabel="Yes, delete"
+        working="Deleting…"
+        onConfirm={confirm}
+      />,
     );
 
     expect(markup).toBe('<button type="button" class="button button-secondary">Delete</button>');
@@ -16,7 +22,7 @@ describe("ConfirmButton", () => {
 
   it("is disabled when told so", () => {
     const markup = markupOf(
-      <ConfirmButton label="Delete" question="Delete this?" confirmLabel="Delete" disabled onConfirm={confirm} />,
+      <ConfirmButton label="Delete" question="Delete this?" confirmLabel="Delete" working="Deleting…" disabled onConfirm={confirm} />,
     );
 
     expect(markup).toContain("disabled");

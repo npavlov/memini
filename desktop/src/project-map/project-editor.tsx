@@ -54,7 +54,7 @@ export function ProjectEditor(props: ProjectEditorProps): ReactElement {
   }, [backend, place, draft, onSaved]);
   const saving = useAction(save);
   const problem = checkProject(draft);
-  const idle = problem !== null || saving.pending || sameProject(draft, project);
+  const idle = problem !== null || sameProject(draft, project);
   return (
     <Form onSubmit={() => saving.run()}>
       <Field label="Title">
@@ -72,8 +72,8 @@ export function ProjectEditor(props: ProjectEditorProps): ReactElement {
       {problem === null ? null : <Text tone="failure">{problem}</Text>}
       <SaveFailure error={saving.error} draft={draft} onReload={props.onReload} />
       <Actions>
-        <Button variant="primary" submit disabled={idle}>
-          {saving.pending ? "Saving…" : "Save the project"}
+        <Button variant="primary" submit disabled={idle} busy={saving.pending ? "Saving…" : null}>
+          Save the project
         </Button>
         <Button disabled={saving.pending} onClick={props.onCancel}>
           Cancel

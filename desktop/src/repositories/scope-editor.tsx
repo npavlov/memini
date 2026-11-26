@@ -57,11 +57,11 @@ export function ScopeEditor({ connection, workspace, source, onSaved }: ScopeEdi
         }}
       />
       <Actions>
-        <Button disabled={looking.pending} onClick={() => looking.run()}>
-          {looking.pending ? "Counting…" : "Preview"}
+        <Button disabled={saving.pending} busy={looking.pending ? "Counting…" : null} onClick={() => looking.run()}>
+          Preview
         </Button>
-        <Button variant="primary" disabled={saving.pending} onClick={() => saving.run()}>
-          {saving.pending ? "Saving…" : "Save and sync"}
+        <Button variant="primary" busy={saving.pending ? "Saving…" : null} onClick={() => saving.run()}>
+          Save and sync
         </Button>
       </Actions>
       <ErrorNotice error={looking.error ?? saving.error} />
