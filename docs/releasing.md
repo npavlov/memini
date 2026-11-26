@@ -1,9 +1,26 @@
 # Releasing
 
-How a release or a release candidate of Memini is cut. A tag publishes the service; the server
-launcher and the desktop app follow it in a second change, because they pin the image the tag
-built. Version numbers are written in two forms: `0.2.0-rc.2` (tag, desktop app, launcher package)
-and `0.2.0rc2` (Python).
+How a release or a release candidate of Memini is cut.
+
+## The rule: one version
+
+**The app's version and the server's version are always the same.** A release has one version
+number, and everything it ships carries it: the service's Python package, the image tag, the
+desktop app and the launcher package. The app of release X installs exactly the image of release
+X, by its digest. The number is written in two forms, as `scripts/bump-version.py` maps them:
+`0.2.0-rc.2` (tag, image, desktop app, launcher package) and `0.2.0rc2` (Python package).
+
+The Release workflow enforces it: its `versions` job (`scripts/check-release-versions.py`) fails
+the release, before anything goes to PyPI or the draft release, unless the tag, the published
+image, the Python distributions, the app's bundles and the image each platform's frozen launcher
+names are of the same version. Before that, the build checks the project, `Cargo.toml`,
+`package.json` and `tauri.conf.json` against the tag (`scripts/release-notes.py`), the image job
+checks that the service in the image prints the tag's Python version, and the app's build checks
+that Tauri named every bundle with the tag's version.
+
+Between a tag and step 3, `scripts/memini-server.py` on `main` may still pin the previous
+release's image. Only builds of pull requests and of `main` use that pin; released artifacts
+never do: the release's app pins the image the release has just published.
 
 ## 1. Write the version
 

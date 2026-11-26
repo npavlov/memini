@@ -195,7 +195,14 @@ def main() -> None:
         "--release-image",
         help="the image a release just published: ghcr.io/npavlov/memini:<version>@sha256:<digest>",
     )
-    release_image: str | None = parser.parse_args().release_image
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="a file to write the image the frozen launcher names into, once it is checked",
+    )
+    arguments = parser.parse_args()
+    release_image: str | None = arguments.release_image
+    report: Path | None = arguments.report
     if release_image is not None:
         try:
             release_tag(release_image)
@@ -222,6 +229,9 @@ def main() -> None:
         if not isinstance(printed, dict) or printed.get("image") != image:
             raise SystemExit(f"the frozen launcher printed {printed}, not the image {image}")
         print(f"the frozen launcher pins {image}")
+        if report is not None:
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text(f"{printed['image']}\n", encoding="utf-8")
         target = BINARIES / f"{NAME}-{target_triple()}{frozen.suffix}"
         shutil.copy2(frozen, target)
     print(f"{target.relative_to(ROOT)}: {target.stat().st_size // 1024} KiB")

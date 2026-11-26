@@ -17,6 +17,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   published image, and the sidecar freeze (`desktop/sidecar/freeze.py --release-image`) pins it
   with its digest, and the tag's compose files, in the launcher it freezes. The build fails
   unless the frozen launcher names that image. Pull requests keep the repository's pin.
+- One version for a release ([the rule](docs/releasing.md#the-rule-one-version)): the Release
+  workflow fails, before PyPI and the draft release, unless the tag, the image, the Python
+  package, the app's bundles and the image of every frozen launcher are of the same version
+  (`scripts/check-release-versions.py`), the service in the image prints that version, and
+  `tauri.conf.json` names no version of its own.
 
 ### Changed
 

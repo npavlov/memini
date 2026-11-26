@@ -92,7 +92,11 @@ jobs:
           echo "Published $image@$digest"
           for platform in linux/amd64 linux/arm64; do
             docker pull --platform "$platform" "$image"
-            docker run --rm --platform "$platform" --entrypoint memini "$image" --version
+            # The service in the image is the Python package of this tag (X.Y.ZrcN).
+            printed=$(docker run --rm --platform "$platform" --entrypoint memini "$image" --version)
+            echo "$printed"
+            release=${GITHUB_REF_NAME#v}
+            [[ " $printed " == *" ${release/-rc./rc} "* ]]
             docker run --rm --platform "$platform" --entrypoint python "$image" \
               -c 'import onnxruntime, psycopg, tokenizers, tree_sitter'
           done
@@ -110,8 +114,41 @@ jobs:
       - name: Install the published image and search the quickstart fixtures
         run: scripts/test-release-install.sh "ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME#v}" "$GITHUB_REF"
 
+  # One version for everything the release ships (docs/releasing.md): the tag, the image, the
+  # Python package, the app's bundles and the image each frozen launcher names. Nothing goes to
+  # PyPI or the draft release unless they agree.
+  versions:
+    needs: [build, image, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: memini-desktop-*
+          path: desktop-bundles
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: launcher-pin-*
+          path: launcher-pins
+          merge-multiple: true
+      - name: One version everywhere
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          python3 scripts/check-release-versions.py "$GITHUB_REF_NAME" "$IMAGE" \
+            release/dist desktop-bundles launcher-pins
+
   package:
-    needs: quickstart
+    needs: [quickstart, versions]
     environment: pypi
     runs-on: ubuntu-latest
     permissions:
@@ -162,7 +199,7 @@ jobs:
       contents: read
 
   attach-desktop:
-    needs: [notes, desktop]
+    needs: [notes, versions]
     runs-on: ubuntu-latest
     permissions:
       contents: write
