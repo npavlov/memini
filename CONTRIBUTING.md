@@ -84,7 +84,9 @@ from the host: health, the localhost-only port, a non-root user, the first admin
 
 `make check` and `make test-integration` must pass before you open a pull request. Integration tests read
 the server from `MEMINI_TEST_DATABASE_URL` (default: the `make db` database), create a new empty database
-per test and drop it afterwards, so the role needs the right to create databases.
+per test and drop it afterwards, so the role needs the right to create databases. They run in parallel,
+one worker process per CPU (pytest-xdist); `make test-integration INTEGRATION_WORKERS=0` runs them in one
+process.
 
 ## Project rules
 

@@ -13,6 +13,11 @@ BENCH_ARGS ?=
 # The margin of eval-qwen3. Hybrid results move by up to about 0.03 from run to run until tied
 # lexical results are ordered by something stable across runs (docs/requirements.md, section 10).
 QWEN3_MARGIN ?= 0.05
+# Worker processes of make test-integration (pytest-xdist): auto is one per CPU, 0 runs them in
+# this process. Each test has a database of its own, so workers share the server, not data.
+# --dist loadfile keeps the tests of one file on one worker: a module's fixtures (such as the
+# Postgres container of test_failures_db.py) start once, and a file's tests run in their order.
+INTEGRATION_WORKERS ?= auto
 
 .PHONY: help sync lint format typecheck test test-integration check eval eval-qwen3 eval-decisions db db-down smoke
 
@@ -37,7 +42,7 @@ test: ## Run unit tests (pytest); no database needed
 	$(UV_RUN) pytest -m "not integration"
 
 test-integration: ## Run integration tests against Postgres (make db, or MEMINI_TEST_DATABASE_URL)
-	$(UV_RUN) pytest -m integration
+	$(UV_RUN) pytest -m integration -n $(INTEGRATION_WORKERS) --dist loadfile
 
 .PHONY: backup-test
 backup-test: ## Dump a filled test database, restore it into an empty one and compare (Postgres as above)
