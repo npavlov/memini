@@ -10,8 +10,8 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TAG = "v0.2.0-rc.5"
-VERSION = "0.2.0-rc.5"
+TAG = "v0.2.0"
+VERSION = "0.2.0"
 # The package revision: raised when the launcher changes between releases of the service, so the
 # archive of an earlier revision, which users have installed, is never replaced. Back to 1 with a
 # new VERSION.
