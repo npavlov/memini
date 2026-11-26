@@ -29,10 +29,7 @@ impl Stub {
         let seen = Arc::clone(&requests);
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                let request = serve(stream, &answer);
-                seen.lock()
-                    .expect("lock")
-                    .push(format!("{} {}", request.line, request.body));
+                serve(stream, &answer, &seen);
             }
         });
         Self { address, requests }
@@ -81,8 +78,17 @@ fn read(stream: &TcpStream) -> Request {
     }
 }
 
-fn serve(mut stream: TcpStream, answer: &impl Fn(&Request) -> (u16, String)) -> Request {
+/// Answers one request. The request is kept before the answer is written: a test reads what was
+/// asked as soon as its client has the answer, so keeping it afterwards raced with that read.
+fn serve(
+    mut stream: TcpStream,
+    answer: &impl Fn(&Request) -> (u16, String),
+    seen: &Mutex<Vec<String>>,
+) {
     let request = read(&stream);
+    seen.lock()
+        .expect("lock")
+        .push(format!("{} {}", request.line, request.body));
     let (status, json) = answer(&request);
     write!(
         stream,
@@ -90,5 +96,4 @@ fn serve(mut stream: TcpStream, answer: &impl Fn(&Request) -> (u16, String)) -> 
         json.len()
     )
     .expect("written");
-    request
 }
