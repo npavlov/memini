@@ -2,16 +2,22 @@
 
 Database fixtures are for tests marked `integration`. They need a Postgres server with pgvector:
 `make db` starts one, or `MEMINI_TEST_DATABASE_URL` points to another. The role in the URL must be
-allowed to create databases. Each test gets a new, empty database, which is dropped afterwards.
+allowed to create databases. Each test gets a new database, which is dropped afterwards.
 `make test-integration` runs them in parallel worker processes (pytest-xdist) against the same
 server, so a test may look only at databases it created itself, never at the server as a whole.
+
+A migrated database is a copy of a template: each worker process migrates one database of its own
+the first time a test asks for one, marks it a template, and creates every further migrated
+database from it with `CREATE DATABASE ... TEMPLATE`. The template's name carries the worker's id
+and a random part, so neither workers nor concurrent runs share one; it is dropped when the worker
+ends. Tests of the migrations themselves start from `empty_database_url` and migrate it.
 """
 
 import io
 import logging
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -85,36 +91,111 @@ def postgres_url() -> str:
 @pytest.fixture
 def empty_database_url(postgres_url: str) -> Iterator[str]:
     """URL of a new database with nothing in it: created from template0, dropped after the test."""
-    name = f"memini_test_{uuid.uuid4().hex[:12]}"
+    name = _new_database_name()
+    with _admin(postgres_url) as admin:
+        admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(sql.Identifier(name)))
     try:
-        admin = psycopg.connect(postgres_url, autocommit=True, connect_timeout=5)
+        yield _with_database(postgres_url, name)
+    finally:
+        _drop_database(postgres_url, name)
+
+
+@pytest.fixture(scope="session")
+def migrated_templates(postgres_url: str) -> Iterator[list[str]]:
+    """Names of this worker's migrated template databases (at most one); dropped at the end."""
+    templates: list[str] = []
+    try:
+        yield templates
+    finally:
+        if templates:
+            with psycopg.connect(postgres_url, autocommit=True, connect_timeout=5) as admin:
+                for name in templates:
+                    # A template cannot be dropped; it accepts no connections, so no FORCE needed.
+                    admin.execute(
+                        sql.SQL("ALTER DATABASE {} WITH IS_TEMPLATE false").format(
+                            sql.Identifier(name)
+                        )
+                    )
+                    admin.execute(
+                        sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(name))
+                    )
+
+
+@pytest.fixture
+async def migrated_database_url(
+    postgres_url: str, migrated_templates: list[str]
+) -> AsyncIterator[str]:
+    """URL of a new database with every migration applied: a copy of this worker's template,
+    which the first such test migrates. Needs an async (anyio) test.
+
+    With `MEMINI_TEST_PREVIOUS_MIGRATIONS` set (scripts/test-upgrade.sh), the template gets the
+    previous release's migrations first and then the current ones, so every test runs on an
+    upgraded schema.
+    """
+    if not migrated_templates:
+        migrated_templates.append(await _migrated_template(postgres_url))
+    name = _new_database_name()
+    with _admin(postgres_url) as admin:
+        admin.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                sql.Identifier(name), sql.Identifier(migrated_templates[0])
+            )
+        )
+    try:
+        yield _with_database(postgres_url, name)
+    finally:
+        _drop_database(postgres_url, name)
+
+
+async def _migrated_template(postgres_url: str) -> str:
+    """Create a database, migrate it and make it a template that accepts no connections."""
+    # gw0, gw1 ... under pytest-xdist; the random part keeps concurrent runs apart.
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    name = f"memini_template_{worker}_{uuid.uuid4().hex[:8]}"
+    with _admin(postgres_url) as admin:
+        admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(sql.Identifier(name)))
+    url = _with_database(postgres_url, name)
+    try:
+        if previous := os.environ.get("MEMINI_TEST_PREVIOUS_MIGRATIONS"):
+            migrations = load_migrations(Path(previous))
+            if not migrations:
+                pytest.fail(f"no previous migrations in {previous}")
+            await migrate(url, migrations=migrations)
+        await migrate(url)
+        with _admin(postgres_url) as admin:
+            # Copying needs a template nobody is connected to; refusing connections keeps it so.
+            admin.execute(
+                sql.SQL("ALTER DATABASE {} WITH IS_TEMPLATE true ALLOW_CONNECTIONS false").format(
+                    sql.Identifier(name)
+                )
+            )
+    except BaseException:
+        _drop_database(postgres_url, name)
+        raise
+    return name
+
+
+def _new_database_name() -> str:
+    return f"memini_test_{uuid.uuid4().hex[:12]}"
+
+
+def _admin(postgres_url: str) -> psycopg.Connection[tuple[object, ...]]:
+    """An autocommit connection to the server's own database, for CREATE and DROP DATABASE."""
+    try:
+        return psycopg.connect(postgres_url, autocommit=True, connect_timeout=5)
     except psycopg.OperationalError as error:
         raise pytest.fail.Exception(
             f"Postgres is not reachable: {error}\n"
             f"Start it with `make db`, or set {TEST_DATABASE_URL_ENV}.",
             pytrace=False,
         ) from None
-    with admin:
-        admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(sql.Identifier(name)))
-    try:
-        yield _with_database(postgres_url, name)
-    finally:
-        with psycopg.connect(postgres_url, autocommit=True, connect_timeout=5) as admin:
-            admin.execute(
-                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
-            )
 
 
-@pytest.fixture
-async def migrated_database_url(empty_database_url: str) -> str:
-    """URL of a new database with every migration applied. Needs an async (anyio) test."""
-    if previous := os.environ.get("MEMINI_TEST_PREVIOUS_MIGRATIONS"):
-        migrations = load_migrations(Path(previous))
-        if not migrations:
-            pytest.fail(f"no previous migrations in {previous}")
-        await migrate(empty_database_url, migrations=migrations)
-    await migrate(empty_database_url)
-    return empty_database_url
+def _drop_database(postgres_url: str, name: str) -> None:
+    with _admin(postgres_url) as admin:
+        admin.execute(
+            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
+        )
 
 
 def _with_database(url: str, name: str) -> str:
