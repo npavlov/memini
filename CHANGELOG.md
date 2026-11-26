@@ -13,6 +13,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   draft release with `desktop-SHA256SUMS`: `.dmg` for macOS (Apple silicon and Intel),
   `-setup.exe` for Windows x64, `.AppImage` and `.deb` for Linux x86_64. The release notes and
   [Desktop app](docs/install.md#desktop-app) say how to open it the first time.
+- The app attached to a release installs that release's server: the desktop build waits for the
+  published image, and the sidecar freeze (`desktop/sidecar/freeze.py --release-image`) pins it
+  with its digest, and the tag's compose files, in the launcher it freezes. The build fails
+  unless the frozen launcher names that image. Pull requests keep the repository's pin.
 
 ### Changed
 

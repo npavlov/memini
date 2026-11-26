@@ -329,7 +329,11 @@ as a Tauri sidecar (`bundle.externalBin`), next to the app's own executable.
 those of the launcher's pinned release, checked against its own checksums. PyInstaller freezes them
 into `src-tauri/binaries/memini-server-<target triple>`, which is not committed. The script ends by
 running the frozen program and the script side by side, without Docker, and fails unless both print
-the same JSON. PyInstaller does not cross-compile, so each platform's sidecar is built on that
+the same JSON and name the image the launcher pins. In a release, `--release-image` passes the image
+the release has just published, with its digest; the copy being frozen pins it, with the compose
+files of that tag, so the app of a release installs the server of the same release
+([releasing](../docs/releasing.md#2-tag)). Only `ghcr.io/npavlov/memini:<version>@sha256:<digest>` is
+accepted. PyInstaller does not cross-compile, so each platform's sidecar is built on that
 platform: the workflow does it on its three runners.
 
 Which launcher runs: a path the user set on the Server screen, else the one inside the app, else

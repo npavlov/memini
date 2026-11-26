@@ -15,12 +15,26 @@ the path of the interpreter, for the platform it runs on (PyInstaller does not c
     uv run --no-project --python 3.12 --with pyinstaller==6.22.3 python desktop/sidecar/freeze.py
 
 It ends by running the frozen program and the script side by side, without Docker, and fails
-unless both print the same JSON.
+unless both print the same JSON and the frozen program names the image it should.
+
+The launcher in the repository pins the image of the release before the one being tagged: the pin
+moves in a change after the tag (docs/releasing.md, step 3). A release build passes the image it
+has just published, with its digest, so that the app of release X installs the server of X:
+
+    python desktop/sidecar/freeze.py --release-image ghcr.io/npavlov/memini:X@sha256:<digest>
+
+The copy of the launcher being frozen then pins that image, and carries the compose files,
+licence and examples of the tag vX instead of the pinned release's, with their checksums. The
+image must be this repository's, of a release version, with a digest; nothing else is accepted.
+Without the option the launcher is frozen as scripts/memini-server.py pins it.
 """
 
+import argparse
+import hashlib
 import json
 import os
 import platform
+import re
 import runpy
 import shutil
 import subprocess
@@ -32,6 +46,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BINARIES = ROOT / "desktop/src-tauri/binaries"
 NAME = "memini-server"
+# The only image a release build may pin: this repository's, a release version, a digest.
+RELEASE_IMAGE = re.compile(
+    r"ghcr\.io/npavlov/memini:"
+    r"((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.(?:0|[1-9][0-9]*))?)"
+    r"@sha256:[0-9a-f]{64}"
+)
+# The pins of the launcher that a release build rewrites, each one block of its source.
+IMAGE_PIN = re.compile(r"^IMAGE = \(\n.*?\n\)\n", re.MULTILINE | re.DOTALL)
+COMPOSE_PIN = re.compile(r"^COMPOSE_FILES = \{\n.*?\n\}\n", re.MULTILINE | re.DOTALL)
 
 # The targets the desktop workflow builds: (system, machine) as Python names them.
 TRIPLES = {
@@ -59,6 +82,60 @@ def stage(directory: Path) -> Path:
     with zipfile.ZipFile(archive) as bundle:
         bundle.extractall(directory)
     return directory / NAME
+
+
+def release_tag(image: str) -> str:
+    """The tag of a release image, ``vX.Y.Z[-rc.N]``; refuses any other image."""
+    match = RELEASE_IMAGE.fullmatch(image)
+    if match is None:
+        raise ValueError(
+            f"not a release image: {image!r}; expected"
+            " ghcr.io/npavlov/memini:<version>@sha256:<64 hex digits>"
+        )
+    return f"v{match.group(1)}"
+
+
+def pin_release(source: str, image: str, compose: dict[str, bytes]) -> str:
+    """The launcher's ``source`` with ``image`` and the checksums of ``compose`` as its pins."""
+    release_tag(image)
+    name, digest = image.split("@")
+    image_block = f'IMAGE = (\n    "{name}"\n    "@{digest}"\n)\n'
+    lines = "".join(
+        f'    "{filename}": "{hashlib.sha256(data).hexdigest()}",\n'
+        for filename, data in compose.items()
+    )
+    compose_block = f"COMPOSE_FILES = {{\n{lines}}}\n"
+    for pattern, block in ((IMAGE_PIN, image_block), (COMPOSE_PIN, compose_block)):
+        matches = list(pattern.finditer(source))
+        if len(matches) != 1:
+            raise ValueError(f"the launcher has no single pin matching {pattern.pattern!r}")
+        start, end = matches[0].span()
+        source = source[:start] + block + source[end:]
+    return source
+
+
+def stage_release(staged: Path, image: str) -> None:
+    """Make the staged launcher the one of the release ``image``: its pins, its tag's files."""
+    tag = release_tag(image)
+    git = shutil.which("git")
+    if not git:
+        raise SystemExit("Git is required to read the release's files")
+    files: list[str] = runpy.run_path(str(ROOT / "packaging/server/build.py"))["FILES"]
+    contents = {
+        name: subprocess.check_output(  # noqa: S603 - a checked tag and the recipe's paths
+            [git, "-C", str(ROOT), "show", f"{tag}:{name}"]
+        )
+        for name in files
+    }
+    for name, data in contents.items():
+        (staged / name).parent.mkdir(parents=True, exist_ok=True)
+        (staged / name).write_bytes(data)
+    launcher = staged / f"{NAME}.py"
+    pins: dict[str, str] = runpy.run_path(str(launcher))["COMPOSE_FILES"]
+    compose = {name: contents[name] for name in pins}
+    launcher.write_text(
+        pin_release(launcher.read_text(encoding="utf-8"), image, compose), encoding="utf-8"
+    )
 
 
 def freeze(staged: Path, work: Path) -> Path:
@@ -105,19 +182,46 @@ def status_without_docker(program: list[str], state: Path, empty: Path) -> objec
     return json.loads(result.stdout)
 
 
+def installed_state(directory: Path) -> Path:
+    """A state directory that looks installed, so that ``status --json`` names the image."""
+    directory.mkdir()
+    (directory / ".memini-server-v1").write_text("0" * 32, encoding="ascii")
+    return directory
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Freeze the launcher into the app's sidecar.")
+    parser.add_argument(
+        "--release-image",
+        help="the image a release just published: ghcr.io/npavlov/memini:<version>@sha256:<digest>",
+    )
+    release_image: str | None = parser.parse_args().release_image
+    if release_image is not None:
+        try:
+            release_tag(release_image)
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
     BINARIES.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as scratch:
         work = Path(scratch)
         staged = stage(work / "staged")
+        if release_image is not None:
+            stage_release(staged, release_image)
+        image = release_image or runpy.run_path(str(staged / f"{NAME}.py"))["IMAGE"]
         frozen = freeze(staged, work)
         empty = work / "empty"
         empty.mkdir()
         script = [sys.executable, str(staged / f"{NAME}.py")]
-        expected = status_without_docker(script, work / "no-server", empty)
-        printed = status_without_docker([str(frozen)], work / "no-server", empty)
-        if printed != expected:
-            raise SystemExit(f"the frozen launcher printed {printed}, the script {expected}")
+        printed: object = None
+        for state in (work / "no-server", installed_state(work / "installed")):
+            expected = status_without_docker(script, state, empty)
+            printed = status_without_docker([str(frozen)], state, empty)
+            if printed != expected:
+                raise SystemExit(f"the frozen launcher printed {printed}, the script {expected}")
+        # The last state looks installed: status names the image a start would run.
+        if not isinstance(printed, dict) or printed.get("image") != image:
+            raise SystemExit(f"the frozen launcher printed {printed}, not the image {image}")
+        print(f"the frozen launcher pins {image}")
         target = BINARIES / f"{NAME}-{target_triple()}{frozen.suffix}"
         shutil.copy2(frozen, target)
     print(f"{target.relative_to(ROOT)}: {target.stat().st_size // 1024} KiB")

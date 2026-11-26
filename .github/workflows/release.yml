@@ -62,6 +62,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # The published image with the digest of its index, for the desktop app's launcher to pin.
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,13 +74,22 @@ jobs:
           platforms: arm64
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Publish multi-platform image with attestations
+        id: publish
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME#v}"
           echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker buildx build --platform linux/amd64,linux/arm64 --sbom=true \
-            --provenance=mode=max --tag "$image" --push .
+            --provenance=mode=max --tag "$image" --push \
+            --metadata-file "$RUNNER_TEMP/image-metadata.json" .
+          # The digest of the index just pushed, which the registry must report for the tag.
+          digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/image-metadata.json")
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' > "$RUNNER_TEMP/index.json"
+          test "$(jq -r .digest "$RUNNER_TEMP/index.json")" = "$digest"
+          echo "image=$image@$digest" >> "$GITHUB_OUTPUT"
+          echo "Published $image@$digest"
           for platform in linux/amd64 linux/arm64; do
             docker pull --platform "$platform" "$image"
             docker run --rm --platform "$platform" --entrypoint memini "$image" --version
@@ -134,13 +146,16 @@ jobs:
 
   # The desktop app, built from the tag on each platform (desktop-app.yml, which also checks the
   # app's version against the tag), without the Rust cache: a published bundle is built from
-  # nothing restored. It runs beside the image and the package; only the upload waits for the
-  # draft release.
+  # nothing restored. Its launcher pins the image the image job has just published, with its
+  # digest, so that the app of this release installs this release's server; the freeze checks
+  # that the frozen launcher names it. It runs beside the quickstart and the package; only the
+  # upload waits for the draft release.
   desktop:
-    needs: build
+    needs: image
     uses: ./.github/workflows/desktop-app.yml
     with:
       tag: ${{ github.ref_name }}
+      image: ${{ needs.image.outputs.image }}
       cache: false
       intel-mac: true
     permissions:

@@ -13,11 +13,22 @@ name: Desktop app
 #
 # <version> is the app's own (desktop/package.json and Cargo.toml, written by
 # scripts/bump-version.py); with a tag, the run fails unless it is the tag's.
+#
+# The sidecar's launcher pins the image scripts/memini-server.py pins: the previous release's
+# until the pin moves after a tag. A release passes the image it has just published (image), so
+# that its app installs the server of the same release.
 on:
   workflow_call:
     inputs:
       tag:
         description: A release tag (vX.Y.Z[-rc.N]). The checkout must be its commit, and the app's version its version.
+        type: string
+        default: ""
+      image:
+        description: >-
+          With tag only: the image the release just published,
+          ghcr.io/npavlov/memini:<version>@sha256:<digest>, which the frozen launcher pins
+          instead of the repository's pin.
         type: string
         default: ""
       cache:
@@ -83,9 +94,24 @@ jobs:
         working-directory: .
         env:
           TAG: ${{ inputs.tag }}
+          IMAGE: ${{ inputs.image }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]
           test "$(git rev-parse HEAD)" = "$(git rev-list -1 "refs/tags/$TAG")"
+          if [ -n "$IMAGE" ]; then
+            prefix="ghcr.io/npavlov/memini:${TAG#v}@sha256:"
+            digest="${IMAGE#"$prefix"}"
+            if [[ "$IMAGE" != "$prefix"* || ! "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "the image $IMAGE is not one of $TAG" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Refuse an image without a tag
+        if: inputs.tag == '' && inputs.image != ''
+        run: |
+          echo "an image is passed with a release tag only" >&2
+          exit 1
 
       # What Tauri 2 needs to build on Linux: the system webview and its companions.
       - name: Install system libraries (Linux)
@@ -121,13 +147,20 @@ jobs:
       # The launcher, scripts/memini-server.py, frozen into one program for this platform: the
       # app carries it as a sidecar, so a user needs no Homebrew, Scoop or Python. PyInstaller
       # lives in a throwaway environment, not in the project's. The script fails unless the
-      # frozen program prints the same JSON as the launcher itself. The Rust build below needs
-      # the sidecar to be there.
+      # frozen program prints the same JSON as the launcher itself and names the image it should
+      # pin: in a release, the image just published (--release-image, checked above against the
+      # tag and again by the script), with the compose files of the tag. The Rust build below
+      # needs the sidecar to be there.
       - name: Freeze the launcher (sidecar)
         working-directory: .
-        run: >-
-          uv run --no-project --python 3.12 --with "pyinstaller==$PYINSTALLER_VERSION"
-          python desktop/sidecar/freeze.py
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          if [ -n "$IMAGE" ]; then
+            set -- --release-image "$IMAGE"
+          fi
+          uv run --no-project --python 3.12 --with "pyinstaller==$PYINSTALLER_VERSION" \
+            python desktop/sidecar/freeze.py "$@"
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

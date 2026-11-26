@@ -41,10 +41,18 @@ pull request, here without the Rust cache) and attaches it, unsigned, with `desk
 The build fails unless the app's version is the tag's. The release notes end with how to open the
 unsigned app the first time (`DESKTOP_APP` in `scripts/release-notes.py`).
 
-This app carries the launcher of the previous release until step 3 points it at the new image;
-the app that carries the new launcher comes with the next tag.
+The app's launcher installs this release's server. The desktop build waits for the image job and
+gets the published image with its digest (`ghcr.io/npavlov/memini:<version>@sha256:…`). The
+sidecar freeze (`desktop/sidecar/freeze.py --release-image`) pins that image in the copy of the
+launcher it freezes, with the compose files of the tag and their checksums, and fails unless the
+frozen launcher's `status --json` names that image. It accepts only an image of this repository
+with the tag's version and a digest. A pull request's build keeps the pin of
+`scripts/memini-server.py`.
 
 ## 3. Point the launcher at the image
+
+The released app already installs the new image (step 2). This step moves the repository's pin,
+which the Homebrew and Scoop packages and every later build of the app from `main` use.
 
 When the Release run has passed, read the digest of the published image:
 
@@ -63,7 +71,7 @@ In one PR:
   `cp <dir>/memini-server.rb Formula/` and `cp <dir>/memini-server.json bucket/`.
 - A line under `[Unreleased]` in `CHANGELOG.md`.
 
-The desktop app carries the launcher, so the app built from this commit installs the new server.
+The app built from `main` after this commit installs the new server, as the released app does.
 A managed server moves to the new image at its next start; the service migrates its database
 when it starts.
 
