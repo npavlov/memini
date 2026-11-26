@@ -10,12 +10,12 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TAG = "v0.2.0-rc.1"
-VERSION = "0.2.0-rc.1"
+TAG = "v0.2.0-rc.3"
+VERSION = "0.2.0-rc.3"
 # The package revision: raised when the launcher changes between releases of the service, so the
 # archive of an earlier revision, which users have installed, is never replaced. Back to 1 with a
 # new VERSION.
-REVISION = 4
+REVISION = 1
 ARCHIVE = f"memini-server-{VERSION}-{REVISION}.zip"
 URL = f"https://github.com/npavlov/memini/releases/download/{TAG}/{ARCHIVE}"
 FILES = [

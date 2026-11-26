@@ -7,6 +7,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The server launcher, and the desktop app that carries it, install and start the image of
+  0.2.0-rc.3.
+
 ## [0.2.0-rc.3] - 2026-11-26
 
 ### Fixed
