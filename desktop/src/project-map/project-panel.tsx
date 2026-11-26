@@ -17,8 +17,8 @@ export interface ProjectPanelProps {
   readonly repositories: readonly string[];
   /** Shows the editor at once: for a project that was just created and is still empty. */
   readonly startInEditor: boolean;
-  /** Reads the catalog again. */
-  readonly onReload: () => void;
+  /** Reads the catalog again; settles once it is on screen. */
+  readonly onReload: () => Promise<void>;
 }
 
 /** One project: its tree, or its editor. After a save it shows what the server answered. */
@@ -48,7 +48,12 @@ export function ProjectPanel(props: ProjectPanelProps): ReactElement {
           repositories={props.repositories}
           onSaved={close}
           onCancel={() => setEditing(false)}
-          onReload={() => close(null)}
+          onReload={async () => {
+            // The editor, and its busy button, stay until the newer version has been read.
+            await onReload();
+            setReport(null);
+            setEditing(false);
+          }}
         />
       ) : (
         <ProjectView place={place} project={project} />

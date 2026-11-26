@@ -12,7 +12,32 @@ export interface Load<T> {
   readonly state: Loaded<T>;
   /** True while a load runs, the first and every reload. */
   readonly busy: boolean;
-  readonly reload: () => void;
+  /**
+   * Loads again. Settles once what was loaded is in `state`, never rejects, so an action can wait
+   * until the screen shows the answer that came after it.
+   */
+  readonly reload: () => Promise<void>;
+}
+
+/** A reload that waits for its answer: the round it asked for, and how to tell it. */
+export interface WaitingReload {
+  readonly round: number;
+  readonly resolve: () => void;
+}
+
+/**
+ * Splits the waiting reloads at the round that just settled: a reload asked for that round or an
+ * earlier one is answered by it; one asked for a later round waits on, so an answer read before
+ * the reload was asked never ends it.
+ */
+export function answeredBy(
+  waiting: readonly WaitingReload[],
+  round: number,
+): { readonly answered: readonly WaitingReload[]; readonly still: WaitingReload[] } {
+  return {
+    answered: waiting.filter((reload) => reload.round <= round),
+    still: waiting.filter((reload) => reload.round > round),
+  };
 }
 
 async function settle<T>(load: () => Promise<T>): Promise<Loaded<T>> {
@@ -33,6 +58,9 @@ export function useLoad<T>(load: () => Promise<T>): Load<T> {
   const [busy, setBusy] = useState(true);
   const [round, setRound] = useState(0);
   const latest = useRef(load);
+  /** The reloads that wait for an answer, each with the round that answers it or a later one. */
+  const waiting = useRef<WaitingReload[]>([]);
+  const asked = useRef(0);
   useEffect(() => {
     latest.current = load;
   });
@@ -46,15 +74,36 @@ export function useLoad<T>(load: () => Promise<T>): Load<T> {
       }
       setState(next);
       setBusy(false);
+      const { answered, still } = answeredBy(waiting.current, round);
+      waiting.current = still;
+      for (const reload of answered) {
+        reload.resolve();
+      }
     };
     // An effect cannot be awaited; `run` settles every failure itself.
     void run();
     return (): void => {
+      // A newer round answers the reloads that waited for this one.
       watch.abandoned = true;
     };
   }, [round]);
-  const reload = useCallback((): void => {
-    setRound((current) => current + 1);
-  }, []);
+  useEffect(
+    () => (): void => {
+      // Gone from the screen: nothing will answer, so nobody waits.
+      for (const reload of waiting.current.splice(0)) {
+        reload.resolve();
+      }
+    },
+    [],
+  );
+  const reload = useCallback(
+    (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        asked.current += 1;
+        waiting.current.push({ round: asked.current, resolve });
+        setRound(asked.current);
+      }),
+    [],
+  );
   return { state, busy, reload };
 }

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
 import {
+  ActionOutcome,
   Actions,
   Button,
   Card,
@@ -35,8 +36,11 @@ export interface ProjectEditorProps {
   readonly repositories: readonly string[];
   readonly onSaved: (report: SaveReport) => void;
   readonly onCancel: () => void;
-  /** Reads the catalog again and drops the draft, after someone else changed the project. */
-  readonly onReload: () => void;
+  /**
+   * Reads the catalog again and drops the draft, after someone else changed the project; settles
+   * once the newer version is on screen.
+   */
+  readonly onReload: () => Promise<void>;
 }
 
 /**
@@ -86,7 +90,7 @@ export function ProjectEditor(props: ProjectEditorProps): ReactElement {
 interface SaveFailureProps {
   readonly error: AppError | null;
   readonly draft: Project;
-  readonly onReload: () => void;
+  readonly onReload: () => Promise<void>;
 }
 
 /** Why a save failed: a newer version, a refusal of the server in the user's terms, or the error as it is. */
@@ -111,10 +115,11 @@ function SaveFailure({ error, draft, onReload }: SaveFailureProps): ReactElement
 }
 
 interface ConflictProps {
-  readonly onReload: () => void;
+  readonly onReload: () => Promise<void>;
 }
 
 function Conflict({ onReload }: ConflictProps): ReactElement {
+  const loading = useAction(onReload);
   return (
     <Notice tone="warn" title="Someone changed this project after you opened it">
       <Text>
@@ -122,8 +127,11 @@ function Conflict({ onReload }: ConflictProps): ReactElement {
         there: what you changed here is dropped, so copy what you need first.
       </Text>
       <Actions>
-        <Button onClick={onReload}>Load the newer version</Button>
+        <Button busy={loading.pending ? "Loading…" : null} onClick={() => loading.run()}>
+          Load the newer version
+        </Button>
       </Actions>
+      <ActionOutcome of={loading} />
     </Notice>
   );
 }

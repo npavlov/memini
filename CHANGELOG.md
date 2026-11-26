@@ -25,6 +25,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   says how it ended: `Checked 12:26 — no changes; main is still at 0327a55, committed 1 Nov`, or
   what changed. For a folder of this computer it says that new commits appear after `git pull` in
   the working copy.
+- Desktop, Codebases: Sync now (and Save and sync) stays disabled until the card has read the
+  stream after the request, so there is no moment between the server's answer and the queued job
+  on screen when it can be clicked again. A reload settles once its answer is on screen
+  (`useLoad`). Project map: "Load the newer version" says `Loading…` until the newer version has
+  been read.
 
 ## [0.2.0-rc.5] - 2026-11-26
 
