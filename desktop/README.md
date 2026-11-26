@@ -46,7 +46,7 @@ their last run. The bar asks again every minute while the window is in front.
 - To manage a local server: Docker. The app carries the launcher; it needs no Homebrew, Scoop or
   Python on the user's computer.
 
-The versions the app was last built with are in [the workflow](../.github/workflows/desktop.yml):
+The versions the app was last built with are in [the workflow](../.github/workflows/desktop-app.yml):
 Node 24.22.0 and Rust 1.100.0.
 
 ## Develop
@@ -87,9 +87,10 @@ The Rust tests use a keychain in memory: they never touch the keychain of the ma
 pnpm tauri build --bundles app -- --locked    # macOS: src-tauri/target/release/bundle/macos/Memini.app
 ```
 
-The other bundle types are `deb` (Linux) and `nsis` (Windows); `dmg` and `appimage` are configured
-but nothing builds them yet. Add `--debug` for a faster build without optimization. Nothing is
-signed.
+The other bundle types are `dmg` (macOS), `deb` and `appimage` (Linux) and `nsis` (Windows). CI
+builds them all ([desktop-app.yml](../.github/workflows/desktop-app.yml)), and the Release workflow
+attaches them to the draft release of a tag. Add `--debug` for a faster build without
+optimization. Nothing is signed.
 
 ## How it is put together
 
@@ -432,8 +433,9 @@ the button led to the token, and the MCP switch was worked with Space and Enter.
   not before: what names a service keeps the name the service was read with until the save, which
   is what lets a service be renamed without losing its code. A renamed service is a new one to the
   server, so it refuses the rename while another project names the service.
-- **Signing, notarization, published installers and updates.** CI builds unsigned bundles to look
-  at; a frozen launcher inside a signed app will need signing too. The application identifier
+- **Signing, notarization and updates.** A release attaches unsigned bundles, which the system
+  asks about before the first start ([Desktop app](../docs/install.md#desktop-app)); a frozen
+  launcher inside a signed app will need signing too. The app does not update itself. The application identifier
   should be confirmed before the first release: changing it later moves the settings.
 - **`list_commits`** is in the table of read tools with its route, `GET /v1/commits`. The Data
   screen offers it once the connected server's OpenAPI document has that route; it was not tried

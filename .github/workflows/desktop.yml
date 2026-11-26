@@ -12,6 +12,7 @@ on:
       - "scripts/memini-server.py"
       - "packaging/server/**"
       - ".github/workflows/desktop.yml"
+      - ".github/workflows/desktop-app.yml"
   pull_request:
     paths:
       - "desktop/**"
@@ -19,7 +20,13 @@ on:
       - "scripts/memini-server.py"
       - "packaging/server/**"
       - ".github/workflows/desktop.yml"
+      - ".github/workflows/desktop-app.yml"
   workflow_dispatch:
+    inputs:
+      intel-mac:
+        description: Build for Intel Macs too, as a release does.
+        type: boolean
+        default: false
 
 # Read-only token. No job writes to the repository, and no job needs a secret: nothing is signed,
 # notarized or published here.
@@ -32,14 +39,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The versions the app was last built with. Update them together with desktop/README.md.
+  # The version of Node the front end is checked with: the one desktop-app.yml builds the app
+  # with. Update them together with desktop/README.md.
   NODE_VERSION: "24.22.0"
-  RUST_TOOLCHAIN: "1.100.0"
-  # What freezes the launcher into the sidecar (desktop/sidecar/freeze.py).
-  UV_VERSION: "0.13.9"
-  PYINSTALLER_VERSION: "6.22.3"
-  # Windows only: the TLS library's assembly comes prebuilt, so the runner needs no NASM.
-  AWS_LC_SYS_PREBUILT_NASM: "1"
 
 defaults:
   run:
@@ -79,7 +81,7 @@ jobs:
           fi
           changed="$(git diff --name-only HEAD^1 HEAD)"
           printf '%s\n' "${changed}"
-          pattern='^(desktop/|scripts/memini-server\.py$|packaging/server/|\.github/workflows/desktop\.yml$)'
+          pattern='^(desktop/|scripts/memini-server\.py$|packaging/server/|\.github/workflows/desktop(-app)?\.yml$)'
           if printf '%s\n' "${changed}" | grep -Eq "${pattern}"; then
             echo "app=true" >> "${GITHUB_OUTPUT}"
           else
@@ -118,122 +120,15 @@ jobs:
       - name: Build the front end
         run: pnpm build
 
-  # The Rust side is linted and tested on each platform, because parts of it are compiled for one
-  # platform only (how the launcher is found and started), and then the app is built as that
-  # platform's bundle. Unsigned: the bundles are for looking at, not for distribution. Cargo's
-  # registry and the compiled dependencies are cached (Swatinem/rust-cache), per platform and
-  # Cargo.lock: a cold build compiles a few hundred crates three times (clippy, test, release) and
-  # took up to 11 minutes on Windows. The cache holds dependencies only, never the app's own crate,
-  # so every run still lints, tests and builds the app from its sources.
+  # The app on each platform (desktop-app.yml, which release.yml calls too): the Rust side
+  # linted and tested, the launcher frozen into the sidecar, and the bundles a release carries,
+  # uploaded as the artifacts memini-desktop-<os>. Unsigned.
   app:
-    name: App (${{ matrix.os }})
+    name: App
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            bundle: app
-          - os: ubuntu-24.04
-            bundle: deb
-          - os: windows-2022
-            bundle: nsis
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    steps:
-      # The whole history: the sidecar takes the compose files of the launcher's pinned release
-      # from that release's tag.
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      # What Tauri 2 needs to build on Linux: the system webview and its companions.
-      - name: Install system libraries (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential file libayatana-appindicator3-dev librsvg2-dev libssl-dev \
-            libwebkit2gtk-4.1-dev libxdo-dev patchelf
-
-      - name: Set up Rust
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
-            --component clippy --component rustfmt --no-self-update
-          rustup default "$RUST_TOOLCHAIN"
-          rustc --version
-
-      # After the toolchain, which is part of the key. A pull request restores the cache of main
-      # (or its own, from an earlier run) and saves its own; main's is saved on push. A pull
-      # request cannot write main's cache, and nothing published reads this one: the bundles
-      # here are unsigned previews, and no release workflow builds the app or restores the cache.
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: desktop/src-tauri -> target
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: false
-
-      # The launcher, scripts/memini-server.py, frozen into one program for this platform: the
-      # app carries it as a sidecar, so a user needs no Homebrew, Scoop or Python. PyInstaller
-      # lives in a throwaway environment, not in the project's. The script fails unless the
-      # frozen program prints the same JSON as the launcher itself. The Rust build below needs
-      # the sidecar to be there.
-      - name: Freeze the launcher (sidecar)
-        working-directory: .
-        run: >-
-          uv run --no-project --python 3.12 --with "pyinstaller==$PYINSTALLER_VERSION"
-          python desktop/sidecar/freeze.py
-
-      - name: Set up Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install pnpm
-        run: npm install --global "$(node -p "require('./package.json').packageManager")"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # The Rust side embeds the built front end, so it is built first.
-      - name: Build the front end
-        run: pnpm build
-
-      - name: Format check (rustfmt)
-        working-directory: desktop/src-tauri
-        run: cargo fmt --check
-
-      # --locked: Cargo fails if Cargo.lock is stale instead of rewriting it.
-      - name: Lint (clippy)
-        working-directory: desktop/src-tauri
-        run: cargo clippy --locked --all-targets -- -D warnings
-
-      - name: Unit tests (cargo test)
-        working-directory: desktop/src-tauri
-        run: cargo test --locked
-
-      - name: Build the app, unsigned
-        env:
-          BUNDLE: ${{ matrix.bundle }}
-        run: pnpm tauri build --bundles "$BUNDLE" -- --locked
-
-      # One archive, so that file modes survive: an artifact alone drops the executable bit.
-      # A relative name: GNU tar on Windows reads the colon of "D:\..." as a remote host.
-      - name: Pack the bundle
-        run: tar -czf memini-desktop-unsigned.tar.gz -C src-tauri/target/release bundle
-
-      - name: Upload the unsigned bundle
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: memini-desktop-unsigned-${{ matrix.os }}
-          path: desktop/memini-desktop-unsigned.tar.gz
-          if-no-files-found: error
-          retention-days: 7
+    uses: ./.github/workflows/desktop-app.yml
+    with:
+      intel-mac: ${{ inputs.intel-mac == true }}
+    permissions:
+      contents: read

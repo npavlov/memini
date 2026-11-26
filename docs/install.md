@@ -106,6 +106,35 @@ memini workspace list
 
 A new server reports an empty workspace list. **[Import a sample email and run your first search](first-search.md)** from Bash or PowerShell. The remaining shell examples on this page use Bash.
 
+## Desktop app
+
+The desktop app sets up and runs the server on this computer without a terminal, connects to other
+servers, connects the agent clients on this computer and manages tokens. It needs Docker to run a
+local server. Download it from the assets of a [release](https://github.com/npavlov/memini/releases)
+(the 0.2 release candidates are the first to carry it):
+
+| Platform | File |
+|---|---|
+| macOS, Apple silicon | `Memini-<version>-macos-arm64.dmg` |
+| macOS, Intel | `Memini-<version>-macos-x86_64.dmg` |
+| Windows x64 | `Memini-<version>-windows-x64-setup.exe` |
+| Linux x86_64 | `Memini-<version>-linux-x86_64.AppImage` or `Memini-<version>-linux-amd64.deb` |
+
+`desktop-SHA256SUMS` lists their checksums: `sha256sum -c --ignore-missing desktop-SHA256SUMS`
+(`shasum -a 256 -c` on macOS) in the folder of the download.
+
+The app is not signed, so the system asks once before its first start:
+
+- **macOS:** open the disk image and drag Memini to Applications. Right-click Memini in
+  Applications, choose **Open**, then **Open** again. Or remove the quarantine flag in a terminal:
+  `xattr -dr com.apple.quarantine /Applications/Memini.app`.
+- **Windows:** run the installer. When SmartScreen says "Windows protected your PC", choose
+  **More info**, then **Run anyway**.
+- **Linux:** make the AppImage executable (`chmod +x Memini-*.AppImage`) and run it, or install the
+  package: `sudo apt install ./Memini-<version>-linux-amd64.deb`.
+
+What each screen does is in the [app's guide](https://github.com/npavlov/memini/blob/main/desktop/README.md).
+
 ## Connect to an existing server
 
 Ask the operator for the server URL and a read token file. The [client installation guide](install-cli.md) covers the Windows x64 installer and Homebrew for Apple Silicon macOS and x86_64 Linux, with PowerShell and Bash examples. Run `memini workspace list` to check your connection. To develop Memini itself, use [Build from source](build-from-source.md).

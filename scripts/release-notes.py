@@ -8,6 +8,24 @@ import sys
 import tomllib
 from pathlib import Path
 
+# Appended to every release's notes: the app's bundles are attached unsigned (release.yml).
+DESKTOP_APP = """### Desktop app
+
+The desktop app is attached for macOS (Apple silicon and Intel, `.dmg`), Windows x64
+(`-setup.exe`) and Linux x86_64 (`.AppImage`, `.deb`); `desktop-SHA256SUMS` lists their checksums.
+It is not signed, so the system asks once before the first start:
+
+- **macOS:** open the disk image and drag Memini to Applications. Then right-click Memini in
+  Applications and choose **Open**, or run
+  `xattr -dr com.apple.quarantine /Applications/Memini.app`.
+- **Windows:** when SmartScreen says it protected your PC, choose **More info**, then
+  **Run anyway**.
+- **Linux:** `chmod +x` the AppImage and run it, or install the package with
+  `sudo apt install ./<file>.deb`.
+
+It runs a server on this computer, with Docker, or connects to an existing one. See
+[Desktop app](https://github.com/npavlov/memini/blob/main/docs/install.md#desktop-app)."""
+
 
 def release_notes(tag: str, project: Path, changelog: Path) -> str:
     number = r"(?:0|[1-9][0-9]*)"
@@ -36,6 +54,7 @@ def release_notes(tag: str, project: Path, changelog: Path) -> str:
 
 if __name__ == "__main__":
     try:
-        print(release_notes(sys.argv[1], Path("pyproject.toml"), Path("CHANGELOG.md")))
+        notes = release_notes(sys.argv[1], Path("pyproject.toml"), Path("CHANGELOG.md"))
+        print(f"{notes}\n\n{DESKTOP_APP}")
     except ValueError as error:
         sys.exit(str(error))
