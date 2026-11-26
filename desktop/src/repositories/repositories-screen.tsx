@@ -231,10 +231,12 @@ function NewWorkspaceForm({ connection, onCreated, onCancel }: NewWorkspaceFormP
       )}
       <ErrorNotice error={creating.error} />
       <Actions>
-        <Button submit disabled={!valid || creating.pending}>
-          {creating.pending ? "Creating…" : "Create workspace"}
+        <Button submit disabled={!valid} busy={creating.pending ? "Creating…" : null}>
+          Create workspace
         </Button>
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button disabled={creating.pending} onClick={onCancel}>
+          Cancel
+        </Button>
       </Actions>
     </Form>
   );

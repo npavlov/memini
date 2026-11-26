@@ -65,6 +65,8 @@ export interface RefState {
   readonly detail: string | null;
   /** A sync of the ref runs now. */
   readonly running: boolean;
+  /** A sync of the ref waits in the server's queue: asked for, not started yet. */
+  readonly queued: boolean;
   /** The newest run: the one that runs, or the last one. */
   readonly runId: string | null;
   /** When the newest run finished, as the server wrote it. */
@@ -201,27 +203,33 @@ export function parseRefStates(value: unknown): readonly RefState[] {
     const run = last === null || last === undefined ? null : readObject(last, "the newest run");
     const runId = run === null ? null : readString(run["id"]);
     const finishedAt = run === null ? null : readString(run["finished_at"]);
+    // The label comes from the queued or running job the stream names now, never from an
+    // earlier answer: a job that is gone means the sync finished, and its run says how.
     if (pending !== null && pending !== undefined) {
       const job = readObject(pending, "a pending sync");
       const running = readString(job["status"]) === "running";
+      const retrying = !running && (readNumber(job["attempts"]) ?? 0) > 0;
       return {
         ref,
-        tone: "info",
-        label: running ? "syncing" : "waiting to sync",
+        tone: retrying ? "warn" : "info",
+        label: running ? "syncing" : retrying ? "retrying" : "queued",
         detail: optionalText(job["last_error"]),
         running,
+        queued: !running,
         runId: running && run !== null && readString(run["status"]) === "running" ? runId : null,
         finishedAt: null,
         index,
       };
     }
     if (run === null) {
-      return { ref, tone: "idle", label: "not synced yet", detail: null, running: false, runId: null, finishedAt: null, index };
+      const label = "not synced yet";
+      return { ref, tone: "idle", label, detail: null, running: false, queued: false, runId: null, finishedAt: null, index };
     }
     const status = readString(run["status"]) ?? "";
     const tone: Tone = status === "succeeded" ? "good" : status === "failed" ? "bad" : "warn";
     const label = status === "succeeded" ? "synced" : displayText(status, 40);
-    return { ref, tone, label, detail: optionalText(run["error"]), running: false, runId, finishedAt, index };
+    const detail = optionalText(run["error"]);
+    return { ref, tone, label, detail, running: false, queued: false, runId, finishedAt, index };
   });
 }
 

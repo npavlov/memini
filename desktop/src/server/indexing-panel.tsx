@@ -65,10 +65,11 @@ export function IndexingPanel(): ReactElement {
           <Actions>
             <Button
               variant="primary"
-              disabled={applying.pending || selected === current.mode}
+              disabled={selected === current.mode}
+              busy={applying.pending ? "Applying…" : null}
               onClick={() => applying.run(selected)}
             >
-              {applying.pending ? "Applying…" : "Apply"}
+              Apply
             </Button>
             <Text tone="muted" small inline>
               The model restarts; an embedding it was doing is tried again.

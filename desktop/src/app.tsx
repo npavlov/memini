@@ -24,7 +24,6 @@ import { RepositoriesScreen } from "./repositories/repositories-screen";
 import { TokensScreen } from "./tokens/tokens-screen";
 import { useWorkspaces } from "./workspaces/use-workspaces";
 import type { WorkspaceChoice } from "./workspaces/use-workspaces";
-import { WORKSPACE_HINT } from "./workspaces/workspaces";
 
 /** The screens of the navigation. The state of the connection is not one: it is the bar below. */
 const SCREENS = [
@@ -98,7 +97,6 @@ function Shell({ boot }: ShellProps): ReactElement {
             value={workspaces.current}
             options={names.map((name) => ({ value: name, label: name }))}
             onChange={workspaces.choose}
-            hint={WORKSPACE_HINT}
           />
         )
       }

@@ -12,6 +12,7 @@ import {
   Fact,
   Facts,
   Mono,
+  Notice,
   Panel,
   Pill,
   ProgressBar,
@@ -20,19 +21,24 @@ import {
 } from "../components";
 import type { Connection } from "../connections/connections";
 import { useAction } from "../hooks/use-action";
+import type { Action } from "../hooks/use-action";
 import { useLoad } from "../hooks/use-load";
 import type { Backend } from "../ipc/backend";
 import { useBackend } from "../ipc/backend-context";
 import { formatAgo, formatClock, formatDuration } from "../text/format-time";
 import {
+  LOCAL_FOLDER_SYNC,
   MAPPING_STEPS,
   SYNC_EXPLAINED,
   agentTask,
-  describeCheck,
   describeCoverage,
   describeHeld,
+  describeOutcome,
   describeProgress,
+  endedSyncs,
   progressLabel,
+  shortRef,
+  syncPhase,
 } from "./codebases";
 import type { Coverage, RunCheck } from "./codebases";
 import { folderOf } from "./repositories";
@@ -66,8 +72,8 @@ interface Codebase {
   readonly coverage: Coverage | null;
 }
 
-/** How often the list is read again while a sync runs. */
-const POLL_MS = 4000;
+/** How often the list is read again while a sync waits in the queue or runs. */
+const POLL_MS = 2000;
 /** The schedule a code base gets back when it is resumed. */
 const RESUME_SECONDS = 3600;
 
@@ -111,7 +117,8 @@ export function CodebaseList({ connection, workspace, folders, tokenNames }: Cod
   );
   const { reload } = loaded;
   const codebases = loaded.state.phase === "ready" ? loaded.state.data : null;
-  const syncing = codebases?.some((codebase) => codebase.refs.some((ref) => ref.running)) ?? false;
+  // A queued sync is followed as closely as a running one: it starts and may end between two reads.
+  const syncing = codebases?.some((codebase) => syncPhase(codebase.refs) !== null) ?? false;
   useEffect(() => {
     if (!syncing) {
       return undefined;
@@ -126,8 +133,8 @@ export function CodebaseList({ connection, workspace, folders, tokenNames }: Cod
       <Panel
         title={`Code bases of ${workspace}`}
         actions={
-          <Button disabled={loaded.busy} onClick={reload}>
-            {loaded.busy ? "Refreshing…" : "Refresh"}
+          <Button busy={loaded.busy && !syncing ? "Refreshing…" : null} onClick={reload}>
+            Refresh
           </Button>
         }
       >
@@ -213,10 +220,6 @@ function scheduleWords(seconds: number | null): string {
   return seconds === null ? "Paused: syncs only when asked" : `Syncs every ${formatDuration(seconds)}`;
 }
 
-function shortRef(ref: string): string {
-  return ref.replace(/^refs\/(heads|tags)\//u, "");
-}
-
 /** "1,472 files · 9,310 chunks · commit 1a2b3c4 of 25 Nov 2026, 14:02". */
 function heldWords(ref: RefState, now: number): string {
   const index = ref.index;
@@ -234,16 +237,51 @@ function heldWords(ref: RefState, now: number): string {
   return `${held} · commit ${index.commit.slice(0, 7)}${made}`;
 }
 
-/** "07:37 — no changes"; null while it runs or before any run. */
-function checkWords(ref: RefState, check: RunCheck | undefined, now: number): string | null {
-  if (ref.running || ref.finishedAt === null) {
-    return null;
+/** A Sync now the user asked for: the newest run of each ref then, and whether it was seen under way. */
+interface AskedSync {
+  readonly before: ReadonlyMap<string, string | null>;
+  readonly seenUnderWay: boolean;
+}
+
+type CardAction = "sync" | "pause" | "resume" | "delete";
+
+const WORKING: Readonly<Record<CardAction, string>> = {
+  sync: "Asking…",
+  pause: "Pausing…",
+  resume: "Resuming…",
+  delete: "Deleting…",
+};
+
+/**
+ * Follows a Sync now from the click to its end: the request, the queue, the run. The card's data
+ * is read again every two seconds while a sync waits or runs, so this only remembers what it
+ * asked for.
+ */
+function useAskedSync(refs: readonly RefState[]): {
+  readonly asked: AskedSync | null;
+  readonly ask: () => void;
+} {
+  const [asked, setAsked] = useState<AskedSync | null>(null);
+  const underWay = syncPhase(refs) !== null;
+  useEffect(() => {
+    if (underWay) {
+      setAsked((current) => (current === null || current.seenUnderWay ? current : { ...current, seenUnderWay: true }));
+    }
+  }, [underWay]);
+  const ask = useCallback((): void => {
+    setAsked({ before: new Map(refs.map((ref) => [ref.ref, ref.runId])), seenUnderWay: false });
+  }, [refs]);
+  return { asked, ask };
+}
+
+function syncBusy(acting: Action<CardAction>, phase: "running" | "queued" | null): string | null {
+  if (phase === "running") {
+    return "Syncing…";
   }
-  const at = formatClock(ref.finishedAt, now);
-  if (ref.detail !== null) {
-    return `${at} — ${ref.label}: ${ref.detail}`;
+  if (phase === "queued") {
+    return "Queued…";
   }
-  return check === undefined ? `${at} — ${ref.label}` : `${at} — ${describeCheck(check)}`;
+  return acting.running?.argument === "sync" ? WORKING.sync : null;
 }
 
 function CodebaseCard(props: CodebaseCardProps): ReactElement {
@@ -251,9 +289,11 @@ function CodebaseCard(props: CodebaseCardProps): ReactElement {
   const backend = useBackend();
   const { source, refs, checks, coverage } = codebase;
   const [editing, setEditing] = useState(false);
+  const { asked, ask } = useAskedSync(refs);
   const act = useCallback(
-    async (what: "sync" | "pause" | "resume" | "delete"): Promise<void> => {
+    async (what: CardAction): Promise<void> => {
       if (what === "sync") {
+        ask();
         await syncSource(backend, connection.id, workspace, source.name);
       } else if (what === "delete") {
         await deleteSource(backend, connection.id, workspace, source.name);
@@ -263,11 +303,13 @@ function CodebaseCard(props: CodebaseCardProps): ReactElement {
       }
       onChanged();
     },
-    [backend, connection.id, onChanged, source.name, workspace],
+    [ask, backend, connection.id, onChanged, source.name, workspace],
   );
   const acting = useAction(act);
   const now = Date.now();
   const paused = source.scheduleSeconds === null;
+  const phase = syncPhase(refs);
+  const working = (what: CardAction): string | null => (acting.running?.argument === what ? WORKING[what] : null);
   const keep = folder === null ? "" : " The folder stays given to the server: take it back on the Server screen.";
   return (
     <Card title={source.name} subtitle={folder === null ? source.location : ""}>
@@ -302,13 +344,18 @@ function CodebaseCard(props: CodebaseCardProps): ReactElement {
             />
           );
         })}
+      <SyncEnded asked={asked} refs={refs} checks={checks} now={now} />
       <Mapping coverage={coverage} tokenNames={tokenNames} now={now} />
       <ErrorNotice error={acting.error} />
       <Actions>
-        <Button disabled={acting.pending} onClick={() => acting.run("sync")}>
+        <Button disabled={acting.pending} busy={syncBusy(acting, phase)} onClick={() => acting.run("sync")}>
           Sync now
         </Button>
-        <Button disabled={acting.pending} onClick={() => acting.run(paused ? "resume" : "pause")}>
+        <Button
+          disabled={acting.pending}
+          busy={working(paused ? "resume" : "pause")}
+          onClick={() => acting.run(paused ? "resume" : "pause")}
+        >
           {paused ? "Resume" : "Pause"}
         </Button>
         <Button
@@ -322,10 +369,16 @@ function CodebaseCard(props: CodebaseCardProps): ReactElement {
           label="Delete"
           question={`Delete ${source.name}? Its records, chunks and mirror are removed from the server; the repository itself is not touched.${keep}`}
           confirmLabel="Delete the code base"
+          working={WORKING.delete}
           disabled={acting.pending}
           onConfirm={() => acting.run("delete")}
         />
       </Actions>
+      {folder === null ? null : (
+        <Text tone="muted" small>
+          {LOCAL_FOLDER_SYNC}
+        </Text>
+      )}
       {editing ? (
         <ScopeEditor
           connection={connection}
@@ -338,6 +391,35 @@ function CodebaseCard(props: CodebaseCardProps): ReactElement {
         />
       ) : null}
     </Card>
+  );
+}
+
+interface SyncEndedProps {
+  readonly asked: AskedSync | null;
+  readonly refs: readonly RefState[];
+  readonly checks: ReadonlyMap<string, RunCheck>;
+  readonly now: number;
+}
+
+/** How the Sync now the user asked for ended, ref by ref, once no sync waits or runs. */
+function SyncEnded({ asked, refs, checks, now }: SyncEndedProps): ReactElement | null {
+  if (asked === null) {
+    return null;
+  }
+  const lines = endedSyncs(refs, asked.before, asked.seenUnderWay).flatMap((ref) => {
+    const line = describeOutcome(ref, checks.get(ref.ref), now);
+    return line === null ? [] : [{ ref, line }];
+  });
+  if (lines.length === 0) {
+    return null;
+  }
+  const failed = lines.some(({ ref }) => ref.tone === "bad");
+  return (
+    <Notice tone={failed ? "bad" : "good"} title={failed ? "The sync failed" : "Sync finished"}>
+      {lines.map(({ ref, line }) => (
+        <Text key={ref.ref}>{line}</Text>
+      ))}
+    </Notice>
   );
 }
 
@@ -369,11 +451,11 @@ interface RefFactsProps {
 }
 
 function RefFacts({ name, state, check, now }: RefFactsProps): ReactElement {
-  const checked = checkWords(state, check, now);
+  const checked = describeOutcome(state, check, now);
   return (
     <>
       <Fact name={`Index of ${name}`}>{heldWords(state, now)}</Fact>
-      {checked === null ? null : <Fact name="Last check">{checked}</Fact>}
+      {checked === null ? null : <Fact name="Last sync">{checked}</Fact>}
     </>
   );
 }

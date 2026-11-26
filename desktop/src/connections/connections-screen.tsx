@@ -126,6 +126,8 @@ function ConnectionList(props: ConnectionListProps): ReactElement {
             onSelect={() => {
               onSelect({ mode: "saved", id: connection.id });
             }}
+            using={action.running?.argument === connection.id}
+            blocked={action.pending}
             onUse={() => action.run(connection.id)}
           />
         ))}
@@ -139,11 +141,14 @@ interface ConnectionRowProps {
   readonly active: boolean;
   readonly selected: boolean;
   readonly onSelect: () => void;
+  /** It is being made the active connection; another one is. */
+  readonly using: boolean;
+  readonly blocked: boolean;
   readonly onUse: () => Promise<void>;
 }
 
 function ConnectionRow(props: ConnectionRowProps): ReactElement {
-  const { connection, active, selected, onSelect, onUse } = props;
+  const { connection, active, selected, onSelect, using, blocked, onUse } = props;
   return (
     <SelectableRow
       selected={selected}
@@ -155,7 +160,11 @@ function ConnectionRow(props: ConnectionRowProps): ReactElement {
       <Pill tone={connection.hasToken ? "good" : "warn"}>
         {connection.hasToken ? "token stored" : "no token"}
       </Pill>
-      {active ? <Pill tone="good">active</Pill> : <Button onClick={onUse}>Use</Button>}
+      {active ? <Pill tone="good">active</Pill> : (
+        <Button disabled={blocked} busy={using ? "Switching…" : null} onClick={onUse}>
+          Use
+        </Button>
+      )}
     </SelectableRow>
   );
 }

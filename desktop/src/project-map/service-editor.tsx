@@ -94,6 +94,7 @@ function ServiceFields({ draft, at, repositories, onDraft }: ServiceFieldsProps)
           label="Remove the service"
           question={removalQuestion(draft, at)}
           confirmLabel="Remove"
+          working="Removing…"
           onConfirm={async () => {
             onDraft(removeService(draft, at));
           }}

@@ -83,8 +83,8 @@ export function McpScreen({ connection, token }: McpScreenProps): ReactElement {
       <Panel
         title="Endpoint"
         actions={
-          <Button disabled={endpoint.busy} onClick={endpoint.reload}>
-            {endpoint.busy ? "Checking…" : "Check again"}
+          <Button busy={endpoint.busy ? "Checking…" : null} onClick={endpoint.reload}>
+            Check again
           </Button>
         }
       >

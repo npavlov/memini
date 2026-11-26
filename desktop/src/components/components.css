@@ -232,12 +232,6 @@ pre,
   outline-color: var(--sidebar-text);
 }
 
-.sidebar-picker-hint {
-  color: var(--sidebar-muted);
-  font-size: var(--font-size-small);
-  line-height: 1.35;
-}
-
 .sidebar-footer {
   margin-top: auto;
   padding: 0 10px;
@@ -454,6 +448,35 @@ pre,
 .button-icon {
   width: var(--control-height);
   padding: 0;
+}
+
+/* While the action a button started runs, a ring of the text's colour turns before its words. */
+.button-busy,
+.button-busy:disabled {
+  gap: 8px;
+  cursor: progress;
+}
+
+.button-spinner {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-chip);
+  animation: button-turn 800ms linear infinite;
+}
+
+@keyframes button-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button-spinner {
+    animation: none;
+  }
 }
 
 .icon {

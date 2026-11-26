@@ -105,7 +105,7 @@ function EditorButtons(props: EditorButtonsProps): ReactElement {
   const { saved, blocked, saving, removing, onTest, onCancel } = props;
   return (
     <Actions>
-      <Button variant="primary" submit disabled={blocked || saving.pending}>
+      <Button variant="primary" submit disabled={blocked || removing.pending} busy={saving.pending ? "Saving…" : null}>
         {saved === null ? "Save connection" : "Save changes"}
       </Button>
       {saved === null ? null : <Button onClick={onTest}>Test connection</Button>}
@@ -116,7 +116,8 @@ function EditorButtons(props: EditorButtonsProps): ReactElement {
           label="Delete connection"
           question="Delete this connection and its token?"
           confirmLabel="Delete"
-          disabled={removing.pending}
+          working="Deleting…"
+          disabled={removing.pending || saving.pending}
           onConfirm={() => removing.run()}
         />
       )}

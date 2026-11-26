@@ -77,7 +77,7 @@ export function ModelPlace({ runtime, onMoved }: ModelPlaceProps): ReactElement 
       {runtime === "host" ? (
         <OnTheMac disabled={busy} onMove={() => moving.run("container")} />
       ) : (
-        <InDocker host={found} disabled={busy} onMove={() => moving.run("host")} onInstall={() => installing.run()} />
+        <InDocker host={found} disabled={busy} moving={moving.pending} onMove={() => moving.run("host")} onInstall={() => installing.run()} />
       )}
       {busy && found.pull !== null && !found.pull.done ? (
         <ProgressBar
@@ -110,6 +110,7 @@ function OnTheMac({ disabled, onMove }: OnTheMacProps): ReactElement {
         label="Run it in Docker instead"
         question="Run the search model in Docker? It is much slower there, as Docker on a Mac has no GPU."
         confirmLabel="Run it in Docker"
+        working="Moving…"
         disabled={disabled}
         onConfirm={onMove}
       />
@@ -120,11 +121,13 @@ function OnTheMac({ disabled, onMove }: OnTheMacProps): ReactElement {
 interface InDockerProps {
   readonly host: HostModel;
   readonly disabled: boolean;
+  /** The model is being moved to the Mac. */
+  readonly moving: boolean;
   readonly onMove: () => Promise<void>;
   readonly onInstall: () => Promise<void>;
 }
 
-function InDocker({ host, disabled, onMove, onInstall }: InDockerProps): ReactElement {
+function InDocker({ host, disabled, moving, onMove, onInstall }: InDockerProps): ReactElement {
   if (host.found) {
     return (
       <Notice tone="warn" title="The search model runs in Docker, without the Mac's GPU">
@@ -133,8 +136,8 @@ function InDocker({ host, disabled, onMove, onInstall }: InDockerProps): ReactEl
           {host.hasModel ? "" : ` Moving there downloads ${host.model} first.`} The index stays as it is.
         </Text>
         <Actions>
-          <Button variant="primary" disabled={disabled} onClick={onMove}>
-            {disabled ? "Moving…" : "Use Ollama on this Mac"}
+          <Button variant="primary" disabled={disabled} busy={moving ? "Moving…" : null} onClick={onMove}>
+            Use Ollama on this Mac
           </Button>
         </Actions>
       </Notice>
@@ -151,6 +154,7 @@ function InDocker({ host, disabled, onMove, onInstall }: InDockerProps): ReactEl
             label="Install Ollama with Homebrew"
             question="Run brew install ollama, then brew services start ollama? It downloads about 1 GB."
             confirmLabel="Install and start it"
+            working="Installing Ollama…"
             disabled={disabled}
             onConfirm={onInstall}
           />

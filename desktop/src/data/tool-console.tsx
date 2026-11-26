@@ -104,8 +104,8 @@ function ToolRunner({ connection, tool }: ToolRunnerProps): ReactElement {
       <Form onSubmit={() => (problem === null ? running.run() : undefined)}>
         <ToolFields tool={tool} values={values} onChange={setValues} />
         <Actions>
-          <Button variant="primary" submit disabled={problem !== null || running.pending}>
-            {running.pending ? "Running…" : "Run"}
+          <Button variant="primary" submit disabled={problem !== null} busy={running.pending ? "Running…" : null}>
+            Run
           </Button>
           {problem === null ? null : (
             <Text tone="hint" inline>

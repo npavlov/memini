@@ -102,10 +102,15 @@ interface TokenButtonsProps {
 }
 
 function TokenButtons({ hasToken, actions }: TokenButtonsProps): ReactElement {
-  const { pasting, removing } = actions;
+  const { pasting, reading, removing } = actions;
   return (
     <Actions>
-      <Button variant="primary" disabled={pasting.pending} onClick={() => pasting.run()}>
+      <Button
+        variant="primary"
+        disabled={removing.pending || reading.pending}
+        busy={pasting.pending ? "Reading the clipboard…" : null}
+        onClick={() => pasting.run()}
+      >
         {hasToken ? "Replace with the token on the clipboard" : "Take the token from the clipboard"}
       </Button>
       {hasToken ? (
@@ -113,7 +118,8 @@ function TokenButtons({ hasToken, actions }: TokenButtonsProps): ReactElement {
           label="Remove token"
           question="Remove the token from the keychain?"
           confirmLabel="Remove"
-          disabled={removing.pending}
+          working="Removing…"
+          disabled={removing.pending || pasting.pending || reading.pending}
           onConfirm={() => removing.run()}
         />
       ) : null}
@@ -134,7 +140,7 @@ function TokenFileForm({ pending, onRead }: TokenFileFormProps): ReactElement {
       <Field label="Or read it from a token file" grow>
         <TextInput kind="code" value={path} placeholder="~/.config/memini/admin.token" onChange={setPath} />
       </Field>
-      <Button submit disabled={pending || empty}>
+      <Button submit disabled={empty} busy={pending ? "Reading the file…" : null}>
         Read the file
       </Button>
     </Form>

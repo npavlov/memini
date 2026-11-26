@@ -117,6 +117,7 @@ function SshAccess({ access, onAccess }: AccessProps): ReactElement {
           label="Remove the ssh key"
           question="Remove the server's ssh key and host keys? Sources at ssh addresses stop syncing."
           confirmLabel="Remove the key"
+          working="Removing…"
           disabled={removing.pending}
           onConfirm={() => removing.run()}
         />
@@ -157,6 +158,7 @@ function HttpsAccess({ access, onAccess }: AccessProps): ReactElement {
           label="Remove the token"
           question="Remove the server's https token? Private sources at https addresses stop syncing."
           confirmLabel="Remove the token"
+          working="Removing…"
           disabled={removing.pending}
           onConfirm={() => removing.run()}
         />
@@ -228,8 +230,8 @@ function SecretForm({ kind, lead, onAccess }: SecretFormProps): ReactElement {
       {hosts === "" || problem === null ? null : <Text tone="hint">{problem}</Text>}
       <ErrorNotice error={saving.error} />
       <Actions>
-        <Button variant="primary" submit disabled={problem !== null || saving.pending}>
-          {saving.pending ? "Saving…" : kind === "ssh" ? "Give the server this key" : "Give the server this token"}
+        <Button variant="primary" submit disabled={problem !== null} busy={saving.pending ? "Saving…" : null}>
+          {kind === "ssh" ? "Give the server this key" : "Give the server this token"}
         </Button>
       </Actions>
     </Form>

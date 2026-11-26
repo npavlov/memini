@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { AppError } from "../ipc/app-error";
 import { markupOf } from "./markup";
-import { ErrorNotice, Notice } from "./notice";
+import { ActionOutcome, ErrorNotice, Notice } from "./notice";
 
 describe("Notice", () => {
   it.each(["good", "warn", "info", "idle"] as const)("is a status in the %s tone", (tone) => {
@@ -23,6 +23,24 @@ describe("Notice", () => {
     );
 
     expect(markup).toContain('<p class="notice-title">Note</p><p>more</p>');
+  });
+});
+
+describe("ActionOutcome", () => {
+  it("renders nothing before an action ran or when it said nothing", () => {
+    expect(markupOf(<ActionOutcome of={{ error: null, done: null }} />)).toBe("");
+  });
+
+  it("says what the action did as a good status", () => {
+    expect(markupOf(<ActionOutcome of={{ error: null, done: "Saved: 3 domains." }} />)).toBe(
+      '<div class="notice notice-good" role="status">Saved: 3 domains.</div>',
+    );
+  });
+
+  it("shows the failure instead, as an alert", () => {
+    const error = new AppError({ kind: "invalid", message: "The name is taken." });
+
+    expect(markupOf(<ActionOutcome of={{ error, done: null }} />)).toContain('role="alert"');
   });
 });
 

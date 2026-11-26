@@ -73,6 +73,25 @@ export function formatClock(iso: string | null, nowMs: number, format: InstantFo
   }).format(new Date(time));
 }
 
+/**
+ * The day of an ISO instant, without the time: `1 Nov`, with the year when it is not the year of
+ * `nowMs`. A dash for none or one that is not a date.
+ */
+export function formatDay(iso: string | null, nowMs: number, format: InstantFormat = {}): string {
+  const time = iso === null ? Number.NaN : Date.parse(iso);
+  if (Number.isNaN(time)) {
+    return NOTHING;
+  }
+  const year = new Intl.DateTimeFormat(format.locale, { year: "numeric", timeZone: format.timeZone });
+  const sameYear = year.format(new Date(time)) === year.format(new Date(nowMs));
+  return new Intl.DateTimeFormat(format.locale, {
+    day: "numeric",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" as const }),
+    timeZone: format.timeZone,
+  }).format(new Date(time));
+}
+
 /** How long ago an ISO instant was, against a clock that is passed in: `3 min ago`. */
 export function formatAgo(iso: string | null, nowMs: number): string {
   const time = iso === null ? Number.NaN : Date.parse(iso);

@@ -136,8 +136,12 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
       <Panel
         title="Local server"
         actions={
-          <Button disabled={status.busy} onClick={status.reload}>
-            {status.busy ? "Refreshing…" : "Refresh"}
+          <Button
+            disabled={working !== null}
+            busy={status.busy && working === null ? "Refreshing…" : null}
+            onClick={status.reload}
+          >
+            Refresh
           </Button>
         }
       >
@@ -147,7 +151,7 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
         {loaded === null || offered === "foreign" ? null : (
           <ServerControls
             status={loaded}
-            busy={working !== null}
+            working={working}
             onChange={changing.run}
             onRemove={() => removing.run()}
           />
@@ -172,8 +176,8 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
 
 interface ServerControlsProps {
   readonly status: LauncherStatus;
-  /** Something runs: every button waits, and the screen says why. */
-  readonly busy: boolean;
+  /** What runs: every button waits, the one that started it says so, and the screen says why. */
+  readonly working: ServerWork | null;
   readonly onChange: (change: LauncherChange) => Promise<void>;
   readonly onRemove: () => Promise<void>;
 }
@@ -198,7 +202,8 @@ function ForeignServer({ connection }: { readonly connection: Connection }): Rea
   );
 }
 
-function ServerControls({ status, busy, onChange, onRemove }: ServerControlsProps): ReactElement {
+function ServerControls({ status, working, onChange, onRemove }: ServerControlsProps): ReactElement {
+  const busy = working !== null;
   const phase = serverPhase(status);
   const summary = describePhase(phase);
   const startable = status.dockerAvailable && status.installed && !status.running;
@@ -214,7 +219,12 @@ function ServerControls({ status, busy, onChange, onRemove }: ServerControlsProp
       </Notice>
       <Actions>
         {startable ? (
-          <Button variant="primary" disabled={busy} onClick={() => onChange("start")}>
+          <Button
+            variant="primary"
+            disabled={busy}
+            busy={working === "start" ? "Starting…" : null}
+            onClick={() => onChange("start")}
+          >
             Start
           </Button>
         ) : null}
@@ -224,6 +234,7 @@ function ServerControls({ status, busy, onChange, onRemove }: ServerControlsProp
               label="Restart"
               question="Restart the server? Agents connected to it lose their connection for a moment."
               confirmLabel="Restart the server"
+              working="Restarting…"
               disabled={busy}
               onConfirm={() => onChange("restart")}
             />
@@ -231,6 +242,7 @@ function ServerControls({ status, busy, onChange, onRemove }: ServerControlsProp
               label="Stop"
               question="Stop the server? Agents connected to it lose their connection."
               confirmLabel="Stop the server"
+              working="Stopping…"
               disabled={busy}
               onConfirm={() => onChange("stop")}
             />
@@ -241,6 +253,7 @@ function ServerControls({ status, busy, onChange, onRemove }: ServerControlsProp
             label="Remove server…"
             question="Remove the server from this computer? Its containers and all its data are deleted: every workspace, source, record and token, and the search model. The connection to it and its token are forgotten, and agents set up for it stop working. Docker keeps the downloaded images. This cannot be undone."
             confirmLabel="Remove the server and its data"
+            working="Removing…"
             disabled={busy || !status.dockerAvailable}
             onConfirm={onRemove}
           />

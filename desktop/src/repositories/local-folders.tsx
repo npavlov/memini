@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { ReactElement } from "react";
 
-import { Button, ConfirmButton, DataTable, ErrorNotice, Mono, Panel, Pill, Text } from "../components";
+import { ActionOutcome, Button, ConfirmButton, DataTable, ErrorNotice, Mono, Panel, Pill, Text } from "../components";
 import type { Connection } from "../connections/connections";
 import { useAction } from "../hooks/use-action";
 import { useLoad } from "../hooks/use-load";
@@ -59,12 +59,13 @@ export function LocalFolders({ connection }: LocalFoldersProps): ReactElement {
   const loaded = useLoad(useCallback(() => readFolders(backend, connection), [backend, connection]));
   const { reload } = loaded;
   const remove = useCallback(
-    async (name: string): Promise<void> => {
+    async (name: string): Promise<string> => {
       const answer = await removeFolder(backend, name);
       if (!answer.ok) {
         throw launcherRefusal(answer.error, "The launcher could not take the folder back.");
       }
       reload();
+      return `Taken back: the server restarted without the folder ${name}.`;
     },
     [backend, reload],
   );
@@ -74,8 +75,8 @@ export function LocalFolders({ connection }: LocalFoldersProps): ReactElement {
     <Panel
       title="Folders on this computer"
       actions={
-        <Button disabled={loaded.busy} onClick={reload}>
-          {loaded.busy ? "Refreshing…" : "Refresh"}
+        <Button busy={loaded.busy ? "Refreshing…" : null} onClick={reload}>
+          Refresh
         </Button>
       }
     >
@@ -92,7 +93,7 @@ export function LocalFolders({ connection }: LocalFoldersProps): ReactElement {
           {String(found.used)} {found.used === 1 ? "folder is" : "folders are"} read by a code base.
         </Text>
       ) : null}
-      <ErrorNotice error={removing.error} />
+      <ActionOutcome of={removing} />
       {found === null || !found.answer.ok ? null : found.unused.length === 0 ? (
         <Text tone="muted">
           {found.answer.repositories.length === 0
@@ -122,6 +123,7 @@ export function LocalFolders({ connection }: LocalFoldersProps): ReactElement {
                   label="Take back"
                   question={`Take “${repo.path}” back from the server? It restarts without the folder. The folder itself is not touched.`}
                   confirmLabel="Take the folder back"
+                  working="Taking it back…"
                   disabled={removing.pending}
                   onConfirm={() => removing.run(repo.name)}
                 />

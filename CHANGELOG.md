@@ -10,6 +10,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - The repository's launcher pin and the Homebrew and Scoop packages move to 0.2.0-rc.5.
+- Desktop: every action that calls the server or the launcher shows that it runs and how it
+  ended. Its button cannot be clicked meanwhile and says what runs (`Syncing…`, `Saving…`,
+  `Deleting…`) with a turning ring; actions whose result is not visible on the screen say what
+  they did. The rule is in `.claude/rules/desktop.md` and a test checks the screens.
+- Desktop: the sidebar has no line under the workspace switcher any more; what a workspace is is
+  said on the Codebases and Project map screens.
+
+### Fixed
+
+- Desktop, Codebases: Sync now showed nothing and left `waiting to sync` on the card. The card now
+  follows the sync from the stream's queued or running job, reading it every two seconds until it
+  ends; Sync now cannot be clicked meanwhile (`Asking…`, `Queued…`, `Syncing…`), and then the card
+  says how it ended: `Checked 12:26 — no changes; main is still at 0327a55, committed 1 Nov`, or
+  what changed. For a folder of this computer it says that new commits appear after `git pull` in
+  the working copy.
 
 ## [0.2.0-rc.5] - 2026-11-26
 

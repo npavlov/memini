@@ -23,6 +23,25 @@ Rules for work under `desktop/` (Tauri 2, React, TypeScript). The component cata
    Do not write a literal colour or radius anywhere else. Text keeps a contrast of 4.5 to 1 in both
    themes.
 
+## Actions
+
+Every action that calls the server or the launcher, on every screen:
+
+1. Disables its button, and the buttons that conflict with it, from the click until it settles.
+   `useAction` never runs one action twice at once.
+2. Shows that it runs: the button says what runs (`busy="Syncing…"` on `Button` and `IconButton`,
+   `working="Deleting…"` on `ConfirmButton`) with a turning ring. A long action shows its live
+   state from the server (a queued or running job, a progress bar) and reads it again until it
+   ends; the state on screen comes from the newest answer, never from an earlier one.
+3. Shows how it ended: the error (`ErrorNotice`, `ActionOutcome`), or what it did when that is not
+   already visible on the screen. The function given to `useAction` returns those words;
+   `ActionOutcome` shows them.
+
+`src/components/library-rule.test.ts` checks the source: a button that submits a form, runs a
+`useAction` or reloads has `busy`, and every `useAction` of a screen shows its outcome. A screen
+explains what something means in its own text, empty state or help, not in a line under the
+sidebar's workspace switcher.
+
 ## Brand
 
 - The mark is in `desktop/brand-src/`: `icon.svg` for the app icon set, `glyph.svg` (one colour,

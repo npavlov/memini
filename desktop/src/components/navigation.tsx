@@ -129,12 +129,13 @@ export interface SidebarPickerProps {
   readonly value: string;
   readonly options: readonly SelectOption[];
   readonly onChange: (value: string) => void;
-  /** A line under the choice on what it means. */
-  readonly hint?: string;
 }
 
-/** A choice in the sidebar that every screen follows, in the sidebar's colours. */
-export function SidebarPicker({ label, value, options, onChange, hint }: SidebarPickerProps): ReactElement {
+/**
+ * A choice in the sidebar that every screen follows, in the sidebar's colours. It has no line
+ * under it: what the choice means is said on the screens, in their empty states and help.
+ */
+export function SidebarPicker({ label, value, options, onChange }: SidebarPickerProps): ReactElement {
   return (
     <label className="sidebar-picker">
       <span className="sidebar-picker-label">{label}</span>
@@ -151,7 +152,6 @@ export function SidebarPicker({ label, value, options, onChange, hint }: Sidebar
           </option>
         ))}
       </select>
-      {hint === undefined || hint === "" ? null : <small className="sidebar-picker-hint">{hint}</small>}
     </label>
   );
 }

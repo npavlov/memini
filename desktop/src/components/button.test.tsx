@@ -49,6 +49,19 @@ describe("Button", () => {
     expect(markup).toContain('aria-controls="details"');
   });
 
+  it("says what runs, with a turning ring, and cannot be clicked while busy", () => {
+    expect(markupOf(<Button busy="Syncing…">Sync now</Button>)).toBe(
+      '<button type="button" class="button button-secondary button-busy" disabled="" aria-busy="true">' +
+        '<span class="button-spinner" aria-hidden="true"></span>Syncing…</button>',
+    );
+  });
+
+  it.each([[null], [""]])("is idle when busy is %j", (busy) => {
+    expect(markupOf(<Button busy={busy}>Sync now</Button>)).toBe(
+      '<button type="button" class="button button-secondary">Sync now</button>',
+    );
+  });
+
   it("shows text it is given as text", () => {
     expect(markupOf(<Button>{"<b>Save</b>"}</Button>)).toContain("&lt;b&gt;Save&lt;/b&gt;");
   });
@@ -60,6 +73,15 @@ describe("IconButton", () => {
 
     expect(markup).toContain('aria-label="Check now"');
     expect(markup).toContain('class="button button-secondary button-icon"');
+  });
+
+  it("names what runs and turns a ring in place of its icon while busy", () => {
+    const markup = markupOf(<IconButton label="Check now" icon="refresh" busy="Checking…" onClick={noop} />);
+
+    expect(markup).toContain('aria-label="Checking…"');
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('<span class="button-spinner" aria-hidden="true"></span>');
+    expect(markup).not.toContain("<svg");
   });
 });
 
@@ -103,6 +125,16 @@ describe("the button styles", () => {
   it("draw the focus ring for the keyboard only", () => {
     expect(styles).toContain(":focus {\n  outline: none;\n}");
     expect(styles).toContain(":focus-visible {\n  outline: 2px solid var(--focus-ring);");
+  });
+
+  it("keep a busy button as large as an idle one: the ring has the size of a line of text", () => {
+    expect(propertiesOf(".button-busy:disabled")).toContain("cursor");
+    expect(propertiesOf(".button-busy:disabled").filter((property) => SIZE.includes(property))).toEqual([]);
+    expect(styles).toContain(".button-spinner {\n  width: 1em;\n  height: 1em;");
+  });
+
+  it("stop the ring turning for a reader who asks for less motion", () => {
+    expect(styles).toMatch(/prefers-reduced-motion: reduce\)[^}]*\.button-spinner/u);
   });
 
   it("have no size variant", () => {

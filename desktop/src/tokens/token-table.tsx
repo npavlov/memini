@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { ReactElement } from "react";
 
-import { ConfirmButton, DataTable, ErrorNotice, Mono, Pill, Text } from "../components";
+import { ActionOutcome, ConfirmButton, DataTable, Mono, Pill, Text } from "../components";
 import type { Connection } from "../connections/connections";
 import { useAction } from "../hooks/use-action";
 import { useBackend } from "../ipc/backend-context";
@@ -30,9 +30,10 @@ const TOKEN_COLUMNS = [
 export function TokenTable({ connection, tokens, onChanged }: TokenTableProps): ReactElement {
   const backend = useBackend();
   const revoke = useCallback(
-    async (tokenId: string): Promise<void> => {
+    async (tokenId: string): Promise<string> => {
       await revokeToken(backend, connection.id, tokenId);
       onChanged();
+      return "Revoked: whatever used the token can no longer reach the server with it.";
     },
     [backend, connection.id, onChanged],
   );
@@ -42,7 +43,7 @@ export function TokenTable({ connection, tokens, onChanged }: TokenTableProps): 
   }
   return (
     <>
-      <ErrorNotice error={revoking.error} />
+      <ActionOutcome of={revoking} />
       <DataTable columns={TOKEN_COLUMNS} withActions>
         {tokens.map((token) => (
           <TokenRow
@@ -84,6 +85,7 @@ function TokenRow({ token, disabled, onRevoke }: TokenRowProps): ReactElement {
             label="Revoke"
             question="Revoke this token? Whatever uses it stops working."
             confirmLabel="Revoke"
+            working="Revoking…"
             disabled={disabled}
             onConfirm={onRevoke}
           />

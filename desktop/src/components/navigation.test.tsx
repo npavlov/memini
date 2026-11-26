@@ -26,7 +26,7 @@ describe("Sidebar and Brand", () => {
 });
 
 describe("SidebarPicker", () => {
-  it("is a labelled choice with its hint, the chosen value selected", () => {
+  it("is a labelled choice, the chosen value selected, with no line under it", () => {
     const markup = markupOf(
       <SidebarPicker
         label="Workspace"
@@ -36,20 +36,13 @@ describe("SidebarPicker", () => {
           { value: "quay", label: "quay" },
         ]}
         onChange={noop}
-        hint="A space of its own."
       />,
     );
 
     expect(markup).toMatch(/^<label class="sidebar-picker"><span class="sidebar-picker-label">Workspace<\/span>/u);
     expect(markup).toContain('<select class="sidebar-picker-select">');
     expect(markup).toContain('<option value="harbour" selected="">harbour</option>');
-    expect(markup).toContain('<small class="sidebar-picker-hint">A space of its own.</small>');
-  });
-
-  it("leaves out an empty hint", () => {
-    const markup = markupOf(<SidebarPicker label="Workspace" value="" options={[]} onChange={noop} />);
-
-    expect(markup).not.toContain("sidebar-picker-hint");
+    expect(markup).not.toContain("<small");
   });
 
   it("shows the glyph next to the name, which is written in lower case", () => {
