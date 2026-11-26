@@ -50,6 +50,7 @@ const COMMANDS: &[&str] = &[
     "api_workspace_create",
     "api_source_create",
     "api_source_streams",
+    "api_source_coverage",
     "api_source_sync",
     "api_source_delete",
 ];

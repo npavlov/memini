@@ -1734,6 +1734,13 @@ a batch that rolls back takes its files out of the processed ones again. What a 
 is counted before a sync with `GET …/sources/{source}/preview`: the tree of a ref in the mirror,
 asked file by file the question the sync asks (its rules, or rules to try), by extension and
 top-level folder. Binary files and forgotten ones count as kept, since only reading them tells.
+What the index holds of a stream, whatever its last run did, is in `GET …/sources/{source}/streams`
+(`index`, decided 2026-11-26, S18): its live records and their chunks, the pinned commit and its
+committer time from the mirror. A diff that changed nothing reports no progress, so a client that
+showed the last run's progress showed 0%; it shows this instead, and the last run's counts as the
+last check. How much of a repository the catalog maps is `GET …/sources/{source}/coverage`: the
+projects with a service or a domain there, the indexed files some domain names, and the top-level
+folders of the rest. Neither is an MCP tool: they are for whoever runs the service, as the preview is.
 A stale index blocks the sync:
 after the fetch, a workspace whose fingerprint differs refuses it with the message that names
 `memini reindex`, no record changes and the pin stays; the rebuild reads code from the fetched

@@ -3,8 +3,8 @@
 
 import type { Backend } from "../ipc/backend";
 import { parseWorkspaceNames } from "../tokens/tokens";
-import { parsePreview, parseRunProgress } from "./codebases";
-import type { Preview, SyncProgress } from "./codebases";
+import { parseCoverage, parsePreview, parseRunCheck } from "./codebases";
+import type { Coverage, Preview, RunCheck } from "./codebases";
 import { parseGitAccess, parseGitSources, parseRefStates, parseReposAnswer } from "./repositories";
 import type { GitAccess, GitSource, RefState, ReposAnswer, SecretSource } from "./repositories";
 
@@ -176,7 +176,17 @@ export async function previewSource(
   );
 }
 
-/** How far a running sync is, from its run; null before it says. */
-export async function readSyncProgress(backend: Backend, id: string, run: string): Promise<SyncProgress | null> {
-  return parseRunProgress(await backend.invoke("api_run", { id, run }));
+/** What a sync did or does, from its run: full listing or diff, its counts, its progress. */
+export async function readRunCheck(backend: Backend, id: string, run: string): Promise<RunCheck> {
+  return parseRunCheck(await backend.invoke("api_run", { id, run }));
+}
+
+/** How much of a code base the project map names. */
+export async function readCoverage(
+  backend: Backend,
+  id: string,
+  workspace: string,
+  source: string,
+): Promise<Coverage> {
+  return parseCoverage(await backend.invoke("api_source_coverage", { id, source: { workspace, source } }));
 }

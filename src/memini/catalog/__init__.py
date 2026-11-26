@@ -11,7 +11,8 @@ sections 3 (Catalog) and 6 (Catalog tools):
   document ``put_project`` takes and ``get_catalog`` and ``get_project`` give back.
 - :mod:`memini.catalog.service`: one function per tool (:func:`run_get_catalog`,
   :func:`run_get_project`, :func:`run_get_domain`, :func:`run_put_project`,
-  :func:`catalog_guide`); :class:`CatalogError`, every refusal with an HTTP status, a code and a
+  :func:`catalog_guide`), and :func:`run_get_coverage`, what the catalog maps of one repository;
+  :class:`CatalogError`, every refusal with an HTTP status, a code and a
   safe message.
 - :mod:`memini.catalog.store`: the rows (migrations 0018 and 0019) and the files the index holds
   of a repository.
@@ -43,6 +44,7 @@ from memini.catalog.model import (
     ProjectDocument,
     PutProjectArguments,
     PutProjectResult,
+    SourceCoverage,
 )
 from memini.catalog.service import (
     CatalogError,
@@ -51,6 +53,7 @@ from memini.catalog.service import (
     catalog_guide,
     normalize,
     run_get_catalog,
+    run_get_coverage,
     run_get_domain,
     run_get_project,
     run_put_project,
@@ -70,10 +73,12 @@ __all__ = [
     "ProjectDocument",
     "PutProjectArguments",
     "PutProjectResult",
+    "SourceCoverage",
     "catalog_errors",
     "catalog_guide",
     "normalize",
     "run_get_catalog",
+    "run_get_coverage",
     "run_get_domain",
     "run_get_project",
     "run_put_project",

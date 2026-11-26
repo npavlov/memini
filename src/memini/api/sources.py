@@ -8,7 +8,7 @@
 | ``GET …/sources/{source}`` | read | one source |
 | ``PATCH …/sources/{source}`` | admin | change its settings |
 | ``DELETE …/sources/{source}`` | admin | delete it, its streams, runs and mirror (204) |
-| ``GET …/sources/{source}/streams`` | read | its streams with lag, last run and queued sync |
+| ``GET …/sources/{source}/streams`` | read | its streams: lag, last run, queued sync, index |
 | ``POST …/sources/{source}/sync`` | admin | enqueue a sync of its streams (202) |
 | ``POST …/sources/{source}/prune`` | admin | apply its filters to its stored records |
 | ``GET …/sources/{source}/preview`` | read | count what a repository would index |
@@ -82,6 +82,7 @@ __all__ = [
     "SourceChanges",
     "SourceInfo",
     "SourceList",
+    "StreamIndex",
     "StreamInfo",
     "StreamList",
     "SyncAccepted",
@@ -656,6 +657,23 @@ class PendingSync(BaseModel):
     last_error: str | None = Field(description="Why the last failed attempt failed.")
 
 
+class StreamIndex(BaseModel):
+    """What the index holds of a stream now, whatever its runs did."""
+
+    records: int = Field(
+        description="Live records the stream stored last: for a repository, the files of the ref."
+    )
+    chunks: int = Field(description="The chunks of those records.")
+    commit: str | None = Field(
+        description="A repository: the commit the index holds the ref at; null before its first"
+        " complete sync, after a sync that failed part way, and for other kinds."
+    )
+    committed_at: datetime | None = Field(
+        description="When that commit was made (its committer time), from the mirror; null when"
+        " the mirror cannot say."
+    )
+
+
 class StreamInfo(BaseModel):
     id: UUID
     key: str = Field(description="What the stream follows; for git, a full ref name.")
@@ -685,9 +703,10 @@ class StreamInfo(BaseModel):
         description="What the stream follows no longer exists at the source (a git ref deleted at"
         " the remote): its records are tombstones until it comes back."
     )
+    index: StreamIndex
 
     @classmethod
-    def of(cls, stream: sources.Stream) -> "StreamInfo":
+    def of(cls, stream: sources.Stream, committed_at: datetime | None = None) -> "StreamInfo":
         run, job = stream.last_run, stream.pending_job
         return cls(
             id=stream.id,
@@ -718,6 +737,12 @@ class StreamInfo(BaseModel):
                 last_error=job.last_error,
             ),
             missing=stream.missing,
+            index=StreamIndex(
+                records=stream.records,
+                chunks=stream.chunks,
+                commit=stream.commit,
+                committed_at=committed_at,
+            ),
         )
 
 
@@ -893,6 +918,26 @@ def mcp_policy(request: Request) -> EgressPolicy:
 McpPolicy = Annotated[EgressPolicy, Depends(mcp_policy)]
 
 
+async def _commit_times(
+    options: GitOptions, source_id: UUID, commits: list[str]
+) -> dict[str, datetime]:
+    """When each of ``commits`` was made, from the source's mirror; a commit the mirror cannot
+    date (no mirror yet, a commit gone after a force push) is left out."""
+    if not commits:
+        return {}
+    mirrors = MirrorManager(options)
+    mirror = mirrors.find(source_id)
+    if mirror is None:
+        return {}
+    times: dict[str, datetime] = {}
+    for commit in dict.fromkeys(commits):
+        try:
+            times[commit] = await mirrors.committed_at(mirror, commit)
+        except (GitError, ValueError) as error:
+            log.info("the time of a pinned commit is unknown: %s", type(error).__name__)
+    return times
+
+
 def build_sources_router() -> APIRouter:
     """The source routes; see the module."""
     router = APIRouter(prefix="/workspaces/{workspace}/sources", tags=["sources"])
@@ -978,12 +1023,21 @@ def build_sources_router() -> APIRouter:
 
     @router.get("/{source}/streams", summary="List the streams of a source")
     async def list_streams(
-        workspace: str, source: str, access: ReadAccess, conn: Connection
+        workspace: str, source: str, access: ReadAccess, options: GitSettings, conn: Connection
     ) -> StreamList:
-        """The streams of a source with their lag, newest run and queued or running sync."""
+        """The streams of a source with their lag, newest run, queued or running sync, and what
+        the index holds of each: records, chunks and, for a repository, the commit and when it
+        was made."""
         with admin_errors():
+            owner = await sources.get_source(conn, access, workspace, source)
             found = await sources.list_streams(conn, access, workspace, source)
-        return StreamList(items=[StreamInfo.of(stream) for stream in found])
+        times = await _commit_times(options, owner.id, [s.commit for s in found if s.commit])
+        return StreamList(
+            items=[
+                StreamInfo.of(stream, None if stream.commit is None else times.get(stream.commit))
+                for stream in found
+            ]
+        )
 
     @router.post("/{source}/sync", status_code=202, summary="Sync a source now")
     async def sync_source(

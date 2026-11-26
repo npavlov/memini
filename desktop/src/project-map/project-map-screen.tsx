@@ -1,13 +1,14 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
-import { CopyButton, DataTable, EmptyState, ErrorNotice, Field, Panel, Screen, Select, Text } from "../components";
+import { CopyButton, DataTable, EmptyState, ErrorNotice, Panel, Screen, Text } from "../components";
 import type { Connection } from "../connections/connections";
 import { useLoad } from "../hooks/use-load";
 import { useBackend } from "../ipc/backend-context";
 import { agentTask } from "../repositories/codebases";
 import { displayText } from "../text/display-text";
-import { listWorkspaceNames } from "../tokens/tokens-api";
+import type { WorkspaceChoice } from "../workspaces/use-workspaces";
+import { WORKSPACE_MEANING } from "../workspaces/workspaces";
 import { readCatalog, repositoriesOf } from "./catalog";
 import type { Catalog, ProjectPlace } from "./catalog";
 import { NewProjectPanel } from "./new-project";
@@ -15,6 +16,8 @@ import { ProjectPanel } from "./project-panel";
 
 export interface ProjectMapScreenProps {
   readonly connection: Connection;
+  /** The workspaces, and the one chosen in the sidebar. */
+  readonly workspaces: WorkspaceChoice;
 }
 
 /**
@@ -22,39 +25,23 @@ export interface ProjectMapScreenProps {
  * with the code each is responsible for. A project is created here, and edited as a whole and
  * saved against the version it was read at.
  */
-export function ProjectMapScreen({ connection }: ProjectMapScreenProps): ReactElement {
-  const backend = useBackend();
+export function ProjectMapScreen({ connection, workspaces }: ProjectMapScreenProps): ReactElement {
   const id = connection.id;
-  const workspaces = useLoad(useCallback(() => listWorkspaceNames(backend, id), [backend, id]));
-  const [chosen, setChosen] = useState("");
-  const names = workspaces.state.phase === "ready" ? workspaces.state.data : [];
-  const workspace = names.includes(chosen) ? chosen : (names[0] ?? "");
+  const workspace = workspaces.current;
   return (
     <Screen
-      title="Project map"
-      lead="The projects of a workspace: their services, their domains and subdomains, and the code each is responsible for."
+      title={workspace === null ? "Project map" : `Project map of ${workspace}`}
+      lead="The projects of the workspace chosen in the sidebar: their services, their domains and subdomains, and the code each is responsible for."
     >
-      {workspaces.state.phase === "loading" ? <Text tone="muted">Asking the server…</Text> : null}
-      {workspaces.state.phase === "failed" ? <ErrorNotice error={workspaces.state.error} /> : null}
-      {workspaces.state.phase === "ready" && workspace === "" ? (
+      {workspaces.error === null ? null : <ErrorNotice error={workspaces.error} />}
+      {workspaces.names === null && workspaces.error === null ? <Text tone="muted">Asking the server…</Text> : null}
+      {workspaces.names !== null && workspace === null ? (
         <EmptyState title="This server has no workspace yet">
-          <Text>A project belongs to a workspace. Create one with the server’s command line first.</Text>
+          <Text>{WORKSPACE_MEANING}</Text>
+          <Text>A project belongs to a workspace. Create one on the Codebases screen first.</Text>
         </EmptyState>
       ) : null}
-      {workspace === "" ? null : (
-        <>
-          <Panel title="Workspace">
-            <Field label="Workspace">
-              <Select
-                value={workspace}
-                onChange={setChosen}
-                options={names.map((name) => ({ value: name, label: name }))}
-              />
-            </Field>
-          </Panel>
-          <WorkspaceCatalog key={workspace} place={{ id, workspace }} />
-        </>
-      )}
+      {workspace === null ? null : <WorkspaceCatalog key={workspace} place={{ id, workspace }} />}
     </Screen>
   );
 }

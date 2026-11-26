@@ -69,6 +69,31 @@ export interface RefState {
   readonly runId: string | null;
   /** When the newest run finished, as the server wrote it. */
   readonly finishedAt: string | null;
+  /** What the index holds of the ref now, whatever the runs did; null from an older server. */
+  readonly index: IndexState | null;
+}
+
+/** What the index holds of one ref (the stream's `index`). */
+export interface IndexState {
+  readonly files: number;
+  readonly chunks: number;
+  /** The commit the index holds the ref at; null before the first complete sync. */
+  readonly commit: string | null;
+  readonly committedAt: string | null;
+}
+
+function parseIndexState(value: unknown): IndexState | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const index = readObject(value, "what the index holds of a stream");
+  const commit = readString(index["commit"]);
+  return {
+    files: readNumber(index["records"]) ?? 0,
+    chunks: readNumber(index["chunks"]) ?? 0,
+    commit: commit !== null && /^[0-9a-f]{7,64}$/u.test(commit) ? commit : null,
+    committedAt: readString(index["committed_at"]),
+  };
 }
 
 /** Where the secret of a git access comes from; the secret itself never reaches the front end. */
@@ -170,6 +195,7 @@ export function parseRefStates(value: unknown): readonly RefState[] {
   return readArray(list["items"]).map((item) => {
     const stream = readObject(item, "a stream");
     const ref = text(stream["key"], 200);
+    const index = parseIndexState(stream["index"]);
     const pending = stream["pending_sync"];
     const last = stream["last_run"];
     const run = last === null || last === undefined ? null : readObject(last, "the newest run");
@@ -186,15 +212,16 @@ export function parseRefStates(value: unknown): readonly RefState[] {
         running,
         runId: running && run !== null && readString(run["status"]) === "running" ? runId : null,
         finishedAt: null,
+        index,
       };
     }
     if (run === null) {
-      return { ref, tone: "idle", label: "not synced yet", detail: null, running: false, runId: null, finishedAt: null };
+      return { ref, tone: "idle", label: "not synced yet", detail: null, running: false, runId: null, finishedAt: null, index };
     }
     const status = readString(run["status"]) ?? "";
     const tone: Tone = status === "succeeded" ? "good" : status === "failed" ? "bad" : "warn";
     const label = status === "succeeded" ? "synced" : displayText(status, 40);
-    return { ref, tone, label, detail: optionalText(run["error"]), running: false, runId, finishedAt };
+    return { ref, tone, label, detail: optionalText(run["error"]), running: false, runId, finishedAt, index };
   });
 }
 
@@ -311,4 +338,22 @@ export const SCHEDULES: readonly { readonly value: string; readonly label: strin
 export function readSchedule(value: string): number | null {
   const seconds = Number.parseInt(value, 10);
   return Number.isFinite(seconds) ? seconds : null;
+}
+
+function samePlace(one: string, other: string): boolean {
+  return one.replace(/\/+$/u, "") === other.replace(/\/+$/u, "");
+}
+
+/**
+ * The folder of this computer a code base reads: the one the server sees at the source's
+ * location. A mounted folder is the server's, not a workspace's, so it is shown with the code
+ * base that uses it (memini-qpk.34).
+ */
+export function folderOf(folders: readonly LocalRepo[], location: string): LocalRepo | null {
+  return folders.find((folder) => samePlace(folder.location, location)) ?? null;
+}
+
+/** The folders no source of any workspace reads: those the Server screen lists. */
+export function unusedFolders(folders: readonly LocalRepo[], locations: readonly string[]): readonly LocalRepo[] {
+  return folders.filter((folder) => !locations.some((location) => samePlace(folder.location, location)));
 }

@@ -10,6 +10,7 @@ import { useLoad } from "../hooks/use-load";
 import type { Load } from "../hooks/use-load";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
+import { LocalFolders } from "../repositories/local-folders";
 import { ConnectionRebuilds } from "../status/index-rebuilds";
 import { FirstSetup } from "./first-setup";
 import { GitAccessPanel } from "./git-access";
@@ -162,6 +163,7 @@ export function LocalServer({ view, info, onView }: LocalServerProps): ReactElem
           <LocalConnection status={loaded} view={view} info={info} onView={onView} />
           {loaded.installed ? <IndexingPanel /> : null}
           {loaded.installed ? <GitAccessPanel /> : null}
+          {loaded.installed ? <LocalFolders connection={local} /> : null}
         </>
       )}
     </>

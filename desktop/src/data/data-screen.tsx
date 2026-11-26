@@ -26,13 +26,15 @@ import { ToolConsole } from "./tool-console";
 
 export interface DataScreenProps {
   readonly connection: Connection;
+  /** The workspace chosen in the sidebar; null: every workspace the token reads. */
+  readonly workspace: string | null;
 }
 
 /**
  * What the base holds, and the read tools to try by hand. The one write here is the mark of a
  * record as sensitive, which an admin token may set or clear.
  */
-export function DataScreen({ connection }: DataScreenProps): ReactElement {
+export function DataScreen({ connection, workspace }: DataScreenProps): ReactElement {
   return (
     <Screen
       title="Data"
@@ -40,7 +42,7 @@ export function DataScreen({ connection }: DataScreenProps): ReactElement {
     >
       {connection.hasToken ? (
         <>
-          <Overview connection={connection} />
+          <Overview connection={connection} workspace={workspace} />
           <ToolConsole connection={connection} />
         </>
       ) : (
@@ -52,14 +54,14 @@ export function DataScreen({ connection }: DataScreenProps): ReactElement {
   );
 }
 
-function Overview({ connection }: DataScreenProps): ReactElement {
+function Overview({ connection, workspace }: DataScreenProps): ReactElement {
   const backend = useBackend();
   const loaded = useLoad(
     useCallback(() => readOverview(backend, connection.id), [backend, connection.id]),
   );
   return (
     <Panel
-      title="What the base holds"
+      title={workspace === null ? "What the base holds" : `What ${workspace} holds`}
       actions={
         <Button disabled={loaded.busy} onClick={loaded.reload}>
           {loaded.busy ? "Refreshing…" : "Refresh"}
@@ -69,7 +71,12 @@ function Overview({ connection }: DataScreenProps): ReactElement {
       {loaded.state.phase === "loading" ? <Text tone="muted">Asking the server…</Text> : null}
       {loaded.state.phase === "failed" ? <ErrorNotice error={loaded.state.error} /> : null}
       {loaded.state.phase === "ready" ? (
-        <Workspaces connection={connection} workspaces={loaded.state.data} />
+        <Workspaces
+          connection={connection}
+          workspaces={
+            workspace === null ? loaded.state.data : loaded.state.data.filter((each) => each.name === workspace)
+          }
+        />
       ) : null}
     </Panel>
   );

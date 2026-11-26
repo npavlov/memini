@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatAgo, formatDuration, formatInstant } from "./format-time";
+import { formatAgo, formatClock, formatDuration, formatInstant } from "./format-time";
 
 describe("formatDuration", () => {
   it.each([
@@ -52,5 +52,20 @@ describe("formatAgo", () => {
 
   it("shows a dash when there is no instant", () => {
     expect(formatAgo(null, now)).toBe("—");
+  });
+});
+
+describe("formatClock", () => {
+  const format = { locale: "en-GB", timeZone: "UTC" };
+  const noon = Date.parse("2026-11-26T12:00:00Z");
+
+  it("shows the time alone on the same day, and the date with it on another", () => {
+    expect(formatClock("2026-11-26T07:37:00Z", noon, format)).toBe("07:37");
+    expect(formatClock("2026-11-25T07:37:00Z", noon, format)).toMatch(/^25 Nov 2026,? 07:37$/u);
+  });
+
+  it("shows a dash for no instant, or one that is not a date", () => {
+    expect(formatClock(null, noon, format)).toBe("—");
+    expect(formatClock("soon", noon, format)).toBe("—");
   });
 });

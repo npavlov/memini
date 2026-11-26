@@ -195,6 +195,49 @@ pre,
   outline-color: var(--sidebar-text);
 }
 
+.sidebar-header {
+  padding: 0 4px 14px;
+}
+
+.sidebar-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.sidebar-picker-label {
+  color: var(--sidebar-muted);
+  font-size: var(--font-size-small);
+}
+
+.sidebar-picker-select {
+  height: var(--control-height);
+  padding: 0 8px;
+  border: 1px solid var(--sidebar-active);
+  border-radius: var(--radius-control);
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-control);
+}
+
+.sidebar-picker-select option {
+  background: var(--sidebar-bottom);
+  color: var(--sidebar-text);
+}
+
+.sidebar-picker-select:focus-visible {
+  outline-color: var(--sidebar-text);
+}
+
+.sidebar-picker-hint {
+  color: var(--sidebar-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.35;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: 0 10px;

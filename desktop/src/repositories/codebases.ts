@@ -2,7 +2,7 @@
 // indexes, how far its sync is, and the task an agent needs to map it to the business. Pure: the
 // screen asks Rust for the data and this module turns it into words and globs.
 
-import { readArray, readNumber, readObject, readString } from "../json/read-json";
+import { readArray, readNumber, readObject, readString, readStrings } from "../json/read-json";
 import { displayText } from "../text/display-text";
 
 // --- Scope -------------------------------------------------------------------------------------
@@ -245,6 +245,145 @@ export function describeProgress(progress: SyncProgress, now: number): string {
   const left = secondsLeft(progress, now);
   return left === null ? files : `${files} · ${about(left)}`;
 }
+
+// --- What a run did, and what the index holds ---------------------------------------------------
+
+/** Explained once, beside the index state of a card. */
+export const SYNC_EXPLAINED =
+  "The first sync lists every file of the branch (a full listing). Later ones read only what changed since the indexed commit (a diff). Text that did not change keeps its vectors, so only new or changed text is embedded again.";
+
+/** How a sync found its work: by listing the whole tree, or by a diff from the indexed commit. */
+export type SyncMode = "full" | "diff";
+
+export interface RunCheck {
+  /** null when the report names neither step: a run that failed before it planned. */
+  readonly mode: SyncMode | null;
+  readonly added: number;
+  readonly changed: number;
+  readonly deleted: number;
+  readonly unchanged: number;
+  /** How far it is, while it runs; null before it says, and for a diff that writes nothing. */
+  readonly progress: SyncProgress | null;
+}
+
+function count(counts: Record<string, unknown>, name: string): number {
+  return readNumber(counts[name]) ?? 0;
+}
+
+/**
+ * What a git sync did or is doing, from its run (`GET /v1/runs/{id}`): the step that planned it
+ * (`list` for a full listing, `diff` for a diff; a diff that falls back to listing has both, and
+ * is a full listing) and the counts of files.
+ */
+export function parseRunCheck(value: unknown): RunCheck {
+  const run = readObject(value, "a run");
+  const report = run["report"];
+  const found = report === null || report === undefined ? {} : readObject(report, "a run report");
+  const steps = readArray(found["steps"]).map((step) => readString(readObject(step, "a step")["name"]));
+  const counts = found["counts"] === null || found["counts"] === undefined ? {} : readObject(found["counts"], "counts");
+  const mode: SyncMode | null = steps.includes("list") ? "full" : steps.includes("diff") ? "diff" : null;
+  return {
+    mode,
+    added: count(counts, "files_added"),
+    changed: count(counts, "files_changed"),
+    deleted: count(counts, "files_deleted"),
+    unchanged: count(counts, "files_unchanged"),
+    progress: parseRunProgress(value),
+  };
+}
+
+/** "no changes", "3 changed, 1 deleted", or for a full listing "full listing: 1,472 files written". */
+export function describeCheck(check: RunCheck): string {
+  if (check.mode === "full") {
+    const written = check.added + check.changed;
+    const kept = check.unchanged > 0 ? `, ${NUMBER.format(check.unchanged)} unchanged` : "";
+    return `full listing: ${NUMBER.format(written)} ${written === 1 ? "file" : "files"} written${kept}`;
+  }
+  const parts = [
+    check.added > 0 ? `${NUMBER.format(check.added)} added` : "",
+    check.changed > 0 ? `${NUMBER.format(check.changed)} changed` : "",
+    check.deleted > 0 ? `${NUMBER.format(check.deleted)} deleted` : "",
+  ].filter((part) => part !== "");
+  return parts.length === 0 ? "no changes" : parts.join(", ");
+}
+
+/** The label of a running sync's bar: which kind of sync it is. */
+export function progressLabel(mode: SyncMode | null): string {
+  if (mode === "full") {
+    return "Full listing: every file of the branch";
+  }
+  return mode === "diff" ? "Diff: what changed since the indexed commit" : "Fetching the repository";
+}
+
+/** "1,472 files · 9,310 chunks". */
+export function describeHeld(files: number, chunks: number): string {
+  return `${NUMBER.format(files)} ${files === 1 ? "file" : "files"} · ${NUMBER.format(chunks)} ${chunks === 1 ? "chunk" : "chunks"}`;
+}
+
+// --- How much of a code base the project map names -------------------------------------------
+
+export interface ProjectMapping {
+  readonly project: string;
+  readonly services: readonly string[];
+  readonly domains: readonly string[];
+  readonly files: number;
+  readonly updatedAt: string | null;
+  /** The token that wrote the project last; null for a change without one. */
+  readonly updatedToken: string | null;
+}
+
+export interface Coverage {
+  readonly files: number;
+  readonly covered: number;
+  /** 0 to 1; null for a code base without files. */
+  readonly share: number | null;
+  readonly projects: readonly ProjectMapping[];
+  readonly uncovered: readonly { readonly folder: string; readonly files: number }[];
+}
+
+/** `GET …/sources/{source}/coverage`. Names are the server's and shown as text. */
+export function parseCoverage(value: unknown): Coverage {
+  const found = readObject(value, "the coverage of a code base");
+  return {
+    files: readNumber(found["files"]) ?? 0,
+    covered: readNumber(found["covered"]) ?? 0,
+    share: readNumber(found["covered_share"]),
+    projects: readArray(found["projects"]).map((item) => {
+      const project = readObject(item, "a project of the coverage");
+      return {
+        project: displayText(readString(project["project"]), 255),
+        services: readStrings(project["services"]).map((name) => displayText(name, 255)),
+        domains: readStrings(project["domains"]).map((name) => displayText(name, 255)),
+        files: readNumber(project["files"]) ?? 0,
+        updatedAt: readString(project["updated_at"]),
+        updatedToken: readString(project["updated_token"]),
+      };
+    }),
+    uncovered: readArray(found["uncovered_folders"]).map((item) => {
+      const folder = readObject(item, "a folder of the coverage");
+      return { folder: displayText(readString(folder["folder"]), 255), files: readNumber(folder["files"]) ?? 0 };
+    }),
+  };
+}
+
+/** "Mapped: 80% of 1,472 files in a domain" or "Not mapped yet". */
+export function describeCoverage(coverage: Coverage): string {
+  if (coverage.projects.length === 0) {
+    return "Not mapped to the business yet";
+  }
+  if (coverage.share === null) {
+    return "Mapped; no file is indexed yet";
+  }
+  const percent = Math.round(coverage.share * 100);
+  return `Mapped: ${String(percent)}% of ${NUMBER.format(coverage.files)} files are in a domain`;
+}
+
+/** The three steps of "Map the code bases to the business". */
+export const MAPPING_STEPS: readonly string[] = [
+  "Copy the task: it lists the code bases of this workspace and how to write the project map.",
+  "Paste it to your agent that is connected to Memini (Claude Code, Cursor, Codex…). It reads the code and writes projects and domains with put_project.",
+  "Check the result on the Project map screen and correct it there; this card then shows how much of the code base is mapped.",
+];
 
 // --- A task for an agent -----------------------------------------------------------------------
 

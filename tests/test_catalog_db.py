@@ -27,7 +27,7 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, LiteralString
 
@@ -932,6 +932,76 @@ async def test_get_catalog_lists_the_projects_and_a_repository_without_a_service
     assert "```\nWhat a call at the harbour costs.\n```" in summary
     # HTTP and MCP return the same shape.
     assert body(over_http) == catalog
+
+
+def coverage_url(source: str, workspace: str = "harbor") -> str:
+    return f"/v1/workspaces/{workspace}/sources/{source}/coverage"
+
+
+async def test_the_coverage_of_a_repository_says_what_the_domains_name_and_what_they_leave(
+    world: World,
+) -> None:
+    agent = await world.new_token("read", "ingest")
+    async with http_client(world.app(), await world.token()) as http:
+        before = body(await http.get(coverage_url("quay")))
+    async with mcp_client(world.app(), agent.secret.get_secret_value()) as client:
+        ok(await put(client))
+    async with http_client(world.app(), await world.token()) as http:
+        quay = body(await http.get(coverage_url("quay")))
+        lantern = body(await http.get(coverage_url("lantern")))
+        spare = body(await http.get(coverage_url("spare")))
+        missing = error(await http.get(coverage_url("nowhere")), 404, "not_found")
+        error(await http.get(coverage_url("vault")), 404, "not_found")
+    limited = await world.token(workspace=world.other)
+    async with http_client(world.app(), limited) as http:
+        error(await http.get(coverage_url("quay")), 404, "not_found")
+        vault = body(await http.get(coverage_url("vault", "other")))
+
+    # Before the map: every file is uncovered, and no project maps it.
+    assert (before["files"], before["covered"], before["covered_share"]) == (5, 0, 0.0)
+    assert before["projects"] == []
+    assert before["uncovered_folders"] == [
+        {"folder": "quay", "files": 4},
+        {"folder": "(root)", "files": 1},
+    ]
+    # quay: four of its five files are in a domain; the README is not.
+    assert (quay["workspace"], quay["source"]) == ("harbor", "quay")
+    assert (quay["files"], quay["covered"], quay["covered_share"]) == (5, 4, 0.8)
+    assert quay["uncovered_folders"] == [{"folder": "(root)", "files": 1}]
+    (port,) = quay["projects"]
+    assert (port["project"], port["services"], port["files"]) == ("port", ["quay"], 4)
+    assert port["domains"] == ["fees/berth", "fees/pilot", "water"]
+    assert port["updated_token"] == str(agent.info.id)
+    assert port["updated_by"] == str(world.owner)
+    assert when(port["updated_at"]) is not None
+    # lantern: the service is one folder of it; only the berth quote is in a domain.
+    assert (lantern["files"], lantern["covered"], lantern["covered_share"]) == (3, 1, 0.3333)
+    assert lantern["projects"][0]["services"] == ["booking-web"]
+    assert lantern["projects"][0]["domains"] == ["fees/berth"]
+    assert lantern["uncovered_folders"] == [{"folder": "web", "files": 2}]
+    # spare: no service is in it, so nothing maps it.
+    assert (spare["files"], spare["covered"], spare["projects"]) == (1, 0, [])
+    assert vault["projects"] == []
+    assert "nowhere" not in missing
+
+
+async def test_the_streams_of_a_repository_say_what_the_index_holds(world: World) -> None:
+    async with http_client(world.app(), await world.token()) as http:
+        (quay,) = body(await http.get("/v1/workspaces/harbor/sources/quay/streams"))["items"]
+        (lantern,) = body(await http.get("/v1/workspaces/harbor/sources/lantern/streams"))["items"]
+    chunks = await world.db.execute(
+        "SELECT count(*) FROM chunk c JOIN record r ON r.id = c.record_id"
+        " JOIN source s ON s.id = r.source_id WHERE s.name = 'quay' AND r.deleted_at IS NULL"
+    )
+    row = await chunks.fetchone()
+    assert row is not None
+
+    assert quay["index"]["records"] == 5
+    assert quay["index"]["chunks"] == row[0] > 0
+    assert quay["index"]["commit"] == world.pins["quay"]
+    assert when(quay["index"]["committed_at"]) <= datetime.now(UTC)
+    assert lantern["index"]["records"] == 3
+    assert lantern["index"]["commit"] == world.pins["lantern"]
 
 
 async def test_what_get_catalog_returns_goes_back_into_put_project(world: World) -> None:

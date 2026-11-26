@@ -2,22 +2,61 @@ import { useCallback } from "react";
 import type { ReactElement } from "react";
 
 import { Button, ConfirmButton, DataTable, ErrorNotice, Mono, Panel, Pill, Text } from "../components";
+import type { Connection } from "../connections/connections";
 import { useAction } from "../hooks/use-action";
 import { useLoad } from "../hooks/use-load";
+import type { Backend } from "../ipc/backend";
 import { useBackend } from "../ipc/backend-context";
-import { launcherRefusal } from "./repositories";
-import { listFolders, removeFolder } from "./repositories-api";
+import { launcherRefusal, unusedFolders } from "./repositories";
+import type { LocalRepo, ReposAnswer } from "./repositories";
+import { listFolders, listGitSources, listWorkspaces, removeFolder } from "./repositories-api";
 
 export interface LocalFoldersProps {
-  readonly onChanged: () => void;
+  /** The connection to the local server; null when there is none, and every folder is listed. */
+  readonly connection: Connection | null;
 }
 
 const COLUMNS = ["Name", "Folder on this computer", "The server sees it at", "State"];
 
-/** The folders of this computer the local server may read, given by the launcher. */
-export function LocalFolders({ onChanged }: LocalFoldersProps): ReactElement {
+interface Folders {
+  readonly answer: ReposAnswer;
+  /** The folders no code base reads; every folder when the sources cannot be read. */
+  readonly unused: readonly LocalRepo[];
+  /** How many are read by a code base, and so shown on its card; null when unknown. */
+  readonly used: number | null;
+}
+
+/** Where every git source of every workspace reads; null when the token cannot list them. */
+async function sourceLocations(backend: Backend, connection: Connection | null): Promise<readonly string[] | null> {
+  if (connection === null || !connection.hasToken) {
+    return null;
+  }
+  try {
+    const names = await listWorkspaces(backend, connection.id);
+    const lists = await Promise.all(names.map((name) => listGitSources(backend, connection.id, name)));
+    return lists.flat().map((source) => source.location);
+  } catch {
+    return null;
+  }
+}
+
+async function readFolders(backend: Backend, connection: Connection | null): Promise<Folders> {
+  const [answer, locations] = await Promise.all([listFolders(backend), sourceLocations(backend, connection)]);
+  if (locations === null) {
+    return { answer, unused: answer.repositories, used: null };
+  }
+  const unused = unusedFolders(answer.repositories, locations);
+  return { answer, unused, used: answer.repositories.length - unused.length };
+}
+
+/**
+ * The folders of this computer the local server may read, given by the launcher, that no code
+ * base uses. A folder a code base reads is the server's, not a workspace's: it is shown on the
+ * card of that code base on the Codebases screen.
+ */
+export function LocalFolders({ connection }: LocalFoldersProps): ReactElement {
   const backend = useBackend();
-  const loaded = useLoad(useCallback(() => listFolders(backend), [backend]));
+  const loaded = useLoad(useCallback(() => readFolders(backend, connection), [backend, connection]));
   const { reload } = loaded;
   const remove = useCallback(
     async (name: string): Promise<void> => {
@@ -26,31 +65,43 @@ export function LocalFolders({ onChanged }: LocalFoldersProps): ReactElement {
         throw launcherRefusal(answer.error, "The launcher could not take the folder back.");
       }
       reload();
-      onChanged();
     },
-    [backend, onChanged, reload],
+    [backend, reload],
   );
   const removing = useAction(remove);
-  const answer = loaded.state.phase === "ready" ? loaded.state.data : null;
+  const found = loaded.state.phase === "ready" ? loaded.state.data : null;
   return (
     <Panel
-      title="Folders given to the server"
+      title="Folders on this computer"
       actions={
         <Button disabled={loaded.busy} onClick={reload}>
           {loaded.busy ? "Refreshing…" : "Refresh"}
         </Button>
       }
     >
+      <Text tone="muted">
+        Folders given to the server that no code base reads. A folder a code base reads is shown on
+        its card on the Codebases screen; delete the code base first to take that folder back.
+      </Text>
       {loaded.state.phase === "failed" ? <ErrorNotice error={loaded.state.error} /> : null}
-      {answer !== null && !answer.ok ? (
-        <Text tone="muted">{answer.error ?? "The launcher manages no server on this computer."}</Text>
+      {found !== null && !found.answer.ok ? (
+        <Text tone="muted">{found.answer.error ?? "The launcher manages no server on this computer."}</Text>
+      ) : null}
+      {found !== null && found.answer.ok && found.used !== null && found.used > 0 ? (
+        <Text tone="muted" small>
+          {String(found.used)} {found.used === 1 ? "folder is" : "folders are"} read by a code base.
+        </Text>
       ) : null}
       <ErrorNotice error={removing.error} />
-      {answer === null || !answer.ok ? null : answer.repositories.length === 0 ? (
-        <Text tone="muted">None yet. A folder added above appears here.</Text>
+      {found === null || !found.answer.ok ? null : found.unused.length === 0 ? (
+        <Text tone="muted">
+          {found.answer.repositories.length === 0
+            ? "None yet: add a folder on the Codebases screen."
+            : "None: every folder given to the server is read by a code base."}
+        </Text>
       ) : (
         <DataTable columns={COLUMNS} withActions>
-          {answer.repositories.map((repo) => (
+          {found.unused.map((repo) => (
             <tr key={repo.name}>
               <th scope="row">{repo.name}</th>
               <td>
@@ -69,7 +120,7 @@ export function LocalFolders({ onChanged }: LocalFoldersProps): ReactElement {
               <td>
                 <ConfirmButton
                   label="Take back"
-                  question={`Take “${repo.path}” back from the server? It restarts without the folder, and a source that reads it stops syncing; delete that source above as well. The folder itself is not touched.`}
+                  question={`Take “${repo.path}” back from the server? It restarts without the folder. The folder itself is not touched.`}
                   confirmLabel="Take the folder back"
                   disabled={removing.pending}
                   onConfirm={() => removing.run(repo.name)}

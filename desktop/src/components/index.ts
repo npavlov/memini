@@ -27,11 +27,12 @@ export type {
 } from "./inputs";
 export { AppFrame, Columns, FieldGrid, Form, NoWrap, Splash, Stack, Text } from "./layout";
 export type { AppFrameProps, FormProps, LayoutProps, TextProps, TextTone } from "./layout";
-export { Brand, NavItem, RowList, SelectableRow, Sidebar, Tabs } from "./navigation";
+export { Brand, NavItem, RowList, SelectableRow, Sidebar, SidebarPicker, Tabs } from "./navigation";
 export type {
   NavItemProps,
   RowListProps,
   SelectableRowProps,
+  SidebarPickerProps,
   SidebarProps,
   TabItem,
   TabsProps,

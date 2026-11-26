@@ -51,6 +51,7 @@
     "allow-api-workspace-create",
     "allow-api-source-create",
     "allow-api-source-streams",
+    "allow-api-source-coverage",
     "allow-api-source-sync",
     "allow-api-source-delete",
     "clipboard-manager:allow-write-text",

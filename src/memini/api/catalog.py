@@ -8,6 +8,7 @@ and results (:mod:`memini.catalog`).
 | ``GET …/projects/{project}/domains/{domain}`` | ``get_domain`` | a domain, its code, its files |
 | ``PUT …/projects/{project}`` | ``put_project`` | write a whole project as one document |
 | ``GET /catalog/guide`` | ``catalog_guide`` | how to fill the catalog |
+| ``GET …/sources/{source}/coverage`` | (none) | how much of a repository the domains name |
 
 ``…`` is ``/workspaces/{workspace}``. A subdomain is ``…/domains/{domain}/{subdomain}``.
 
@@ -47,8 +48,10 @@ from memini.catalog import (
     ProjectDetail,
     ProjectDocument,
     PutProjectResult,
+    SourceCoverage,
     catalog_guide,
     run_get_catalog,
+    run_get_coverage,
     run_get_domain,
     run_get_project,
     run_put_project,
@@ -81,6 +84,22 @@ def build_catalog_router() -> APIRouter:
             # The name is looked up, not validated: any other name is not found.
             arguments = GetCatalogArguments.model_construct(workspace=workspace)
             return await run_get_catalog(conn, access, arguments)
+        except CatalogError as error:
+            raise _api_error(error) from None
+
+    @router.get(
+        "/workspaces/{workspace}/sources/{source}/coverage",
+        summary="How much of a repository the catalog maps",
+    )
+    async def get_coverage(
+        workspace: str, source: str, access: ReadAccess, conn: Connection
+    ) -> SourceCoverage:
+        """The projects that map the repository (a service of theirs is in it, or a domain of
+        theirs names code in it) with their domains and when they last changed, the share of
+        its indexed files some domain names, and the top-level folders of the files none names.
+        404 for a source that is not a repository the token may read."""
+        try:
+            return await run_get_coverage(conn, access, workspace, source)
         except CatalogError as error:
             raise _api_error(error) from None
 
