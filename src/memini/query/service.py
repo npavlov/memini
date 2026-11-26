@@ -2,10 +2,10 @@
 
 One function per tool, for the MCP tools (:mod:`memini.mcp.query`) and the HTTP routes
 (:mod:`memini.api.query`) alike: :func:`run_search`, :func:`run_search_code`,
-:func:`run_get_symbol`, :func:`run_read_source`, :func:`run_list_commits`. Each takes a connection
+:func:`run_get_symbol`, :func:`run_get_file`, :func:`run_list_commits`. Each takes a connection
 with no transaction open, the service's :class:`QueryServices`, the caller's
 :class:`~memini.auth.ReadFilter` and the arguments, and calls the library:
-:func:`memini.search.search`, :func:`memini.query.reader.read_source` or
+:func:`memini.search.search`, :func:`memini.query.reader.get_file` or
 :func:`memini.query.commits.list_commits`.
 
 Every refusal of the libraries becomes a :class:`QueryError` with an HTTP status, a stable code and
@@ -42,7 +42,7 @@ names ``memini reindex --workspace NAME``. A stale index whose rebuild waits or 
 Embeddings: every search mode checks the index fingerprint, and the fingerprint is made from the
 embedder's spec, so ``search``, ``search_code`` and ``get_symbol`` need the configured embedder in
 every mode, also exact, regex and symbol. Without an embedding provider no index is built either
-(code is synced only into an index), so there would be nothing to find. ``read_source`` and
+(code is synced only into an index), so there would be nothing to find. ``get_file`` and
 ``list_commits`` read the mirror and need none.
 """
 
@@ -50,9 +50,11 @@ import logging
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from datetime import datetime
+from typing import Final
 from uuid import UUID
 
-from psycopg import AsyncConnection, errors
+from psycopg import AsyncConnection, errors, sql
 from psycopg.rows import TupleRow
 
 from memini import knowledge
@@ -65,7 +67,7 @@ from memini.git import GitOptions, MirrorManager
 from memini.ids import RecordKind
 from memini.index import IndexRebuildingError
 from memini.ingest import DEFAULT_LIMITS, IngestLimits
-from memini.persons import parse_person_ref, resolve_persons
+from memini.persons import ME, PersonRef, member_ids, parse_person_ref, resolve_persons
 from memini.query.commits import (
     DEFAULT_COMMIT_LIMITS,
     CommitLimits,
@@ -78,15 +80,12 @@ from memini.query.commits import (
 from memini.query.context import CodeContext, code_contexts
 from memini.query.model import (
     CodeSearchArguments,
-    Definition,
     GeneralSearchResult,
+    GetFileArguments,
     ListCommitsArguments,
-    ReadSourceArguments,
     SearchArguments,
     SearchHit,
     SearchResult,
-    SymbolArguments,
-    SymbolResult,
 )
 from memini.query.reader import (
     DEFAULT_READ_LIMITS,
@@ -94,8 +93,9 @@ from memini.query.reader import (
     InvalidReadError,
     NotSyncedError,
     ReadLimits,
+    SensitiveFileError,
     SourceRead,
-    read_source,
+    get_file,
 )
 from memini.search import (
     Hit,
@@ -112,15 +112,15 @@ from memini.search import (
     search,
 )
 from memini.search.engine import search_transaction
+from memini.sensitivity import sensitive_records
 from memini.workspaces import NotFoundError, list_workspaces
 
 __all__ = [
     "QueryError",
     "QueryServices",
     "query_errors",
-    "run_get_symbol",
+    "run_get_file",
     "run_list_commits",
-    "run_read_source",
     "run_search",
     "run_search_code",
 ]
@@ -149,7 +149,7 @@ class QueryServices:
     commit_limits: CommitLimits = DEFAULT_COMMIT_LIMITS
     """The bounds of a ``list_commits`` call (the ``git_log_*`` settings)."""
     ingest_limits: IngestLimits = DEFAULT_LIMITS
-    """The limits of a batch, for the ``add_document`` write (:mod:`memini.comms`)."""
+    """The limits of a batch, for the ``put_document`` write (:mod:`memini.comms`)."""
     reranker: Reranker | None = None
     """Reorders the best hits of a ranked search; ``None``: the fused order (the default), or the
     reranker is not loaded yet."""
@@ -209,7 +209,7 @@ def query_errors() -> Generator[None]:
             503,
             "embeddings_not_configured",
             "Search needs an embedding provider, and none is configured: set"
-            " MEMINI_EMBEDDING_PROVIDER. read_source works without one.",
+            " MEMINI_EMBEDDING_PROVIDER. get_file works without one.",
         ) from None
     except EmbeddingError as error:
         log.warning("a search query could not be embedded: %s", error)
@@ -222,6 +222,8 @@ def query_errors() -> Generator[None]:
         raise QueryError(422, "file_too_large", _sentence(str(error))) from None
     except NotSyncedError as error:
         raise QueryError(409, "not_synced", _sentence(str(error))) from None
+    except SensitiveFileError as error:
+        raise QueryError(403, "sensitive_record", str(error)) from None
     except NotFoundError as error:
         raise QueryError(404, "not_found", f"No such {error.what}.") from None
 
@@ -232,18 +234,30 @@ def _names(values: Sequence[str] | None) -> tuple[str, ...] | None:
 
 async def _search(
     conn: Conn, services: QueryServices, access: ReadFilter, query: SearchQuery
-) -> list[Hit]:
+) -> tuple[list[Hit], int]:
+    """The hits of ``query``, and how many of the best were left out as marked sensitive.
+
+    A caller that did not ask for sensitive records gets the best hits without them: the search
+    runs over every record, and the hits of a sensitive one are taken out after it and counted
+    (``left_out``), so the count says how many of the best answers there were, and nothing of
+    them leaves this function."""
     embedder = services.embedder
     if embedder is None:
         raise EmbeddingsNotConfiguredError
-    return await search(
+    wide = access if access.include_sensitive else replace(access, include_sensitive=True)
+    hits = await search(
         conn,
         embedder,
-        access,
+        wide,
         query,
         options=services.search_options,
         reranker=services.reranker,
     )
+    if access.include_sensitive or not hits:
+        return hits, 0
+    hidden = await sensitive_records(conn, [hit.record_id for hit in hits])
+    kept = [hit for hit in hits if hit.record_id not in hidden]
+    return kept, len(hits) - len(kept)
 
 
 async def _contexts(
@@ -256,7 +270,7 @@ async def _contexts(
         access,
         [
             (hit.workspace_id, hit.source_id, hit.path)
-            if hit.source_kind == "git" and hit.path is not None
+            if hit.source_kind == "repository" and hit.path is not None
             else None
             for hit in hits
         ],
@@ -282,7 +296,6 @@ async def run_search(
             filters=SearchFilters(
                 workspaces=_names(arguments.workspaces),
                 sources=_names(arguments.sources),
-                repositories=_names(arguments.repositories),
                 kinds=tuple(record_kinds) or None,
                 since=arguments.since,
                 until=arguments.until,
@@ -295,7 +308,7 @@ async def run_search(
                 services=_names(arguments.services),
             ),
         )
-        hits = await _search(conn, services, access, query)
+        hits, left_out = await _search(conn, services, access, query)
         contexts = await _contexts(conn, access, hits)
         decisions = []
         if item_kinds or not arguments.kinds:
@@ -303,7 +316,6 @@ async def run_search(
                 workspaces=query.filters.workspaces,
                 kinds=tuple(item_kinds) or None,
                 sources=tuple(arguments.sources) if arguments.sources else None,
-                repositories=tuple(arguments.repositories) if arguments.repositories else None,
                 decided_from=arguments.since,
                 decided_until=arguments.until,
                 limit=arguments.limit,
@@ -313,10 +325,12 @@ async def run_search(
                     decisions = await _decision_matches(conn, access, query, filters, hits)
             except errors.QueryCanceled as error:
                 raise SearchTimeoutError(services.search_options.timeout) from error
+    records = bool(record_kinds or not arguments.kinds)
     return GeneralSearchResult(
-        hits=[SearchHit.of(hit, context) for hit, context in zip(hits, contexts, strict=True)]
-        if record_kinds or not arguments.kinds
+        items=[SearchHit.of(hit, context) for hit, context in zip(hits, contexts, strict=True)]
+        if records
         else [],
+        left_out=left_out if records else 0,
         decisions=[DecisionItem.of(item) for item in decisions],
     )
 
@@ -383,6 +397,7 @@ _CODE_MODES: dict[str, Mode] = {
     "exact": "exact",
     "regex": "regex",
     "symbol": "symbol",
+    "symbol_prefix": "symbol",
 }
 
 
@@ -396,9 +411,10 @@ async def run_search_code(
             mode=_CODE_MODES[arguments.mode],
             limit=arguments.limit,
             case_sensitive=arguments.case_sensitive,
+            symbol_match="prefix" if arguments.mode == "symbol_prefix" else "exact",
             filters=SearchFilters(
                 workspaces=_names(arguments.workspaces),
-                repositories=_names(arguments.repositories),
+                repositories=_names(arguments.sources),
                 kinds=("code_file",),
                 languages=None if arguments.languages is None else tuple(arguments.languages),
                 paths=tuple(arguments.paths or ()),
@@ -407,56 +423,27 @@ async def run_search_code(
                 services=_names(arguments.services),
             ),
         )
-        hits = await _search(conn, services, access, query)
+        hits, left_out = await _search(conn, services, access, query)
         contexts = await _contexts(conn, access, hits)
     return SearchResult(
-        hits=[SearchHit.of(hit, context) for hit, context in zip(hits, contexts, strict=True)]
+        items=[SearchHit.of(hit, context) for hit, context in zip(hits, contexts, strict=True)],
+        left_out=left_out,
     )
 
 
-async def run_get_symbol(
-    conn: Conn, services: QueryServices, access: ReadFilter, arguments: SymbolArguments
-) -> SymbolResult:
-    """``get_symbol``: definitions from the symbol table, with the chunk that holds each."""
-    with query_errors():
-        query = SearchQuery(
-            text=arguments.name,
-            mode="symbol",
-            limit=arguments.limit,
-            case_sensitive=arguments.case_sensitive,
-            symbol_match=arguments.match,
-            filters=SearchFilters(
-                workspaces=_names(arguments.workspaces),
-                repositories=_names(arguments.repositories),
-                kinds=("code_file",),
-                languages=None if arguments.languages is None else tuple(arguments.languages),
-                paths=tuple(arguments.paths or ()),
-            ),
-        )
-        hits = await _search(conn, services, access, query)
-        contexts = await _contexts(conn, access, hits)
-    return SymbolResult(
-        definitions=[
-            Definition.of(hit, context)
-            for hit, context in zip(hits, contexts, strict=True)
-            if hit.definition is not None
-        ]
-    )
-
-
-async def run_read_source(
-    conn: Conn, services: QueryServices, access: ReadFilter, arguments: ReadSourceArguments
+async def run_get_file(
+    conn: Conn, services: QueryServices, access: ReadFilter, arguments: GetFileArguments
 ) -> SourceRead:
-    """``read_source``: a file, a line range or a directory from a repository's mirror."""
+    """``get_file``: a file, a line range or a directory from a repository's mirror."""
     mirrors = services.mirrors
     if mirrors is None:
         raise QueryError(503, "unavailable", "Reading code is not available: there is no mirror.")
     with query_errors():
-        return await read_source(
+        return await get_file(
             conn,
             access,
             mirrors,
-            repository=arguments.repository,
+            repository=arguments.source,
             path=arguments.path,
             workspace=arguments.workspace,
             ref=arguments.ref,
@@ -476,22 +463,76 @@ async def run_list_commits(
             503, "unavailable", "Reading history is not available: there is no mirror."
         )
     with query_errors():
+        until = arguments.until
+        if arguments.cursor is not None:
+            if until is not None:
+                raise InvalidSearchError("cursor continues a list: send it without until")
+            until = _cursor_time(arguments.cursor)
         scopes = await repository_scopes(
             conn,
             access,
-            repositories=arguments.repositories,
+            sources=arguments.sources,
             workspaces=arguments.workspaces,
             paths=tuple(arguments.paths or ()),
+        )
+        authors = (
+            None
+            if arguments.persons is None
+            else await _author_texts(conn, access, arguments.persons)
         )
         return await list_commits(
             conn,
             access,
             mirrors,
             scopes,
-            author=arguments.author,
+            authors=authors,
             since=arguments.since,
-            until=arguments.until,
-            text=arguments.text,
+            until=until,
+            query=arguments.query,
             limit=arguments.limit,
             limits=services.commit_limits,
         )
+
+
+def _cursor_time(cursor: str) -> datetime:
+    """The time a ``list_commits`` cursor stands for: the commits before it follow."""
+    try:
+        moment = datetime.fromisoformat(cursor)
+    except ValueError:
+        raise InvalidSearchError(
+            "cursor is not one a list gave: pass next_cursor as it is"
+        ) from None
+    if moment.utcoffset() is None:
+        raise InvalidSearchError("cursor is not one a list gave: pass next_cursor as it is")
+    return moment
+
+
+_AUTHOR_ALIASES: Final = sql.SQL("""
+SELECT DISTINCT a.value FROM alias a
+WHERE a.person_id = ANY(%s) AND a.kind IN ('email', 'git_author')
+""")
+
+
+async def _author_texts(conn: Conn, access: ReadFilter, persons: Sequence[str]) -> list[str]:
+    """What the ``persons`` of ``list_commits`` look for in an author's name and address: for
+    'me' and a person id, the mail addresses and author names of that person and everyone merged
+    into it; any other value as it is. A person that names no one adds nothing, so a list of such
+    persons only matches no commit."""
+    texts: list[str] = []
+    named: list[PersonRef] = []
+    for person in persons:
+        ref = parse_person_ref(person)
+        if isinstance(ref, UUID) or ref == ME:
+            named.append(ref)
+        else:
+            texts.append(person)
+    if named:
+        spaces = await list_workspaces(conn, access)
+        found = await resolve_persons(conn, access, [space.id for space in spaces], named)
+        roots = {root for group in found.values() for root in group}
+        if roots:
+            members = await member_ids(conn, roots)
+            cur = await conn.execute(_AUTHOR_ALIASES, (list(members),))
+            texts += [row[0] for row in await cur.fetchall()]
+    # Nothing to look for: an author no name or address holds.
+    return texts or ["\x00"]

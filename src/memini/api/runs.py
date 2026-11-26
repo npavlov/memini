@@ -2,7 +2,7 @@
 
 - ``GET /v1/workspaces/{workspace}/runs``: the runs of a workspace, newest first, optionally of one
   source or one stream, a page at a time.
-- ``GET /v1/runs/{run_id}``: one run with its report. A run id is unique across workspaces, so a
+- ``GET /v1/runs/{id}``: one run with its report. A run id is unique across workspaces, so a
   client that holds one needs nothing else.
 """
 
@@ -47,9 +47,9 @@ class RunSummary(BaseModel):
 
 
 class RunList(BaseModel):
-    runs: list[RunSummary] = Field(description="Newest first.")
-    next_before: str | None = Field(
-        description="Pass it as before= for the next page; null on the last page."
+    items: list[RunSummary] = Field(description="Newest first.")
+    next_cursor: str | None = Field(
+        description="Pass it as cursor for the next page; null on the last page."
     )
 
 
@@ -71,46 +71,57 @@ def build_runs_router() -> APIRouter:
         workspace: str,
         access: ReadAccess,
         conn: Connection,
-        source: Annotated[str | None, Query(description="Only runs of this source.")] = None,
-        stream: Annotated[
-            str | None,
+        sources: Annotated[
+            list[str] | None, Query(description="Only runs of these sources.")
+        ] = None,
+        streams: Annotated[
+            list[str] | None,
             Query(
-                description="Only runs of the stream with this key (refs/heads/main); needs source."
+                description="Only runs of the streams with these keys (refs/heads/main), in"
+                " sources, which they need."
             ),
         ] = None,
         limit: Annotated[int, Query(ge=1, le=runs.MAX_RUN_PAGE)] = runs.DEFAULT_RUN_PAGE,
-        before: Annotated[
-            str | None, Query(description="next_before of the previous page.")
+        cursor: Annotated[
+            str | None, Query(description="next_cursor of the previous page.")
         ] = None,
     ) -> RunList:
-        """The runs of a workspace, a source or a stream, newest first. 404 if the workspace,
-        source or stream does not exist or the token may not read it."""
-        if stream is not None and source is None:
+        """The runs of a workspace, of sources or of streams, newest first. 404 if the
+        workspace, a source or a stream does not exist or the token may not read it."""
+        if streams is not None and sources is None:
             raise ApiError(
-                422, "invalid_filter", "A stream is named within its source: pass source too."
+                422,
+                "invalid_filter",
+                "A stream is named within its source: pass sources too.",
             )
-        cursor = None
-        if before is not None:
+        before = None
+        if cursor is not None:
             try:
-                cursor = runs.RunCursor.decode(before)
+                before = runs.RunCursor.decode(cursor)
             except ValueError:
                 raise ApiError(
-                    422, "invalid_cursor", "before is not the next_before of a run listing."
+                    422, "invalid_cursor", "cursor is not the next_cursor of a run listing."
                 ) from None
         with admin_errors():
             page = await runs.list_runs(
-                conn, access, workspace, source=source, stream=stream, limit=limit, before=cursor
+                conn,
+                access,
+                workspace,
+                sources=sources,
+                streams=streams,
+                limit=limit,
+                before=before,
             )
         return RunList(
-            runs=[RunSummary.of(run) for run in page.runs],
-            next_before=None if page.next is None else page.next.encode(),
+            items=[RunSummary.of(run) for run in page.runs],
+            next_cursor=None if page.next is None else page.next.encode(),
         )
 
-    @router.get("/runs/{run_id}", summary="Get a run")
-    async def get_run(run_id: UUID, access: ReadAccess, conn: Connection) -> RunDetail:
+    @router.get("/runs/{id}", summary="Get a run")
+    async def get_run(id: UUID, access: ReadAccess, conn: Connection) -> RunDetail:
         """One run with its report. 404 if it does not exist or the token may not read it."""
         with admin_errors():
-            run = await runs.get_run(conn, access, run_id)
+            run = await runs.get_run(conn, access, id)
         summary = RunSummary.of(run)
         return RunDetail(
             **summary.model_dump(), workspace=run.workspace, report=dict(run.report or {})

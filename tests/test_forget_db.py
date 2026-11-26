@@ -419,8 +419,6 @@ async def test_the_forget_route(env: Env) -> None:
     await send(
         env,
         thread("garden/100", text=SECRET_TEXT),
-        thread("dup", text="A thread."),
-        document("dup", "# Handbook\n\nA document."),
     )
     secret = rid(env, "garden/100")
     await cite(env, secret)
@@ -431,23 +429,23 @@ async def test_the_forget_route(env: Env) -> None:
     transport = httpx2.ASGITransport(app=app)
     async with httpx2.AsyncClient(transport=transport, base_url="http://memini.test") as client:
 
-        async def post(body: Mapping[str, Any], headers: Mapping[str, str]) -> httpx2.Response:
-            return await client.post("/v1/workspaces/acme/forget", json=body, headers=headers)
+        async def post(record: str, headers: Mapping[str, str]) -> httpx2.Response:
+            return await client.post(
+                f"/v1/workspaces/acme/records/{record}/forget", headers=headers
+            )
 
-        denied = await post({"record_id": secret}, reader_only)
-        limited = await post({"record_id": secret}, other_admin)
-        both = await post({"record_id": secret, "source": "chat"}, admin)
-        ambiguous = await post({"source": "chat", "external_id": "dup"}, admin)
+        denied = await post(secret, reader_only)
+        limited = await post(secret, other_admin)
+        malformed = await post("garden-100", admin)
         async with connect(env.url, autocommit=True) as worker:
             await worker.execute("SELECT pg_advisory_lock(%s, %s)", source_lock_key(env.chat))
-            busy = await post({"record_id": secret}, admin)
-        done = await post({"source": "chat", "external_id": "garden/100"}, admin)
-        again = await post({"record_id": secret}, admin)
+            busy = await post(secret, admin)
+        done = await post(secret, admin)
+        again = await post(secret, admin)
 
     assert (denied.status_code, denied.json()["error"]["code"]) == (403, "insufficient_scope")
     assert (limited.status_code, limited.json()["error"]["code"]) == (404, "not_found")
-    assert (both.status_code, both.json()["error"]["code"]) == (422, "validation_error")
-    assert (ambiguous.status_code, ambiguous.json()["error"]["code"]) == (422, "ambiguous_record")
+    assert (malformed.status_code, malformed.json()["error"]["code"]) == (422, "validation_error")
     assert (busy.status_code, busy.json()["error"]["code"]) == (409, "source_busy")
     assert (again.status_code, again.json()["error"]["code"]) == (404, "not_found")
 

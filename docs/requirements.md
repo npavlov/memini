@@ -940,8 +940,8 @@ in the index fingerprint (`payload/1`).
 |---|---|
 | `search` | Hybrid search over everything. Filters: workspace, kinds, repository, source, person, time range, project, domain, service. |
 | `search_code` | Code search. Modes: semantic, exact, regex, symbol. Filters: repository, path glob, language, project, domain, service. |
-| `read_source` | A file or a line range at the pinned commit or a given ref. |
-| `get_symbol` | Definitions of a symbol, with location. |
+| `get_file` | A file or a line range at the pinned commit or a given ref. |
+| `search_code` in mode `symbol` | Definitions of a symbol, with location. |
 | `list_commits` | Who changed what: commits by repository, path, author, time and message text, read from the mirror on demand. Nothing is stored. |
 | `get_catalog` | The projects of a workspace with their services, the services each uses, and domains, and the repositories no service is in. |
 | `get_project` | A project and its links in both directions (what it uses, what uses it), with a filter by the other project. |
@@ -954,10 +954,10 @@ in the index fingerprint (`payload/1`).
 | `list_messages` | Messages to me, mentioning me, or from a person, by source and time. |
 | `get_thread` | A whole thread. |
 | `status` | Stream lag, last results, failures, history loaded, index state per workspace. |
-| `add_document`, `record_decision`, `supersede_decision`, `close_decision`, `retract_decision`, `put_project` | Writes; off unless the token has the `ingest` scope. |
+| `put_document`, `record_decision`, `supersede_decision`, `close_decision`, `retract_decision`, `put_project` | Writes; off unless the token has the `ingest` scope. |
 
 Every result carries source kind, locator or URL, timestamp, and `repo@sha` for code. A code hit, a
-definition and a `read_source` answer also carry `context`: the project and service the file is
+definition and a `get_file` answer also carry `context`: the project and service the file is
 in and the domains that name it (Catalog tools, below). Decisions carry
 status and evidence links. A result that holds the sources' text says it is data, in its
 structured content (`data_notice`) and in its text (fenced blocks), and the write tools are for
@@ -1024,7 +1024,7 @@ leaves the record out and counts it `forgotten` (the run's `records_forgotten`),
 has locked the rows of its batch, so a batch that waited for a row a forget was deleting sees the
 entry; a git sync skips the file (`files_skipped_forgotten`), and forget takes the source's job
 lock (409 `source_busy` while a job of the source runs), so it never falls between a sync's plan
-and its writes. The file stays in the service's mirror, a copy of the remote, and `read_source`
+and its writes. The file stays in the service's mirror, a copy of the remote, and `get_file`
 reads it there: a file kept out of the service is excluded from the source. Forget cannot be
 undone; deleting the source clears its entries' effect, since a source added again has new record
 ids. It is not an MCP tool: MCP tools are called by agents acting on retrieved text, which is data
@@ -1043,7 +1043,7 @@ record with `"sensitive": true` and never clears a mark: a record sent again wit
 The rule is in the read filter (section 8): a read of records passes the record's `sensitive`
 column to `ReadFilter.where`, which leaves a marked record out, and with it its chunks, unless the
 filter includes sensitive records. Every read of record content does: `search` in every mode and
-its journal items, `search_code`, `get_symbol`, `list_messages`, `list_meetings`, `get_thread` and
+its journal items, `search_code`, `search_code` in mode `symbol`, `list_messages`, `list_meetings`, `get_thread` and
 `get_meeting` (404 `sensitive_record`, so the reader knows to ask), and the HTTP routes behind them.
 A knowledge item whose every piece of evidence is a stored record marked sensitive is left out as
 well; an item with other evidence shows the marked one as `record_state: sensitive`, with its
@@ -1053,7 +1053,7 @@ with the scope `sensitive`, which no other scope implies, and refuses the reques
 `insufficient_scope`, or a tool error). Model steps never read a marked record, whatever the token:
 the extraction job, re-extraction and the domain step leave it out, and a push queues no
 extraction for it. `memini export` leaves marked records out, with the items only they support,
-unless `--include-sensitive`. `read_source` reads files from the repository's mirror, not records,
+unless `--include-sensitive`. `get_file` reads files from the repository's mirror, not records,
 so a code file marked sensitive is left out of search but still read by path, as a forgotten file
 is; a file kept out of the service is excluded from the source.
 
@@ -1110,7 +1110,7 @@ remove an alias, merge one into another (`POST …/{id}/merge`, 409 `already_mer
 `invalid_alias` without repeating the value. The client commands `memini person list|show|lookup|
 add|rename|alias add|alias remove|merge|split|me` call these routes.
 
-**Query tools** (decided 2026-11-18). `search`, `search_code`, `read_source` and `get_symbol` are
+**Query tools** (decided 2026-11-18). `search`, `search_code`, `get_file` and `search_code` in mode `symbol` are
 one library, `memini.query`, behind the MCP tools and their HTTP routes, with the same arguments and
 results: `GET /v1/search`, `GET /v1/search/code`, `GET /v1/symbols` and
 `GET /v1/workspaces/{workspace}/sources/{source}/files/{path}`. `search` ranks every kind of record
@@ -1126,8 +1126,8 @@ time, which `since` and `until` compare), for such a file the repository, ref an
 chunk's text. A chunk of a thread, a meeting or a pushed document adds its place in the record
 (section 5, Chunks of pushed records): `anchor`, `link` (the chunk's URL, else the record's) and
 `at` (the chunk's time, else the record's); `record_id` with `anchor` is an evidence reference as
-`record_decision` takes it, so a hit is cited without a lookup. `search_code` and `get_symbol`
-look at code records only. `read_source` reads the service's
+`record_decision` takes it, so a hit is cited without a lookup. `search_code` and `search_code` in mode `symbol`
+look at code records only. `get_file` reads the service's
 mirror and never clones or fetches: without a ref, at the pin of the tracked ref the mirror's `HEAD`
 names (else the first tracked ref); a tracked ref at its pin, so a read agrees with the commit of a
 hit; another branch or tag at the commit the mirror has; a full commit id if the mirror holds it;
@@ -1157,7 +1157,7 @@ held by the author's name or mail address, and `text`, text held by the message,
 case; `since` (inclusive) and `until` (exclusive) on the committer time, as git compares them;
 `limit` (20). A name that matches nothing the token may read gives nothing, not an error, as for
 search. The history of a source is what is reachable from the pinned commit of each of its tracked
-refs, the commit its index entries are at, so a listing agrees with search and `read_source`: no
+refs, the commit its index entries are at, so a listing agrees with search and `get_file`: no
 other branch or tag the mirror holds is walked from, nor a commit fetched but not synced. A source
 without a pin is walked nowhere, and the result names every repository it looked at with the
 commits its walk started from (`repositories`), so that an empty list is told apart from a
@@ -1247,7 +1247,7 @@ another project already (the other project's domain names that service instead),
 `catalog_conflict` for a write that lost a race. There is no tool that deletes a project: a
 document without services and domains empties one. `catalog_guide` returns the service's own
 text, the same for every token: the order of the work (list the repositories without a service,
-read READMEs and top directories with `read_source`, propose services, then domains, write, read
+read READMEs and top directories with `get_file`, propose services, then domains, write, read
 the report, correct), where a shared module goes (an API client or a shared util into each domain
 it serves, the overlap allowed and reported, or into the masks of a link; memini-qpk.14), that a
 high share of files in no domain is fine for configuration, tests and build files and worth a look
@@ -1287,16 +1287,16 @@ retrieved (memini-qpk.6). `context` is
 service is a directory of another) with its project, and every domain or subdomain whose masks
 match, each as `{project, domain}`, as a domain of another project may name the file; a file in
 no service has nulls and no domains; a record that is no file of a repository has no context. It
-is read from the catalog as it is when the answer is made, also for a `read_source` of another
+is read from the catalog as it is when the answer is made, also for a `get_file` of another
 ref.
 
 **Comms tools** (decided 2026-11-18). `list_meetings`, `get_meeting`, `list_messages`,
-`get_thread` and `add_document` are one library, `memini.comms`, behind the MCP tools and their
-routes, with the same arguments and results: `GET /v1/meetings`, `GET /v1/meetings/{record_id}`,
-`GET /v1/messages`, `GET /v1/threads/{record_id}`, `GET …/meetings/{external_id}` and
-`GET …/threads/{external_id}` (`…` is `/v1/workspaces/{workspace}/sources/{source}`), and
-`POST …/documents`; `memini meetings` and `memini messages` are clients of the two lists. The
-reads need the `read` scope, `add_document` the `ingest` scope. A listing is for a `person`: `me`
+`get_thread` and `put_document` are one library, `memini.comms`, behind the MCP tools and their
+routes, with the same arguments and results: `GET /v1/meetings`, `GET /v1/meetings/{id}`,
+`GET /v1/messages`, `GET /v1/threads/{id}` and `PUT /v1/workspaces/{workspace}/sources/{source}/documents`;
+`memini list-meetings`, `get-meeting`, `list-messages` and `get-thread` are their clients, as every
+read tool has its command of the same name (docs/mcp/conventions.md). The reads need the `read`
+scope, `put_document` the `ingest` scope. A listing is for `persons`: `me`
 (the default; the person marked with the caller's principal, in each workspace read), a person id,
 or an alias as sources show it (a mail address, also `Name <address>`, is an email; anything else
 is tried as a chat user id, a display name, then a git author name, the order ingest resolves a bare
@@ -1327,7 +1327,7 @@ answer 404 for a tombstone and 422 `wrong_kind` for a record of the other kind. 
 the title, times, participants as the notes name them and the canonical persons with their roles
 (participants, and action-item owners as `mention`), summary and action items, and the transcript
 (segments with anchor `seg-<id>`) only with `include_transcript`; `get_thread` the canonical persons
-and every message in order. `add_document` stores one `document` record (a `title` and a Markdown
+and every message in order. `put_document` stores one `document` record (a `title` and a Markdown
 `text`, an optional `url` and `occurred_at`, default now) in a push source (409 `not_ingestible`
 for any other) through `memini.ingest`, so redaction, the source's filters, the ingest run and
 indexing with the service's embedder apply as to any batch, with the push API's errors. Its
@@ -2165,7 +2165,7 @@ content, URL and anchor. The files of a repository are not copied into the datab
 chunks are, and chunks are embedded and returned by search; the chunks of a pushed record come from
 the redacted payload, so for them this is a second line. Redaction keeps the lines of a chunk, so its line numbers hold;
 its version is part of the index fingerprint, so a changed detector takes `memini reindex`; runs
-count `chunk_values_redacted`. **`read_source`**: the mirror is the raw store of code and is not
+count `chunk_values_redacted`. **`get_file`**: the mirror is the raw store of code and is not
 rewritten (a blob id is the hash of its content, and sync compares them), so a read redacts the
 whole file before it takes the lines; line numbers and symbols still agree. The mirror on disk
 keeps whatever the repository holds, as the user's remote does; backups are database dumps

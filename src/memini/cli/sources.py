@@ -118,7 +118,7 @@ def list_workspaces_command(args: argparse.Namespace, api: Api) -> int:
     if args.json:
         print_json(body)
         return EXIT_OK
-    found = [as_mapping(w) for w in as_list(body.get("workspaces"))]
+    found = [as_mapping(w) for w in as_list(body.get("items"))]
     if not found:
         message("no workspaces yet; create one with `memini workspace create <name>`")
         return EXIT_OK
@@ -188,8 +188,8 @@ def _print_source(source: Mapping[str, Any]) -> None:
             *_mcp_fields(source.get("mcp")),
             ("streams" if mcp else "refs", text(source.get("refs"))),
             ("schedule", _schedule(source.get("schedule_seconds"))),
-            ("include", text(source.get("include"), "every file")),
-            ("exclude", text(source.get("exclude"))),
+            ("include", text(source.get("include_paths"), "every file")),
+            ("exclude", text(source.get("exclude_paths"))),
             ("builtin excludes", text(source.get("builtin_excludes"))),
             ("visibility", text(source.get("visibility"))),
             ("retention", "keep records" if retention is None else f"{text(retention)} days"),
@@ -202,7 +202,7 @@ def _print_source(source: Mapping[str, Any]) -> None:
 
 
 def _filter_fields(value: object) -> list[tuple[str, str]]:
-    """The filter rules of a push source, one line each; none for a git source."""
+    """The filter rules of a push source, one line each; none for a repository."""
     filters = as_mapping(value)
     if not isinstance(value, dict):  # null for a source of another kind than push
         return []
@@ -303,17 +303,17 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
         given = [_option(name) for name in _MCP_ONLY if getattr(args, name)]
         if given:
             raise CommandError(f"{', '.join(given)}: only for an mcp source", EXIT_USAGE)
-    if kind == "git":
+    if kind == "repository":
         missing = [_option(name) for name in ("location", "ref") if not getattr(args, name)]
         if missing:
             raise CommandError(
-                f"a git source needs {' and '.join(missing)}; see `memini source add --help`",
+                f"a repository needs {' and '.join(missing)}; see `memini source add --help`",
                 EXIT_USAGE,
             )
         given = [_option(name) for name in _FILTER_OPTIONS if getattr(args, name)]
         if given:
             raise CommandError(
-                f"{', '.join(given)}: only for a push or mcp source; a git source selects files"
+                f"{', '.join(given)}: only for a push or mcp source; a repository selects files"
                 " with --include and --exclude",
                 EXIT_USAGE,
             )
@@ -321,14 +321,14 @@ def add_source_command(args: argparse.Namespace, api: Api) -> int:
             "location": args.location,
             "refs": args.ref,
             "schedule_seconds": None if schedule is None else int(schedule.total_seconds()),
-            "include": args.include or [],
-            "exclude": args.exclude or [],
+            "include_paths": args.include or [],
+            "exclude_paths": args.exclude or [],
             "builtin_excludes": not args.no_builtin_excludes,
         }
     else:
         given = [_option(name) for name in _GIT_ONLY if getattr(args, name)]
         if given:
-            raise CommandError(f"{', '.join(given)}: only for a git source", EXIT_USAGE)
+            raise CommandError(f"{', '.join(given)}: only for a repository", EXIT_USAGE)
         if kind == "push" and schedule is not None:
             raise CommandError(
                 "--schedule: only for a git or mcp source; clients send a push source's records",
@@ -388,7 +388,7 @@ def list_sources_command(args: argparse.Namespace, api: Api) -> int:
     if args.json:
         print_json(body)
         return EXIT_OK
-    found = [as_mapping(s) for s in as_list(body.get("sources"))]
+    found = [as_mapping(s) for s in as_list(body.get("items"))]
     if not found:
         message(f"workspace {workspace} has no sources; add one with `memini source add`")
         return EXIT_OK
@@ -429,9 +429,9 @@ def edit_source_command(args: argparse.Namespace, api: Api) -> int:
         changes["schedule_seconds"] = int(args.schedule.total_seconds())
     for option in ("include", "exclude"):
         if getattr(args, f"no_{option}"):
-            changes[option] = []
+            changes[f"{option}_paths"] = []
         elif getattr(args, option) is not None:
-            changes[option] = getattr(args, option)
+            changes[f"{option}_paths"] = getattr(args, option)
     if args.builtin_excludes is not None:
         changes["builtin_excludes"] = args.builtin_excludes
     if args.no_retention:
@@ -532,7 +532,7 @@ def streams_command(args: argparse.Namespace, api: Api) -> int:
     if args.json:
         print_json(body)
         return EXIT_OK
-    found = [as_mapping(s) for s in as_list(body.get("streams"))]
+    found = [as_mapping(s) for s in as_list(body.get("items"))]
     print_table(
         ("STREAM", "SCHEDULE", "CHECKED UNTIL", "LAG", "CURRENT", "LAST RUN", "SYNC", "RUN ID"),
         (
@@ -603,7 +603,7 @@ def _wait_for_syncs(
     while True:
         streams = {
             str(s.get("key")): s
-            for s in (as_mapping(item) for item in as_list(api.get(path).get("streams")))
+            for s in (as_mapping(item) for item in as_list(api.get(path).get("items")))
         }
         never_started: list[str] = []
         for key, job_id in list(waiting.items()):
@@ -633,7 +633,7 @@ def _wait_for_syncs(
             keys = ", ".join(text(key) for key in never_started)
             message(
                 f"{keys}: still queued after {format_duration(QUEUED_HINT_AFTER.total_seconds())},"
-                " not started; a git source syncs only while an embedding provider is set"
+                " not started; a repository syncs only while an embedding provider is set"
                 " (MEMINI_EMBEDDING_PROVIDER): see the index line of `memini status`"
             )
         if now >= deadline:
@@ -823,9 +823,9 @@ def add_commands(commands: Commands) -> None:
     add.add_argument("name", type=parse_source_name, help="the source's name in the workspace")
     add.add_argument(
         "--kind",
-        choices=("git", "push", "mcp"),
-        default="git",
-        help="the kind of source (default: git)",
+        choices=("repository", "push", "mcp"),
+        default="repository",
+        help="the kind of source (default: repository)",
     )
     add.add_argument(
         "--location",

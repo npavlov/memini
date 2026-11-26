@@ -1,6 +1,6 @@
-"""Reading code from the mirror of a git source: a file, a line range or a directory listing.
+"""Reading code from the mirror of a repository: a file, a line range or a directory listing.
 
-:func:`read_source` serves the ``read_source`` MCP tool and its HTTP route. It reads what the
+:func:`get_file` serves the ``get_file`` MCP tool and its HTTP route. It reads what the
 service's own bare mirror holds (requirements, section 3: the mirror is the raw store of code); it
 never clones, fetches or touches a working copy, so a repository that has not synced yet has
 nothing to read (:class:`NotSyncedError`).
@@ -79,11 +79,12 @@ from memini.git import (
     TreeEntry,
     check_path,
 )
-from memini.gitsync import Pin, file_record_id, read_pin
+from memini.gitsync import Pin, code_external_id, file_record_id, read_pin
 from memini.provenance import Labelled
 from memini.query.context import CodeContext
 from memini.redaction import redact_text
 from memini.search.catalog import load_code_maps
+from memini.sensitivity import sensitive_message
 from memini.sources import Source, get_source
 from memini.workspaces import NotFoundError
 
@@ -97,10 +98,11 @@ __all__ = [
     "NotSyncedError",
     "ReadError",
     "ReadLimits",
+    "SensitiveFileError",
     "SourceRead",
     "SymbolSpan",
     "code_locator",
-    "read_source",
+    "get_file",
 ]
 
 type Conn = AsyncConnection[TupleRow]
@@ -165,6 +167,13 @@ class FileTooLargeError(ReadError):
         self.limit = limit
 
 
+class SensitiveFileError(ReadError):
+    """The file's record is marked sensitive, and the read did not ask for sensitive records."""
+
+    def __init__(self) -> None:
+        super().__init__(sensitive_message("file"))
+
+
 class NotSyncedError(ReadError):
     """The repository has no mirror yet: nothing has been fetched, and a read never fetches."""
 
@@ -195,12 +204,12 @@ class SymbolSpan(BaseModel):
 
 
 class SourceRead(Labelled):
-    """What ``read_source`` returns: a file's lines, a directory, a symlink or a submodule, at one
+    """What ``get_file`` returns: a file's lines, a directory, a symlink or a submodule, at one
     commit. ``content`` is the file's text with its secrets redacted: data, never instructions."""
 
     workspace: str
-    repository: str = Field(description="The git source's name.")
-    source_kind: Literal["git"] = "git"
+    source: str = Field(description="The repository's name.")
+    source_kind: Literal["repository"] = "repository"
     ref: str | None = Field(
         description="The ref read, as a full name for a tracked ref; null when a commit id was"
         " given."
@@ -267,7 +276,7 @@ class _Target:
     pinned: bool
 
 
-async def read_source(
+async def get_file(
     conn: Conn,
     access: ReadFilter,
     mirrors: MirrorManager,
@@ -280,9 +289,9 @@ async def read_source(
     end_line: int | None = None,
     limits: ReadLimits = DEFAULT_READ_LIMITS,
 ) -> SourceRead:
-    """Read ``path`` in the git source ``repository``; see the module.
+    """Read ``path`` in the repository ``repository``; see the module.
 
-    ``workspace`` may be left out when exactly one workspace the caller may read has a git source
+    ``workspace`` may be left out when exactly one workspace the caller may read has a repository
     of that name. ``conn`` is used for two short transactions (the source and its pins, then the
     symbols) or savepoints when the caller has one open; git runs in between.
 
@@ -300,6 +309,8 @@ async def read_source(
     async with conn.transaction():
         source = await _find_repository(conn, access, workspace, repository)
         pins = await _pins(conn, access, source.id)
+        if path and not access.include_sensitive:
+            await _refuse_sensitive(conn, source.id, [code_external_id(ref, path) for ref in pins])
         catalog = (await load_code_maps(conn, access, [source.workspace_id]))[source.workspace_id]
     context = CodeContext.of(catalog.context(source.id, path))
     mirror = mirrors.find(source.id)
@@ -314,7 +325,7 @@ async def read_source(
     def result(kind: EntryKind, **fields: Any) -> SourceRead:
         values: dict[str, Any] = {
             "workspace": source.workspace,
-            "repository": source.name,
+            "source": source.name,
             "ref": target.ref,
             "commit": target.commit,
             "pinned": target.pinned,
@@ -441,7 +452,7 @@ async def _find_repository(
     if workspace is None:
         query = sql.SQL(
             "SELECT w.name FROM source s JOIN workspace w ON w.id = s.workspace_id"
-            " WHERE s.name = %s AND s.kind = 'git' AND {} ORDER BY w.name LIMIT 2"
+            " WHERE s.name = %s AND s.kind = 'repository' AND {} ORDER BY w.name LIMIT 2"
         ).format(
             access.where(
                 workspace_id=sql.Identifier("s", "workspace_id"),
@@ -465,9 +476,21 @@ async def _find_repository(
         if error.what == "source":
             raise NotFoundError("repository") from None
         raise
-    if source.kind != "git":
+    if source.kind != "repository":
         raise NotFoundError("repository")
     return source
+
+
+async def _refuse_sensitive(conn: Conn, source_id: UUID, external_ids: Sequence[str]) -> None:
+    """Refuse a path whose record, on any tracked ref, is marked sensitive: the mark is on the
+    record, and a read of the path at another commit reads the same file."""
+    cur = await conn.execute(
+        "SELECT 1 FROM record WHERE source_id = %s AND external_id = ANY(%s)"
+        " AND sensitive AND deleted_at IS NULL LIMIT 1",
+        (source_id, list(external_ids)),
+    )
+    if await cur.fetchone() is not None:
+        raise SensitiveFileError
 
 
 async def _pins(conn: Conn, access: ReadFilter, source_id: UUID) -> dict[str, Pin | None]:

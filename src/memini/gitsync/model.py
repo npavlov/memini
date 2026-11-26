@@ -81,14 +81,14 @@ def split_code_external_id(external_id: str) -> tuple[str, str]:
 
 
 def code_record_id(source_id: UUID, ref: str, path: str) -> str:
-    """The id of the ``code_file`` record of the file at ``path`` on ``ref`` in the git source
+    """The id of the ``code_file`` record of the file at ``path`` on ``ref`` in the repository
     ``source_id``. Every file but a Markdown one has this record; :func:`file_record_id` gives the
     record of the kind the file becomes."""
     return record_id(source_id, "code_file", code_external_id(ref, path))
 
 
 def file_record_id(source_id: UUID, ref: str, path: str) -> str:
-    """The record id of the file at ``path`` on ``ref`` in the git source ``source_id``, of the
+    """The record id of the file at ``path`` on ``ref`` in the repository ``source_id``, of the
     kind the file becomes (:func:`memini.gitsync.rules.file_kind`)."""
     return record_id(source_id, file_kind(path), code_external_id(ref, path))
 

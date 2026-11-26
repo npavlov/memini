@@ -8,7 +8,7 @@ Token scope: `ingest`, together with `read`: the answer counts the files each ma
 |---|---|---|
 | `title` | no | A few words for people; at most 200 characters, on one line. |
 | `description` | no | What it is and does, in a few sentences; at most 4000 characters. Secrets in it are redacted before it is stored. |
-| `services` | no | Every service of the project, each with the services it uses (`uses`). |
+| `services` | no | Every service of the project. |
 | `domains` | no | Every domain of the project, with its subdomains. |
 | `if_version` | no | The version of the project this document was made from, as get_catalog gave it; 0 for a project that must not exist yet. When the stored version differs, someone changed the project meanwhile and nothing is written (409 version_conflict): read it again. Left out, the document is written whatever is stored. |
 | `workspace` | yes | The workspace of the project, by name. |
@@ -28,7 +28,7 @@ Send these parameters to `tools/call`.
     "services": [
       {
         "name": "harbour-code",
-        "repository": "harbour-code",
+        "source": "harbour-code",
         "description": "Berth holds and their rules."
       }
     ],
@@ -72,7 +72,7 @@ A service of the example that calls the berth API of a service in another projec
 ```json
 {
   "name": "harbour-code",
-  "repository": "harbour-code",
+  "source": "harbour-code",
   "uses": [
     {
       "project": "tugs",

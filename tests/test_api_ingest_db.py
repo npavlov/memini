@@ -120,7 +120,7 @@ async def setup(client: httpx2.AsyncClient, admin: dict[str, str]) -> Json:
         await client.post(
             "/v1/workspaces/alpha/sources",
             json={
-                "kind": "git",
+                "kind": "repository",
                 "name": "repo",
                 "location": "https://git.example.invalid/team/repo.git",
                 "refs": ["main"],
@@ -208,7 +208,7 @@ async def test_a_push_source_takes_a_batch_and_the_same_batch_again_changes_noth
     assert await scalar(db, "SELECT string_agg(xmin::text, ',' ORDER BY id) FROM record") == xmin
 
     streams = ok(await client.get("/v1/workspaces/alpha/sources/chat/streams", headers=admin))
-    (stream,) = streams["streams"]
+    (stream,) = streams["items"]
     assert stream["key"] == "chat/general"
     assert stream["checked_until"] == "2026-03-02T00:00:00Z"
     assert stream["last_run"]["kind"] == "ingest"

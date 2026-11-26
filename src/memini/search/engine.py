@@ -283,7 +283,7 @@ async def _linkable_sources(
     conn: Conn, access: ReadFilter, workspace_ids: list[UUID], filters: SearchFilters
 ) -> tuple[UUID, ...]:
     """The sources whose records a project or a domain may name by their links: the push and
-    mcp sources in reach (a git source's files belong by the masks). None in a search of code
+    mcp sources in reach (a repository's files belong by the masks). None in a search of code
     only."""
     if not workspace_ids or (
         filters.kinds is not None and all(kind == "code_file" for kind in filters.kinds)
@@ -291,7 +291,7 @@ async def _linkable_sources(
         return ()
     query = sql.SQL(
         "SELECT s.id FROM source s WHERE {access} AND s.workspace_id = ANY(%(workspaces)s)"
-        " AND s.kind <> 'git' ORDER BY s.id"
+        " AND s.kind <> 'repository' ORDER BY s.id"
     ).format(
         access=access.where(
             workspace_id=sql.Identifier("s", "workspace_id"),
@@ -324,7 +324,7 @@ async def _sources(
                 owner_id=sql.Identifier("s", "owner_id"),
                 source_id=sql.Identifier("s", "id"),
             ),
-            git=sql.SQL(" AND s.kind = 'git'") if git_only else sql.SQL(""),
+            git=sql.SQL(" AND s.kind = 'repository'") if git_only else sql.SQL(""),
         )
         params = {"workspaces": workspace_ids, "names": names, "ids": ids}
         chosen.append({row[0] for row in await Statement(query, params).rows(conn)})

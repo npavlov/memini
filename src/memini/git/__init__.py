@@ -1,4 +1,4 @@
-"""The git connector's raw store: a bare mirror of every git source, and reads from it.
+"""The git connector's raw store: a bare mirror of every repository, and reads from it.
 
 - :class:`MirrorManager` creates (:meth:`~MirrorManager.ensure_mirror`), fetches
   (:meth:`~MirrorManager.fetch`, :meth:`~MirrorManager.sync`) and removes mirrors, and reads them:

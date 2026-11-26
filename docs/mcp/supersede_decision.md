@@ -7,7 +7,7 @@ Token scope: `ingest`.
 | Argument | Required | Description |
 |---|---|---|
 | `supersedes` | yes | The earlier items it replaces or answers: active, in its workspace, said no later than it. An extracted item never supersedes or answers one recorded by hand. |
-| `item_id` | yes | The newer item, which stores the links. It stays active. |
+| `id` | yes | The newer item, which stores the links. It stays active. |
 
 ## Example
 
@@ -18,7 +18,7 @@ Replace the bracketed IDs with IDs from `record_decision` or `list_decisions`.
 {
   "name": "supersede_decision",
   "arguments": {
-    "item_id": "<item_id>",
+    "id": "<item id>",
     "supersedes": [
       {
         "item_id": "<earlier_id>",

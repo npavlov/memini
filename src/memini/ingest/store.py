@@ -325,7 +325,7 @@ async def _store(
             tally.not_indexed = len(written)
         elif written:
             # The indexing hook: the parsers of the kinds chunk and index the records here, so a
-            # record and its chunks change in one transaction, as a file of a git source does.
+            # record and its chunks change in one transaction, as a file of a repository does.
             counts = await indexer(conn, sorted(written, key=lambda record: record.id))
             if counts is not None:
                 tally.index += counts
@@ -491,7 +491,7 @@ async def ingest(
         InvalidBatchError: the batch is not valid, or claims a window that ends in the future;
             :class:`~memini.ingest.BatchTooLargeError` if it is over a limit.
         NotFoundError: no such workspace or source that ``access`` may change.
-        NotIngestibleError: the source is a git source.
+        NotIngestibleError: the source is a repository.
         WindowGapError: a complete window starts after the stream's checkpoint.
         StreamChangedError, BatchConflictError: another writer got in the way; nothing was stored,
             and sending the batch again is safe.

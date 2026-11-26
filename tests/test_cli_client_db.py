@@ -202,8 +202,8 @@ def test_from_the_cli_two_workspaces_each_with_a_repository_synced_and_reported(
         report = ok(cli("run", run_id))
         report_json = json.loads(ok(cli("run", run_id, "--json")).out)
         streams = ok(cli("streams", "alpha", "shop"))
-        found = ok(cli("search", "--code", "switch_on", "--mode", "exact"))
-        everywhere = ok(cli("search", "lamps", "--workspace", "alpha"))
+        found = ok(cli("search-code", "switch_on", "--mode", "exact"))
+        everywhere = ok(cli("search", "lamps", "--workspaces", "alpha"))
 
         # A read token limited to beta: it sees beta's runs, not alpha's, and changes nothing.
         reader = ok(cli("token", "create", "--scope", "read", "--workspace", "beta")).out.strip()
@@ -220,7 +220,7 @@ def test_from_the_cli_two_workspaces_each_with_a_repository_synced_and_reported(
     ]
     assert sources.out.splitlines()[1].split()[:6] == [
         "blog",
-        "git",
+        "repository",
         "refs/heads/main",
         "every",
         "1d",
@@ -233,8 +233,8 @@ def test_from_the_cli_two_workspaces_each_with_a_repository_synced_and_reported(
     assert synced.out.splitlines()[0].startswith("refs/heads/main: sync queued, job ")
     assert synced.out.splitlines()[1] == f"refs/heads/main: run {run_id} succeeded"
     assert queued.out.startswith("refs/heads/main: sync queued, job ")
-    assert blog_runs["runs"][0]["status"] == "succeeded"
-    assert blog_runs["runs"][0]["source"] == "blog"
+    assert blog_runs["items"][0]["status"] == "succeeded"
+    assert blog_runs["items"][0]["source"] == "blog"
 
     header, row = runs.out.splitlines()
     assert header.split()[:5] == ["ID", "KIND", "STATUS", "SOURCE", "STREAM"]
@@ -282,7 +282,7 @@ def wait_for_run(cli: Callable[..., Run], workspace: str) -> dict[str, Any]:
     deadline = time.monotonic() + 60
     while True:
         body: dict[str, Any] = json.loads(ok(cli("runs", workspace, "--json")).out)
-        runs: list[dict[str, Any]] = body["runs"]
+        runs: list[dict[str, Any]] = body["items"]
         if runs and runs[0]["finished_at"] is not None:
             return body
         assert time.monotonic() < deadline, f"no finished run in {workspace}: {body}"

@@ -121,9 +121,9 @@ class PersonInfo(BaseModel):
 
 
 class PersonList(BaseModel):
-    persons: list[PersonInfo] = Field(description="By display name.")
-    next_after: str | None = Field(
-        description="Pass it as after= for the next page; null on the last page."
+    items: list[PersonInfo] = Field(description="By display name.")
+    next_cursor: str | None = Field(
+        description="Pass it as cursor= for the next page; null on the last page."
     )
 
 
@@ -208,7 +208,7 @@ def build_persons_router() -> APIRouter:
         workspace: str,
         access: ReadAccess,
         conn: Connection,
-        q: Annotated[
+        query: Annotated[
             str | None,
             Query(
                 max_length=1000,
@@ -223,25 +223,27 @@ def build_persons_router() -> APIRouter:
         limit: Annotated[
             int, Query(ge=1, le=persons.MAX_PERSON_PAGE)
         ] = persons.DEFAULT_PERSON_PAGE,
-        after: Annotated[str | None, Query(description="next_after of the previous page.")] = None,
+        cursor: Annotated[
+            str | None, Query(description="next_cursor of the previous page.")
+        ] = None,
     ) -> PersonList:
         """The persons of a workspace by display name, each with the aliases of everyone merged
         into it."""
-        cursor = None
-        if after is not None:
+        after = None
+        if cursor is not None:
             try:
-                cursor = persons.PersonCursor.decode(after)
+                after = persons.PersonCursor.decode(cursor)
             except ValueError:
                 raise ApiError(
-                    422, "invalid_cursor", "after is not the next_after of a person listing."
+                    422, "invalid_cursor", "cursor is not the next_cursor of a person listing."
                 ) from None
         with _person_errors():
             page = await persons.list_persons(
-                conn, access, workspace, query=q, merged=merged, limit=limit, after=cursor
+                conn, access, workspace, query=query, merged=merged, limit=limit, after=after
             )
         return PersonList(
-            persons=[PersonInfo.of(person) for person in page.persons],
-            next_after=None if page.next is None else page.next.encode(),
+            items=[PersonInfo.of(person) for person in page.persons],
+            next_cursor=None if page.next is None else page.next.encode(),
         )
 
     @router.post("", status_code=201, summary="Add a person")
@@ -299,24 +301,22 @@ def build_persons_router() -> APIRouter:
         with _person_errors():
             await persons.unset_me(conn, access, workspace)
 
-    @router.get("/{person_id}", summary="Get a person")
+    @router.get("/{id}", summary="Get a person")
     async def get_person(
-        workspace: str, person_id: UUID, access: ReadAccess, conn: Connection
+        workspace: str, id: UUID, access: ReadAccess, conn: Connection
     ) -> PersonInfo:
         """One person, merged or canonical, with the aliases of everyone merged into it."""
         with _person_errors():
-            person = await persons.get_person(conn, access, workspace, person_id)
+            person = await persons.get_person(conn, access, workspace, id)
         return PersonInfo.of(person)
 
-    @router.patch("/{person_id}", summary="Change a person")
+    @router.patch("/{id}", summary="Change a person")
     async def rename_person(
-        workspace: str, person_id: UUID, body: PersonChanges, access: AdminAccess, conn: Connection
+        workspace: str, id: UUID, body: PersonChanges, access: AdminAccess, conn: Connection
     ) -> PersonInfo:
         """Change the display name. Ingest never changes it."""
         with _person_errors():
-            person = await persons.rename_person(
-                conn, access, workspace, person_id, body.display_name
-            )
+            person = await persons.rename_person(conn, access, workspace, id, body.display_name)
         return PersonInfo.of(person)
 
     @router.post("/{person_id}/aliases", summary="Add an alias")
@@ -337,37 +337,37 @@ def build_persons_router() -> APIRouter:
             merged=added.merged,
         )
 
-    @router.delete("/{person_id}/aliases/{alias_id}", summary="Remove an alias")
+    @router.delete("/{person_id}/aliases/{id}", summary="Remove an alias")
     async def remove_alias(
-        workspace: str, person_id: UUID, alias_id: UUID, access: AdminAccess, conn: Connection
+        workspace: str, person_id: UUID, id: UUID, access: AdminAccess, conn: Connection
     ) -> PersonInfo:
         """Remove an alias of the person or of one merged into it. The records that named it keep
         their links; a record written again with it resolves anew."""
         with _person_errors():
-            person = await persons.remove_alias(conn, access, workspace, person_id, alias_id)
+            person = await persons.remove_alias(conn, access, workspace, person_id, id)
         return PersonInfo.of(person)
 
-    @router.post("/{person_id}/merge", summary="Merge a person into another")
+    @router.post("/{id}/merge", summary="Merge a person into another")
     async def merge_person(
-        workspace: str, person_id: UUID, body: MergeBody, access: AdminAccess, conn: Connection
+        workspace: str, id: UUID, body: MergeBody, access: AdminAccess, conn: Connection
     ) -> PersonInfo:
         """Merge the person into ``into``; answers the canonical person they are now. Nothing is
         deleted or moved: the person keeps its aliases, records and decisions, which reads now
-        give its canonical person. POST …/persons/{person_id}/split undoes it. 409
+        give its canonical person. POST …/persons/{id}/split undoes it. 409
         ``already_merged`` if the person is merged into another already, ``same_person`` if the
         two are one person."""
         with _person_errors():
-            person = await persons.merge_person(conn, access, workspace, person_id, body.into)
+            person = await persons.merge_person(conn, access, workspace, id, body.into)
         return PersonInfo.of(person)
 
-    @router.post("/{person_id}/split", summary="Split a person off")
+    @router.post("/{id}/split", summary="Split a person off")
     async def split_person(
-        workspace: str, person_id: UUID, access: AdminAccess, conn: Connection
+        workspace: str, id: UUID, access: AdminAccess, conn: Connection
     ) -> PersonInfo:
         """Undo the merge of the person: it is canonical again, with everything it had, and the
         persons merged into it stay with it. 409 ``not_merged`` if it is not merged."""
         with _person_errors():
-            person = await persons.split_person(conn, access, workspace, person_id)
+            person = await persons.split_person(conn, access, workspace, id)
         return PersonInfo.of(person)
 
     return router

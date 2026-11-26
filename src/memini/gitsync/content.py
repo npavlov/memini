@@ -1,8 +1,8 @@
 """The raw content of file records, read from the repository mirrors: what a rebuild chunks again.
 
 Code, and Markdown documents of repositories, are not copied into the database; the mirror of each
-git source is its raw store (principle 1, requirements section 3). :class:`MirrorContent` is the
-:class:`~memini.index.RawContent` of the records of git sources for :func:`memini.index.reindex`:
+repository is its raw store (principle 1, requirements section 3). :class:`MirrorContent` is the
+:class:`~memini.index.RawContent` of the records of repositories for :func:`memini.index.reindex`:
 code files and documents. It reads the blob ``record.content_hash`` (the file's git blob id) from
 the mirror of ``record.source_id`` and takes the path from ``record.external_id``.
 
@@ -68,7 +68,7 @@ class _Window:
 
 
 class MirrorContent:
-    """Reads the records of git sources from the mirrors under one
+    """Reads the records of repositories from the mirrors under one
     :class:`~memini.git.MirrorManager`, in batches when told what comes next."""
 
     def __init__(

@@ -90,8 +90,8 @@ asks for it. A filter no scenario asks for is not built.
 |---|---|---|---|
 | `search_code` | `query`, `mode` (semantic, exact, regex, symbol), `repositories`, `paths`, `languages` | `projects`, `domains`, `services` | [S1](S01-where-is-x-implemented.md), [S2](S02-code-for-a-domain.md), [S8](S08-several-companies-and-projects.md) |
 | `search` | `query`, `kinds`, `sources`, `repositories`, `persons`, `roles`, `since`, `until`, `mode` | `projects`, `domains`, `services` | [S1](S01-where-is-x-implemented.md), [S4](S04-what-was-decided.md), [S5](S05-latest-decisions-of-a-domain.md), [S2](S02-code-for-a-domain.md), [S8](S08-several-companies-and-projects.md) |
-| `get_symbol` | `name`, `match`, `repositories`, `paths`, `languages` |  | [S1](S01-where-is-x-implemented.md), [S10](S10-definitions-in-my-language.md) |
-| `read_source` | `repository`, `path`, `ref`, `start_line`, `end_line` | `context` in the answer | [S1](S01-where-is-x-implemented.md), [S3](S03-what-code-belongs-to.md), [S9](S09-project-map-by-an-agent.md) |
+| `search_code` in mode `symbol` | `name`, `match`, `repositories`, `paths`, `languages` |  | [S1](S01-where-is-x-implemented.md), [S10](S10-definitions-in-my-language.md) |
+| `get_file` | `repository`, `path`, `ref`, `start_line`, `end_line` | `context` in the answer | [S1](S01-where-is-x-implemented.md), [S3](S03-what-code-belongs-to.md), [S9](S09-project-map-by-an-agent.md) |
 | `list_decisions` | `query`, `persons`, `since`, `until`, `history`, `limit` | `projects`, `domains`; newest first without a query | [S4](S04-what-was-decided.md), [S5](S05-latest-decisions-of-a-domain.md) |
 | `get_decision` | the item's id | `context` in the answer | [S4](S04-what-was-decided.md), [S5](S05-latest-decisions-of-a-domain.md) |
 | `record_decision` | statement, evidence, participants, the items it replaces | `domains` | [S5](S05-latest-decisions-of-a-domain.md) |
@@ -103,7 +103,7 @@ asks for it. A filter no scenario asks for is not built.
 | `put_project` |  | new: the project document: services, domains with their code, links | [S9](S09-project-map-by-an-agent.md), [S12](S12-see-and-edit-the-project-map.md), [S13](S13-links-between-projects.md) |
 | `catalog_guide` |  | new: no arguments | [S9](S09-project-map-by-an-agent.md) |
 | `list_commits` |  | new: `repository`, `paths`, `project`, `domain`, `service`, `author`, `since`, `until`, text | [S7](S07-who-changed-what.md) |
-| reads of records (`search`, `search_code`, `get_symbol`, `list_messages`, `list_meetings`, `get_thread`, `get_meeting`, `list_decisions`, `get_decision`, `get_domain`) |  | new: `include_sensitive`, with the scope `sensitive` | [S19](S19-keep-sensitive-records-out.md) |
+| reads of records (`search`, `search_code`, `search_code` in mode `symbol`, `list_messages`, `list_meetings`, `get_thread`, `get_meeting`, `list_decisions`, `get_decision`, `get_domain`) |  | new: `include_sensitive`, with the scope `sensitive` | [S19](S19-keep-sensitive-records-out.md) |
 | push of records |  | optional `sensitive` per record | [S19](S19-keep-sensitive-records-out.md) |
 
 ## Not pursued

@@ -349,7 +349,7 @@ async def test_prune_without_rules_reads_nothing(env: Env) -> None:
 async def test_prune_refuses_a_git_source_and_one_it_may_not_change(env: Env) -> None:
     await env.db.execute(
         "INSERT INTO source (workspace_id, owner_id, name, kind, config)"
-        " SELECT workspace_id, owner_id, 'repo', 'git', '{}' FROM source WHERE id = %s",
+        " SELECT workspace_id, owner_id, 'repo', 'repository', '{}' FROM source WHERE id = %s",
         (env.source_id,),
     )
 

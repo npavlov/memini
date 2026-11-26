@@ -68,7 +68,7 @@ def list_tokens_command(args: argparse.Namespace, api: Api) -> int:
     if args.json:
         print_json(body)
         return EXIT_OK
-    tokens = [as_mapping(t) for t in as_list(body.get("tokens"))]
+    tokens = [as_mapping(t) for t in as_list(body.get("items"))]
     if not tokens:
         message("no tokens yet; create one with `memini token create --scope read`")
         return EXIT_OK
@@ -108,7 +108,7 @@ def revoke_token_command(args: argparse.Namespace, api: Api) -> int:
     # A whole token pasted by mistake is matched by its prefix and never repeated in output.
     if is_well_formed_token(reference):
         reference = display_prefix(reference)
-    tokens = [as_mapping(t) for t in as_list(api.get("v1/tokens").get("tokens"))]
+    tokens = [as_mapping(t) for t in as_list(api.get("v1/tokens").get("items"))]
     matches = [t for t in tokens if _is(t, reference)]
     if not matches:
         raise CommandError(f"no token {text(reference)}; see `memini token list`")

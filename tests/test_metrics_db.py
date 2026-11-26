@@ -144,7 +144,7 @@ async def lagging_stream(db: Conn, owner: uuid.UUID) -> tuple[uuid.UUID, uuid.UU
     )
     source_id = await scalar(
         db,
-        "INSERT INTO source (workspace_id, owner_id, name, kind) VALUES (%s, %s, %s, 'git')"
+        "INSERT INTO source (workspace_id, owner_id, name, kind) VALUES (%s, %s, %s, 'repository')"
         " RETURNING id",
         workspace_id,
         owner,

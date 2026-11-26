@@ -6,7 +6,7 @@ Token scope: `ingest`.
 
 | Argument | Required | Description |
 |---|---|---|
-| `item_id` | yes | An active item. |
+| `id` | yes | An active item. |
 
 ## Example
 
@@ -17,7 +17,7 @@ Replace the bracketed IDs with IDs from `record_decision` or `list_decisions`.
 {
   "name": "close_decision",
   "arguments": {
-    "item_id": "<item_id>"
+    "id": "<item id>"
   }
 }
 ```

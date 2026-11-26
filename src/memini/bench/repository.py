@@ -1,6 +1,6 @@
 """The repository the benchmark syncs: a local repository as it is, or a public one cloned once.
 
-A local path is used in place: the benchmark's git source points at it, and the mirror is fetched
+A local path is used in place: the benchmark's repository points at it, and the mirror is fetched
 from it through ``upload-pack`` as the service does for any local source, so nothing is written to
 it; it must hold the whole history of the ref (not a shallow clone, which a mirror cannot fetch
 from). An https URL is cloned once into the cache directory, bare and shallow (one commit of one
@@ -61,7 +61,7 @@ class RepositoryError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class PreparedRepository:
-    """Where the benchmark's git source points, and what it tracks."""
+    """Where the benchmark's repository points, and what it tracks."""
 
     location: Path
     """An absolute path of a git repository (bare or not)."""

@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
-from urllib.parse import quote
+from uuid import UUID
 
 import httpx2
 import pytest
@@ -32,6 +32,7 @@ from memini.cli.common import EXIT_FAILURE, EXIT_OK
 from memini.config import Settings, environment_variables
 from memini.db import open_pool
 from memini.embeddings import FakeEmbedder
+from memini.ids import record_id
 
 pytestmark = [pytest.mark.integration]
 
@@ -196,9 +197,9 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         def push(*argv: str) -> Run:
             return cli("push", "--workspace", "acme", "--source", "inbox", *argv)
 
-        def read(kind: str, external_id: str, **params: str) -> Json:
+        def get(path: str, **params: str) -> Json:
             answer = httpx2.get(
-                f"{url}/v1/workspaces/acme/sources/inbox/{kind}/{quote(external_id, safe='')}",
+                f"{url}/v1/{path}",
                 params=params,
                 headers={"Authorization": f"Bearer {admin}"},
                 timeout=30,
@@ -206,6 +207,13 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
             assert answer.status_code == 200, answer.text
             body: Json = answer.json()
             return body
+
+        inbox = UUID(get("workspaces/acme/sources/inbox")["id"])
+
+        def read(kind: str, external_id: str, **params: str) -> Json:
+            """A thread or a meeting by its id, the record id of its external id in the inbox."""
+            record = record_id(inbox, "thread" if kind == "threads" else "meeting", external_id)
+            return get(f"{kind}/{record}", **params)
 
         mail, meeting, document = (
             example("mail-thread.json"),
@@ -281,5 +289,7 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         assert (summary["stream"], summary["counts"]["inserted"]) == ("chat/platform", 1)
         assert len(summary["runs"]) == 1
         assert summary["rejected"] == []
+        (pushed,) = summary["ids"]
+        assert pushed["id"] == record_id(inbox, pushed["kind"], pushed["external_id"])
         monkeypatch.setenv("MEMINI_TOKEN_FILE", str(admin_file))
         assert "chat/platform" in ok(cli("streams", "acme", "inbox")).out

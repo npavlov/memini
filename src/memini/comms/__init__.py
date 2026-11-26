@@ -9,7 +9,7 @@ The library behind the MCP tools (:mod:`memini.mcp.comms`) and their HTTP routes
 - ``list_messages``: messages sent to a person, mentioning them, or from them, one result per
   message, by source, time and topic.
 - ``get_thread``: a whole thread, its messages in order.
-- ``add_document``: a write (the ``ingest`` scope): one document record into a push source,
+- ``put_document``: a write (the ``ingest`` scope): one document record into a push source,
   through the ingest library, redaction and indexing included.
 
 :mod:`memini.comms.model` holds the arguments and results, :mod:`memini.comms.service` one
@@ -22,8 +22,6 @@ search's lexical retriever, never by a language model. Refusals are
 from memini.comms.model import (
     MESSAGE_ROLES,
     ActionItemInfo,
-    AddDocumentArguments,
-    AddedDocument,
     GetMeetingArguments,
     GetThreadArguments,
     ListedMeeting,
@@ -37,6 +35,8 @@ from memini.comms.model import (
     MessageRole,
     NewDocument,
     PersonInfo,
+    PutDocumentArguments,
+    PutDocumentResult,
     RecordArguments,
     RecordPerson,
     SegmentInfo,
@@ -47,11 +47,11 @@ from memini.comms.service import (
     DOCUMENT_ID_DOMAIN,
     NOT_INDEXED_NOTE,
     document_external_id,
-    run_add_document,
     run_get_meeting,
     run_get_thread,
     run_list_meetings,
     run_list_messages,
+    run_put_document,
 )
 
 __all__ = [
@@ -59,8 +59,6 @@ __all__ = [
     "MESSAGE_ROLES",
     "NOT_INDEXED_NOTE",
     "ActionItemInfo",
-    "AddDocumentArguments",
-    "AddedDocument",
     "GetMeetingArguments",
     "GetThreadArguments",
     "ListMeetingsArguments",
@@ -74,15 +72,17 @@ __all__ = [
     "MessageRole",
     "NewDocument",
     "PersonInfo",
+    "PutDocumentArguments",
+    "PutDocumentResult",
     "RecordArguments",
     "RecordPerson",
     "SegmentInfo",
     "StoredAs",
     "ThreadRecord",
     "document_external_id",
-    "run_add_document",
     "run_get_meeting",
     "run_get_thread",
     "run_list_meetings",
     "run_list_messages",
+    "run_put_document",
 ]

@@ -155,7 +155,7 @@ async def world(db: Conn) -> World:
     alpha = (await create_workspace(db, owner_id=owner, name="alpha")).id
     beta = (await create_workspace(db, owner_id=owner, name="beta")).id
     chat = await add_source(db, owner, alpha, "chat", "push")
-    repo = await add_source(db, owner, alpha, "repo", "git")
+    repo = await add_source(db, owner, alpha, "repo", "repository")
     chat_beta = await add_source(db, owner, beta, "chat", "push")
     return World(
         owner=owner,

@@ -1,4 +1,4 @@
-"""What a git source would index at a ref, before a sync does it: counts, not content.
+"""What a repository would index at a ref, before a sync does it: counts, not content.
 
 A person choosing what a code base indexes (scenario S18) needs to see how many files a set of
 rules keeps, by kind of file and by folder, before the model spends an hour on them. The preview

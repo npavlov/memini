@@ -1,6 +1,6 @@
-"""Incremental code sync: from the mirror of a git source to file records and their chunks.
+"""Incremental code sync: from the mirror of a repository to file records and their chunks.
 
-The git native connector (requirements, sections 4 and 9). Each tracked ref of a git source is a
+The git native connector (requirements, sections 4 and 9). Each tracked ref of a repository is a
 stream with a pinned commit. A sync fetches the mirror, compares the commit the ref names now with
 the pin, writes the records and chunks of the files that changed, turns deleted and deselected
 files into tombstones, and moves the pin in the transaction that commits the last of them

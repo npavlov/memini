@@ -74,7 +74,7 @@ def hit(name: str, **changes: Any) -> Hit:
         "workspace": "acme",
         "source_id": uuid.UUID(int=2),
         "source": "shop",
-        "source_kind": "git",
+        "source_kind": "repository",
         "record_kind": "code_file",
         "external_id": f"refs/heads/main:src/{name}.py",
         "external_url": None,

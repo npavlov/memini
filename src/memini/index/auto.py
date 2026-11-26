@@ -8,7 +8,7 @@ A service started with ``auto_reindex`` (the managed server's setting) does that
    whose stored fingerprint differs from the one the service is configured for. A job of the same
    workspace that waits or runs already is kept (its dedupe key is ``workspace``).
 2. The job worker runs :func:`reindex_handler`: :func:`memini.index.reindex` on a connection of its
-   own, with the files of git sources read from their mirrors. Vectors are reused by their text
+   own, with the files of repositories read from their mirrors. Vectors are reused by their text
    hash, so only texts that changed are embedded again.
 3. While it waits or runs, search refuses the workspace with
    :class:`~memini.index.IndexRebuildingError`, which says how far the rebuild is
@@ -99,7 +99,7 @@ def reindex_handler(
     pool: Pool, embedder: Embedder, *, code: RawContent | None = None
 ) -> ReindexHandler:
     """The handler of ``reindex`` jobs: rebuild the job's workspace with ``embedder``, reading the
-    files of git sources through ``code`` (:class:`memini.gitsync.MirrorContent` in the service).
+    files of repositories through ``code`` (:class:`memini.gitsync.MirrorContent` in the service).
 
     The rebuild commits record by record, so it runs on a connection of the pool switched to
     autocommit for the job, and given back as it was.

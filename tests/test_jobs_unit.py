@@ -109,6 +109,6 @@ def test_a_worker_is_named_after_its_host_and_process_by_default() -> None:
 
 def test_a_scheduler_refuses_bad_settings() -> None:
     with pytest.raises(ValueError, match="job kind"):
-        Scheduler(NO_POOL, sync_kinds={"git": "Git sync"})
+        Scheduler(NO_POOL, sync_kinds={"repository": "Git sync"})
     with pytest.raises(ValueError, match="interval"):
         Scheduler(NO_POOL, interval=timedelta(0))

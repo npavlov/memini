@@ -18,7 +18,7 @@ A change in one project breaks another, and nobody sees the connection beforehan
 directions: `uses`, what its services use, and `used_by`, the services of other projects that use
 its services. Each link names both services and their projects, the kind (`library`, `http`,
 `queue`, `other`), a note, and the places in the code of the using service that show the use, each
-mask with the files it matches now. `other_project` keeps the links between A and that project.
+mask with the files it matches now. `linked_projects` keeps the links between A and those projects.
 `get_catalog` shows each link under the service that uses it.
 
 ## Data

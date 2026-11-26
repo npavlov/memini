@@ -1,4 +1,4 @@
-"""What a piece of code belongs to: the ``context`` every code hit, definition and ``read_source``
+"""What a piece of code belongs to: the ``context`` every code hit, definition and ``get_file``
 answer carries.
 
 The catalog (:mod:`memini.catalog`; requirements, section 3) says which project and service a
@@ -26,7 +26,7 @@ __all__ = ["CodeContext", "DomainRef", "FilePlace", "code_contexts"]
 type Conn = AsyncConnection[TupleRow]
 
 type FilePlace = tuple[UUID, UUID, str]
-"""A file of a repository: its workspace, its git source and its path there."""
+"""A file of a repository: its workspace, its repository and its path there."""
 
 
 class DomainRef(BaseModel):

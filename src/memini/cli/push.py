@@ -143,6 +143,7 @@ _RECORD_FIELD: Final = re.compile(r"records\[(\d+)\](?:\.([^\s:]+))?: (.+?)\.?$"
 """``records[3].payload.messages[0].sent_at: a time with a zone…`` in the message of a refused
 batch: the record, the field and the reason."""
 _BATCH_KEYS: Final = frozenset({"records", "stream", "window"})
+_REF_KEYS: Final = ("kind", "external_id", "id")
 _COUNTS: Final = ("inserted", "updated", "revived", "deleted", "unchanged", "forgotten")
 """The counts of the push API's answer that the summary adds up."""
 
@@ -472,9 +473,15 @@ class Totals:
     not_indexed: int = 0
     index_note: str | None = None
     runs: list[str] = field(default_factory=list[str])
+    ids: list[dict[str, str]] = field(default_factory=list[dict[str, str]])
+    """Every record sent, with the id the service gave it: ``kind``, ``external_id``, ``id``."""
 
     def add(self, batch: Sequence[Record], answer: Json) -> None:
         self.batches += 1
+        for each in answer.get("records") or ():
+            if isinstance(each, dict):
+                ref = cast(dict[str, object], each)
+                self.ids.append({key: printable(str(ref.get(key))) for key in _REF_KEYS})
         self.tombstones += sum(1 for record in batch if record.deleted)
         self.records += sum(1 for record in batch if not record.deleted)
         counts = answer.get("counts")
@@ -718,6 +725,7 @@ def _summary(
                 "not_indexed": totals.not_indexed,
                 "index_note": totals.index_note,
                 "runs": totals.runs,
+                "ids": totals.ids,
                 "rejected": [each.as_json() for each in rejected],
                 "repeated": [record.position for record in repeated],
                 "error": error,

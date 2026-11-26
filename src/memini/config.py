@@ -473,7 +473,7 @@ class Settings(BaseModel):
     )
 
     # --- Git connector (memini.git) --------------------------------------------------------------
-    # The service keeps a bare mirror of every git source and reads code from it. Remote sources
+    # The service keeps a bare mirror of every repository and reads code from it. Remote sources
     # use https or ssh; plain http and local paths are refused unless allowed here. Credentials
     # are global for now, one https token and one ssh key; per-source credentials come later.
     git_mirror_dir: Annotated[Path | None, AfterValidator(_absolute)] = Field(

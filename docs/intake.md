@@ -57,6 +57,13 @@ MEMINI_TOKEN_FILE="$HOME/.config/memini/ingest.token" memini push --workspace de
 
 Use `mail-personal` for the other account's file. Inspect the stored, unchanged and rejected
 counts. On a rejection, fix the reported field using the source export, then resend.
+With a read token, check what arrived: the latest messages of the source, then one whole
+thread by the `record_id` of a result (`--json` shows it):
+
+```sh
+memini list-messages --sources mail-work --persons me --roles recipient --roles author --limit 5
+memini get-thread <record_id>
+```
 The [HTTP walkthrough](#the-same-with-curl) sends a complete batch and shows the response.
 
 ## With an agent
@@ -332,7 +339,9 @@ curl -sS -X POST -H @"$HOME/.config/memini/ingest.header" -H 'Content-Type: appl
   http://127.0.0.1:6364/v1/workspaces/demo/sources/chat/records
 ```
 
-The answer counts what the batch did (`"counts": {"inserted": 1, …}`) and names its run. A client
+The answer counts what the batch did (`"counts": {"inserted": 1, …}`), names its run and gives
+every record's id (`"records": [{"kind", "external_id", "id"}]`), the `id` that `get_thread`,
+`get_meeting`, forget and evidence take; `memini push --json` lists them as `ids`. A client
 of the API batches, retries and reads refusals itself; the codes are in
 [`src/memini/api/ingest.py`](../src/memini/api/ingest.py) and `/openapi.json`. A client that syncs
 a stream window by window sends `window` claims, which move the stream's checkpoint; `memini push`

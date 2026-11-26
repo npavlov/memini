@@ -4,12 +4,12 @@ of the MCP write tools, with the same arguments and results (:mod:`memini.decisi
 | Route | MCP tool | Does |
 |---|---|---|
 | ``POST …/decisions`` | ``record_decision`` | record a decision or an open question by hand |
-| ``POST …/decisions/{item_id}/supersede`` | ``supersede_decision`` | link it to earlier items |
-| ``POST …/decisions/{item_id}/close`` | ``close_decision`` | close it without a replacement |
-| ``POST …/decisions/{item_id}/retract`` | ``retract_decision`` | retract it: it was wrong |
-| ``POST …/decisions/{item_id}/domains`` | | link it by hand to a project or domains |
-| ``DELETE …/decisions/{item_id}/domains/{domain}`` | | remove a link (``?project=``) |
-| ``DELETE …/decisions/{item_id}/project/{project}`` | | remove the link to a project |
+| ``POST …/decisions/{id}/supersede`` | ``supersede_decision`` | link it to earlier items |
+| ``POST …/decisions/{id}/close`` | ``close_decision`` | close it without a replacement |
+| ``POST …/decisions/{id}/retract`` | ``retract_decision`` | retract it: it was wrong |
+| ``POST …/decisions/{id}/domains`` | | link it by hand to a project or domains |
+| ``DELETE …/decisions/{id}/domains/{domain}`` | | remove a link (``?project=``) |
+| ``DELETE …/decisions/{id}/project/{project}`` | | remove the link to a project |
 | ``GET``, ``PUT``, ``DELETE …/sources/{source}/catalog-default`` | | a source's default |
 | ``POST …/assign-domains`` | | enqueue the ``assign_domains`` job of the workspace (admin) |
 
@@ -21,7 +21,7 @@ item; the others answer 200 with the item. A body not of the shape answers 422
 ``validation_error``, with the fields.
 
 Errors are those of :mod:`memini.decisions.service` in the API's error shape: 422
-``invalid_item`` or ``ambiguous_record``; 404 ``not_found``; 409 ``not_active``,
+``invalid_item``; 404 ``not_found``; 409 ``not_active``,
 ``supersession_refused`` or ``journal_refused`` for a refusal of the append-only journal, whose
 message names the database constraint.
 """
@@ -96,10 +96,10 @@ def build_decisions_router() -> APIRouter:
         except DecisionError as error:
             raise _api_error(error) from None
 
-    @router.get("/decisions/{item_id}", summary="Get a decision and its supersession chain")
-    async def get_decision(item_id: UUID, access: ReadAccess, conn: Connection) -> DecisionChain:
+    @router.get("/decisions/{id}", summary="Get a decision and its supersession chain")
+    async def get_decision(id: UUID, access: ReadAccess, conn: Connection) -> DecisionChain:
         try:
-            return await run_get_decision(conn, access, GetDecisionArguments(item_id=item_id))
+            return await run_get_decision(conn, access, GetDecisionArguments(id=id))
         except DecisionError as error:
             raise _api_error(error) from None
 
@@ -128,11 +128,11 @@ def build_decisions_router() -> APIRouter:
             raise _api_error(error) from None
 
     @router.post(
-        "/workspaces/{workspace}/decisions/{item_id}/supersede",
+        "/workspaces/{workspace}/decisions/{id}/supersede",
         summary="Link an item to earlier items it supersedes",
     )
     async def supersede_decision(
-        workspace: str, item_id: UUID, body: SupersedeBody, access: IngestAccess, conn: Connection
+        workspace: str, id: UUID, body: SupersedeBody, access: IngestAccess, conn: Connection
     ) -> DecisionItem:
         """Link the item to earlier items it replaces (they become superseded) or, for a
         decision, open questions it answers (they become closed). The MCP ``supersede_decision``
@@ -140,45 +140,43 @@ def build_decisions_router() -> APIRouter:
         that breaks a rule (a cycle, the relation, the order, an extracted item over a manual
         one)."""
         try:
-            return await run_supersede(conn, access, item_id, body.to_refs(), workspace=workspace)
+            return await run_supersede(conn, access, id, body.to_refs(), workspace=workspace)
         except DecisionError as error:
             raise _api_error(error) from None
 
     @router.post(
-        "/workspaces/{workspace}/decisions/{item_id}/close",
+        "/workspaces/{workspace}/decisions/{id}/close",
         summary="Close an item without a replacement",
     )
     async def close_decision(
-        workspace: str, item_id: UUID, access: IngestAccess, conn: Connection
+        workspace: str, id: UUID, access: IngestAccess, conn: Connection
     ) -> DecisionItem:
         """Close an active item: an open question no longer asked, a decision no longer in
         force. The MCP ``close_decision`` tool. 409 ``not_active`` if it is not active."""
         try:
-            return await run_close(conn, access, item_id, workspace=workspace)
+            return await run_close(conn, access, id, workspace=workspace)
         except DecisionError as error:
             raise _api_error(error) from None
 
-    @router.post(
-        "/workspaces/{workspace}/decisions/{item_id}/retract", summary="Retract a wrong item"
-    )
+    @router.post("/workspaces/{workspace}/decisions/{id}/retract", summary="Retract a wrong item")
     async def retract_decision(
-        workspace: str, item_id: UUID, access: IngestAccess, conn: Connection
+        workspace: str, id: UUID, access: IngestAccess, conn: Connection
     ) -> DecisionItem:
         """Retract an active item that was wrong: a misread extraction, a mistake. It stays in
         the history, marked retracted. The MCP ``retract_decision`` tool. 409 ``not_active`` if
         it is not active."""
         try:
-            return await run_retract(conn, access, item_id, workspace=workspace)
+            return await run_retract(conn, access, id, workspace=workspace)
         except DecisionError as error:
             raise _api_error(error) from None
 
     @router.post(
-        "/workspaces/{workspace}/decisions/{item_id}/domains",
+        "/workspaces/{workspace}/decisions/{id}/domains",
         summary="Link an item to a project or domains",
     )
     async def link_decision_domains(
         workspace: str,
-        item_id: UUID,
+        id: UUID,
         body: DomainLinkBody,
         principal: IngestPrincipal,
         access: IngestAccess,
@@ -190,18 +188,18 @@ def build_decisions_router() -> APIRouter:
         422 ``unknown_place`` for a name the catalog does not hold."""
         try:
             return await run_link_domains(
-                conn, access, workspace, item_id, body, token_id=principal.token_id
+                conn, access, workspace, id, body, token_id=principal.token_id
             )
         except DecisionError as error:
             raise _api_error(error) from None
 
     @router.delete(
-        "/workspaces/{workspace}/decisions/{item_id}/domains/{domain:path}",
+        "/workspaces/{workspace}/decisions/{id}/domains/{domain:path}",
         summary="Remove a link of an item to a domain",
     )
     async def unlink_decision_domain(
         workspace: str,
-        item_id: UUID,
+        id: UUID,
         domain: str,
         access: IngestAccess,
         conn: Connection,
@@ -212,23 +210,23 @@ def build_decisions_router() -> APIRouter:
         default) or its code."""
         try:
             return await run_unlink_domain(
-                conn, access, workspace, item_id, project=project, domain=domain
+                conn, access, workspace, id, project=project, domain=domain
             )
         except DecisionError as error:
             raise _api_error(error) from None
 
     @router.delete(
-        "/workspaces/{workspace}/decisions/{item_id}/project/{project}",
+        "/workspaces/{workspace}/decisions/{id}/project/{project}",
         summary="Remove the link of an item to a project",
     )
     async def unlink_decision_project(
-        workspace: str, item_id: UUID, project: str, access: IngestAccess, conn: Connection
+        workspace: str, id: UUID, project: str, access: IngestAccess, conn: Connection
     ) -> DecisionItem:
         """Remove the item's link to a project itself; its links to domains of the project
         stay."""
         try:
             return await run_unlink_domain(
-                conn, access, workspace, item_id, project=project, domain=None
+                conn, access, workspace, id, project=project, domain=None
             )
         except DecisionError as error:
             raise _api_error(error) from None

@@ -42,7 +42,7 @@ MAX_OVERLAP_EXAMPLES = 3
 """Paths an overlap shows."""
 
 type Files = Mapping[UUID, Sequence[str]]
-"""The file paths the index holds of each git source, by source."""
+"""The file paths the index holds of each repository, by source."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +97,7 @@ def domain_code(
             DomainCode(
                 project=area.service.project,
                 service=area.service.name,
-                repository=repositories.get(area.service.source_id, ""),
+                source=repositories.get(area.service.source_id, ""),
                 root=area.service.root,
                 files=len(matched),
                 paths=_mask_counts(catalog, area, files),
@@ -147,7 +147,7 @@ def project_report(
     overlaps = [
         Overlap(
             domains=[first, second],
-            repository=repositories.get(source_id, ""),
+            source=repositories.get(source_id, ""),
             files=len(common),
             examples=sorted(common)[:MAX_OVERLAP_EXAMPLES],
         )
@@ -168,7 +168,7 @@ def project_report(
         services.append(
             ServiceCoverage(
                 service=service.name,
-                repository=repositories.get(service.source_id, ""),
+                source=repositories.get(service.source_id, ""),
                 files=len(below),
                 unassigned=unassigned,
                 unassigned_share=round(unassigned / len(below), 4) if below else None,

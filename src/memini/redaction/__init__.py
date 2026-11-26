@@ -55,7 +55,7 @@ Where it runs
       they are embedded and returned by search. Chunks of pushed records come from the redacted
       payload, so here redaction is a second line. The redaction version is part of the index
       fingerprint.
-    - **read_source** (:mod:`memini.query.reader`): the mirror of a repository is the raw store
+    - **get_file** (:mod:`memini.query.reader`): the mirror of a repository is the raw store
       and cannot be rewritten (its blob ids are content hashes); a read redacts the text it
       returns, line by line as the chunks do, so no query tool hands out a secret.
 

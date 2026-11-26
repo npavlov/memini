@@ -8,7 +8,7 @@ A suite is a TOML file, written by hand, next to the directories of its fixture 
     description = "..."
 
     [[repository]]
-    name = "tidewater"              # the git source the files are synced as
+    name = "tidewater"              # the repository the files are synced as
     workspace = "harbor"            # the workspace it is in
     path = "repos/tidewater"        # a directory, relative to the suite file
 
@@ -109,7 +109,7 @@ class Repository:
     """A fixture repository: files the runner commits to a new git repository and syncs."""
 
     name: str
-    """The name of its git source."""
+    """The name of its repository."""
     workspace: str
     directory: Path
     """Where its files are, absolute."""

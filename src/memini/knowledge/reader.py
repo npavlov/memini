@@ -297,7 +297,9 @@ async def list_items(
             source_conditions.append(sql.SQL("s.name = ANY(%(sources)s)"))
             params["sources"] = list(chosen.sources)
         if chosen.repositories is not None:
-            source_conditions.append(sql.SQL("s.kind = 'git' AND s.name = ANY(%(repositories)s)"))
+            source_conditions.append(
+                sql.SQL("s.kind = 'repository' AND s.name = ANY(%(repositories)s)")
+            )
             params["repositories"] = list(chosen.repositories)
         conditions.append(
             sql.SQL(

@@ -1,5 +1,5 @@
 """The query tools through the MCP endpoint and the HTTP API, against a real Postgres and real git
-mirrors: search, search_code, get_symbol, read_source.
+mirrors: search, search_code, get_file.
 
 Acceptance of memini-o8t: each tool is called through the MCP endpoint by a real MCP client; path
 traversal attempts are refused. Repositories are made here and synced as the git_sync job syncs
@@ -288,8 +288,7 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
     assert list(tools) == [
         "search",
         "search_code",
-        "read_source",
-        "get_symbol",
+        "get_file",
         "list_commits",
         "get_catalog",
         "get_project",
@@ -304,11 +303,10 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
         "status",
     ]
     expected = {
-        "search": {"query", "limit", "workspaces", "sources", "repositories", "kinds", "since"},
-        "search_code": {"query", "mode", "repositories", "paths", "languages", "case_sensitive"},
-        "read_source": {"repository", "path", "workspace", "ref", "start_line", "end_line"},
-        "get_symbol": {"name", "match", "repositories", "paths", "languages"},
-        "list_commits": {"repositories", "workspaces", "paths", "author", "since", "until", "text"},
+        "search": {"query", "limit", "workspaces", "sources", "kinds", "since"},
+        "search_code": {"query", "mode", "sources", "paths", "languages", "case_sensitive"},
+        "get_file": {"source", "path", "workspace", "ref", "start_line", "end_line"},
+        "list_commits": {"sources", "workspaces", "paths", "persons", "since", "until", "query"},
     }
     for name, arguments in expected.items():
         tool = tools[name]
@@ -318,7 +316,7 @@ async def test_the_query_tools_are_listed_with_their_schemas(world: World) -> No
         assert tool.annotations is not None
         assert tool.annotations.read_only_hint is True
     assert tools["search"].input_schema["required"] == ["query"]
-    assert tools["read_source"].input_schema["required"] == ["repository"]
+    assert tools["get_file"].input_schema["required"] == ["source"]
 
 
 # --- search and search_code ----------------------------------------------------------------------
@@ -332,11 +330,15 @@ async def test_search_finds_code_with_repo_at_sha_and_time(world: World) -> None
     async with mcp_client(world.app(), await world.token()) as client:
         result = await client.call_tool("search", {"query": "lamp level", "workspaces": ["acme"]})
 
-    hits = ok(result)["hits"]
+    hits = ok(result)["items"]
     lamp = code_hit(hits, "src/lamp.py")
     assert lamp["workspace"] == "acme"
-    assert (lamp["source"], lamp["source_kind"], lamp["kind"]) == ("shop", "git", "code_file")
-    assert (lamp["repository"], lamp["ref"], lamp["commit"]) == ("shop", MAIN, world.pin)
+    assert (lamp["source"], lamp["source_kind"], lamp["kind"]) == (
+        "shop",
+        "repository",
+        "code_file",
+    )
+    assert (lamp["source"], lamp["ref"], lamp["commit"]) == ("shop", MAIN, world.pin)
     assert lamp["locator"].startswith(f"shop@{world.pin}:src/lamp.py#L")
     assert when(lamp["occurred_at"]) == FIRST_COMMIT
     assert lamp["score"] > 0
@@ -359,26 +361,26 @@ async def test_search_filters_by_kind_and_time(world: World) -> None:
         naive = await client.call_tool("search", {"query": "lamp", "since": "2026-02-01T00:00"})
         lexical = await client.call_tool("search", {"query": "unlock", "mode": "lexical"})
 
-    assert ok(threads)["hits"] == []
+    assert ok(threads)["items"] == []
     # A Markdown file of a repository is a document, located like code.
-    readme = ok(documents)["hits"][0]
+    readme = ok(documents)["items"][0]
     assert (readme["kind"], readme["source_kind"], readme["path"]) == (
         "document",
-        "git",
+        "repository",
         "README.md",
     )
-    assert (readme["repository"], readme["ref"], readme["commit"]) == ("shop", MAIN, world.pin)
+    assert (readme["source"], readme["ref"], readme["commit"]) == ("shop", MAIN, world.pin)
     assert readme["locator"].startswith(f"shop@{world.pin}:README.md")
-    assert ok(later)["hits"] == []
+    assert ok(later)["items"] == []
     assert refused(naive) == "Invalid arguments: since: timezone_aware."
-    (vault,) = ok(lexical)["hits"]
+    (vault,) = ok(lexical)["items"]
     assert (vault["workspace"], vault["path"], vault["symbol"]) == ("other", "vault.py", "unlock")
 
 
 async def test_search_code_in_every_mode(world: World) -> None:
     async with mcp_client(world.app(), await world.token()) as client:
         semantic = await client.call_tool(
-            "search_code", {"query": "totalPrice items", "repositories": ["shop"]}
+            "search_code", {"query": "totalPrice items", "sources": ["shop"]}
         )
         exact = await client.call_tool(
             "search_code", {"query": "def brighten", "mode": "exact", "workspaces": ["acme"]}
@@ -397,26 +399,26 @@ async def test_search_code_in_every_mode(world: World) -> None:
             "search_code", {"query": "return", "mode": "exact", "languages": ["python"]}
         )
 
-    cart = code_hit(ok(semantic)["hits"], "web/cart.ts")
+    cart = code_hit(ok(semantic)["items"], "web/cart.ts")
     assert (cart["commit"], cart["language"], cart["symbol"]) == (
         world.pin,
         "typescript",
         "totalPrice",
     )
-    (brighten,) = ok(exact)["hits"]
+    (brighten,) = ok(exact)["items"]
     assert brighten["locator"].startswith(f"shop@{world.pin}:src/lamp.py#L")
     assert brighten["match_line"] == 22
     assert brighten["score"] is None
-    assert [hit["match_line"] for hit in ok(insensitive)["hits"]] == [22]
-    regex_hits = ok(regex)["hits"]
+    assert [hit["match_line"] for hit in ok(insensitive)["items"]] == [22]
+    regex_hits = ok(regex)["items"]
     assert {hit["path"] for hit in regex_hits} == {"src/lamp.py"}
     assert regex_hits[0]["match_line"] == 11
-    (on,) = ok(symbol)["hits"]
+    (on,) = ok(symbol)["items"]
     assert on["definition"]["qualified_name"] == "Lamp.on"
     assert on["definition"]["kind"] == "method"
     assert (on["definition"]["start_line"], on["definition"]["end_line"]) == (11, 14)
-    assert {hit["path"] for hit in ok(by_path)["hits"]} == {"web/cart.ts"}
-    python = ok(by_language)["hits"]
+    assert {hit["path"] for hit in ok(by_path)["items"]} == {"web/cart.ts"}
+    python = ok(by_language)["items"]
     assert {hit["path"] for hit in python} == {"src/lamp.py", "vault.py"}
     assert {hit["language"] for hit in python} == {"python"}
 
@@ -444,8 +446,8 @@ async def test_search_refuses_a_stale_index_and_names_the_rebuild(world: World) 
     async with mcp_client(world.app(embedder=other_model), await world.token()) as client:
         searched = await client.call_tool("search", {"query": "lamp"})
         exact = await client.call_tool("search_code", {"query": "lamp", "mode": "exact"})
-        symbol = await client.call_tool("get_symbol", {"name": "Lamp"})
-        read = await client.call_tool("read_source", {"workspace": "acme", "repository": "shop"})
+        symbol = await client.call_tool("search_code", by_symbol("Lamp"))
+        read = await client.call_tool("get_file", {"workspace": "acme", "source": "shop"})
 
     for result in (searched, exact, symbol):
         message = refused(result)
@@ -458,9 +460,9 @@ async def test_search_refuses_a_stale_index_and_names_the_rebuild(world: World) 
 async def test_without_embeddings_search_says_so_and_reading_works(world: World) -> None:
     async with mcp_client(world.app(default=True), await world.token()) as client:
         searched = await client.call_tool("search", {"query": "lamp"})
-        symbol = await client.call_tool("get_symbol", {"name": "Lamp"})
+        symbol = await client.call_tool("search_code", by_symbol("Lamp"))
         read = await client.call_tool(
-            "read_source", {"workspace": "acme", "repository": "shop", "path": "src/lamp.py"}
+            "get_file", {"workspace": "acme", "source": "shop", "path": "src/lamp.py"}
         )
 
     for result in (searched, symbol):
@@ -468,54 +470,75 @@ async def test_without_embeddings_search_says_so_and_reading_works(world: World)
     assert ok(read)["commit"] == world.pin
 
 
-# --- get_symbol ----------------------------------------------------------------------------------
+# --- search_code in symbol mode ------------------------------------------------------------------
 
 
-async def test_get_symbol_finds_functions_and_methods_with_their_location(world: World) -> None:
+def by_symbol(name: str, **more: Any) -> dict[str, Any]:
+    """The arguments of a ``search_code`` call that finds the definitions named ``name``."""
+    return {"query": name, "mode": "symbol", **more}
+
+
+def definitions(result: CallToolResult) -> list[Json]:
+    return [hit["definition"] for hit in ok(result)["items"]]
+
+
+async def test_search_code_finds_functions_and_methods_by_symbol_with_their_location(
+    world: World,
+) -> None:
     async with mcp_client(world.app(), await world.token()) as client:
-        method = await client.call_tool("get_symbol", {"name": "on"})
-        function = await client.call_tool("get_symbol", {"name": "brighten"})
-        qualified = await client.call_tool("get_symbol", {"name": "Lamp.off"})
-        prefix = await client.call_tool("get_symbol", {"name": "Lam", "match": "prefix"})
+        method = await client.call_tool("search_code", by_symbol("on"))
+        function = await client.call_tool("search_code", by_symbol("brighten"))
+        qualified = await client.call_tool("search_code", by_symbol("Lamp.off"))
+        prefix = await client.call_tool("search_code", {"query": "Lam", "mode": "symbol_prefix"})
         typescript = await client.call_tool(
-            "get_symbol", {"name": "totalprice", "case_sensitive": False}
+            "search_code", by_symbol("totalprice", case_sensitive=False)
         )
         filtered = await client.call_tool(
-            "get_symbol", {"name": "brighten", "languages": ["typescript"]}
+            "search_code", by_symbol("brighten", languages=["typescript"])
         )
-        missing = await client.call_tool("get_symbol", {"name": "nothing_here"})
+        missing = await client.call_tool("search_code", by_symbol("nothing_here"))
 
-    (on,) = ok(method)["definitions"]
-    assert (on["qualified_name"], on["kind"], on["parent"]) == ("Lamp.on", "method", "Lamp")
-    assert (on["repository"], on["ref"], on["commit"]) == ("shop", MAIN, world.pin)
-    assert on["locator"] == f"shop@{world.pin}:src/lamp.py#L11-L14"
+    (on,) = ok(method)["items"]
+    found = on["definition"]
+    assert (found["qualified_name"], found["kind"], found["parent"]) == (
+        "Lamp.on",
+        "method",
+        "Lamp",
+    )
+    assert (found["path"], found["start_line"], found["end_line"]) == ("src/lamp.py", 11, 14)
+    assert (on["source"], on["ref"], on["commit"]) == ("shop", MAIN, world.pin)
+    assert on["locator"].startswith(f"shop@{world.pin}:src/lamp.py#L")
+    # The hit is the chunk that holds the definition.
+    assert on["start_line"] <= 11
+    assert on["end_line"] >= 14
     assert when(on["occurred_at"]) == FIRST_COMMIT
-    assert "def on(self):" in on["snippet"]
-    (brighten,) = ok(function)["definitions"]
+    assert on["snippet"] in LAMP
+    (brighten,) = definitions(function)
     assert (brighten["kind"], brighten["start_line"], brighten["end_line"]) == ("function", 22, 25)
-    assert brighten["snippet"].startswith("def brighten(lamp, step):")
-    assert [d["qualified_name"] for d in ok(qualified)["definitions"]] == ["Lamp.off"]
-    assert [d["qualified_name"] for d in ok(prefix)["definitions"]] == ["Lamp"]
-    (total,) = ok(typescript)["definitions"]
+    assert [d["qualified_name"] for d in definitions(qualified)] == ["Lamp.off"]
+    assert [d["qualified_name"] for d in definitions(prefix)] == ["Lamp"]
+    (total,) = definitions(typescript)
     assert (total["qualified_name"], total["language"]) == ("totalPrice", "typescript")
-    assert ok(filtered)["definitions"] == []
-    assert ok(missing)["definitions"] == []
-    assert text(method).startswith(f"1 definition. {TEXT_NOTICE}\n\n1. method Lamp.on at shop@")
+    assert ok(filtered)["items"] == []
+    assert ok(missing)["items"] == []
+    summary = text(method)
+    assert summary.startswith(f"1 hit. {TEXT_NOTICE}\n\n1. shop@{world.pin}:src/lamp.py#L")
+    assert "defines method Lamp.on" in summary
 
 
-# --- read_source ---------------------------------------------------------------------------------
+# --- get_file ---------------------------------------------------------------------------------
 
 
-async def test_read_source_reads_a_file_at_the_pinned_commit(world: World) -> None:
+async def test_get_file_reads_a_file_at_the_pinned_commit(world: World) -> None:
     async with mcp_client(world.app(), await world.token()) as client:
         whole = await client.call_tool(
-            "read_source", {"workspace": "acme", "repository": "shop", "path": "src/lamp.py"}
+            "get_file", {"workspace": "acme", "source": "shop", "path": "src/lamp.py"}
         )
         lines = await client.call_tool(
-            "read_source",
+            "get_file",
             {
                 "workspace": "acme",
-                "repository": "shop",
+                "source": "shop",
                 "path": "src/lamp.py",
                 "start_line": 11,
                 "end_line": 14,
@@ -523,7 +546,11 @@ async def test_read_source_reads_a_file_at_the_pinned_commit(world: World) -> No
         )
 
     read = ok(whole)
-    assert (read["workspace"], read["repository"], read["source_kind"]) == ("acme", "shop", "git")
+    assert (read["workspace"], read["source"], read["source_kind"]) == (
+        "acme",
+        "shop",
+        "repository",
+    )
     assert (read["ref"], read["commit"], read["pinned"]) == (MAIN, world.pin, True)
     assert when(read["occurred_at"]) == FIRST_COMMIT
     assert (read["kind"], read["language"], read["binary"]) == ("file", "python", False)
@@ -548,12 +575,12 @@ async def test_read_source_reads_a_file_at_the_pinned_commit(world: World) -> No
     assert "def on(self):" in summary
 
 
-async def test_read_source_at_a_ref_a_tag_or_a_commit(world: World) -> None:
+async def test_get_file_at_a_ref_a_tag_or_a_commit(world: World) -> None:
     async def read(client: Client, ref: str) -> Json:
         return ok(
             await client.call_tool(
-                "read_source",
-                {"workspace": "acme", "repository": "shop", "path": "README.md", "ref": ref},
+                "get_file",
+                {"workspace": "acme", "source": "shop", "path": "README.md", "ref": ref},
             )
         )
 
@@ -564,8 +591,8 @@ async def test_read_source_at_a_ref_a_tag_or_a_commit(world: World) -> None:
         tag = await read(client, "v1")
         dev = ok(
             await client.call_tool(
-                "read_source",
-                {"workspace": "acme", "repository": "shop", "path": "src/lamp.py", "ref": "dev"},
+                "get_file",
+                {"workspace": "acme", "source": "shop", "path": "src/lamp.py", "ref": "dev"},
             )
         )
 
@@ -581,10 +608,10 @@ async def test_read_source_at_a_ref_a_tag_or_a_commit(world: World) -> None:
     assert dev["symbols"] == []  # the index holds main's content, not dev's
 
 
-async def test_read_source_lists_directories_and_reports_other_entries(world: World) -> None:
+async def test_get_file_lists_directories_and_reports_other_entries(world: World) -> None:
     async def read(client: Client, path: str, **more: Any) -> CallToolResult:
         return await client.call_tool(
-            "read_source", {"workspace": "acme", "repository": "shop", "path": path, **more}
+            "get_file", {"workspace": "acme", "source": "shop", "path": path, **more}
         )
 
     async with mcp_client(world.app(), await world.token()) as client:
@@ -637,7 +664,7 @@ async def test_read_source_lists_directories_and_reports_other_entries(world: Wo
     assert refused(no_commit) == "No such ref or commit."
 
 
-async def test_read_source_stops_at_its_limits(world: World) -> None:
+async def test_get_file_stops_at_its_limits(world: World) -> None:
     app = world.app()
     services: QueryServices = app.state.services
     services.read_limits = ReadLimits(max_lines=10, max_chars=50, max_entries=2)
@@ -645,22 +672,22 @@ async def test_read_source_stops_at_its_limits(world: World) -> None:
     async with mcp_client(app, await world.token()) as client:
         lines = ok(
             await client.call_tool(
-                "read_source",
-                {"workspace": "acme", "repository": "shop", "path": "notes/long.txt"},
+                "get_file",
+                {"workspace": "acme", "source": "shop", "path": "notes/long.txt"},
             )
         )
         chars = ok(
             await client.call_tool(
-                "read_source",
+                "get_file",
                 {
                     "workspace": "acme",
-                    "repository": "shop",
+                    "source": "shop",
                     "path": "notes/long.txt",
                     "start_line": 20,
                 },
             )
         )
-        listing = await client.call_tool("read_source", {"workspace": "acme", "repository": "shop"})
+        listing = await client.call_tool("get_file", {"workspace": "acme", "source": "shop"})
 
     assert (lines["start_line"], lines["end_line"], lines["truncated"]) == (1, 7, True)
     assert lines["content"] == "".join(f"line {n}\n" for n in range(1, 8))  # 49 characters
@@ -686,10 +713,10 @@ PATHS = [
 
 
 @pytest.mark.parametrize("path", PATHS)
-async def test_read_source_refuses_paths_out_of_the_repository(world: World, path: str) -> None:
+async def test_get_file_refuses_paths_out_of_the_repository(world: World, path: str) -> None:
     async with mcp_client(world.app(), await world.token()) as client:
         result = await client.call_tool(
-            "read_source", {"workspace": "acme", "repository": "shop", "path": path}
+            "get_file", {"workspace": "acme", "source": "shop", "path": path}
         )
 
     message = refused(result)
@@ -701,7 +728,7 @@ async def test_read_source_refuses_paths_out_of_the_repository(world: World, pat
 async def test_an_encoded_path_is_a_name_not_a_way_out(world: World, path: str) -> None:
     async with mcp_client(world.app(), await world.token()) as client:
         result = await client.call_tool(
-            "read_source", {"workspace": "acme", "repository": "shop", "path": path}
+            "get_file", {"workspace": "acme", "source": "shop", "path": path}
         )
 
     assert refused(result) == "No such path."
@@ -713,28 +740,24 @@ async def test_an_encoded_path_is_a_name_not_a_way_out(world: World, path: str) 
 async def test_a_workspace_token_reads_only_its_workspace(world: World) -> None:
     token = await world.token("read", workspace=world.other)
     async with mcp_client(world.app(), token) as client:
-        acme = await client.call_tool("read_source", {"workspace": "acme", "repository": "shop"})
-        unnamed = ok(
-            await client.call_tool("read_source", {"repository": "shop", "path": "vault.py"})
-        )
+        acme = await client.call_tool("get_file", {"workspace": "acme", "source": "shop"})
+        unnamed = ok(await client.call_tool("get_file", {"source": "shop", "path": "vault.py"}))
         searched = ok(await client.call_tool("search_code", {"query": "def", "mode": "exact"}))
-        symbols = ok(await client.call_tool("get_symbol", {"name": "brighten"}))
+        symbols = ok(await client.call_tool("search_code", by_symbol("brighten")))
         everything = ok(await client.call_tool("search", {"query": "lamp unlock"}))
 
     assert refused(acme) == "No such workspace."
     assert (unnamed["workspace"], unnamed["content"]) == ("other", VAULT)
-    assert {hit["workspace"] for hit in searched["hits"]} == {"other"}
-    assert symbols["definitions"] == []
-    assert {hit["workspace"] for hit in everything["hits"]} == {"other"}
+    assert {hit["workspace"] for hit in searched["items"]} == {"other"}
+    assert symbols["items"] == []
+    assert {hit["workspace"] for hit in everything["items"]} == {"other"}
 
 
 async def test_a_repository_name_in_two_workspaces_needs_the_workspace(world: World) -> None:
     async with mcp_client(world.app(), await world.token()) as client:
-        ambiguous = await client.call_tool("read_source", {"repository": "shop"})
-        unknown = await client.call_tool("read_source", {"repository": "nowhere"})
-        unsynced = await client.call_tool(
-            "read_source", {"workspace": "acme", "repository": "pending"}
-        )
+        ambiguous = await client.call_tool("get_file", {"source": "shop"})
+        unknown = await client.call_tool("get_file", {"source": "nowhere"})
+        unsynced = await client.call_tool("get_file", {"workspace": "acme", "source": "pending"})
 
     assert refused(ambiguous) == (
         "More than one workspace has a repository of that name: name the workspace."
@@ -760,8 +783,8 @@ async def test_every_query_tool_reads_through_the_authorization_filter(
     async with mcp_client(world.app(), token) as client:
         ok(await client.call_tool("search", {"query": "lamp"}))
         ok(await client.call_tool("search_code", {"query": "lamp", "mode": "exact"}))
-        ok(await client.call_tool("get_symbol", {"name": "Lamp"}))
-        ok(await client.call_tool("read_source", {"repository": "shop"}))
+        ok(await client.call_tool("search_code", by_symbol("Lamp")))
+        ok(await client.call_tool("get_file", {"source": "shop"}))
 
     assert len(calls) == 4
     assert {principal.workspace_id for principal in calls} == {world.acme}
@@ -810,18 +833,19 @@ async def test_http_search_routes_mirror_the_tools(world: World) -> None:
             "/v1/search", params={"query": "lamp", "workspaces": ["acme"], "kinds": ["code_file"]}
         )
         code = await http.get("/v1/search/code", params={"query": "def brighten", "mode": "exact"})
-        symbols = await http.get("/v1/symbols", params={"name": "Lamp.on"})
+        symbols = await http.get("/v1/search/code", params=by_symbol("Lamp.on"))
         since = await http.get(
             "/v1/search", params={"query": "lamp", "since": "2026-01-01T00:00:00+00:00"}
         )
 
-    hits = body(searched)["hits"]
+    hits = body(searched)["items"]
     assert code_hit(hits, "src/lamp.py")["commit"] == world.pin
-    (brighten,) = body(code)["hits"]
+    (brighten,) = body(code)["items"]
     assert brighten["match_line"] == 22
-    (on,) = body(symbols)["definitions"]
-    assert on["locator"] == f"shop@{world.pin}:src/lamp.py#L11-L14"
-    assert body(since)["hits"]  # the + of the offset reaches the server encoded
+    (on,) = body(symbols)["items"]
+    assert on["locator"].startswith(f"shop@{world.pin}:src/lamp.py#L")
+    assert (on["definition"]["start_line"], on["definition"]["end_line"]) == (11, 14)
+    assert body(since)["items"]  # the + of the offset reaches the server encoded
 
 
 class Reversing:
@@ -840,15 +864,15 @@ async def test_a_reranker_reorders_search_and_its_failure_is_no_error(
     token = await world.token()
     params = {"query": "lamp level", "workspaces": ["acme"], "limit": 3}
     async with http_client(world.app(), token) as http:
-        plain = body(await http.get("/v1/search", params=params))["hits"]
+        plain = body(await http.get("/v1/search", params=params))["items"]
     app = create_app(world.settings, pool=world.pool, embedder=world.embedder, reranker=Reversing())
     async with http_client(app, token) as http:
-        reversed_hits = body(await http.get("/v1/search", params=params))["hits"]
+        reversed_hits = body(await http.get("/v1/search", params=params))["items"]
     app = create_app(world.settings, pool=world.pool, embedder=world.embedder, reranker=Broken())
     with caplog.at_level(logging.WARNING, logger="memini.search.engine"):
         async with http_client(app, token) as http:
-            kept = body(await http.get("/v1/search", params=params))["hits"]
-            code = body(await http.get("/v1/search/code", params={"query": "lamp"}))["hits"]
+            kept = body(await http.get("/v1/search", params=params))["items"]
+            code = body(await http.get("/v1/search/code", params={"query": "lamp"}))["items"]
 
     assert len(plain) == 3
     assert [h["locator"] for h in reversed_hits][:1] != [h["locator"] for h in plain][:1]
@@ -862,11 +886,11 @@ async def test_http_search_errors_have_the_error_shape(world: World) -> None:
     async with http_client(world.app(), await world.token()) as http:
         unknown = await http.get("/v1/search", params={"query": "lamp", "colour": "red"})
         bad_regex = await http.get("/v1/search/code", params={"query": "(x", "mode": "regex"})
-        missing = await http.get("/v1/symbols")
+        missing = await http.get("/v1/search/code")
     async with http_client(world.app(embedder=stale), await world.token()) as http:
         mismatch = await http.get("/v1/search", params={"query": "lamp"})
     async with http_client(world.app(default=True), await world.token()) as http:
-        unconfigured = await http.get("/v1/symbols", params={"name": "Lamp"})
+        unconfigured = await http.get("/v1/search/code", params=by_symbol("Lamp"))
 
     assert error(unknown, 422, "validation_error") == "The request is not valid."
     assert error(bad_regex, 422, "invalid_search").startswith("The regular expression")
@@ -930,4 +954,4 @@ async def test_http_reads_only_what_the_token_may_read(world: World) -> None:
 
     assert error(acme, 404, "not_found") == "No such workspace."
     assert body(other)["content"] == VAULT
-    assert {hit["workspace"] for hit in body(searched)["hits"]} == {"other"}
+    assert {hit["workspace"] for hit in body(searched)["items"]} == {"other"}

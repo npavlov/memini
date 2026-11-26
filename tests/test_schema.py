@@ -342,7 +342,7 @@ async def world(db: Conn) -> World:
         db, "source", {**scoped, "workspace_id": a, "name": "chat", "kind": "push"}
     )
     source_a2 = await _insert(
-        db, "source", {**scoped, "workspace_id": a, "name": "repo", "kind": "git"}
+        db, "source", {**scoped, "workspace_id": a, "name": "repo", "kind": "repository"}
     )
     source_b = await _insert(
         db, "source", {**scoped, "workspace_id": b, "name": "chat", "kind": "push"}

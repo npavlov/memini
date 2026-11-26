@@ -228,7 +228,7 @@ def test_a_record_needs_a_kind_an_id_a_zoned_time_and_an_object() -> None:
     error = refuse(
         one(RecordIn(kind="code_file", external_id="main:a.py", deleted=True)), "records[0].kind"
     )
-    assert "git sources" in error.reason
+    assert "repositories" in error.reason
     refuse(one(RecordIn(kind="note", external_id="n", deleted=True)), "records[0].kind")
     refuse(one(RecordIn(kind="thread", external_id="", deleted=True)), "records[0].external_id")
     refuse(one(RecordIn(kind="thread", external_id="a\0b", deleted=True)), "records[0].external_id")

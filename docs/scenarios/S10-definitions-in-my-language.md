@@ -6,7 +6,7 @@
 
 ## Who and pain
 
-A repository in a language without a grammar is cut into line windows, and `get_symbol` does not
+A repository in a language without a grammar is cut into line windows, and `search_code` in mode `symbol` does not
 see it. A team with Java, C# or Rust services could find their code by words only.
 
 ## Question
@@ -15,7 +15,7 @@ see it. A team with Java, C# or Rust services could find their code by words onl
 
 ## Answer
 
-`get_symbol` and definition-sized hits of `search_code` for the language.
+`search_code` in mode `symbol` and definition-sized hits of `search_code` for the language.
 
 ## Data
 
@@ -41,5 +41,5 @@ workspace; only the files of the new languages are embedded again.
 
 - [All scenarios](README.md)
 - [S1](S01-where-is-x-implemented.md): Where and how is X implemented?
-- Tool reference: [get_symbol](../mcp/get_symbol.md)
+- Tool reference: [search_code in mode symbol](../mcp/search_code.md)
 - Tool reference: [search_code](../mcp/search_code.md)

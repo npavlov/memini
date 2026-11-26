@@ -216,7 +216,8 @@ async def world(app: FastAPI, db: Conn) -> World:
     # A git source with one file record: code is synced, not pushed.
     repo = await scalar(
         db,
-        "INSERT INTO source (workspace_id, owner_id, name, kind) VALUES (%s, %s, 'repo', 'git')"
+        "INSERT INTO source (workspace_id, owner_id, name, kind)"
+        " VALUES (%s, %s, 'repo', 'repository')"
         " RETURNING id",
         ids["alpha"],
         owner,
@@ -291,11 +292,11 @@ async def item(db: Conn, w: World, item_id: UUID | str) -> Item:
     return (await get_item(db, reader, UUID(str(item_id)))).item
 
 
-def correction(**changes: Any) -> Json:
+def correction(w: World, **changes: Any) -> Json:
     body: Json = {
         "statement": "Water the beds at seven, not six.",
-        "decided_at": iso(SAID + timedelta(hours=1)),
-        "evidence": [{"source": "chat", "external_id": "garden/0001", "anchor": "m2"}],
+        "occurred_at": iso(SAID + timedelta(hours=1)),
+        "evidence": [{"record_id": w.thread, "anchor": "m2"}],
     }
     body.update(changes)
     return body
@@ -319,7 +320,7 @@ async def test_a_manual_correction_survives_a_reextraction_of_the_same_record(
             await http.post(
                 DECISIONS,
                 json=correction(
-                    participants=[str(world.person)], supersedes=[{"item_id": str(wrong)}]
+                    world, participants=[str(world.person)], supersedes=[{"item_id": str(wrong)}]
                 ),
             ),
             201,
@@ -409,6 +410,7 @@ async def test_a_correction_over_mcp_survives_a_reextraction(
             {
                 "workspace": "alpha",
                 **correction(
+                    world,
                     evidence=[{"record_id": world.thread, "anchor": "m2"}],
                     supersedes=[{"item_id": str(wrong), "relation": "replaces"}],
                 ),
@@ -438,9 +440,10 @@ async def test_items_are_linked_closed_and_retracted_by_hand(
             await http.post(
                 DECISIONS,
                 json=correction(
+                    world,
                     kind="open_question",
                     statement="When do we water the beds?",
-                    decided_at=iso(SAID),
+                    occurred_at=iso(SAID),
                 ),
             ),
             201,
@@ -449,8 +452,9 @@ async def test_items_are_linked_closed_and_retracted_by_hand(
             await http.post(
                 DECISIONS,
                 json=correction(
-                    evidence=[{"source": "chat", "external_id": "garden/0002", "anchor": "m2"}],
-                    decided_at=iso(SAID + timedelta(days=1)),
+                    world,
+                    evidence=[{"record_id": world.later_thread, "anchor": "m2"}],
+                    occurred_at=iso(SAID + timedelta(days=1)),
                 ),
             ),
             201,
@@ -471,14 +475,9 @@ async def test_items_are_linked_closed_and_retracted_by_hand(
             await http.post(
                 DECISIONS,
                 json=correction(
+                    world,
                     statement="The pump runs at night.",
-                    evidence=[
-                        {
-                            "source": "repo",
-                            "external_id": "refs/heads/main:src/pump.py",
-                            "anchor": f"{COMMIT}#Pump.start",
-                        }
-                    ],
+                    evidence=[{"record_id": world.code, "anchor": f"{COMMIT}#Pump.start"}],
                 ),
             ),
             201,
@@ -488,7 +487,9 @@ async def test_items_are_linked_closed_and_retracted_by_hand(
         assert retracted["status"] == "retracted"
         assert retracted["invalidated_at"] is not None
 
-        stale = ok(await http.post(DECISIONS, json=correction(statement="Fence the beds.")), 201)
+        stale = ok(
+            await http.post(DECISIONS, json=correction(world, statement="Fence the beds.")), 201
+        )
         closed = ok(await http.post(f"{DECISIONS}/{stale['id']}/close"))
         assert closed["status"] == "closed"
         assert closed["superseded_by"] is None
@@ -503,32 +504,33 @@ async def test_the_mcp_tools_link_close_and_retract(app: FastAPI, db: Conn, worl
             structured: Json = result.structured_content
             return structured
 
-        older = await call("record_decision", {"workspace": "alpha", **correction()})
+        older = await call("record_decision", {"workspace": "alpha", **correction(world)})
         newer = await call(
             "record_decision",
             {
                 "workspace": "alpha",
                 **correction(
+                    world,
                     statement="Water the beds at eight.",
-                    decided_at=iso(SAID + timedelta(days=1)),
+                    occurred_at=iso(SAID + timedelta(days=1)),
                     evidence=[{"record_id": world.later_thread, "anchor": "m2"}],
                 ),
             },
         )
         linked = await call(
             "supersede_decision",
-            {"item_id": newer["id"], "supersedes": [{"item_id": older["id"]}]},
+            {"id": newer["id"], "supersedes": [{"item_id": older["id"]}]},
         )
         assert linked["supersedes"][0]["supersedes_id"] == older["id"]
         assert (await item(db, world, older["id"])).status == "superseded"
 
-        closed = await call("close_decision", {"item_id": newer["id"]})
+        closed = await call("close_decision", {"id": newer["id"]})
         assert closed["status"] == "closed"
 
-        third = await call("record_decision", {"workspace": "alpha", **correction()})
-        assert (await call("retract_decision", {"item_id": third["id"]}))["status"] == "retracted"
+        third = await call("record_decision", {"workspace": "alpha", **correction(world)})
+        assert (await call("retract_decision", {"id": third["id"]}))["status"] == "retracted"
 
-        again = await client.call_tool("retract_decision", {"item_id": third["id"]})
+        again = await client.call_tool("retract_decision", {"id": third["id"]})
     assert again.is_error is True
     (content,) = again.content
     assert isinstance(content, TextContent)
@@ -543,13 +545,14 @@ async def test_refusals_of_the_journal_are_409s_that_name_the_constraint(
     app: FastAPI, db: Conn, world: World
 ) -> None:
     async with http_client(app, world.tokens["writer"]) as http:
-        old = ok(await http.post(DECISIONS, json=correction(decided_at=iso(SAID))), 201)
+        old = ok(await http.post(DECISIONS, json=correction(world, occurred_at=iso(SAID))), 201)
         new = ok(
             await http.post(
                 DECISIONS,
                 json=correction(
+                    world,
                     statement="Water at eight.",
-                    decided_at=iso(SAID + timedelta(days=1)),
+                    occurred_at=iso(SAID + timedelta(days=1)),
                     supersedes=[{"item_id": old["id"]}],
                 ),
             ),
@@ -584,7 +587,7 @@ async def test_refusals_of_the_journal_are_409s_that_name_the_constraint(
             ),
             (
                 DECISIONS,
-                correction(decided_at=iso(SAID), supersedes=[{"item_id": new["id"]}]),
+                correction(world, occurred_at=iso(SAID), supersedes=[{"item_id": new["id"]}]),
                 "supersession_refused",
                 "knowledge_supersession_order_check",
             ),
@@ -592,7 +595,8 @@ async def test_refusals_of_the_journal_are_409s_that_name_the_constraint(
             (
                 DECISIONS,
                 correction(
-                    decided_at=iso(SAID + timedelta(days=2)),
+                    world,
+                    occurred_at=iso(SAID + timedelta(days=2)),
                     supersedes=[{"item_id": new["id"], "relation": "answers"}],
                 ),
                 "supersession_refused",
@@ -631,21 +635,17 @@ async def test_evidence_and_participants_are_checked(app: FastAPI, db: Conn, wor
     async with http_client(app, world.tokens["writer"]) as http:
 
         async def post(**changes: Any) -> httpx2.Response:
-            return await http.post(DECISIONS, json=correction(**changes))
+            return await http.post(DECISIONS, json=correction(world, **changes))
 
-        missing = [{"source": "chat", "external_id": "garden/9999", "anchor": "m1"}]
-        assert refused(await post(evidence=missing), 404, "not_found") == (
-            "No such record (evidence 0)."
-        )
+        missing = [{"record_id": "9" * 64, "anchor": "m1"}]
+        assert refused(await post(evidence=missing), 404, "not_found") == "No such record."
         elsewhere = [{"record_id": world.beta_thread, "anchor": "m1"}]
         assert refused(await post(evidence=elsewhere), 404, "not_found") == "No such record."
-        no_anchor = [{"source": "chat", "external_id": "garden/0001"}]
+        no_anchor = [{"record_id": world.thread}]
         assert refused(await post(evidence=no_anchor), 422, "invalid_item") == (
             "The item is not valid: evidence: evidence in a thread names the message it is in."
         )
-        no_commit = [
-            {"source": "repo", "external_id": "refs/heads/main:src/pump.py", "anchor": "Pump.start"}
-        ]
+        no_commit = [{"record_id": world.code, "anchor": "Pump.start"}]
         refused(await post(evidence=no_commit), 422, "invalid_item")
         assert refused(await post(participants=[str(world.beta_person)]), 404, "not_found") == (
             "No such person."
@@ -654,7 +654,7 @@ async def test_evidence_and_participants_are_checked(app: FastAPI, db: Conn, wor
         assert details.status_code == 422
         assert details.json()["error"]["code"] == "validation_error"
 
-        # A document and a thread under one external id: the kind decides.
+        # A document and a thread under one external id are two records, each with its own id.
         await push(
             app,
             world.tokens["pusher"],
@@ -666,19 +666,15 @@ async def test_evidence_and_participants_are_checked(app: FastAPI, db: Conn, wor
                 "payload": {"title": "Watering", "text": "Water at seven."},
             },
         )
-        assert refused(await post(), 422, "ambiguous_record") == (
-            "The source has records of more than one kind under that external id (evidence 0);"
-            " name its record_kind."
+        document = await scalar(
+            db,
+            "SELECT id FROM record WHERE workspace_id = %s AND external_id = %s"
+            " AND kind = 'document'",
+            world.alpha,
+            "garden/0001",
         )
-        evidence = [
-            {"source": "chat", "external_id": "garden/0001", "record_kind": "document"},
-            {
-                "source": "chat",
-                "external_id": "garden/0001",
-                "record_kind": "thread",
-                "anchor": "m2",
-            },
-        ]
+        assert document != world.thread
+        evidence = [{"record_id": document}, {"record_id": world.thread, "anchor": "m2"}]
         recorded = ok(await post(evidence=evidence), 201)
     assert [e["record_kind"] for e in recorded["evidence"]] == ["document", "thread"]
     assert await scalar(db, "SELECT count(*) FROM knowledge_item") == 1
@@ -689,7 +685,7 @@ async def test_evidence_and_participants_are_checked(app: FastAPI, db: Conn, wor
 
 async def test_writes_need_the_ingest_scope(app: FastAPI, world: World) -> None:
     async with http_client(app, world.tokens["reader"]) as http:
-        response = await http.post(DECISIONS, json=correction())
+        response = await http.post(DECISIONS, json=correction(world))
     refused(response, 403, "insufficient_scope")
 
     async with mcp_client(app, world.tokens["reader"]) as client:
@@ -701,11 +697,11 @@ async def test_a_token_limited_to_one_workspace_writes_only_there(
     app: FastAPI, db: Conn, world: World
 ) -> None:
     async with http_client(app, world.tokens["writer"]) as http:
-        alpha_item = ok(await http.post(DECISIONS, json=correction()), 201)["id"]
+        alpha_item = ok(await http.post(DECISIONS, json=correction(world)), 201)["id"]
 
     beta = "/v1/workspaces/beta/decisions"
     async with http_client(app, world.tokens["beta_writer"]) as http:
-        assert refused(await http.post(DECISIONS, json=correction()), 404, "not_found") == (
+        assert refused(await http.post(DECISIONS, json=correction(world)), 404, "not_found") == (
             "No such workspace."
         )
         for action in ("retract", "close"):
@@ -714,9 +710,11 @@ async def test_a_token_limited_to_one_workspace_writes_only_there(
             assert message == "No such knowledge item."
         # An alpha record cited from beta is not found; a beta record is.
         alpha_record = [{"record_id": world.thread, "anchor": "m1"}]
-        refused(await http.post(beta, json=correction(evidence=alpha_record)), 404, "not_found")
-        here = [{"source": "chat", "external_id": "kiln/0001", "anchor": "m1"}]
-        beta_item = ok(await http.post(beta, json=correction(evidence=here)), 201)
+        refused(
+            await http.post(beta, json=correction(world, evidence=alpha_record)), 404, "not_found"
+        )
+        here = [{"record_id": world.beta_thread, "anchor": "m1"}]
+        beta_item = ok(await http.post(beta, json=correction(world, evidence=here)), 201)
         assert beta_item["workspace"] == "beta"
         # Linking across workspaces finds no item to link.
         response = await http.post(
@@ -725,8 +723,10 @@ async def test_a_token_limited_to_one_workspace_writes_only_there(
         assert refused(response, 404, "not_found") == "No such knowledge item."
 
     async with mcp_client(app, world.tokens["beta_writer"]) as client:
-        result = await client.call_tool("retract_decision", {"item_id": alpha_item})
-        recorded = await client.call_tool("record_decision", {"workspace": "alpha", **correction()})
+        result = await client.call_tool("retract_decision", {"id": alpha_item})
+        recorded = await client.call_tool(
+            "record_decision", {"workspace": "alpha", **correction(world)}
+        )
     assert result.is_error is True
     assert recorded.is_error is True
     for each, text in ((result, "No such knowledge item."), (recorded, "No such workspace.")):
@@ -748,6 +748,7 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
             await http.post(
                 DECISIONS,
                 json=correction(
+                    world,
                     statement="Distribute marigolds.",
                     participants=[str(world.person)],
                     supersedes=[{"item_id": str(old)}],
@@ -759,7 +760,7 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
         active = await client.call_tool("list_decisions", {"query": "marigolds"})
         assert not active.is_error
         assert [i["id"] for i in active.structured_content["items"]] == [new]
-        result = await client.call_tool("get_decision", {"item_id": str(old)})
+        result = await client.call_tool("get_decision", {"id": str(old)})
         assert not result.is_error
         assert [i["id"] for i in result.structured_content["chain"]] == [str(old), new]
         chat = await scalar(
@@ -769,7 +770,7 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
             world.alpha,
         )
         await expire_source(db, chat, as_of=SAID + timedelta(days=4))
-        expired = await client.call_tool("get_decision", {"item_id": new})
+        expired = await client.call_tool("get_decision", {"id": new})
         assert expired.structured_content["item"]["evidence"][0]["record_state"] == "expired"
         assert expired.structured_content["item"]["evidence"][0]["anchor"] == "m2"
 
@@ -778,19 +779,19 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
     params = {"query": "marigolds", "mode": "lexical", "kinds": "decision"}
     async with http_client(app, world.tokens["reader"]) as http:
         found = ok(await http.get("/v1/search", params=params))
-        assert found["hits"] == []
+        assert found["items"] == []
         assert [i["id"] for i in found["decisions"]] == [new]
         assert found["decisions"][0]["evidence"][0]["anchor"] == "m2"
         for exclusions in (
             {"persons": str(world.beta_person)},
             {"sources": "other"},
-            {"repositories": "chat"},
         ):
             assert ok(await http.get("/v1/search", params=params | exclusions))["decisions"] == []
+        # Its evidence is in the source chat: that filter keeps it.
+        of_chat = ok(await http.get("/v1/search", params=params | {"sources": "chat"}))
+        assert [i["id"] for i in of_chat["decisions"]] == [new]
         assert (
-            ok(await http.get("/v1/decisions", params={"person_ids": str(world.beta_person)}))[
-                "items"
-            ]
+            ok(await http.get("/v1/decisions", params={"persons": str(world.beta_person)}))["items"]
             == []
         )
     async with http_client(app, world.tokens["beta_writer"]) as http:

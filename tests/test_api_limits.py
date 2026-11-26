@@ -353,7 +353,7 @@ def test_an_mcp_call_of_a_read_tool_spends_the_read_budget(
     for name in ("status", "search"):
         response = client.post(MCP_PATH, json=tools_call(name), headers=headers)
         assert response.status_code == 200, response.text
-    response = client.post(MCP_PATH, json=tools_call("read_source"), headers=headers)
+    response = client.post(MCP_PATH, json=tools_call("get_file"), headers=headers)
     assert error_of(response, 429, "rate_limited")["message"].startswith("Too many reads")
     # Every MCP request is counted as a read before its body is read: a write call too.
     response = client.post(MCP_PATH, json=tools_call("record_decision"), headers=headers)
@@ -391,7 +391,7 @@ def test_an_mcp_write_call_passes_with_rate_limits_off(
 
 def test_the_write_tools_are_add_document_and_the_decision_tools() -> None:
     decision_tools = {tool.name for tool in DECISION_WRITE_TOOLS}
-    assert {"add_document", "put_project", *decision_tools} == WRITE_TOOLS
+    assert {"put_document", "put_project", *decision_tools} == WRITE_TOOLS
     assert len(WRITE_TOOLS) == 6
 
 

@@ -56,4 +56,4 @@ brew untap npavlov/memini
 
 `memini workspace list` shows the workspaces your token can read, or reports that there are none yet. “Cannot read” usually means the token file path is wrong. For a refused token (exit 5), ask the operator to check its expiry, workspace and scope. For a connection failure (exit 3), check the server URL and any required VPN.
 
-Once you see a workspace, use `memini search "archive retention" --workspace demo --limit 3`, replacing `demo` with its name. Each result identifies the source of the matching text. [CLI reference](cli.md)
+Once you see a workspace, use `memini search "archive retention" --workspaces demo --limit 3`, replacing `demo` with its name. Each result identifies the source of the matching text. [CLI reference](cli.md)

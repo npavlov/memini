@@ -31,7 +31,7 @@ DEFAULT_RETENTION_BATCH: Final = 1000
 type Conn = AsyncConnection[TupleRow]
 
 ExpiryRule = Literal["occurred_at", "deleted_at"]
-"""What makes a record expire: its ``occurred_at``, or for a git source its ``deleted_at``."""
+"""What makes a record expire: its ``occurred_at``, or for a repository its ``deleted_at``."""
 
 _SOURCE: Final = """
 SELECT workspace_id, kind, retention_days,
@@ -70,7 +70,7 @@ class RetentionResult:
     retention_days: int | None
     """``None``: the source keeps its records; nothing was deleted."""
     cutoff: datetime | None
-    """Records older than this expired: by ``occurred_at``, or for a git source by
+    """Records older than this expired: by ``occurred_at``, or for a repository by
     ``deleted_at``."""
     rule: ExpiryRule | None
     removed: RemovalCounts
@@ -91,7 +91,7 @@ async def expire_source(
 
     A record expires when it is older than ``retention_days`` before ``as_of`` (the database clock
     by default): for a push or mcp source when its ``occurred_at`` is, live or a tombstone; for a
-    git source when it is a tombstone deleted that long ago (a file of the tree at the pinned
+    repository when it is a tombstone deleted that long ago (a file of the tree at the pinned
     commit is current whatever its age). Expired records that knowledge evidence cites get an
     ``expired_record`` row in the same transaction, so their evidence reads as expired; nothing
     else keeps a trace of them.
@@ -121,7 +121,7 @@ async def expire_source(
     if days is None or cutoff is None:
         return RetentionResult(source_id, None, None, None, RemovalCounts(), 0, 0)
 
-    rule: ExpiryRule = "deleted_at" if kind == "git" else "occurred_at"
+    rule: ExpiryRule = "deleted_at" if kind == "repository" else "occurred_at"
     select = _EXPIRED_TOMBSTONES if rule == "deleted_at" else _EXPIRED_BY_TIME
     run = current_run()
     if run is not None:

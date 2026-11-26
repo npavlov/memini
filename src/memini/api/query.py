@@ -4,12 +4,11 @@ results (:mod:`memini.query`).
 | Route | MCP tool | Does |
 |---|---|---|
 | ``GET /search`` | ``search`` | ranked search over every kind of record |
-| ``GET /search/code`` | ``search_code`` | code search: semantic, exact, regex, symbol |
-| ``GET /symbols`` | ``get_symbol`` | definitions of a symbol, with location and code |
-| ``GET …/files/{path}`` | ``read_source`` | a file, lines of it, or a directory |
+| ``GET /search/code`` | ``search_code`` | code search: semantic, exact, regex, symbol, prefix |
+| ``GET …/files/{path}`` | ``get_file`` | a file, lines of it, or a directory |
 | ``GET /commits`` | ``list_commits`` | commit history, read from the mirrors on demand |
 
-``…`` is ``/workspaces/{workspace}/sources/{source}``: the repository is a git source.
+``…`` is ``/workspaces/{workspace}/sources/{source}``: the source is a repository.
 
 Every route needs the ``read`` scope and reads through the caller's
 :class:`~memini.auth.ReadFilter`. Arguments are query parameters with the names of the tool's
@@ -37,19 +36,16 @@ from memini.api.errors import ApiError
 from memini.query import (
     CodeSearchArguments,
     CommitList,
+    GetFileArguments,
+    GetFileQuery,
     ListCommitsArguments,
     QueryError,
     QueryServices,
-    ReadSourceArguments,
-    ReadSourceQuery,
     SearchArguments,
     SearchResult,
     SourceRead,
-    SymbolArguments,
-    SymbolResult,
-    run_get_symbol,
+    run_get_file,
     run_list_commits,
-    run_read_source,
     run_search,
     run_search_code,
 )
@@ -84,7 +80,8 @@ def build_query_router() -> APIRouter:
         """Ranked search over code, threads, meetings and documents the token may read: the MCP
         ``search`` tool. Each hit carries its source kind, locator, time and snippet; a hit of a
         thread, a meeting or a document also its ``anchor`` in the record, a ``link`` to that
-        place and the chunk's time ``at``. ``record_id`` with ``anchor`` is a knowledge evidence
+        place and the chunk's time ``chunk_occurred_at``. ``record_id`` with ``anchor`` is a
+        knowledge evidence
         reference, as ``POST …/decisions`` takes it."""
         try:
             return await run_search(conn, services, access, arguments)
@@ -99,22 +96,9 @@ def build_query_router() -> APIRouter:
         conn: Connection,
     ) -> SearchResult:
         """Code search, the MCP ``search_code`` tool: ``semantic`` (the default), ``exact``,
-        ``regex`` or ``symbol``. Hits carry repo@sha:path#lines."""
+        ``regex``, ``symbol`` or ``symbol_prefix``. Hits carry repo@sha:path#lines."""
         try:
             return await run_search_code(conn, services, access, arguments)
-        except QueryError as error:
-            raise _api_error(error) from None
-
-    @router.get("/symbols", summary="Find definitions of a symbol")
-    async def get_symbol(
-        arguments: Annotated[SymbolArguments, Query()],
-        access: ReadAccess,
-        services: Services,
-        conn: Connection,
-    ) -> SymbolResult:
-        """Definitions of a symbol by name or qualified name, the MCP ``get_symbol`` tool."""
-        try:
-            return await run_get_symbol(conn, services, access, arguments)
         except QueryError as error:
             raise _api_error(error) from None
 
@@ -126,28 +110,29 @@ def build_query_router() -> APIRouter:
         workspace: str,
         source: str,
         path: str,
-        arguments: Annotated[ReadSourceQuery, Query()],
+        arguments: Annotated[GetFileQuery, Query()],
         access: ReadAccess,
         services: Services,
         conn: Connection,
     ) -> SourceRead:
-        """A file, a line range or a directory listing from the mirror of a git source, the MCP
-        ``read_source`` tool. ``path`` is relative to the repository root (empty for the root).
+        """A file, a line range or a directory listing from the mirror of a repository, the MCP
+        ``get_file`` tool. ``path`` is relative to the repository root (empty for the root).
         By default at the pinned commit of the default tracked branch; ``ref`` takes a branch or
         tag name, a full ref or a full commit id. 422 ``invalid_path`` for an absolute path or
         one with ``..``; 404 when there is nothing there."""
         # The query string is validated; the path is checked by the reader (invalid_path), and a
         # name of any length is looked up and not found, as on the other routes.
-        read = ReadSourceArguments.model_construct(
-            repository=source,
+        read = GetFileArguments.model_construct(
+            source=source,
             path=path,
             workspace=workspace,
             ref=arguments.ref,
             start_line=arguments.start_line,
             end_line=arguments.end_line,
+            include_sensitive=arguments.include_sensitive,
         )
         try:
-            return await run_read_source(conn, services, access, read)
+            return await run_get_file(conn, services, access, read)
         except QueryError as error:
             raise _api_error(error) from None
 
@@ -160,7 +145,7 @@ def build_query_router() -> APIRouter:
     ) -> CommitList:
         """Who changed what, the MCP ``list_commits`` tool: the history of the repositories the
         token may read, newest first, read from their mirrors when asked and never stored. A list
-        cut by a bound is ``truncated`` and gives ``next_until``, the ``until`` of the call that
+        cut by a bound is ``truncated`` and gives ``next_cursor``, the ``cursor`` of the call that
         continues it. 422 ``commits_timeout`` for walks past the time limit: narrow the
         question."""
         try:

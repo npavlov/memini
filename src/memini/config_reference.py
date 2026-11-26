@@ -106,7 +106,7 @@ GROUPS: Final[tuple[Group, ...]] = (
         "Database",
         ("database_",),
         "The Postgres database, with pgvector, that the service and the operator commands use."
-        " Backup is a dump of it; the mirrors of git sources are fetched again.",
+        " Backup is a dump of it; the mirrors of repositories are fetched again.",
     ),
     Group(
         "HTTP server and request limits",
@@ -147,7 +147,7 @@ GROUPS: Final[tuple[Group, ...]] = (
         "Embeddings",
         ("embedding_",),
         "Off until `embedding_provider` is set: the service starts without them, but does not"
-        " sync git sources, and search refuses with a message that names the setting."
+        " sync repositories, and search refuses with a message that names the setting."
         " `openai_compatible` sends the text of chunks and queries to the API at `embedding_url`"
         " (Ollama, llama.cpp, vLLM or a cloud service): which endpoint, on this machine or not, is"
         " your explicit choice. `local` runs an ONNX model in the process; it needs the optional"
@@ -190,7 +190,7 @@ GROUPS: Final[tuple[Group, ...]] = (
     Group(
         "Git connector",
         ("git_",),
-        "The service keeps a bare mirror of every git source and reads code from it. Remote"
+        "The service keeps a bare mirror of every repository and reads code from it. Remote"
         " sources use https or ssh; plain http and local paths are refused unless allowed here."
         " Credentials are global for now: one https token and one ssh key.",
     ),

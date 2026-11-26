@@ -37,7 +37,7 @@ class WorkspaceInfo(BaseModel):
 
 
 class WorkspaceList(BaseModel):
-    workspaces: list[WorkspaceInfo] = Field(description="By name.")
+    items: list[WorkspaceInfo] = Field(description="By name.")
 
 
 class NewWorkspace(BaseModel):
@@ -55,7 +55,7 @@ def build_workspaces_router() -> APIRouter:
     async def list_workspaces(access: ReadAccess, conn: Connection) -> WorkspaceList:
         """The workspaces the token may read: every one, or the one the token is limited to."""
         found = await workspaces.list_workspaces(conn, access)
-        return WorkspaceList(workspaces=[WorkspaceInfo.of(workspace) for workspace in found])
+        return WorkspaceList(items=[WorkspaceInfo.of(workspace) for workspace in found])
 
     @router.post("", status_code=201, summary="Create a workspace")
     async def create_workspace(

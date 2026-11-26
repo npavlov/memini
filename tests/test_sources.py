@@ -378,7 +378,7 @@ WRITES = [
         "POST",
         "/v1/workspaces/alpha/sources",
         {
-            "kind": "git",
+            "kind": "repository",
             "name": "app",
             "location": "https://git.example.invalid/a.git",
             "refs": ["main"],
@@ -451,7 +451,7 @@ def test_the_schema_documents_the_administration_routes(client: TestClient) -> N
         "/v1/workspaces/{workspace}/sources/{source}/streams": {"get": "200"},
         "/v1/workspaces/{workspace}/sources/{source}/sync": {"post": "202"},
         "/v1/workspaces/{workspace}/runs": {"get": "200"},
-        "/v1/runs/{run_id}": {"get": "200"},
+        "/v1/runs/{id}": {"get": "200"},
     }
     for path, operations in expected.items():
         for method, status in operations.items():

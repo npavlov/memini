@@ -140,7 +140,7 @@ async def job_handlers(
     mirrors can be kept: the git executable is on ``PATH`` and the mirror directory can be created
     and written. Code is synced only into an index: without embeddings there is none to write, and
     records synced without their chunks would be left out of the index once embeddings are set,
-    since a sync writes only what changed. Otherwise a warning says why git sources are not
+    since a sync writes only what changed. Otherwise a warning says why repositories are not
     synced, and the scheduler leaves their streams alone.
 
     ``embedder`` is the service's, which the caller closes; without it, one is created from the
@@ -154,7 +154,7 @@ async def job_handlers(
         try:
             embedder = create_embedder(settings)
         except EmbeddingsNotConfiguredError as error:
-            log.warning("git sources are not synced: %s", error)
+            log.warning("repositories are not synced: %s", error)
     gate: LlmGate | None = None
     try:
         handlers[MCP_SYNC] = _mcp_handler(settings, pool, embedder)
@@ -181,7 +181,7 @@ async def job_handlers(
                     retention_batch=settings.retention_batch_size,
                 )
             else:
-                log.warning("git sources are not synced: %s", problem)
+                log.warning("repositories are not synced: %s", problem)
             if settings.index_auto_rebuild:
                 code = MirrorContent(MirrorManager(options)) if problem is None else None
                 handlers[REINDEX_KIND] = reindex_handler(pool, embedder, code=code)

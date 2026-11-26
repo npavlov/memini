@@ -94,7 +94,7 @@ async def setup(client: httpx2.AsyncClient, admin: dict[str, str], **filters: An
         await client.post(
             SOURCES,
             json={
-                "kind": "git",
+                "kind": "repository",
                 "name": "repo",
                 "location": "https://git.example.invalid/team/repo.git",
                 "refs": ["main"],
@@ -164,7 +164,7 @@ async def test_filters_are_set_shown_and_changed_with_a_push_source(
     assert changed["filters"]["exclude_automated"] is True
     cleared = ok(await client.patch(f"{SOURCES}/chat", json={"filters": {}}, headers=admin))
     assert cleared["filters"]["exclude_automated"] is False
-    listed = ok(await client.get(SOURCES, headers=admin))["sources"]
+    listed = ok(await client.get(SOURCES, headers=admin))["items"]
     assert {source["name"]: source["filters"] is None for source in listed} == {
         "chat": False,
         "repo": True,

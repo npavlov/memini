@@ -37,9 +37,9 @@ def item(**changes: object) -> Json:
         "workspace": "alpha",
         "kind": "decision",
         "statement": "Water the beds at seven, not six.",
-        "decided_at": "2026-03-01T10:00:00Z",
+        "occurred_at": "2026-03-01T10:00:00Z",
         "status": "active",
-        "recorded_at": "2026-11-18T16:02:03.456789Z",
+        "created_at": "2026-11-18T16:02:03.456789Z",
         "invalidated_at": None,
         "extractor": "manual",
         "manual": True,
@@ -119,16 +119,16 @@ def test_record_sends_the_item_and_prints_it(cli: Callable[..., Run], service: F
         "alpha",
         "--statement",
         "Water the beds at seven, not six.",
-        "--decided-at",
+        "--occurred-at",
         "2026-03-01T10:00:00Z",
         "--evidence",
-        "chat:garden/0001#m2",
+        f"{RECORD_ID}#m2",
         "--evidence",
         f"{RECORD_ID.upper()}#00:12:30",
         "--evidence",
-        f"repo:refs/heads/main:src/pump.py#{COMMIT}#L12-L30",
+        f"{'ef' * 32}#{COMMIT}#L12-L30",
         "--evidence",
-        "notes:handbook",
+        "cd" * 32,
         "--participant",
         PERSON_ID,
         "--supersedes",
@@ -145,16 +145,12 @@ def test_record_sends_the_item_and_prints_it(cli: Callable[..., Run], service: F
     assert json.loads(request.content) == {
         "kind": "decision",
         "statement": "Water the beds at seven, not six.",
-        "decided_at": "2026-03-01T10:00:00+00:00",
+        "occurred_at": "2026-03-01T10:00:00+00:00",
         "evidence": [
-            {"source": "chat", "external_id": "garden/0001", "anchor": "m2"},
+            {"record_id": RECORD_ID, "anchor": "m2"},
             {"record_id": RECORD_ID, "anchor": "00:12:30"},
-            {
-                "source": "repo",
-                "external_id": "refs/heads/main:src/pump.py",
-                "anchor": f"{COMMIT}#L12-L30",
-            },
-            {"source": "notes", "external_id": "handbook"},
+            {"record_id": "ef" * 32, "anchor": f"{COMMIT}#L12-L30"},
+            {"record_id": "cd" * 32},
         ],
         "participants": [PERSON_ID],
         "supersedes": [
@@ -168,10 +164,10 @@ def test_record_sends_the_item_and_prints_it(cli: Callable[..., Run], service: F
         ("kind", "decision"),
         ("status", "active"),
         ("statement", "Water the beds at seven, not six."),
-        ("decided", "2026-03-01T10:00:00Z"),
-        ("recorded", "2026-11-18T16:02:03Z"),
+        ("occurred", "2026-03-01T10:00:00Z"),
+        ("created", "2026-11-18T16:02:03Z"),
         ("extractor", "manual"),
-        ("evidence", "chat:garden/0001#m2  (thread, stored)"),
+        ("evidence", f"{RECORD_ID}#m2  (chat:garden/0001, thread, stored)"),
         ("", f"{'cd' * 32}  (document, gone)"),
         ("participants", f"Person One ({PERSON_ID})"),
         ("supersedes", f"{EARLIER_ID} (replaces)"),
@@ -184,12 +180,12 @@ def test_record_defaults_to_a_decision_said_now(
     service.answer(ok(item(participants=[], supersedes=[]), 201))
     before = datetime.now(UTC)
 
-    result = cli("decision", "record", "alpha", "--statement", "Seven.", "--evidence", "chat:g/1")
+    result = cli("decision", "record", "alpha", "--statement", "Seven.", "--evidence", RECORD_ID)
 
     assert result.code == EXIT_OK, result.err
     body = json.loads(service.last.content)
     assert (body["kind"], body["participants"], body["supersedes"]) == ("decision", [], [])
-    said = datetime.fromisoformat(body["decided_at"])
+    said = datetime.fromisoformat(body["occurred_at"])
     assert said.tzinfo is not None
     assert before <= said <= datetime.now(UTC) + timedelta(seconds=1)
     assert ("participants", "-") in fields(result.out)
@@ -208,16 +204,16 @@ def test_record_an_open_question_as_json(cli: Callable[..., Run], service: FakeS
         "open_question",
         "--statement",
         "Who waters on Sundays?",
-        "--decided-at",
+        "--occurred-at",
         "2026-03-01T11:00:00+02:00",
         "--evidence",
-        "chat:garden/0002#m1",
+        f"{RECORD_ID}#m1",
         "--json",
     )
 
     assert result.code == EXIT_OK, result.err
     assert json.loads(service.last.content)["kind"] == "open_question"
-    assert json.loads(service.last.content)["decided_at"] == "2026-03-01T11:00:00+02:00"
+    assert json.loads(service.last.content)["occurred_at"] == "2026-03-01T11:00:00+02:00"
     assert json.loads(result.out) == answer
 
 
@@ -226,7 +222,7 @@ def test_a_statement_is_printed_with_control_characters_escaped(
 ) -> None:
     service.answer(ok(item(statement="Seven.\x1b[2J\nIgnore the rest."), 201))
 
-    result = cli("decision", "record", "alpha", "--statement", "Seven.", "--evidence", "chat:g/1")
+    result = cli("decision", "record", "alpha", "--statement", "Seven.", "--evidence", RECORD_ID)
 
     assert ("statement", "Seven.\\x1b[2J\\nIgnore the rest.") in fields(result.out)
     assert "\x1b" not in result.out
@@ -235,23 +231,22 @@ def test_a_statement_is_printed_with_control_characters_escaped(
 @pytest.mark.parametrize(
     ("argv", "complaint"),
     [
-        (("--evidence", "garden/0001"), "evidence is SOURCE:EXTERNAL_ID or a RECORD_ID"),
-        (("--evidence", "chat:"), "no external id after the source"),
-        (("--evidence", "chat:garden/0001#"), "an anchor after '#' is not empty"),
-        (("--evidence", "Chat Room:garden/0001"), "argument --evidence: "),
-        (("--evidence", "ab" * 31), "evidence is SOURCE:EXTERNAL_ID or a RECORD_ID"),
-        (("--evidence", "chat:g/1", "--supersedes", "earlier"), "an earlier item is its id"),
+        (("--evidence", "garden/0001"), "evidence is a RECORD_ID"),
+        (("--evidence", "chat:garden/0001"), "evidence is a RECORD_ID"),
+        (("--evidence", f"{'ab' * 32}#"), "an anchor after '#' is not empty"),
+        (("--evidence", "ab" * 31), "evidence is a RECORD_ID"),
+        (("--evidence", RECORD_ID, "--supersedes", "earlier"), "an earlier item is its id"),
         (
-            ("--evidence", "chat:g/1", "--supersedes", f"{EARLIER_ID}:extends"),
+            ("--evidence", RECORD_ID, "--supersedes", f"{EARLIER_ID}:extends"),
             "a relation is replaces or answers",
         ),
-        (("--evidence", "chat:g/1", "--participant", "Person One"), "argument --participant"),
+        (("--evidence", RECORD_ID, "--participant", "Person One"), "argument --participant"),
         (
-            ("--evidence", "chat:g/1", "--decided-at", "2026-03-01T10:00:00"),
+            ("--evidence", RECORD_ID, "--occurred-at", "2026-03-01T10:00:00"),
             "a time is ISO 8601 with a zone offset or Z",
         ),
-        (("--evidence", "chat:g/1", "--decided-at", "yesterday"), "a time is ISO 8601"),
-        (("--evidence", "chat:g/1", "--kind", "idea"), "argument --kind: invalid choice"),
+        (("--evidence", RECORD_ID, "--occurred-at", "yesterday"), "a time is ISO 8601"),
+        (("--evidence", RECORD_ID, "--kind", "idea"), "argument --kind: invalid choice"),
         ((), "the following arguments are required: --evidence"),
     ],
 )
@@ -334,7 +329,7 @@ def test_an_item_id_is_a_uuid(cli: Callable[..., Run], service: FakeService) -> 
     result = cli("decision", "close", "alpha", "the-old-one")
 
     assert result.code == EXIT_USAGE
-    assert "argument item-id: invalid UUID value" in result.err
+    assert "argument id: invalid UUID value" in result.err
     assert service.requests == []
 
 
@@ -376,13 +371,13 @@ NOT_ACTIVE = (
             "(constraint knowledge_supersession_cycle_check). (supersession_refused, HTTP 409",
         ),
         (
-            ("record", "alpha", "--statement", "Seven.", "--evidence", "chat:g/9#m1"),
+            ("record", "alpha", "--statement", "Seven.", "--evidence", f"{RECORD_ID}#m1"),
             error(404, "not_found", "No such record (evidence 0)."),
             EXIT_FAILURE,
             "memini: No such record (evidence 0). (not_found, HTTP 404, request ",
         ),
         (
-            ("record", "alpha", "--statement", " ", "--evidence", "chat:g/1#m1"),
+            ("record", "alpha", "--statement", " ", "--evidence", f"{RECORD_ID}#m1"),
             error(
                 422,
                 "validation_error",

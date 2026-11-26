@@ -23,19 +23,31 @@ mirrors and writes run reports; no database credentials leave it::
                 [--json] FILE|-
     memini runs <workspace> [--source NAME] [--stream KEY] [--limit N] [--before CURSOR]
     memini run <run-id>
-    memini status [--gate]
     memini token create --scope {read,ingest,admin,sensitive} [--scope ...] [--workspace NAME]
                         [--name LABEL] [--expires-in DURATION]
     memini token list | revoke <id-or-prefix>
-    memini search <query> [--code] [--mode MODE] [--workspace NAME ...] ...
-    memini meetings [QUERY] [--person ME_ID_OR_ALIAS] [--since TIME] [--until TIME] ...
-    memini messages [QUERY] [--person ME_ID_OR_ALIAS] [--role {recipient,mention,author} ...] ...
-    memini forget <workspace> (--record ID | --source NAME --external-id ID [--kind KIND])
-    memini sensitive mark|unmark <workspace> (--record ID | --source NAME --external-id ID) ...
-    memini sensitive list <workspace>
+    memini decision record|supersede|close|retract <workspace> ...
+    memini forget <workspace> <id>
+    memini sensitive mark|unmark <workspace> <id> ... | list <workspace>
     memini extract <workspace> [--source NAME ...] [--since TIME] [--dry-run]
     memini person list|show|lookup|add|rename|merge|split|me <workspace> ...
     memini person alias add|remove <workspace> <person-id> ...
+
+Read commands are the MCP read tools one to one: the tool's name with dashes, its arguments as
+options with dashes, a list filter repeated for more values (:mod:`memini.cli.reading`)::
+
+    memini search <query> [--mode MODE] [--workspaces NAME ...] [--persons PERSON ...] ...
+    memini search-code <query> [--mode MODE] [--sources NAME ...] [--paths GLOB ...] ...
+    memini get-file <source> [<path>] [--workspace NAME] [--ref REF] [--start-line N] ...
+    memini list-commits [--sources NAME ...] [--persons PERSON ...] [--query TEXT] ...
+    memini list-messages [--persons PERSON ...] [--roles ROLE ...] [--query TEXT] ...
+    memini get-thread <id>
+    memini list-meetings [--persons PERSON ...] [--query TEXT] [--since TIME] ...
+    memini get-meeting <id> [--include-transcript]
+    memini list-decisions [--persons PERSON ...] [--since TIME] [--history] ...
+    memini get-decision <id>
+    memini get-catalog | get-project <project> | get-domain <project> <domain> [--workspace NAME]
+    memini status [--gate]
 
 They read ``MEMINI_URL`` (default ``http://127.0.0.1:6364``) and the token from ``MEMINI_TOKEN`` or
 ``MEMINI_TOKEN_FILE`` (:mod:`memini.cli.client`); ``--url`` and ``--token-file`` override them.
@@ -159,6 +171,8 @@ from memini import __version__
 from memini.cli import (
     admin,
     bench,
+    catalog,
+    code,
     comms,
     credentials,
     decisions,
@@ -399,12 +413,17 @@ def build_parser() -> argparse.ArgumentParser:
     commands = Commands(subparsers.add_parser)
 
     # --- Client commands: HTTP clients of the running service ------------------------------------
+    # Read commands, one per MCP tool, with its name and its arguments as options.
+    search.add_commands(commands)
+    code.add_commands(commands)
+    comms.add_commands(commands)
+    decisions.add_read_commands(commands)
+    catalog.add_commands(commands)
+    status.add_commands(commands)
+    # Admin commands, grouped by noun.
     sources.add_commands(commands)
     runs.add_commands(commands)
-    status.add_commands(commands)
     tokens.add_commands(commands)
-    search.add_commands(commands)
-    comms.add_commands(commands)
     decisions.add_commands(commands)
     extract.add_commands(commands)
     forget.add_commands(commands)

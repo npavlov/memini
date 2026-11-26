@@ -2,7 +2,7 @@
 
 ::
 
-    memini person list <workspace> [--query TEXT] [--merged] [--limit N] [--after CURSOR]
+    memini person list <workspace> [--query TEXT] [--merged] [--limit N] [--cursor CURSOR]
     memini person show <workspace> <person-id>
     memini person lookup <workspace> {email,chat_user_id,display_name,git_author} <value>
     memini person add <workspace> <display-name> [--alias KIND=VALUE ...]
@@ -140,16 +140,16 @@ def list_command(args: argparse.Namespace, api: Api) -> int:
     body = api.get(
         _persons(args.workspace),
         {
-            "q": args.query,
+            "query": args.query,
             "merged": "true" if args.merged else None,
             "limit": args.limit,
-            "after": args.after,
+            "cursor": args.cursor,
         },
     )
     if args.json:
         print_json(body)
         return EXIT_OK
-    persons = [as_mapping(p) for p in as_list(body.get("persons"))]
+    persons = [as_mapping(p) for p in as_list(body.get("items"))]
     if not persons:
         message("no persons; ingest resolves them from records, or add one with `person add`")
         return EXIT_OK
@@ -166,14 +166,14 @@ def list_command(args: argparse.Namespace, api: Api) -> int:
             for p in persons
         ),
     )
-    following = body.get("next_after")
+    following = body.get("next_cursor")
     if isinstance(following, str):
-        message(f"more: --after {text(following)}")
+        message(f"more: --cursor {text(following)}")
     return EXIT_OK
 
 
 def show_command(args: argparse.Namespace, api: Api) -> int:
-    return _show(args, api.get(_persons(args.workspace, args.person)))
+    return _show(args, api.get(_persons(args.workspace, args.id)))
 
 
 def lookup_command(args: argparse.Namespace, api: Api) -> int:
@@ -195,13 +195,13 @@ def add_command(args: argparse.Namespace, api: Api) -> int:
 
 
 def rename_command(args: argparse.Namespace, api: Api) -> int:
-    body = api.patch(_persons(args.workspace, args.person), {"display_name": args.name})
+    body = api.patch(_persons(args.workspace, args.id), {"display_name": args.name})
     return _show(args, body)
 
 
 def alias_add_command(args: argparse.Namespace, api: Api) -> int:
     body = api.post(
-        _persons(args.workspace, args.person, "aliases"), {"kind": args.kind, "value": args.value}
+        _persons(args.workspace, args.id, "aliases"), {"kind": args.kind, "value": args.value}
     )
     if args.json:
         print_json(body)
@@ -221,24 +221,21 @@ def alias_add_command(args: argparse.Namespace, api: Api) -> int:
 
 
 def alias_remove_command(args: argparse.Namespace, api: Api) -> int:
-    path = _persons(args.workspace, args.person, "aliases", args.alias)
+    path = _persons(args.workspace, args.id, "aliases", args.alias)
     body = api.request("DELETE", path) or {}
     message(f"removed alias {args.alias}")
     return _show(args, body)
 
 
 def merge_command(args: argparse.Namespace, api: Api) -> int:
-    body = api.post(_persons(args.workspace, args.person, "merge"), {"into": args.into})
-    message(
-        f"merged person {args.person}; undo with `memini person split {args.workspace}"
-        f" {args.person}`"
-    )
+    body = api.post(_persons(args.workspace, args.id, "merge"), {"into": args.into})
+    message(f"merged person {args.id}; undo with `memini person split {args.workspace} {args.id}`")
     return _show(args, body)
 
 
 def split_command(args: argparse.Namespace, api: Api) -> int:
-    body = api.post(_persons(args.workspace, args.person, "split"))
-    message(f"split person {args.person} off; it is a person of its own again")
+    body = api.post(_persons(args.workspace, args.id, "split"))
+    message(f"split person {args.id} off; it is a person of its own again")
     return _show(args, body)
 
 
@@ -263,7 +260,7 @@ def _workspace(parser: argparse.ArgumentParser) -> None:
 
 
 def _person(parser: argparse.ArgumentParser, help: str = "the person's id") -> None:
-    parser.add_argument("person", metavar="person-id", type=_person_id, help=help)
+    parser.add_argument("id", type=_person_id, help=help)
 
 
 def _json(parser: argparse.ArgumentParser) -> None:
@@ -289,7 +286,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_PERSON_PAGE,
         help=f"persons per page, 1 to {MAX_PERSON_PAGE} (default: {DEFAULT_PERSON_PAGE})",
     )
-    listing.add_argument("--after", metavar="CURSOR", help="the page after this cursor")
+    listing.add_argument("--cursor", metavar="CURSOR", help="the page after this cursor")
     _json(listing)
     listing.set_defaults(client=list_command)
 

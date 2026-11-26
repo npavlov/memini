@@ -43,6 +43,7 @@ from memini.db import Pool, connect, open_pool
 from memini.decisions.assign import LlmAssigner, assign_handler, assigner_name, run_assignment
 from memini.embeddings import FakeEmbedder
 from memini.evaluation.domains import LlmEvalAssigner, load_set, run_domain_eval
+from memini.ids import record_id
 from memini.jobs import ASSIGN_DOMAINS_KIND, execute_job
 from memini.jobs.queue import claim
 from memini.llm import LlmGate, create_llm_gate
@@ -256,13 +257,16 @@ async def record(
     **place: Any,
 ) -> Json:
     """A decision recorded by hand, citing message m1 of the thread."""
-    body = {
-        "statement": statement,
-        "decided_at": at.isoformat(),
-        "evidence": [{"source": source, "external_id": external_id, "anchor": "m1"}],
-        **place,
-    }
     async with http_client(app, w.tokens["writer"]) as http:
+        found = ok(await http.get(f"/v1/workspaces/harbor/sources/{source}"))
+        body = {
+            "statement": statement,
+            "occurred_at": at.isoformat(),
+            "evidence": [
+                {"record_id": record_id(UUID(found["id"]), "thread", external_id), "anchor": "m1"}
+            ],
+            **place,
+        }
         return ok(await http.post(DECISIONS, json=body), 201)
 
 
@@ -575,8 +579,8 @@ async def test_search_by_a_project_or_domain_finds_the_threads_that_belong_to_it
             assert not result.is_error, result.content
             assert result.structured_content is not None
             over_mcp: Json = result.structured_content
-            listed = sorted({hit["external_id"] for hit in over_http["hits"]})
-            assert sorted({hit["external_id"] for hit in over_mcp["hits"]}) == listed
+            listed = sorted({hit["external_id"] for hit in over_http["items"]})
+            assert sorted({hit["external_id"] for hit in over_mcp["items"]}) == listed
             return listed
 
         assert await found() == ["berth", "booking", "canteen", "crew", "pilot"]

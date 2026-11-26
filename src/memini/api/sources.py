@@ -11,7 +11,7 @@
 | ``GET …/sources/{source}/streams`` | read | its streams with lag, last run and queued sync |
 | ``POST …/sources/{source}/sync`` | admin | enqueue a sync of its streams (202) |
 | ``POST …/sources/{source}/prune`` | admin | apply its filters to its stored records |
-| ``GET …/sources/{source}/preview`` | read | count what a git source would index |
+| ``GET …/sources/{source}/preview`` | read | count what a repository would index |
 
 A token limited to one workspace sees and changes nothing in another: such a workspace answers
 404, as one that does not exist. Errors are translated by :mod:`memini.api.admin_errors`.
@@ -215,11 +215,11 @@ class FiltersBody(BaseModel):
 
 
 class NewSource(BaseModel):
-    """A git source to add."""
+    """A repository to add."""
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["git"] = Field(description="The kind of source: git.")
+    kind: Literal["repository"] = Field(description="The kind of source: git.")
     name: str = Field(pattern=HANDLE_REGEX, description=_NAME)
     location: str = Field(min_length=1, max_length=MAX_LOCATION_LENGTH, description=_LOCATION)
     refs: list[str] = Field(min_length=1, max_length=MAX_REFS, description=_REFS)
@@ -229,8 +229,8 @@ class NewSource(BaseModel):
         le=int(MAX_SCHEDULE.total_seconds()),
         description=_SCHEDULE,
     )
-    include: _Patterns = Field(default_factory=list[str], description=_PATTERNS)
-    exclude: _Patterns = Field(default_factory=list[str], description=_PATTERNS)
+    include_paths: _Patterns = Field(default_factory=list[str], description=_PATTERNS)
+    exclude_paths: _Patterns = Field(default_factory=list[str], description=_PATTERNS)
     builtin_excludes: bool = Field(default=True, strict=True, description=_BUILTIN_EXCLUDES)
     visibility: Visibility = Field(default="private", description=_VISIBILITY)
     retention_days: int | None = Field(
@@ -244,8 +244,8 @@ class NewSource(BaseModel):
             location=self.location,
             refs=self.refs,
             schedule=_seconds(self.schedule_seconds),
-            include=self.include,
-            exclude=self.exclude,
+            include=self.include_paths,
+            exclude=self.exclude_paths,
             builtin_excludes=self.builtin_excludes,
             visibility=self.visibility,
             retention_days=self.retention_days,
@@ -416,9 +416,9 @@ class NewMcpSource(BaseModel):
 
 
 class SourceChanges(BaseModel):
-    """Settings to change. A setting left out stays as it is; ``refs``, ``include`` and
-    ``exclude`` replace the whole list, and ``filters`` every filter rule of a push source. The
-    location cannot change: a different repository is a different source, so delete this one and
+    """Settings to change. A setting left out stays as it is; ``refs``, ``include_paths`` and
+    ``exclude_paths`` replace the whole list, and ``filters`` every filter rule of a push source.
+    The location cannot change: a different repository is a different source, so delete this one and
     add a new one."""
 
     model_config = ConfigDict(extra="forbid")
@@ -436,8 +436,8 @@ class SourceChanges(BaseModel):
         le=int(MAX_SCHEDULE.total_seconds()),
         description=_SCHEDULE + " A new schedule starts now.",
     )
-    include: _Patterns | None = Field(default=None, description=_PATTERNS)
-    exclude: _Patterns | None = Field(default=None, description=_PATTERNS)
+    include_paths: _Patterns | None = Field(default=None, description=_PATTERNS)
+    exclude_paths: _Patterns | None = Field(default=None, description=_PATTERNS)
     builtin_excludes: bool | None = Field(default=None, strict=True, description=_BUILTIN_EXCLUDES)
     visibility: Visibility | None = Field(default=None, description=_VISIBILITY)
     retention_days: int | None = Field(
@@ -476,8 +476,8 @@ class SourceChanges(BaseModel):
         "endpoint",
         "recipe",
         "window",
-        "include",
-        "exclude",
+        "include_paths",
+        "exclude_paths",
         "builtin_excludes",
         "visibility",
         "llm_policy",
@@ -497,8 +497,12 @@ class SourceChanges(BaseModel):
             name=self.name if "name" in given and self.name is not None else unset,
             refs=self.refs if "refs" in given and self.refs is not None else unset,
             schedule=_seconds(self.schedule_seconds) if "schedule_seconds" in given else unset,
-            include=self.include if "include" in given and self.include is not None else unset,
-            exclude=self.exclude if "exclude" in given and self.exclude is not None else unset,
+            include=self.include_paths
+            if "include_paths" in given and self.include_paths is not None
+            else unset,
+            exclude=self.exclude_paths
+            if "exclude_paths" in given and self.exclude_paths is not None
+            else unset,
             builtin_excludes=(
                 self.builtin_excludes
                 if "builtin_excludes" in given and self.builtin_excludes is not None
@@ -585,8 +589,8 @@ class SourceInfo(BaseModel):
     schedule_seconds: float | None = Field(
         description="Its streams sync this often; null: only when triggered."
     )
-    include: list[str] = Field(description=_PATTERNS)
-    exclude: list[str]
+    include_paths: list[str] = Field(description=_PATTERNS)
+    exclude_paths: list[str]
     builtin_excludes: bool | None = Field(
         description=_BUILTIN_EXCLUDES + " null for other kinds than git."
     )
@@ -613,8 +617,8 @@ class SourceInfo(BaseModel):
             location=None if git is None else git.location,
             refs=list(source.refs),
             schedule_seconds=None if source.schedule is None else source.schedule.total_seconds(),
-            include=[] if git is None else list(git.include),
-            exclude=[] if git is None else list(git.exclude),
+            include_paths=[] if git is None else list(git.include),
+            exclude_paths=[] if git is None else list(git.exclude),
             builtin_excludes=None if git is None else git.builtin_excludes,
             visibility=source.visibility,
             retention_days=source.retention_days,
@@ -627,7 +631,7 @@ class SourceInfo(BaseModel):
 
 
 class SourceList(BaseModel):
-    sources: list[SourceInfo] = Field(description="By name.")
+    items: list[SourceInfo] = Field(description="By name.")
 
 
 class LastRun(BaseModel):
@@ -718,7 +722,7 @@ class StreamInfo(BaseModel):
 
 
 class StreamList(BaseModel):
-    streams: list[StreamInfo] = Field(description="By key.")
+    items: list[StreamInfo] = Field(description="By key.")
 
 
 class SyncRequest(BaseModel):
@@ -848,7 +852,8 @@ def _prune_errors() -> Generator[None]:
         raise ApiError(
             409,
             "not_prunable",
-            "A git source has no filters: its include and exclude rules apply at its next sync.",
+            "A repository has no filters: its include_paths and exclude_paths apply at its next"
+            " sync.",
         ) from None
     except prune.PruneConflictError:
         raise ApiError(
@@ -898,7 +903,7 @@ def build_sources_router() -> APIRouter:
         may not read it."""
         with admin_errors():
             found = await sources.list_sources(conn, access, workspace)
-        return SourceList(sources=[SourceInfo.of(source) for source in found])
+        return SourceList(items=[SourceInfo.of(source) for source in found])
 
     @router.post("", status_code=201, summary="Add a source")
     async def create_source(
@@ -909,7 +914,7 @@ def build_sources_router() -> APIRouter:
         policy: McpPolicy,
         conn: Connection,
     ) -> SourceInfo:
-        """Add a git source with one stream per ref, a push source, or an mcp source with one
+        """Add a repository with one stream per ref, a push source, or an mcp source with one
         stream per stream key. A git location is checked by the rules the mirror enforces (422
         ``invalid_source`` names the setting and why, never the value), not fetched: the first
         sync creates the mirror. A push source takes batches of records at ``POST
@@ -978,7 +983,7 @@ def build_sources_router() -> APIRouter:
         """The streams of a source with their lag, newest run and queued or running sync."""
         with admin_errors():
             found = await sources.list_streams(conn, access, workspace, source)
-        return StreamList(streams=[StreamInfo.of(stream) for stream in found])
+        return StreamList(items=[StreamInfo.of(stream) for stream in found])
 
     @router.post("/{source}/sync", status_code=202, summary="Sync a source now")
     async def sync_source(
@@ -1001,7 +1006,7 @@ def build_sources_router() -> APIRouter:
             ]
         )
 
-    @router.get("/{source}/preview", summary="Preview what a git source indexes")
+    @router.get("/{source}/preview", summary="Preview what a repository indexes")
     async def preview_source(
         workspace: str,
         source: str,
@@ -1018,11 +1023,11 @@ def build_sources_router() -> APIRouter:
                 " Left out: the source's first tracked ref.",
             ),
         ] = None,
-        include: Annotated[
+        include_paths: Annotated[
             list[str] | None,
             Query(description=_PATTERNS + " Left out: the source's own; an empty value clears."),
         ] = None,
-        exclude: Annotated[
+        exclude_paths: Annotated[
             list[str] | None,
             Query(description=_PATTERNS + " Left out: the source's own; an empty value clears."),
         ] = None,
@@ -1032,10 +1037,10 @@ def build_sources_router() -> APIRouter:
     ) -> PreviewInfo:
         """Count what a sync would index at a ref, with the source's rules or with the ones in the
         query, by extension and by top-level folder, from the source's mirror. Writes nothing; the
-        rules are not saved (``PATCH`` saves them). ``include`` and ``exclude`` repeat, one glob
-        each; an empty one (``exclude=``) stands for an empty list. 409 ``not_syncable`` for a
-        source that is not git, 409 ``not_fetched`` before its first fetch, 404 for a ref the
-        mirror lacks."""
+        rules are not saved (``PATCH`` saves them). ``include_paths`` and ``exclude_paths``
+        repeat, one glob each; an empty one (``exclude_paths=``) stands for an empty list. 409
+        ``not_syncable`` for a source that is not a repository, 409 ``not_fetched`` before its
+        first fetch, 404 for a ref the mirror lacks."""
         with admin_errors():
             found = await sources.get_source(conn, access, workspace, source)
             if found.git is None:
@@ -1043,13 +1048,13 @@ def build_sources_router() -> APIRouter:
             config = found.git
             include_rules = (
                 config.include
-                if include is None
-                else sources.check_patterns("include", [p for p in include if p])
+                if include_paths is None
+                else sources.check_patterns("include_paths", [p for p in include_paths if p])
             )
             exclude_rules = (
                 config.exclude
-                if exclude is None
-                else sources.check_patterns("exclude", [p for p in exclude if p])
+                if exclude_paths is None
+                else sources.check_patterns("exclude_paths", [p for p in exclude_paths if p])
             )
         chosen = ref or (found.refs[0] if found.refs else None)
         if chosen is None:
@@ -1090,7 +1095,7 @@ def build_sources_router() -> APIRouter:
         they exclude is deleted with its chunks; a thread loses the messages they leave out and
         gets its chunks again; the rest is left as it is. Running it again changes nothing. Pages
         of records commit one by one, so a prune that fails keeps what it pruned; the answer and
-        the run report count what it did. 409 ``not_prunable`` for a git source."""
+        the run report count what it did. 409 ``not_prunable`` for a repository."""
         pool = cast(Pool, request.app.state.pool)
         embedder = cast(QueryServices, request.app.state.services).embedder
         indexer = None if embedder is None else PayloadIndexer(embedder)

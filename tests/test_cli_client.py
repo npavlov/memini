@@ -250,7 +250,7 @@ def test_a_client_command_without_a_token_exits_2(
 def test_a_client_command_needs_no_database_url(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.answer(ok({"workspaces": []}))
+    service.answer(ok({"items": []}))
 
     result = cli("workspace", "list")
 
@@ -309,8 +309,18 @@ def test_no_command_has_an_option_that_takes_a_token(capsys: pytest.CaptureFixtu
         ("token", "list"),
         ("token", "revoke"),
         ("search",),
-        ("meetings",),
-        ("messages",),
+        ("search-code",),
+        ("get-file",),
+        ("list-commits",),
+        ("list-messages",),
+        ("get-thread",),
+        ("list-meetings",),
+        ("get-meeting",),
+        ("list-decisions",),
+        ("get-decision",),
+        ("get-catalog",),
+        ("get-project",),
+        ("get-domain",),
         ("serve",),
         ("migrate",),
         ("bootstrap",),
@@ -337,7 +347,7 @@ def test_a_call_sends_the_token_to_the_service_url_and_path(
     cli: Callable[..., Run], env: pytest.MonkeyPatch, service: FakeService
 ) -> None:
     env.setenv("MEMINI_URL", "https://memini.example.invalid/prefix/")
-    service.answer(ok({"sources": []}))
+    service.answer(ok({"items": []}))
 
     result = cli("source", "list", "acme")
 
@@ -355,7 +365,7 @@ def test_workspace_create_and_list(cli: Callable[..., Run], service: FakeService
         ok({"id": "0193-a", "name": "alpha", "created_at": "2026-11-18T16:02:59Z"}, 201),
         ok(
             {
-                "workspaces": [
+                "items": [
                     {"id": "0193-a", "name": "alpha", "created_at": "2026-11-18T16:02:59Z"},
                     {"id": "0193-b", "name": "beta", "created_at": "2026-11-18T17:00:00+00:00"},
                 ]
@@ -379,12 +389,12 @@ SOURCE: Json = {
     "id": "0193-s",
     "workspace": "acme",
     "name": "shop",
-    "kind": "git",
+    "kind": "repository",
     "location": "https://git.example.invalid/team/shop.git",
     "refs": ["refs/heads/main", "refs/tags/v1"],
     "schedule_seconds": 5400.0,
-    "include": ["src/**"],
-    "exclude": [],
+    "include_paths": ["src/**"],
+    "exclude_paths": [],
     "builtin_excludes": True,
     "visibility": "private",
     "retention_days": None,
@@ -422,13 +432,13 @@ def test_source_add_sends_the_settings_and_shows_the_source(
     assert service.last.method == "POST"
     assert service.last.url.path == "/v1/workspaces/acme/sources"
     assert json.loads(service.last.content) == {
-        "kind": "git",
+        "kind": "repository",
         "name": "shop",
         "location": "https://git.example.invalid/team/shop.git",
         "refs": ["main", "refs/tags/v1"],
         "schedule_seconds": 5400,
-        "include": ["src/**"],
-        "exclude": [],
+        "include_paths": ["src/**"],
+        "exclude_paths": [],
         "builtin_excludes": True,
         "llm_policy": "none",
     }
@@ -450,7 +460,7 @@ def test_source_add_push_sends_no_git_settings(
         "location": None,
         "refs": list[str](),
         "schedule_seconds": None,
-        "include": list[str](),
+        "include_paths": list[str](),
         "builtin_excludes": None,
     }
     service.answer(ok(push, 201))
@@ -469,12 +479,12 @@ def test_source_add_push_sends_no_git_settings(
 @pytest.mark.parametrize(
     ("argv", "complaint"),
     [
-        ((), "a git source needs --location and --ref"),
-        (("--location", "/srv/shop"), "a git source needs --ref"),
-        (("--kind", "push", "--ref", "main"), "--ref: only for a git source"),
+        ((), "a repository needs --location and --ref"),
+        (("--location", "/srv/shop"), "a repository needs --ref"),
+        (("--kind", "push", "--ref", "main"), "--ref: only for a repository"),
         (
             ("--kind", "push", "--location", "/srv/shop", "--no-builtin-excludes"),
-            "--location, --no-builtin-excludes: only for a git source",
+            "--location, --no-builtin-excludes: only for a repository",
         ),
     ],
 )
@@ -515,7 +525,7 @@ def test_source_edit_sends_only_what_changes(cli: Callable[..., Run], service: F
     assert service.last.method == "PATCH"
     assert json.loads(service.last.content) == {
         "schedule_seconds": None,
-        "exclude": [],
+        "exclude_paths": [],
         "builtin_excludes": False,
         "retention_days": 30,
     }
@@ -538,7 +548,7 @@ PUSH: Json = {
     "location": None,
     "refs": list[str](),
     "schedule_seconds": None,
-    "include": list[str](),
+    "include_paths": list[str](),
     "builtin_excludes": None,
     "filters": {
         "allow_channels": [],
@@ -685,7 +695,7 @@ MCP_SOURCE: Json = {
     "location": None,
     "refs": ["C0042", "C0043"],
     "schedule_seconds": 900.0,
-    "include": [],
+    "include_paths": [],
     "builtin_excludes": None,
     "filters": {
         "allow_channels": [],
@@ -863,7 +873,7 @@ LAST_RUN: Json = {
 def test_streams_shows_lag_last_run_and_the_queued_sync(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.answer(ok({"streams": [stream(PENDING, LAST_RUN)]}))
+    service.answer(ok({"items": [stream(PENDING, LAST_RUN)]}))
 
     result = cli("streams", "acme", "shop")
 
@@ -911,9 +921,9 @@ def test_sync_wait_reports_the_run(
     finished = {**LAST_RUN, "status": status, "error": None if status == "succeeded" else "boom"}
     service.answer(
         ok({"jobs": [{"stream": "refs/heads/main", "job_id": JOB, "created": False}]}, 202),
-        ok({"streams": [stream(PENDING, None)]}),
-        ok({"streams": [stream(retried, None)]}),
-        ok({"streams": [stream(None, finished)]}),
+        ok({"items": [stream(PENDING, None)]}),
+        ok({"items": [stream(retried, None)]}),
+        ok({"items": [stream(None, finished)]}),
     )
 
     result = cli("sync", "acme", "shop", "--wait")
@@ -936,7 +946,7 @@ def test_sync_wait_gives_up_after_its_timeout(
     monkeypatch.setattr(source_commands, "POLL_INTERVAL", 0.0)
     service.answer(
         ok({"jobs": [{"stream": "refs/heads/main", "job_id": JOB, "created": True}]}, 202),
-        ok({"streams": [stream(PENDING, None)]}),
+        ok({"items": [stream(PENDING, None)]}),
     )
 
     result = cli("sync", "acme", "shop", "--wait", "--wait-timeout", "1s")
@@ -955,9 +965,9 @@ def test_sync_wait_says_why_a_sync_may_not_start(
     queued = {**PENDING, "status": "queued", "attempts": 0}
     service.answer(
         ok({"jobs": [{"stream": "refs/heads/main", "job_id": JOB, "created": True}]}, 202),
-        ok({"streams": [stream(queued, None)]}),
-        ok({"streams": [stream(queued, None)]}),
-        ok({"streams": [stream(None, LAST_RUN)]}),
+        ok({"items": [stream(queued, None)]}),
+        ok({"items": [stream(queued, None)]}),
+        ok({"items": [stream(None, LAST_RUN)]}),
     )
 
     result = cli("sync", "acme", "shop", "--wait")
@@ -965,7 +975,7 @@ def test_sync_wait_says_why_a_sync_may_not_start(
     assert result.code == EXIT_OK
     assert result.err.count("still queued after") == 1
     assert (
-        "refs/heads/main: still queued after 0s, not started; a git source syncs only while an"
+        "refs/heads/main: still queued after 0s, not started; a repository syncs only while an"
         " embedding provider is set (MEMINI_EMBEDDING_PROVIDER)" in result.err
     )
     assert result.out.splitlines()[-1] == f"refs/heads/main: run {RUN_ID} succeeded"
@@ -1071,11 +1081,11 @@ def test_a_report_of_another_version_is_shown_as_json(
 
 def test_runs_lists_runs_and_the_next_page(cli: Callable[..., Run], service: FakeService) -> None:
     summary = {k: v for k, v in RUN.items() if k not in ("workspace", "report")}
-    service.answer(ok({"runs": [summary], "next_before": "cursor-2"}))
+    service.answer(ok({"items": [summary], "next_cursor": "cursor-2"}))
 
     result = cli("runs", "acme", "--source", "shop", "--limit", "1")
 
-    assert service.last.url.params.multi_items() == [("source", "shop"), ("limit", "1")]
+    assert service.last.url.params.multi_items() == [("sources", "shop"), ("limit", "1")]
     header, row = result.out.splitlines()
     assert header.split() == [
         "ID",
@@ -1096,7 +1106,7 @@ def test_runs_lists_runs_and_the_next_page(cli: Callable[..., Run], service: Fak
         "2026-11-18T16:00Z",
         "1.5",
     ]
-    assert "more runs: add --before cursor-2" in result.err
+    assert "more runs: add --cursor cursor-2" in result.err
 
 
 def test_search_prints_hits_with_escaped_snippets(
@@ -1111,9 +1121,9 @@ def test_search_prints_hits_with_escaped_snippets(
         "snippet": "\n".join(f"line {n}\x1b[2J" for n in range(1, 9)),
         "truncated": False,
     }
-    service.answer(ok({"hits": [hit, {**hit, "snippet": "short"}]}))
+    service.answer(ok({"items": [hit, {**hit, "snippet": "short"}]}))
 
-    result = cli("search", "--code", "lamp", "--mode", "exact", "--language", "python")
+    result = cli("search-code", "lamp", "--mode", "exact", "--languages", "python")
 
     assert service.last.url.path == "/v1/search/code"
     assert service.last.url.params.multi_items() == [
@@ -1145,9 +1155,9 @@ def test_search_prints_the_link_of_a_hit_inside_a_thread(
         "snippet": "Bought the hose.",
         "truncated": False,
     }
-    service.answer(ok({"hits": [hit]}))
+    service.answer(ok({"items": [hit]}))
 
-    result = cli("search", "hose", "--kind", "thread")
+    result = cli("search", "hose", "--kinds", "thread")
 
     assert result.out.splitlines() == [
         "chat:greenhouse/1#msg-2  (thread, acme/chat, 2026-03-03T18:01Z)",
@@ -1159,10 +1169,10 @@ def test_search_prints_the_link_of_a_hit_inside_a_thread(
 @pytest.mark.parametrize(
     ("argv", "complaint"),
     [
-        (("search", "lamp", "--mode", "exact"), "--mode exact is for search --code"),
-        (("search", "--code", "lamp", "--mode", "hybrid"), "--mode hybrid is for search"),
-        (("search", "lamp", "--path", "src/**"), "--path is for search --code only"),
-        (("search", "--code", "lamp", "--kind", "thread"), "--kind is for search only"),
+        (("search", "lamp", "--mode", "exact"), "invalid choice: 'exact'"),
+        (("search-code", "lamp", "--mode", "hybrid"), "invalid choice: 'hybrid'"),
+        (("search", "lamp", "--paths", "src/**"), "unrecognized arguments: --paths"),
+        (("search-code", "lamp", "--kinds", "thread"), "unrecognized arguments: --kinds"),
     ],
 )
 def test_search_refuses_options_of_the_other_tool(
@@ -1175,10 +1185,26 @@ def test_search_refuses_options_of_the_other_tool(
     assert service.requests == []
 
 
-# --- meetings, messages --------------------------------------------------------------------------
+def test_search_code_sends_case_sensitive_false_only_when_asked(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok({"items": []}))
+
+    cli("search-code", "Lamp", "--mode", "exact", "--no-case-sensitive", "--paths", "src/**")
+
+    assert service.last.url.params.multi_items() == [
+        ("query", "Lamp"),
+        ("limit", "10"),
+        ("mode", "exact"),
+        ("paths", "src/**"),
+        ("case_sensitive", "false"),
+    ]
 
 
-def test_meetings_prints_each_meeting_with_its_passage(
+# --- list-meetings, list-messages -------------------------------------------------------------
+
+
+def test_list_meetings_prints_each_meeting_with_its_passage(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
     meeting: Json = {
@@ -1194,13 +1220,20 @@ def test_meetings_prints_each_meeting_with_its_passage(
         "snippet": "Ship on Friday.",
         "truncated": False,
     }
-    service.answer(ok({"persons": [], "meetings": [meeting]}))
+    service.answer(ok({"persons": [], "items": [meeting]}))
 
-    result = cli("meetings", "release", "--since", "2026-03-01T00:00:00Z", "--source", "notes")
+    result = cli(
+        "list-meetings",
+        "--query",
+        "release",
+        "--since",
+        "2026-03-01T00:00:00Z",
+        "--sources",
+        "notes",
+    )
 
     assert service.last.url.path == "/v1/meetings"
     assert service.last.url.params.multi_items() == [
-        ("person", "me"),
         ("query", "release"),
         ("since", "2026-03-01T00:00:00+00:00"),
         ("sources", "notes"),
@@ -1214,7 +1247,9 @@ def test_meetings_prints_each_meeting_with_its_passage(
     ]
 
 
-def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: FakeService) -> None:
+def test_list_messages_takes_roles_and_persons(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
     each: Json = {
         "workspace": "acme",
         "source": "chat",
@@ -1222,20 +1257,22 @@ def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: Fak
         "locator": "chat:general/1#msg-m1",
         "link": "https://chat.example.invalid/m1",
         "author": "U02BO",
-        "sent_at": "2026-03-02T09:30:00Z",
+        "occurred_at": "2026-03-02T09:30:00Z",
         "roles": ["author"],
         "channel": "general",
         "title": None,
         "text": "Bought the hose.",
         "truncated": True,
     }
-    service.answer(ok({"persons": [], "messages": [each]}))
+    service.answer(ok({"persons": [], "items": [each]}))
 
-    result = cli("messages", "--person", "bo@example.test", "--role", "author", "--limit", "5")
+    result = cli(
+        "list-messages", "--persons", "bo@example.test", "--roles", "author", "--limit", "5"
+    )
 
     assert service.last.url.path == "/v1/messages"
     assert service.last.url.params.multi_items() == [
-        ("person", "bo@example.test"),
+        ("persons", "bo@example.test"),
         ("limit", "5"),
         ("roles", "author"),
     ]
@@ -1246,6 +1283,184 @@ def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: Fak
         "    Bought the hose.",
         "    …",
     ]
+
+
+# --- get-thread, get-meeting, get-file, list-commits, decisions, catalog ------------------------
+
+
+RECORD_ID = "a" * 64
+
+
+def test_get_thread_prints_every_message(cli: Callable[..., Run], service: FakeService) -> None:
+    service.answer(
+        ok(
+            {
+                "id": RECORD_ID,
+                "workspace": "acme",
+                "source": "chat",
+                "locator": "chat:general/1",
+                "occurred_at": "2026-03-02T09:30:00Z",
+                "link": None,
+                "title": None,
+                "channel": "general",
+                "messages": [
+                    {
+                        "author": "U02BO",
+                        "occurred_at": "2026-03-02T09:30:00Z",
+                        "anchor": "msg-m1",
+                        "text": "Bought the hose.\x1b[2J",
+                        "truncated": False,
+                    }
+                ],
+            }
+        )
+    )
+
+    result = cli("get-thread", RECORD_ID)
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == f"/v1/threads/{RECORD_ID}"
+    assert "U02BO, 2026-03-02T09:30Z  (msg-m1)" in result.out
+    assert "    Bought the hose.\\x1b[2J" in result.out
+
+
+def test_get_meeting_asks_for_the_transcript(cli: Callable[..., Run], service: FakeService) -> None:
+    service.answer(ok({"id": RECORD_ID, "title": "Planning", "transcript": []}))
+
+    result = cli("get-meeting", RECORD_ID, "--include-transcript")
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == f"/v1/meetings/{RECORD_ID}"
+    assert service.last.url.params.multi_items() == [("include_transcript", "true")]
+
+
+def test_get_file_takes_the_only_workspace_and_prints_numbered_lines(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(
+        ok({"items": [{"name": "acme"}]}),
+        ok(
+            {
+                "locator": "shop@3f2a1b2:src/lamp.py#L3-L4",
+                "kind": "file",
+                "start_line": 3,
+                "content": "def on():\n    pass\n",
+            }
+        ),
+    )
+
+    result = cli("get-file", "shop", "src/lamp.py", "--start-line", "3", "--end-line", "4")
+
+    assert result.code == EXIT_OK
+    assert [request.url.path for request in service.requests] == [
+        "/v1/workspaces",
+        "/v1/workspaces/acme/sources/shop/files/src/lamp.py",
+    ]
+    assert service.last.url.params.multi_items() == [("start_line", "3"), ("end_line", "4")]
+    assert result.out.splitlines() == ["     3  def on():", "     4      pass"]
+
+
+def test_get_file_asks_for_the_workspace_when_the_token_reads_more(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok({"items": [{"name": "acme"}, {"name": "beta"}]}))
+
+    result = cli("get-file", "shop", "README.md")
+
+    assert result.code == EXIT_USAGE
+    assert "--workspace" in result.err
+    assert len(service.requests) == 1
+
+
+def test_list_commits_sends_the_tools_arguments(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(
+        ok(
+            {
+                "items": [
+                    {
+                        "locator": "shop@3f2a1b2",
+                        "occurred_at": "2026-03-02T09:30:00Z",
+                        "author": {"name": "Bo Example", "email": "bo@example.test"},
+                        "subject": "Fix the lamp",
+                        "changes": [{"status": "M", "path": "src/lamp.py"}],
+                        "changes_total": 1,
+                    }
+                ],
+                "next_cursor": "abc",
+            }
+        )
+    )
+
+    result = cli("list-commits", "--sources", "shop", "--persons", "me", "--query", "lamp")
+
+    assert service.last.url.path == "/v1/commits"
+    assert service.last.url.params.multi_items() == [
+        ("sources", "shop"),
+        ("persons", "me"),
+        ("query", "lamp"),
+        ("limit", "20"),
+    ]
+    assert result.out.splitlines() == [
+        "shop@3f2a1b2  (2026-03-02T09:30Z, Bo Example <bo@example.test>)",
+        "  Fix the lamp",
+        "    M  src/lamp.py",
+    ]
+    assert "--cursor abc" in result.err
+
+
+def test_list_decisions_sends_the_tools_arguments(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok({"items": [], "left_out": 0}))
+
+    result = cli(
+        "list-decisions", "--persons", "me", "--since", "2026-03-01T00:00:00Z", "--history"
+    )
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == "/v1/decisions"
+    assert service.last.url.params.multi_items() == [
+        ("persons", "me"),
+        ("since", "2026-03-01T00:00:00+00:00"),
+        ("history", "true"),
+        ("limit", "50"),
+    ]
+
+
+def test_get_decision_takes_its_id(cli: Callable[..., Run], service: FakeService) -> None:
+    item_id = "0193a1b2-0000-7000-8000-0000000000d1"
+    service.answer(ok({"item": {"id": item_id}, "chain": []}))
+
+    result = cli("get-decision", item_id, "--json")
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == f"/v1/decisions/{item_id}"
+
+
+@pytest.mark.parametrize(
+    ("argv", "path"),
+    [
+        (("get-catalog", "--workspace", "acme"), "/v1/workspaces/acme/catalog"),
+        (("get-project", "harbor", "--workspace", "acme"), "/v1/workspaces/acme/projects/harbor"),
+        (
+            ("get-domain", "harbor", "fees/berth", "--workspace", "acme"),
+            "/v1/workspaces/acme/projects/harbor/domains/fees/berth",
+        ),
+        (("catalog-guide",), "/v1/catalog/guide"),
+    ],
+)
+def test_the_catalog_commands_print_the_answer(
+    cli: Callable[..., Run], service: FakeService, argv: tuple[str, ...], path: str
+) -> None:
+    service.answer(ok({"projects": []}))
+
+    result = cli(*argv)
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == path
+    assert json.loads(result.out) == {"projects": []}
 
 
 # --- token ---------------------------------------------------------------------------------------
@@ -1304,7 +1519,7 @@ def test_token_create_prints_nothing_without_a_token_in_the_answer(
 
 
 def test_token_list_shows_no_secret(cli: Callable[..., Run], service: FakeService) -> None:
-    service.answer(ok({"tokens": [token_out(), token_out(workspace=None, status="revoked")]}))
+    service.answer(ok({"items": [token_out(), token_out(workspace=None, status="revoked")]}))
 
     result = cli("token", "list")
 
@@ -1321,7 +1536,7 @@ def test_token_revoke_finds_the_token_and_revokes_it_by_id(
 ) -> None:
     listed = token_out()
     reference = {"prefix": OTHER_TOKEN[:15], "id": listed["id"], "whole token": OTHER_TOKEN}[by]
-    service.answer(ok({"tokens": [listed]}), ok({**listed, "revoked_at": "2026-11-18T17:00:00Z"}))
+    service.answer(ok({"items": [listed]}), ok({**listed, "revoked_at": "2026-11-18T17:00:00Z"}))
 
     result = cli("token", "revoke", reference)
 
@@ -1335,7 +1550,7 @@ def test_token_revoke_finds_the_token_and_revokes_it_by_id(
 def test_token_revoke_refuses_an_unknown_token(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.answer(ok({"tokens": [token_out()]}))
+    service.answer(ok({"items": [token_out()]}))
 
     result = cli("token", "revoke", "memini_zzzzzzzz")
 
@@ -1363,12 +1578,11 @@ FORGOTTEN: Json = {
 def test_forget_by_record_id(cli: Callable[..., Run], service: FakeService) -> None:
     service.answer(ok(FORGOTTEN))
 
-    result = cli("forget", "acme", "--record", RECORD)
+    result = cli("forget", "acme", RECORD)
 
     assert result.code == EXIT_OK, result.err
     assert service.last.method == "POST"
-    assert service.last.url.path == "/v1/workspaces/acme/forget"
-    assert json.loads(service.last.content) == {"record_id": RECORD}
+    assert service.last.url.path == f"/v1/workspaces/acme/records/{RECORD}/forget"
     lines = [line.split(None, 1) for line in result.out.splitlines()]
     assert ["forgot", RECORD] in lines
     assert [line for line in result.out.splitlines() if line.startswith("chunks deleted")] == [
@@ -1377,36 +1591,16 @@ def test_forget_by_record_id(cli: Callable[..., Run], service: FakeService) -> N
     assert "knowledge items citing it  1" in result.out
 
 
-def test_forget_by_source_and_external_id(cli: Callable[..., Run], service: FakeService) -> None:
-    service.answer(ok(FORGOTTEN))
-
-    result = cli(
-        "forget", "acme", "--source", "chat", "--external-id", "garden/100", "--kind", "thread",
-        "--json",
-    )  # fmt: skip
-
-    assert result.code == EXIT_OK, result.err
-    assert json.loads(service.last.content) == {
-        "source": "chat",
-        "external_id": "garden/100",
-        "record_kind": "thread",
-    }
-    assert json.loads(result.out) == FORGOTTEN
-
-
 @pytest.mark.parametrize(
     "argv",
     [
         ("forget", "acme"),
-        ("forget", "acme", "--record", "XYZ"),
-        ("forget", "acme", "--source", "chat"),
-        ("forget", "acme", "--record", RECORD, "--kind", "thread"),
-        ("forget", "acme", "--record", RECORD, "--external-id", "garden/100"),
-        ("forget", "acme", "--record", RECORD, "--source", "chat"),
-        ("forget", "acme", "--external-id", "garden/100"),
+        ("forget", "acme", "XYZ"),
+        ("forget", "acme", "--record", RECORD),
+        ("forget", "acme", "--source", "chat", "--external-id", "garden/100"),
     ],
 )
-def test_forget_names_its_record_one_way(
+def test_forget_names_its_record_by_id(
     cli: Callable[..., Run], service: FakeService, argv: tuple[str, ...]
 ) -> None:
     result = cli(*argv)

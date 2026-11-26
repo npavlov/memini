@@ -104,7 +104,7 @@ def storable_path(path: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class FileRules:
-    """The rules of one git source: its globs, and the read limit of the mirrors."""
+    """The rules of one repository: its globs, and the read limit of the mirrors."""
 
     config: GitConfig
     max_size: int

@@ -315,7 +315,7 @@ async def _stream_problems(
         *stream, kind, checked_from = row
         if checked_from is not None and (row[3] is None or checked_from > row[3]):
             problems.append(f"stream {row[1]}: its frontier is after its checkpoint")
-        if kind == "git":
+        if kind == "repository":
             problems += await _git_problems(conn, mirrors, tuple(stream))
         elif kind == "mcp":
             problems += await _window_problems(conn, tuple(stream))

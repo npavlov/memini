@@ -14,7 +14,7 @@ A hit from an unfamiliar repository says nothing about what it is part of.
 
 ## Answer
 
-Every hit, definition and `read_source` answer carries `context {project, service, domains}`. A file
+Every hit, definition and `get_file` answer carries `context {project, service, domains}`. A file
 may belong to several subdomains or to none.
 
 ## Data
@@ -30,4 +30,4 @@ A hit of a file that two subdomains name lists both; a file outside every mask h
 - [All scenarios](README.md)
 - [S2](S02-code-for-a-domain.md): Which code is responsible for domain X?
 - Tool reference: [search_code](../mcp/search_code.md)
-- Tool reference: [read_source](../mcp/read_source.md)
+- Tool reference: [get_file](../mcp/get_file.md)

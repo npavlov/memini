@@ -148,7 +148,7 @@ def tool_text(result: CallToolResult) -> str:
 
 
 def hit_ids(body: Mapping[str, Any]) -> set[str]:
-    return {str(hit["record_id"]) for hit in body["hits"]}
+    return {str(hit["record_id"]) for hit in body["items"]}
 
 
 # --- Marking -------------------------------------------------------------------------------------
@@ -215,28 +215,28 @@ async def test_the_routes_need_admin_and_answer_as_the_cli_reads_them(env: Env) 
     await send(env, thread("pay/1", text=SALARY))
     admin = await env.token("admin")
     reader = await env.token("read")
-    body = {"source": "chat", "external_id": "pay/1", "sensitive": True, "reason": "salary"}
+    body = {"sensitive": True, "reason": "salary"}
+    mark = f"/v1/workspaces/acme/records/{env.rid('pay/1')}/sensitive"
     async with http_client(env.app(), reader) as client:
-        denied = await client.put("/v1/workspaces/acme/records/sensitive", json=body)
+        denied = await client.put(mark, json=body)
     async with http_client(env.app(), admin) as client:
-        done = await client.put("/v1/workspaces/acme/records/sensitive", json=body)
+        done = await client.put(mark, json=body)
         missing = await client.put(
-            "/v1/workspaces/acme/records/sensitive",
-            json={"source": "chat", "external_id": "nothing", "sensitive": True},
+            f"/v1/workspaces/acme/records/{'0' * 64}/sensitive", json={"sensitive": True}
         )
         listed = await client.get("/v1/workspaces/acme/records/sensitive")
 
     assert (denied.status_code, denied.json()["error"]["code"]) == (403, "insufficient_scope")
     assert (missing.status_code, missing.json()["error"]["code"]) == (404, "not_found")
     assert done.status_code == 200, done.text
-    assert {key: done.json()[key] for key in ("record_id", "sensitive", "reason", "changed")} == {
-        "record_id": env.rid("pay/1"),
+    assert {key: done.json()[key] for key in ("id", "sensitive", "reason", "changed")} == {
+        "id": env.rid("pay/1"),
         "sensitive": True,
         "reason": "salary",
         "changed": True,
     }
     assert listed.status_code == 200, listed.text
-    assert [each["external_id"] for each in listed.json()["records"]] == ["pay/1"]
+    assert [each["external_id"] for each in listed.json()["items"]] == ["pay/1"]
     assert NEEDLE not in listed.text
 
 
@@ -292,7 +292,7 @@ async def test_a_sensitive_thread_is_named_as_such_and_read_only_when_asked(env:
     async with http_client(env.app(), await env.token("read", "sensitive")) as client:
         read = await client.get(path, params={"include_sensitive": "true"})
 
-    assert (hidden.status_code, hidden.json()["error"]["code"]) == (404, "sensitive_record")
+    assert (hidden.status_code, hidden.json()["error"]["code"]) == (403, "sensitive_record")
     assert NEEDLE not in hidden.text
     assert (gone.status_code, gone.json()["error"]["code"]) == (404, "not_found")
     assert read.status_code == 200, read.text

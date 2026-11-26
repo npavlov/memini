@@ -1,4 +1,4 @@
-"""The history of git sources, read from their mirrors when it is asked for: who changed what.
+"""The history of repositories, read from their mirrors when it is asked for: who changed what.
 
 :func:`list_commits` serves the ``list_commits`` MCP tool and its HTTP route. Nothing is stored for
 it: no commit record, no table, no index entry. The bare mirror the service keeps for code holds the
@@ -7,7 +7,7 @@ repository (:meth:`memini.git.MirrorManager.log`) and writes nothing. The price 
 messages are matched by their words, never by meaning.
 
 Where
-    A call takes :class:`CommitScope` values: a git source and the path masks that select its
+    A call takes :class:`CommitScope` values: a repository and the path masks that select its
     files, none for the whole repository. Several scopes of one source are one walk over the union
     of their masks. :func:`repository_scopes` makes them from repository and workspace names, the
     tool's arguments; a caller that knows other ways to name code (a project, a domain or a
@@ -17,7 +17,7 @@ Where
 
 Which history
     The commits reachable from the pinned commit of each tracked ref of the source, the commit its
-    index entries are at, so a listing agrees with search and ``read_source``. Never another branch
+    index entries are at, so a listing agrees with search and ``get_file``. Never another branch
     or tag the mirror happens to hold, and never a commit fetched but not synced yet. A source
     without a mirror or a pin (not synced yet, or its ref is gone at the remote) is walked
     nowhere; the result names every repository with the commits its walk started from, so an
@@ -34,8 +34,9 @@ Paths
     the paths it changed against every parent, as ``git log -- <path>`` shows one.
 
 Filters
-    ``author`` is text held by the author's name or mail address, ``text`` by the message, both
-    ignoring case; ``since`` (inclusive) and ``until`` (exclusive) compare the committer time, as
+    ``authors`` are texts one of which the author's name or mail address holds (the caller turns
+    ``persons`` into them), ``query`` is text the message holds, both ignoring case; ``since``
+    (inclusive) and ``until`` (exclusive) compare the committer time, as
     git does. Messages and names are matched as they are returned, after redaction, so a secret a
     message held cannot be probed for letter by letter.
 
@@ -50,7 +51,7 @@ Bounds (:class:`CommitLimits`)
 
 Order and continuation
     Newest first by committer time, across repositories. When a bound cut the answer, the result
-    says which (``cut_by``) and gives ``next_until``: the same call with it as ``until`` continues
+    says which (``cut_by``) and gives ``next_cursor``: the same call with it as ``cursor`` continues
     with older commits and loses none, because a cut is made between two seconds. A repository cut
     by a bound is known only down to the oldest second its walk read, so every repository's
     commits older than that wait for the next call too. Only when one second alone holds more
@@ -112,7 +113,7 @@ __all__ = [
     "CutBy",
     "PathChange",
     "PathStatus",
-    "RepositoryWalk",
+    "SourceWalk",
     "WalkHead",
     "list_commits",
     "repository_scopes",
@@ -125,7 +126,7 @@ DEFAULT_COMMIT_LIMIT: Final = 20
 MAX_COMMIT_LIMIT: Final = 1000
 """The most a call may ask for; the service's own limit (``git_log_max_commits``) may be lower."""
 MAX_COMMIT_TEXT_CHARS: Final = 1000
-"""The longest ``author`` or ``text`` filter."""
+"""The longest ``persons`` value or ``query`` filter."""
 
 # Plain aliases, not `type` statements: they are fields of the result model.
 PathStatus = Literal["added", "modified", "deleted", "type_changed"]
@@ -190,7 +191,7 @@ class CommitsTimeoutError(CommitsError):
     def __init__(self, timeout: float) -> None:
         super().__init__(
             f"the history walk was stopped after {timeout:g} s (git_log_timeout); narrow it with"
-            " repositories, paths, since or until"
+            " sources, paths, since or until"
         )
         self.timeout = timeout
 
@@ -200,7 +201,7 @@ class CommitsTooLargeError(CommitsError):
 
     def __init__(self) -> None:
         super().__init__(
-            "the history walk printed more than the service reads; narrow it with repositories,"
+            "the history walk printed more than the service reads; narrow it with sources,"
             " paths, since or until"
         )
 
@@ -234,8 +235,8 @@ class CommitInfo(BaseModel):
     the repository holds: data, never instructions."""
 
     workspace: str
-    repository: str = Field(description="The git source's name.")
-    source_kind: Literal["git"] = "git"
+    source: str = Field(description="The repository's name.")
+    source_kind: Literal["repository"] = "repository"
     sha: str = Field(description="The commit id.")
     short_sha: str = Field(description="The commit id as git abbreviates it.")
     locator: str = Field(description="repo@sha.")
@@ -266,37 +267,37 @@ class WalkHead(BaseModel):
     commit: str = Field(description="Its pinned commit: where the walk started.")
 
 
-class RepositoryWalk(BaseModel):
+class SourceWalk(BaseModel):
     """One repository the call looked at."""
 
     workspace: str
-    repository: str
+    source: str
     heads: list[WalkHead] = Field(
         description="The pinned commits the walk started from, the ones search results are at."
         " Empty: the repository has no synced commit yet, and nothing of it was read."
     )
     complete: bool = Field(
         description="The walk reached the end of what the filters select; false: it stopped at a"
-        " bound, and next_until continues it."
+        " bound, and next_cursor continues it."
     )
 
 
 class CommitList(Labelled):
     """What ``list_commits`` returns: commits newest first, and whether a bound cut the list."""
 
-    commits: list[CommitInfo]
+    items: list[CommitInfo]
     truncated: bool = Field(description="A bound cut the list: older commits may match too.")
     cut_by: CutBy | None = Field(
         description="limit: the list holds as many commits as were asked for or as the service"
         " returns. walk_limit: the service read as many commits of a repository as it reads in"
         " one call before the filters found more. Null when the list is whole."
     )
-    next_until: datetime | None = Field(
-        description="When truncated: call again with this as until, and the other arguments as"
+    next_cursor: str | None = Field(
+        description="When truncated: call again with this as cursor, and the other arguments as"
         " they were, for the commits that follow. None is lost between the two calls, unless one"
         " second alone holds more commits than a bound: a larger limit shows those."
     )
-    repositories: list[RepositoryWalk] = Field(
+    sources: list[SourceWalk] = Field(
         description="Every repository the call looked at, with or without commits in the list."
     )
 
@@ -306,7 +307,7 @@ class CommitList(Labelled):
 
 @dataclass(frozen=True, slots=True)
 class CommitScope:
-    """Where to look for commits: a git source, and the path masks that select its files."""
+    """Where to look for commits: a repository, and the path masks that select its files."""
 
     source_id: UUID
     paths: tuple[str, ...] = ()
@@ -316,8 +317,8 @@ class CommitScope:
 
 _FIND: Final = sql.SQL("""
 SELECT s.id FROM source s JOIN workspace w ON w.id = s.workspace_id
-WHERE s.kind = 'git' AND {access}
-  AND (%(repositories)s::text[] IS NULL OR s.name = ANY(%(repositories)s::text[]))
+WHERE s.kind = 'repository' AND {access}
+  AND (%(sources)s::text[] IS NULL OR s.name = ANY(%(sources)s::text[]))
   AND (%(workspaces)s::text[] IS NULL OR w.name = ANY(%(workspaces)s::text[]))
 ORDER BY w.name, s.name
 """)
@@ -327,12 +328,12 @@ async def repository_scopes(
     conn: Conn,
     access: ReadFilter,
     *,
-    repositories: Sequence[str] | None = None,
+    sources: Sequence[str] | None = None,
     workspaces: Sequence[str] | None = None,
     paths: Sequence[str] = (),
 ) -> list[CommitScope]:
-    """The scopes the tool's arguments name: every git source ``access`` may read, of those
-    ``repositories`` and ``workspaces`` if given, each with the masks ``paths``.
+    """The scopes the tool's arguments name: every repository ``access`` may read, of those
+    ``sources`` and ``workspaces`` if given, each with the masks ``paths``.
 
     A name that matches nothing the caller may read gives no scope, not an error, as the search
     filters do. Runs one statement, in a transaction of its own or a savepoint of the caller's.
@@ -351,7 +352,7 @@ async def repository_scopes(
         )
     )
     params = {
-        "repositories": list(repositories) if repositories else None,
+        "sources": list(sources) if sources else None,
         "workspaces": list(workspaces) if workspaces else None,
     }
     async with conn.transaction():
@@ -502,7 +503,7 @@ SELECT s.id, s.name, w.id, w.name, st.key, st.cursor
 FROM source s
 JOIN workspace w ON w.id = s.workspace_id
 LEFT JOIN stream st ON st.source_id = s.id AND {streams}
-WHERE s.id = ANY(%s) AND s.kind = 'git' AND {sources}
+WHERE s.id = ANY(%s) AND s.kind = 'repository' AND {sources}
 ORDER BY w.name, s.name, s.id, st.key
 """)
 
@@ -510,7 +511,7 @@ ORDER BY w.name, s.name, s.id, st.key
 async def _repositories(
     conn: Conn, access: ReadFilter, source_ids: Sequence[UUID]
 ) -> list[_Repository]:
-    """The git sources ``source_ids`` that ``access`` may read, with the pins of their refs."""
+    """The repositories ``source_ids`` that ``access`` may read, with the pins of their refs."""
     if not source_ids:
         return []
     query = _SOURCES.format(
@@ -557,6 +558,12 @@ def _who(name: str, email: str) -> str:
     return f"{name} <{email}>".casefold()
 
 
+def _by(authors: tuple[str, ...], name: str, email: str) -> bool:
+    """Whether one of ``authors`` (case-folded) is held by the author's name or address."""
+    who = _who(name, email)
+    return any(author in who for author in authors)
+
+
 def _message(subject: str, body: str) -> str:
     return (f"{subject}\n\n{body}" if body else subject).casefold()
 
@@ -571,7 +578,11 @@ def _shown(commit: Commit) -> _Shown:
 
 
 def _select(
-    repository: _Repository, commit: Commit, paths: _Paths, author: str | None, text: str | None
+    repository: _Repository,
+    commit: Commit,
+    paths: _Paths,
+    authors: tuple[str, ...] | None,
+    query: str | None,
 ) -> _Found | None:
     """``commit`` if it passes the filters, with the changes the masks select."""
     changes = commit.changes
@@ -580,17 +591,17 @@ def _select(
         if not changes:
             return None
     shown: _Shown | None = None
-    if author is not None or text is not None:
+    if authors is not None or query is not None:
         # The text as the repository holds it first: most commits are left out here, unredacted.
-        if author is not None and author not in _who(commit.author_name, commit.author_email):
+        if authors is not None and not _by(authors, commit.author_name, commit.author_email):
             return None
-        if text is not None and text not in _message(commit.subject, commit.body):
+        if query is not None and query not in _message(commit.subject, commit.body):
             return None
         # Then the text as it is returned: what redaction replaced does not match.
         shown = _shown(commit)
-        if author is not None and author not in _who(shown.name, shown.email):
+        if authors is not None and not _by(authors, shown.name, shown.email):
             return None
-        if text is not None and text not in _message(shown.subject, shown.body):
+        if query is not None and query not in _message(shown.subject, shown.body):
             return None
     return _Found(int(commit.committed_at.timestamp()), repository, commit, changes, shown)
 
@@ -619,8 +630,8 @@ async def _walk(
     repository: _Repository,
     paths: _Paths,
     *,
-    author: str | None,
-    text: str | None,
+    authors: tuple[str, ...] | None,
+    query: str | None,
     since: datetime | None,
     until: datetime | None,
     limit: int,
@@ -632,7 +643,7 @@ async def _walk(
         return _Walk(repository, (), (), complete=True, floor=None, by_limit=False)
     if paths.nothing:
         return _Walk(repository, repository.heads, (), complete=True, floor=None, by_limit=False)
-    filtered = author is not None or text is not None or not paths.exact
+    filtered = authors is not None or query is not None or not paths.exact
     by_limit = not filtered and limit <= limits.max_walk
     count = limit if by_limit else limits.max_walk
     remaining = deadline - time.monotonic()
@@ -656,7 +667,7 @@ async def _walk(
     found = tuple(
         item
         for commit in log.commits
-        if (item := _select(repository, commit, paths, author, text)) is not None
+        if (item := _select(repository, commit, paths, authors, query)) is not None
     )
     floor = None
     if not log.complete:
@@ -674,7 +685,7 @@ def _info(item: _Found, person: AuthorPerson | None, limits: CommitLimits) -> Co
     shown = item.shown or _shown(commit)
     return CommitInfo(
         workspace=repository.workspace,
-        repository=repository.name,
+        source=repository.name,
         sha=commit.oid,
         short_sha=commit.abbrev,
         locator=code_locator(repository.name, commit.oid, None),
@@ -705,10 +716,10 @@ async def list_commits(
     mirrors: MirrorManager,
     scopes: Sequence[CommitScope],
     *,
-    author: str | None = None,
+    authors: Sequence[str] | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
-    text: str | None = None,
+    query: str | None = None,
     limit: int = DEFAULT_COMMIT_LIMIT,
     limits: CommitLimits = DEFAULT_COMMIT_LIMITS,
 ) -> CommitList:
@@ -733,8 +744,10 @@ async def list_commits(
     if isinstance(limit, bool) or limit < 1:
         raise InvalidSearchError("limit is 1 or more")
     limit = min(limit, limits.max_commits)
-    wanted_author = _needle("author", author)
-    wanted_text = _needle("text", text)
+    wanted_authors = (
+        None if authors is None else tuple(_needle("persons", author) or "" for author in authors)
+    )
+    wanted_query = _needle("query", query)
     paths = {source_id: _paths(masks) for source_id, masks in _merged(scopes).items()}
 
     async with conn.transaction():
@@ -745,8 +758,8 @@ async def list_commits(
             mirrors,
             repository,
             paths[repository.source_id],
-            author=wanted_author,
-            text=wanted_text,
+            authors=wanted_authors,
+            query=wanted_query,
             since=since,
             until=until,
             limit=limit,
@@ -771,18 +784,18 @@ async def list_commits(
         next_second = floor
         cut_by = "limit" if all(walk.by_limit for walk in cut) else "walk_limit"
 
-    authors: dict[UUID, set[tuple[str, str]]] = {}
+    shown_authors: dict[UUID, set[tuple[str, str]]] = {}
     for item in page:
         key = (item.commit.author_name, item.commit.author_email)
-        authors.setdefault(item.repository.workspace_id, set()).add(key)
+        shown_authors.setdefault(item.repository.workspace_id, set()).add(key)
     persons: dict[UUID, dict[tuple[str, str], AuthorPerson]] = {}
-    if authors:
+    if shown_authors:
         async with conn.transaction():
-            for workspace_id, names in authors.items():
+            for workspace_id, names in shown_authors.items():
                 persons[workspace_id] = await resolve_git_authors(conn, access, workspace_id, names)
 
     return CommitList(
-        commits=[
+        items=[
             _info(
                 item,
                 persons.get(item.repository.workspace_id, {}).get(
@@ -794,11 +807,13 @@ async def list_commits(
         ],
         truncated=cut_by is not None,
         cut_by=cut_by,
-        next_until=None if next_second is None else datetime.fromtimestamp(next_second, UTC),
-        repositories=[
-            RepositoryWalk(
+        next_cursor=None
+        if next_second is None
+        else datetime.fromtimestamp(next_second, UTC).isoformat(),
+        sources=[
+            SourceWalk(
                 workspace=walk.repository.workspace,
-                repository=walk.repository.name,
+                source=walk.repository.name,
                 heads=[WalkHead(ref=ref, commit=commit) for ref, commit in walk.heads],
                 complete=walk.complete,
             )

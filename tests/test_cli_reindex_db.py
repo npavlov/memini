@@ -70,7 +70,7 @@ def world(monkeypatch: pytest.MonkeyPatch, empty_database_url: str, tmp_path: Pa
             owner = await ensure_principal(conn, "owner")
             acme = await create_workspace(conn, owner_id=owner, name="acme")
             ids: list[uuid.UUID] = []
-            for name, kind in (("greenhouse", "git"), ("notes", "push")):
+            for name, kind in (("greenhouse", "repository"), ("notes", "push")):
                 cur = await conn.execute(
                     "INSERT INTO source (workspace_id, owner_id, name, kind)"
                     " VALUES (%s, %s, %s, %s) RETURNING id",

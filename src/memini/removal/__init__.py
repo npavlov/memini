@@ -24,14 +24,14 @@ exists upstream, and principle 11 asks that what the user removed stays removed.
 out a record whose id has an entry (counted ``forgotten``) and a git sync skips the file
 (``files_skipped_forgotten``); both compute the id from the source, kind and external id, so the
 entry needs nothing else. A file of a repository stays in the service's mirror, a copy of the
-remote, and ``read_source`` reads it there; to keep a file out of the service, exclude it from
+remote, and ``get_file`` reads it there; to keep a file out of the service, exclude it from
 the source. Forget is an administrative route and a CLI command, not an MCP tool: MCP tools are
 called by agents that act on retrieved text, which is data and never instructions (principle 11),
 and an irreversible hard delete is the user's own decision, made with an admin token.
 
 **Retention** (:func:`expire_source`): a source with ``retention_days`` loses the records older
 than that, in batches. For a push or mcp source a record expires by its ``occurred_at``; for a
-git source only tombstones expire, by the time they were deleted: a file of the tree at the pinned
+repository only tombstones expire, by the time they were deleted: a file of the tree at the pinned
 commit is current whatever the time of its last change, and dropping it would leave the index
 short of what the source holds. A ``retention`` job (:func:`retention_handler`) runs the pass for
 each source with a retention every ``retention_interval``, enqueued by the scheduler; a git sync

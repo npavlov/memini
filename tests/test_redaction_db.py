@@ -4,7 +4,7 @@ numbers leave no trace in any table.
 After each scenario the test scans every text, character, JSON, bytea, array and tsvector
 column of every table of the database (from information_schema, so a table added later is
 scanned too) for the fake values. Pushed records go through the ingest library; a repository
-goes through git sync, then read_source. Every secret is fake (tests/redaction_helpers.py).
+goes through git sync, then get_file. Every secret is fake (tests/redaction_helpers.py).
 """
 
 import io
@@ -31,7 +31,7 @@ from memini.git import GitOptions, MirrorManager
 from memini.gitsync import GIT_SYNC, run_git_sync
 from memini.ingest import Batch, PayloadIndexer, RecordIn, WindowClaim, ingest
 from memini.jobs import Job
-from memini.query.reader import read_source
+from memini.query.reader import get_file
 from memini.runs import record_run
 from memini.sources import NewGitSource, NewPushSource, create_git_source, create_push_source
 from memini.workspaces import create_workspace, ensure_principal
@@ -430,7 +430,7 @@ async def test_a_repository_leaves_no_secret_in_any_table_nor_in_read_source(
         assert report["counts"]["chunk_values_redacted"] >= 9
 
         caller = Principal(principal_id=owner, token_id=uuid.uuid4(), scopes=frozenset({"read"}))
-        read = await read_source(
+        read = await get_file(
             db,
             ReadFilter(principal=caller, workspace_ids=None),
             mirrors,
@@ -438,7 +438,7 @@ async def test_a_repository_leaves_no_secret_in_any_table_nor_in_read_source(
             path="app/settings.py",
         )
 
-        link = await read_source(
+        link = await get_file(
             db,
             ReadFilter(principal=caller, workspace_ids=None),
             mirrors,

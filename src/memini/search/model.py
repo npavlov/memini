@@ -65,7 +65,7 @@ RANKED_MODES: Final[frozenset[Mode]] = frozenset({"hybrid", "dense", "lexical"})
 SymbolMatch = Literal["exact", "prefix"]
 """How the ``symbol`` mode compares a name: whole, or as the start of the name."""
 
-SourceKind = Literal["git", "push", "mcp"]
+SourceKind = Literal["repository", "push", "mcp"]
 """Kinds of source, as the ``source`` table holds them."""
 
 _SOURCE_KINDS: Final[tuple[SourceKind, ...]] = get_args(SourceKind)
@@ -165,7 +165,7 @@ class SearchFilters:
     """Sources of any kind. Names are unique within a workspace, so one name may match a source
     in each workspace searched."""
     repositories: tuple[str | UUID, ...] | None = None
-    """Git sources only: a repository is a source of kind ``git``."""
+    """Repositories only: a repository is a source of kind ``git``."""
     kinds: tuple[RecordKind, ...] | None = None
     """Kinds of record: ``code_file``, ``thread``, ``meeting``, ``document``."""
     languages: tuple[Language, ...] | None = None
@@ -400,8 +400,8 @@ class Hit:
 
     @property
     def repository(self) -> str | None:
-        """The repository, for code: the name of the git source."""
-        return self.source if self.source_kind == "git" else None
+        """The repository, for code: the name of the repository."""
+        return self.source if self.source_kind == "repository" else None
 
     @property
     def locator(self) -> str:
@@ -409,7 +409,7 @@ class Hit:
         ``repo@sha:path#L12-L30`` (``repo:path#...`` while the commit is not known). Anything
         else: ``source:external_id#anchor``, or ``source:external_id`` for a chunk without an
         anchor. A link to the place is :attr:`link`."""
-        if self.source_kind == "git" and self.path is not None:
+        if self.source_kind == "repository" and self.path is not None:
             at = f"@{self.commit}" if self.commit else ""
             lines = ""
             if self.start_line is not None and self.end_line is not None:

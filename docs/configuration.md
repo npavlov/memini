@@ -35,7 +35,7 @@ Settings are checked together at start. A missing or invalid one stops the servi
 
 ### Database
 
-The Postgres database, with pgvector, that the service and the operator commands use. Backup is a dump of it; the mirrors of git sources are fetched again.
+The Postgres database, with pgvector, that the service and the operator commands use. Backup is a dump of it; the mirrors of repositories are fetched again.
 
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |
@@ -92,7 +92,7 @@ v1 has one user. The operator commands act as one principal, named here.
 
 ### Embeddings
 
-Off until `embedding_provider` is set: the service starts without them, but does not sync git sources, and search refuses with a message that names the setting. `openai_compatible` sends the text of chunks and queries to the API at `embedding_url` (Ollama, llama.cpp, vLLM or a cloud service): which endpoint, on this machine or not, is your explicit choice. `local` runs an ONNX model in the process; it needs the optional dependencies `memini[local-embeddings]` and pins the model files by `embedding_digest`, which is verified before they are loaded. A setting of the provider not chosen, or any `embedding_*` setting without a provider, is an error.
+Off until `embedding_provider` is set: the service starts without them, but does not sync repositories, and search refuses with a message that names the setting. `openai_compatible` sends the text of chunks and queries to the API at `embedding_url` (Ollama, llama.cpp, vLLM or a cloud service): which endpoint, on this machine or not, is your explicit choice. `local` runs an ONNX model in the process; it needs the optional dependencies `memini[local-embeddings]` and pins the model files by `embedding_digest`, which is verified before they are loaded. A setting of the provider not chosen, or any `embedding_*` setting without a provider, is an error.
 
 With `embedding_provider = openai_compatible` and nothing else set, these defaults apply (`ollama pull qwen3-embedding:0.6b` first):
 
@@ -157,7 +157,7 @@ The pinned default uses per-token INT8 on Linux arm64 and on Linux x86-64 where 
 
 ### Git connector
 
-The service keeps a bare mirror of every git source and reads code from it. Remote sources use https or ssh; plain http and local paths are refused unless allowed here. Credentials are global for now: one https token and one ssh key.
+The service keeps a bare mirror of every repository and reads code from it. Remote sources use https or ssh; plain http and local paths are refused unless allowed here. Credentials are global for now: one https token and one ssh key.
 
 | Setting | Values | Default | Change needs | Description |
 | --- | --- | --- | --- | --- |

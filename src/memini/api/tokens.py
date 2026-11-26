@@ -4,7 +4,7 @@
 |---|---|
 | ``POST /tokens`` | create a token; the response holds it, this once (201) |
 | ``GET /tokens`` | list tokens, without secrets |
-| ``DELETE /tokens/{token_id}`` | revoke a token; answers with the revoked token |
+| ``DELETE /tokens/{id}`` | revoke a token; answers with the revoked token |
 
 The rules are those of :mod:`memini.token_admin`: a token limited to one workspace creates, sees
 and revokes only tokens limited to that workspace (403 ``workspace_limited`` for a token for every
@@ -111,7 +111,7 @@ class CreatedToken(TokenOut):
 
 
 class TokenList(BaseModel):
-    tokens: list[TokenOut] = Field(description="Oldest first.")
+    items: list[TokenOut] = Field(description="Oldest first.")
 
 
 def build_tokens_router() -> APIRouter:
@@ -146,14 +146,14 @@ def build_tokens_router() -> APIRouter:
         """The caller's tokens, revoked and expired ones included, without secrets. A token
         limited to one workspace sees only the tokens limited to it."""
         found = await token_admin.list_tokens_as(conn, access)
-        return TokenList(tokens=[TokenOut.of(entry) for entry in found])
+        return TokenList(items=[TokenOut.of(entry) for entry in found])
 
-    @router.delete("/{token_id}", summary="Revoke a token")
-    async def revoke_token(token_id: UUID, access: AdminAccess, conn: Connection) -> TokenOut:
+    @router.delete("/{id}", summary="Revoke a token")
+    async def revoke_token(id: UUID, access: AdminAccess, conn: Connection) -> TokenOut:
         """Revoke a token from now on and answer with it. Revoking it again keeps the first time.
         404 if there is no such token or the caller may not see it."""
         with admin_errors():
-            entry = await token_admin.revoke_token_as(conn, access, token_id)
+            entry = await token_admin.revoke_token_as(conn, access, id)
         return TokenOut.of(entry)
 
     return router

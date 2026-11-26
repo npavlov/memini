@@ -130,7 +130,7 @@ STALE_AFTER_SCHEDULES: Final = 2
 MAX_ERROR_LINE: Final = 200
 """Characters of a run's error that status shows at most (see the module)."""
 
-SourceKind = Literal["git", "push", "mcp"]
+SourceKind = Literal["repository", "push", "mcp"]
 RunStatus = Literal["running", "succeeded", "partial", "failed", "cancelled"]
 BehindReason = Literal["never_checked", "lag", "not_indexed", "index_stale"]
 WorkspaceIndexState = Literal["ok", "stale", "none", "off"]
@@ -747,7 +747,7 @@ def _stream(row: Sequence[Any], *, indexing: bool, stale: bool) -> StreamStatus:
         last_failure=_run(row[16:22]),
         missing=pin.get("missing") is True,
         git=None
-        if kind != "git"
+        if kind != "repository"
         else GitPin(
             commit=commit if isinstance(commit, str) else None,
             partial=pin.get("partial") is True,

@@ -149,7 +149,7 @@ DEFAULT_LIMITS: Final = SyncLimits()
 
 @dataclass(frozen=True, slots=True)
 class GitSource:
-    """A git source as a sync needs it."""
+    """A repository as a sync needs it."""
 
     id: UUID
     workspace_id: UUID
@@ -159,7 +159,7 @@ class GitSource:
 
 @dataclass(frozen=True, slots=True)
 class GitStream:
-    """A stream of a git source: one tracked ref, and its cursor as stored."""
+    """A stream of a repository: one tracked ref, and its cursor as stored."""
 
     id: UUID
     key: str

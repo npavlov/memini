@@ -25,7 +25,7 @@ Done when: `docker compose up` starts, an MCP client connects with a token and `
 - tree-sitter chunking and symbol table; line-window fallback.
 - Local embeddings, lexical index, trigram index, hybrid search with rank fusion, optional rerank.
 - Index fingerprint and rebuild.
-- Tools: `search_code`, `read_source`, `get_symbol`, `search`.
+- Tools: `search_code`, `get_file`, `search_code` in mode `symbol`, `search`.
 - Retrieval eval harness with a code question set.
 
 Done when: two repositories in two workspaces are indexed; a new commit re-chunks only changed files; a
@@ -37,7 +37,7 @@ rebuild from the mirrors gives the same chunk ids; the eval runs.
 - Record kinds `thread`, `meeting`, `document`; chunking for each.
 - Persons, aliases, "me"; deterministic resolution; manual merge.
 - Filters, redaction, retention.
-- Tools: `list_meetings`, `get_meeting`, `list_messages`, `get_thread`, `add_document`; `search` covers
+- Tools: `list_meetings`, `get_meeting`, `list_messages`, `get_thread`, `put_document`; `search` covers
   all kinds.
 
 Done when: synthetic chat and meeting fixtures ingest twice with no change on the second run; "meetings I

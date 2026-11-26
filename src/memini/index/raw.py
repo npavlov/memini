@@ -7,7 +7,7 @@ again. Where the bytes are depends on where the record came from:
 - A thread, a meeting or a document of a push or MCP source keeps its payload in the ``record``
   row, byte for byte (:class:`StoredPayload`): canonical JSON, which the chunker of its kind
   parses (:func:`memini.chunking.chunk_payload`), never the bytes of a file.
-- A file of a git source, a code file or a Markdown document, is not copied into the database:
+- A file of a repository, a code file or a Markdown document, is not copied into the database:
   the service's mirror of the repository is the raw store, and the record's ``content_hash`` is
   the file's git blob id. Reading it is the git connector's part,
   :class:`memini.gitsync.MirrorContent`, which ``memini reindex`` passes as ``code``. Without it,
@@ -205,7 +205,7 @@ class ByKind:
 
 
 class BySourceKind:
-    """Records of git sources from ``git``, records of other sources from ``other``.
+    """Records of repositories from ``git``, records of other sources from ``other``.
 
     It looks up the kind of each source once, on ``conn``; a source's kind does not change. A
     record whose source is gone has nothing to index: its records went with it.
@@ -227,15 +227,15 @@ class BySourceKind:
             if row is None:
                 return None
             kind = self._kinds[record.source_id] = row[0]
-        return await (self._git if kind == "git" else self._other).read(record)
+        return await (self._git if kind == "repository" else self._other).read(record)
 
     async def prefetch(self, records: Sequence[RecordRef]) -> None:
-        # Each provider picks the records it serves; the mirror reader those of git sources.
+        # Each provider picks the records it serves; the mirror reader those of repositories.
         await _prefetch([self._git, self._other], records)
 
 
 def default_raw_content(conn: Conn, *, code: RawContent | None = None) -> RawContent:
-    """Files of git sources from ``code`` (:class:`memini.gitsync.MirrorContent` in
+    """Files of repositories from ``code`` (:class:`memini.gitsync.MirrorContent` in
     ``memini reindex``; by default :class:`MirrorNotAvailable`): code files, and documents of git
     sources. Payloads from the ``record`` table for everything else."""
     stored = StoredPayload(conn)

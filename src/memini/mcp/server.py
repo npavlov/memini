@@ -79,7 +79,7 @@ TOOLS: Final[Sequence[Tool[Any, Any]]] = (
     *CATALOG_WRITE_TOOLS,
 )
 """Every tool the server offers, in the order ``tools/list`` shows them. The write tools
-(``add_document``, the decision tools and ``put_project``) need the ``ingest`` scope; a token
+(``put_document``, the decision tools and ``put_project``) need the ``ingest`` scope; a token
 without it does not see them."""
 
 _PRINCIPAL: Final = "principal"

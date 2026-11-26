@@ -360,18 +360,18 @@ async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cite
         )
 
     # HTTP: the record's place and time, and the chunk's.
-    hit = found["hits"][0]
+    hit = found["items"][0]
     rid = record_id(source, "thread", "teplica/r-1")
     assert hit["record_id"] == rid
     assert (hit["locator"], hit["anchor"]) == ("chat:teplica/r-1#msg-r-1", "msg-r-1")
     assert hit["link"] == "https://chat.example.invalid/archives/teplica/r-1"
     assert hit["url"] is None
     assert instant(hit["occurred_at"]) == datetime(2026, 3, 4, 6, 20, tzinfo=UTC)
-    assert instant(hit["at"]) == datetime(2026, 3, 4, 6, tzinfo=UTC)
-    journal = sections["hits"][0]
+    assert instant(hit["chunk_occurred_at"]) == datetime(2026, 3, 4, 6, tzinfo=UTC)
+    journal = sections["items"][0]
     assert (journal["locator"], journal["anchor"]) == ("chat:handbook#Journal", "Journal")
     assert journal["link"] == journal["url"] == "https://notes.example.invalid/handbook"
-    assert journal["at"] == journal["occurred_at"]
+    assert journal["chunk_occurred_at"] == journal["occurred_at"]
 
     # MCP: the same hit, its output schema, and the text for clients that read only text.
     async with mcp_client(settings, pool, fake, agent) as client:
@@ -379,7 +379,9 @@ async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cite
         result = await client.call_tool("search", query)
     schema = tools["search"].output_schema
     assert schema is not None
-    assert {"anchor", "link", "at"} <= set(schema["$defs"]["SearchHit"]["properties"])
+    assert {"anchor", "link", "chunk_occurred_at"} <= set(
+        schema["$defs"]["SearchHit"]["properties"]
+    )
     assert result.is_error is False
     assert result.structured_content == found
     (content,) = result.content
@@ -392,7 +394,7 @@ async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cite
     # record_id and anchor are evidence as they are.
     decision = {
         "statement": "Seedlings are pricked out on Saturday.",
-        "decided_at": "2026-03-04T06:20:00Z",
+        "occurred_at": "2026-03-04T06:20:00Z",
         "evidence": [
             {"record_id": hit["record_id"], "anchor": hit["anchor"]},
             {"record_id": journal["record_id"], "anchor": journal["anchor"]},

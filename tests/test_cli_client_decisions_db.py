@@ -1,11 +1,11 @@
 """``memini decision`` as a client of the running service, against a real Postgres.
 
 The service runs as in test_cli_client_db.py (uvicorn on a free port, the FakeEmbedder). From the
-CLI: record a decision and an open question with evidence by source and external id and by record
-id, correct the decision with another that replaces it, answer the question, close and retract,
-and see the journal refuse a change to an item that is no longer active (409, the constraint
-named) and a token without the ``ingest`` scope (403). Run with `make test-integration`. Every
-record, person and statement is synthetic.
+CLI: record a decision and an open question with evidence by record id, as the push answer
+gives it, correct the decision with another that replaces it, answer the question, close and
+retract, and see the journal refuse a change to an item that is no longer active (409, the
+constraint named) and a token without the ``ingest`` scope (403). Run with
+`make test-integration`. Every record, person and statement is synthetic.
 """
 
 import json
@@ -52,8 +52,9 @@ def as_json(result: Run) -> dict[str, Any]:
     return body
 
 
-def push(url: str, token: str) -> None:
-    """Two threads and a document into the push source notes of workspace alpha."""
+def push(url: str, token: str) -> dict[str, str]:
+    """Two threads and a document into the push source notes of workspace alpha; the id of each
+    record by its external id, from the answer."""
     records = [
         {
             "kind": "thread",
@@ -81,6 +82,7 @@ def push(url: str, token: str) -> None:
         timeout=30,
     )
     assert response.status_code == 200, response.text
+    return {each["external_id"]: each["id"] for each in response.json()["records"]}
 
 
 def add_person(database_url: str, workspace: str, name: str) -> str:
@@ -118,33 +120,34 @@ def test_from_the_cli_decisions_are_recorded_corrected_answered_closed_and_retra
         ok(cli("source", "add", "alpha", "notes", "--kind", "push"))
         writer = ok(cli("token", "create", "--scope", "read", "--scope", "ingest")).out.strip()
         reader = ok(cli("token", "create", "--scope", "read")).out.strip()
-        push(url, writer)
+        ids = push(url, writer)
         person = add_person(empty_database_url, "alpha", "Person One")
         monkeypatch.delenv("MEMINI_TOKEN_FILE")
         monkeypatch.setenv("MEMINI_TOKEN", writer)
 
-        # A decision with evidence by source and external id, and a question.
+        # A decision with evidence by record id and anchor, and a question.
         wrong = as_json(
             cli(
                 "decision", "record", "alpha", "--statement", "Water the beds at six.",
-                "--decided-at", iso(SAID), "--evidence", "notes:garden/0001#m2",
+                "--occurred-at", iso(SAID), "--evidence", f"{ids['garden/0001']}#m2",
                 "--participant", person, "--json",
             )
         )  # fmt: skip
         question = as_json(
             cli(
                 "decision", "record", "alpha", "--kind", "open_question",
-                "--statement", "Who waters on Sundays?", "--decided-at", iso(SAID + 24 * HOUR),
-                "--evidence", "notes:garden/0002#m2", "--json",
+                "--statement", "Who waters on Sundays?", "--occurred-at", iso(SAID + 24 * HOUR),
+                "--evidence", f"{ids['garden/0002']}#m2", "--json",
             )
         )  # fmt: skip
-        # The correction cites the record by id, and the handbook whole; it replaces the first.
+        # The correction cites the record by the id an answer gives, and the handbook whole; it
+        # replaces the first.
         thread = wrong["evidence"][0]["record_id"]
         fixed = ok(
             cli(
                 "decision", "record", "alpha", "--statement", "Water the beds at seven, not six.",
-                "--decided-at", iso(SAID + 25 * HOUR), "--evidence", f"{thread}#m2",
-                "--evidence", "notes:handbook", "--supersedes", wrong["id"],
+                "--occurred-at", iso(SAID + 25 * HOUR), "--evidence", f"{thread}#m2",
+                "--evidence", ids["handbook"], "--supersedes", wrong["id"],
             )
         )  # fmt: skip
         fixed_id = fixed.out.splitlines()[0].split()[1]
@@ -157,7 +160,7 @@ def test_from_the_cli_decisions_are_recorded_corrected_answered_closed_and_retra
         later = as_json(
             cli(
                 "decision", "record", "alpha", "--statement", "Water by hand in a heatwave.",
-                "--evidence", "notes:handbook", "--json",
+                "--evidence", ids["handbook"], "--json",
             )
         )  # fmt: skip
         closed = ok(cli("decision", "close", "alpha", later["id"]))
@@ -171,6 +174,7 @@ def test_from_the_cli_decisions_are_recorded_corrected_answered_closed_and_retra
 
     assert (wrong["kind"], wrong["status"], wrong["manual"]) == ("decision", "active", True)
     assert wrong["evidence"][0]["source"] == "notes"
+    assert wrong["evidence"][0]["record_id"] == ids["garden/0001"]
     assert wrong["evidence"][0]["anchor"] == "m2"
     assert [p["display_name"] for p in wrong["participants"]] == ["Person One"]
     assert question["kind"] == "open_question"
@@ -179,11 +183,12 @@ def test_from_the_cli_decisions_are_recorded_corrected_answered_closed_and_retra
     assert lines[0].split()[0] == "id"
     assert lines[3].split() == ["status", "active"]
     assert lines[4].split(maxsplit=1) == ["statement", "Water the beds at seven, not six."]
-    assert lines[5].split() == ["decided", "2026-03-02T10:00:00Z"]
-    assert ["evidence", "notes:garden/0001#m2", "(thread,", "stored)"] in [
+    assert lines[5].split() == ["occurred", "2026-03-02T10:00:00Z"]
+    evidence = [f"{ids['garden/0001']}#m2", "(notes:garden/0001,", "thread,", "stored)"]
+    assert ["evidence", *evidence] in [line.split() for line in lines]
+    assert [ids["handbook"], "(notes:handbook,", "document,", "stored)"] in [
         line.split() for line in lines
     ]
-    assert ["notes:handbook", "(document,", "stored)"] in [line.split() for line in lines]
     assert ["supersedes", wrong["id"], "(replaces)"] in [line.split() for line in lines]
 
     assert [(link["supersedes_id"], link["relation"]) for link in answered["supersedes"]] == [

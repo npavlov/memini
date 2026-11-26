@@ -395,28 +395,28 @@ def build_agent_runs_router() -> APIRouter:
             run = await agent.start_run(conn, access, workspace, source, body.stream, server=server)
         return AgentRunInfo.of(run)
 
-    @router.get("/{run_id}", summary="Read an agent run")
+    @router.get("/{id}", summary="Read an agent run")
     async def read_agent_run(
-        workspace: str, source: str, run_id: UUID, access: IngestAccess, conn: Connection
+        workspace: str, source: str, id: UUID, access: IngestAccess, conn: Connection
     ) -> AgentRunInfo:
         with _agent_errors():
-            run = await agent.get_agent_run(conn, access, workspace, source, run_id)
+            run = await agent.get_agent_run(conn, access, workspace, source, id)
         return AgentRunInfo.of(run)
 
-    @router.get("/{run_id}/next", summary="The next call of an agent run")
+    @router.get("/{id}/next", summary="The next call of an agent run")
     async def next_agent_call(
-        workspace: str, source: str, run_id: UUID, access: IngestAccess, conn: Connection
+        workspace: str, source: str, id: UUID, access: IngestAccess, conn: Connection
     ) -> NextAnswer:
         """The next call to make, or that the window or the run is done."""
         with _agent_errors():
-            step = await agent.next_call(conn, access, workspace, source, run_id)
+            step = await agent.next_call(conn, access, workspace, source, id)
         return NextAnswer.of(step)
 
-    @router.post("/{run_id}/responses", summary="Store the raw response of a call handed out")
+    @router.post("/{id}/responses", summary="Store the raw response of a call handed out")
     async def store_agent_response(
         workspace: str,
         source: str,
-        run_id: UUID,
+        id: UUID,
         body: ResponseBody,
         access: IngestAccess,
         conn: Connection,
@@ -429,7 +429,7 @@ def build_agent_runs_router() -> APIRouter:
                 access,
                 workspace,
                 source,
-                run_id,
+                id,
                 body.call_id,
                 tool=body.tool,
                 arguments=body.arguments,
@@ -438,11 +438,11 @@ def build_agent_runs_router() -> APIRouter:
             )
         return ReceiptAnswer.of(receipt)
 
-    @router.post("/{run_id}/finish", summary="Finish an agent run")
+    @router.post("/{id}/finish", summary="Finish an agent run")
     async def finish_agent_run(
         workspace: str,
         source: str,
-        run_id: UUID,
+        id: UUID,
         access: IngestAccess,
         request: Request,
         conn: Connection,
@@ -458,7 +458,7 @@ def build_agent_runs_router() -> APIRouter:
                 access,
                 workspace,
                 source,
-                run_id,
+                id,
                 runs=pool,
                 limits=ingest.IngestLimits.from_settings(settings),
                 indexer=indexer,
