@@ -184,7 +184,12 @@ def test_the_url_option_wins_over_the_environment() -> None:
         ("http://exa mple.invalid", "MEMINI_URL: invalid"),
         ("http://a\x1b[2J.invalid", "MEMINI_URL: invalid"),
         ("https://ops:hunter2-secret@example.invalid", "MEMINI_URL: holds a user name or pass"),
-        (f"https://{TOKEN}@example.invalid", "MEMINI_URL: holds a user name or password"),
+        # The token is random: a fixed id keeps the test's name the same in every xdist worker.
+        pytest.param(
+            f"https://{TOKEN}@example.invalid",
+            "MEMINI_URL: holds a user name or password",
+            id="token-as-user-name",
+        ),
     ],
 )
 def test_an_invalid_url_is_refused_without_its_value(url: str, complaint: str) -> None:
