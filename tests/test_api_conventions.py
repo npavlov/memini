@@ -57,9 +57,8 @@ WRITE_TOOLS = {
 }
 # Options a read command has beyond its tool's arguments: how the answer prints, and the gate.
 CLI_ONLY_OPTIONS = {"help", "json", "gate"}
-# Tool arguments a read command leaves out, and why: get_domain takes include_sensitive in MCP
-# only, where nothing reads it; its HTTP route has no such parameter.
-CLI_LEFT_OUT = {("get_domain", "include_sensitive")}
+# Tool arguments a read command leaves out, and why: none, every argument has its option.
+CLI_LEFT_OUT: set[tuple[str, str]] = set()
 # Commands the CLI had before the read commands took the tools' names; none may come back.
 RETIRED_COMMANDS = {"meetings", "messages", "read", "symbol", "decisions", "catalog", "commits"}
 # Fields that hold a list of things but are data, not filters or answers: named as they are.
