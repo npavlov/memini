@@ -45,10 +45,10 @@ MEMINI_TOKEN_FILE="$scratch/ingest.token" bin/memini push --workspace demo --sou
 bin/memini search 'when does the nightly export run' --limit 3 --json > chat.json
 docker compose exec -T memini python -c '
 import json, sys
-assert any(h["path"] == "src/memini/cli/admin.py" for h in json.load(sys.stdin)["hits"])
+assert any(h["path"] == "src/memini/cli/admin.py" for h in json.load(sys.stdin)["items"])
 ' < code.json
 docker compose exec -T memini python -c '
 import json, sys
 assert any(h["external_id"] == "platform/1793610720.000100" and "04:30" in h["snippet"]
-           for h in json.load(sys.stdin)["hits"])
+           for h in json.load(sys.stdin)["items"])
 ' < chat.json

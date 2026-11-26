@@ -8,6 +8,7 @@ and options. A name that breaks a rule is a bug; there are no aliases.
 import argparse
 import re
 from collections.abc import Iterator, Mapping
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -223,3 +224,21 @@ def test_the_cli_has_no_retired_commands() -> None:
         verb = command.split("-", 1)[0]
         if verb in VERBS and "-" in command:
             assert command in tools, f"memini {command} is named like a tool but is none"
+
+
+# Answer keys that lists used before they all answered items. The scripts and workflows that
+# drive a release read answers too; a release run failed on rc.2 because one still read hits.
+RETIRED_ANSWER_KEYS = {"hits"}
+
+
+def test_scripts_and_workflows_read_answers_by_their_current_keys() -> None:
+    root = Path(__file__).resolve().parents[1]
+    files = [*root.glob("scripts/*"), *root.glob(".github/workflows/*.yml")]
+    stale = [
+        f"{path.relative_to(root)}: {key}"
+        for path in files
+        if path.is_file()
+        for key in RETIRED_ANSWER_KEYS
+        if re.search(rf"""\[["']{key}["']\]|\.get\(["']{key}["']""", path.read_text("utf-8"))
+    ]
+    assert not stale, stale

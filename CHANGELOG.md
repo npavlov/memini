@@ -7,6 +7,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The release run's install test read the search answer's list as `hits`; since the API was
+  unified it is `items`, and the run of 0.2.0-rc.2 failed there. A test now keeps the release
+  scripts and workflows on the current answer keys. 0.2.0-rc.2 has no release; 0.2.0-rc.3 follows.
+
 ## [0.2.0-rc.2] - 2026-11-26
 
 ### Added
