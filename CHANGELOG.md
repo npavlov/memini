@@ -7,225 +7,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-
-- The repository's launcher pin and the Homebrew and Scoop packages move to 0.2.0-rc.5.
-- Desktop: every action that calls the server or the launcher shows that it runs and how it
-  ended. Its button cannot be clicked meanwhile and says what runs (`Syncing…`, `Saving…`,
-  `Deleting…`) with a turning ring; actions whose result is not visible on the screen say what
-  they did. The rule is in `.claude/rules/desktop.md` and a test checks the screens.
-- Desktop: the sidebar has no line under the workspace switcher any more; what a workspace is is
-  said on the Codebases and Project map screens.
-
-### Fixed
-
-- Desktop, Codebases: Sync now showed nothing and left `waiting to sync` on the card. The card now
-  follows the sync from the stream's queued or running job, reading it every two seconds until it
-  ends; Sync now cannot be clicked meanwhile (`Asking…`, `Queued…`, `Syncing…`), and then the card
-  says how it ended: `Checked 12:26 — no changes; main is still at 0327a55, committed 1 Nov`, or
-  what changed. For a folder of this computer it says that new commits appear after `git pull` in
-  the working copy.
-- Desktop, Codebases: Sync now (and Save and sync) stays disabled until the card has read the
-  stream after the request, so there is no moment between the server's answer and the queued job
-  on screen when it can be clicked again. A reload settles once its answer is on screen
-  (`useLoad`). Project map: "Load the newer version" says `Loading…` until the newer version has
-  been read.
-
-## [0.2.0-rc.5] - 2026-11-26
-
-### Added
-
-- The Release workflow builds the desktop app from the tag and attaches it, unsigned, to the
-  draft release with `desktop-SHA256SUMS`: `.dmg` for macOS (Apple silicon and Intel),
-  `-setup.exe` for Windows x64, `.AppImage` and `.deb` for Linux x86_64. The release notes and
-  [Desktop app](docs/install.md#desktop-app) say how to open it the first time.
-- The app attached to a release installs that release's server: the desktop build waits for the
-  published image, and the sidecar freeze (`desktop/sidecar/freeze.py --release-image`) pins it
-  with its digest, and the tag's compose files, in the launcher it freezes. The build fails
-  unless the frozen launcher names that image. Pull requests keep the repository's pin.
-- One version for a release ([the rule](docs/releasing.md#the-rule-one-version)): the Release
-  workflow fails, before PyPI and the draft release, unless the tag, the image, the Python
-  package, the app's bundles and the image of every frozen launcher are of the same version
-  (`scripts/check-release-versions.py`), the service in the image prints that version, and
-  `tauri.conf.json` names no version of its own.
-
-### Changed
-
-- The app's build moved to the reusable workflow `desktop-app.yml`, which the Desktop workflow
-  calls for a pull request and the Release workflow for a tag. Its CI artifacts are the bundles a
-  release carries (`memini-desktop-<os>`) instead of an archive of the bundle folder.
-
-### Changed
-
-- The server launcher, and the desktop app that carries it, install and start the image of
-  0.2.0-rc.4.
-
-### Fixed
-
-- The Windows installer's release check tries the install again for up to ten minutes: PyPI's
-  index pages can lag its JSON API, and the run of 0.2.0-rc.4 failed there once.
-
-## [0.2.0-rc.4] - 2026-11-26
-
-### Added
-
-- `GET /v1/workspaces/{workspace}/sources/{source}/streams` says what the index holds of each
-  stream (`index`: records, chunks, the pinned commit and its committer time), whatever its last
-  run did.
-- `GET /v1/workspaces/{workspace}/sources/{source}/coverage`: how much of a repository the project
-  map names: the projects with a service or a domain there, the share of its indexed files some
-  domain names, when and by which token each project was last written, and the top-level folders
-  of the files no domain names.
-- Desktop app: one workspace switcher in the sidebar, with what a workspace is; Codebases, Data
-  and Project map show the workspace chosen there.
-- Desktop app, Codebases: each card shows what the index holds (files, chunks, commit and its
-  date), the last check from the run's counts (`07:37 — no changes`), whether a running sync is a
-  full listing or a diff, the folder of this computer it reads, and whether the project map names
-  it, with the folders no domain names. The task for an agent is shown before it is copied, with
-  the three steps to map the code bases.
-
-### Changed
-
-- Desktop app: the folders given to the local server that no code base reads are listed on the
-  Server screen (**Folders on this computer**), not under the code bases of a workspace, which
-  showed the folders of other workspaces. A card showed the last run's progress, 0% after a diff
-  that changed nothing; it shows the state of the index instead.
-
-- The server launcher, and the desktop app that carries it, install and start the image of
-  0.2.0-rc.3.
-
-### Fixed
-
-- The Windows installer's release check answered its fake server's workspace list as
-  `workspaces` instead of `items`, and it installed the just-published package before PyPI listed
-  it; 0.2.0-rc.3 has no installers for that reason. The check now answers `items` and waits for
-  PyPI to list the version, and the conventions test reads packaging code too.
-
-## [0.2.0-rc.3] - 2026-11-26
-
-### Fixed
-
-- The release run's install test read the search answer's list as `hits`; since the API was
-  unified it is `items`, and the run of 0.2.0-rc.2 failed there. A test now keeps the release
-  scripts and workflows on the current answer keys. 0.2.0-rc.2 has no release; 0.2.0-rc.3 follows.
-
-## [0.2.0-rc.2] - 2026-11-26
-
-### Added
-
-- A managed server rebuilds its search index by itself after an upgrade that changes how code
-  is read (the setting `index_auto_rebuild`, which the server launcher sets), reusing every
-  vector that did not change. Until a workspace is done, search answers `index_rebuilding` with
-  how far it is, `GET /v1/status` and `memini status` show it, and the desktop app shows a bar
-  on its Server and Codebases screens. [Upgrade the server](docs/install.md#upgrade-the-server).
-- Mark a record sensitive instead of forgetting it: it stays stored and indexed, and every read
-  leaves it out (search, code search, symbols, messages, meetings, threads, decisions supported
-  only by it, the export) unless it asks with `include_sensitive` and a token with the new scope
-  `sensitive`. No model reads a marked record. An admin marks or clears one with
-  `PUT /v1/workspaces/{workspace}/records/sensitive` or `memini sensitive mark|unmark|list`, a push
-  with `"sensitive": true`, and the desktop app on its Data screen. Scenario S19.
-- See how far a git sync is while it runs: its run report carries `details.progress`, the files
-  it writes, those read, chunked and embedded so far, and those committed, saved every few seconds
-  (`GET /v1/runs/{id}`).
-- Preview what a git source indexes before a sync spends time on it:
-  `GET /v1/workspaces/{workspace}/sources/{source}/preview` counts the files of a ref that the
-  source's rules, or rules to try, keep, by extension and by top-level folder.
-- Limit how much of the computer the search model of a managed server uses while it indexes:
-  `memini-server indexing set half|background|full`, half the cores by default. The desktop app
-  sets it on the Server screen. [Limit the cores](docs/install.md#limit-the-cores-the-search-model-uses).
-- The desktop app's Repositories tab is now **Codebases**: each code base is a card with a
-  progress bar of its sync (files done of all, time left), its schedule with Pause and Resume, and
-  what it indexes. Adding a code base leaves out tests, generated code, data files and assets by
-  default, for the common languages; **What it indexes** previews what a sync keeps and saves a
-  new scope. **Copy task for an agent**, there and on the Project map, gives a connected agent
-  what to read and how to write the project map.
-- Definitions and symbols in fifteen more languages: Java, C#, C, C++, PHP, Kotlin, Swift, Rust,
-  Scala, Dart, Lua, shell, SQL, Objective-C and Elixir, twenty in all. Their files are chunked by
-  function, method and type instead of line windows, `get_symbol` finds their definitions, and
-  `search_code` and `get_symbol` filter by them (`languages`). A method added to a type outside
-  it, in a Rust `impl`, a Swift or Dart `extension`, an Objective-C `@implementation`, a Kotlin
-  extension function or a C++ `Dock::moor`, is named after the type.
-
-### Changed
-
-- One naming convention for every MCP tool, HTTP route and CLI command, with no aliases:
-  [API conventions](docs/mcp/conventions.md). `tests/test_api_conventions.py` checks it. Renamed:
-  - Tools: `read_source` is `get_file`, `add_document` is `put_document`; `get_symbol` is gone:
-    `search_code` finds definitions in mode `symbol`, and by prefix in mode `symbol_prefix`.
-  - Sources: the kind `git` is `repository` (migration 0023); arguments and fields name a source
-    `source`/`sources`: `repository`, `repositories` and `unassigned_repositories` are gone.
-  - One object by `id`: `get_thread`, `get_meeting`, `get_decision`, `supersede_decision`,
-    `close_decision`, `retract_decision`, forget and the sensitive mark take `id`; naming a record by
-    source and external id is gone, everywhere (evidence too: `record_id` and `anchor`); the
-    answer of a pushed batch gives each record's `id` (`records`), and `memini push --json` lists
-    them (`ids`).
-  - Filters: `person` (`list_meetings`, `list_messages`), `person_ids` (`list_decisions`) and
-    `author` (`list_commits`) are `persons`; `text` (`list_commits`) is `query`; `other_project`
-    (`get_project`) is `linked_projects`; `include` and `exclude` of a source are
-    `include_paths` and `exclude_paths`; the runs listing takes `sources`, `streams` and `cursor`;
-    the persons listing takes `query` and `cursor` (were `q` and `after`), and `memini person
-    list` takes `--cursor`.
-    `list_meetings` and `list_messages` take `projects` and `domains`.
-  - Answers: every list answers `items` (search hits, meetings, messages, commits, sources,
-    streams, runs, tokens, persons, workspaces, sensitive records); `left_out` counts the results
-    of records marked sensitive left out of search, `list_meetings`, `list_messages` and
-    `list_decisions`; `next_until`, `next_before` and `next_after` are `next_cursor`.
-  - Times: a decision's `decided_at` is `occurred_at` and `recorded_at` is `created_at`; a
-    message's `sent_at` is `occurred_at`; a hit's `at` is `chunk_occurred_at`; a mark's
-    `sensitive_at` is `marked_at`. A hit's chunk id is `id`, a record's and a person's own id `id`.
-  - HTTP: `GET /v1/symbols` and the routes that read a thread or a meeting by external id are
-    gone; `PUT …/sources/{source}/documents` writes a document; forget is
-    `POST /v1/workspaces/{workspace}/records/{id}/forget` and the mark
-    `PUT /v1/workspaces/{workspace}/records/{id}/sensitive`.
-  - CLI: every MCP read tool is a command of the same name with its arguments as options:
-    `memini search`, `search-code`, `get-file`, `list-commits`, `list-messages`, `get-thread`,
-    `list-meetings`, `get-meeting`, `list-decisions`, `get-decision`, `get-catalog`,
-    `catalog-guide`, `get-project`, `get-domain` and `status`. A list filter keeps its plural
-    name and repeats (`--persons me --persons bo@example.test`), and the topic of a list is
-    `--query`. `memini search --code` is `memini search-code`; `memini meetings` and
-    `memini messages` are `memini list-meetings` and `memini list-messages`; `--workspace`,
-    `--source`, `--person`, `--role`, `--kind`, `--path` and `--language` of those commands are
-    `--workspaces`, `--sources`, `--persons`, `--roles`, `--kinds`, `--paths` and `--languages`.
-    Admin commands stay grouped by noun: `memini forget <workspace> <id>`, `memini sensitive
-    mark|unmark <workspace> <id>`, `memini decision record --occurred-at` with `--evidence
-    RECORD_ID[#ANCHOR]`, `memini runs` with `--cursor`.
-- `get_file` refuses a file whose record is marked sensitive unless asked with
-  `include_sensitive`, as `get_thread` does; reading a marked record answers 403
-  `sensitive_record`.
-- A release writes its version with `scripts/bump-version.py`, which also moves the changelog
-  entries; the release run refuses a tag whose desktop app version differs.
-  [Releasing](docs/releasing.md).
-- The server launcher, and the desktop app that carries it, install and start the image of
-  0.2.0-rc.1, so a managed server has the catalog, domains and the project map. A managed server
-  of 0.1.0 moves to it at its next start, and its database is migrated on the way.
-- The chunker is version 3, which changes the index fingerprint: after the upgrade, search refuses
-  a workspace until `memini reindex --workspace NAME` has rebuilt it. Vectors are reused, so only
-  the files of the new languages are embedded again.
-- On a Mac the search model runs in Ollama on the Mac, about a hundred times faster than in
-  Docker, which has no GPU there. The desktop app's first setup finds Ollama, downloads the model
-  with its progress shown and installs the server in this mode, or offers to install Ollama with
-  Homebrew; the Server screen moves an installed server's model to the Mac or back. The launcher
-  does it with `memini-server embedding host|container|status` and
-  `memini-server start --embedding host`; the index stays as it is.
-  [Run the search model in Ollama on a Mac](docs/install.md#run-the-search-model-in-ollama-on-a-mac).
-
-### Fixed
-
-- A first git sync that is stopped, by an edit of the source or a restart, keeps the files it has
-  written: it commits every 30 seconds of writing instead of once per batch of a hundred files,
-  which without a GPU took over half an hour and was lost whole.
-- The desktop app's window no longer scrolls as a whole: a selection dragged past the edge or a
-  focused element moved the side bar and the status bar out of the window. Only the screen
-  scrolls.
-- The Repositories screen opens the form to add a repository, and the one to create a workspace,
-  on a click, instead of showing them all the time.
-- The first setup in the desktop app says that Docker is downloading the application, the
-  database and the search model (about 2 GB) while no service exists yet, instead of pointing to
-  an empty list of services for minutes.
-- A folder whose path holds `$` is mounted at that path: the launcher writes it as `$$`, which
-  Compose reads as one `$`.
-
-## [0.2.0-rc.1] - 2026-11-25
+## [0.2.0] - 2026-11-26
 
 ### Added
 
@@ -281,6 +63,139 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and carries them as `context`. `list_decisions` and the decisions of `search` filter by
   `projects` and `domains`, a domain with its subdomains; `get_domain` lists a domain's active
   decisions. [Tool reference](docs/mcp/list_decisions.md).
+- A managed server rebuilds its search index by itself after an upgrade that changes how code
+  is read (the setting `index_auto_rebuild`, which the server launcher sets), reusing every
+  vector that did not change. Until a workspace is done, search answers `index_rebuilding` with
+  how far it is, `GET /v1/status` and `memini status` show it, and the desktop app shows a bar
+  on its Server and Codebases screens. [Upgrade the server](docs/install.md#upgrade-the-server).
+- Mark a record sensitive instead of forgetting it: it stays stored and indexed, and every read
+  leaves it out (search, code search, symbols, messages, meetings, threads, decisions supported
+  only by it, the export) unless it asks with `include_sensitive` and a token with the new scope
+  `sensitive`. No model reads a marked record. An admin marks or clears one with
+  `PUT /v1/workspaces/{workspace}/records/sensitive` or `memini sensitive mark|unmark|list`, a push
+  with `"sensitive": true`, and the desktop app on its Data screen. Scenario S19.
+- See how far a git sync is while it runs: its run report carries `details.progress`, the files
+  it writes, those read, chunked and embedded so far, and those committed, saved every few seconds
+  (`GET /v1/runs/{id}`).
+- Preview what a git source indexes before a sync spends time on it:
+  `GET /v1/workspaces/{workspace}/sources/{source}/preview` counts the files of a ref that the
+  source's rules, or rules to try, keep, by extension and by top-level folder.
+- Limit how much of the computer the search model of a managed server uses while it indexes:
+  `memini-server indexing set half|background|full`, half the cores by default. The desktop app
+  sets it on the Server screen. [Limit the cores](docs/install.md#limit-the-cores-the-search-model-uses).
+- The desktop app's Repositories tab is now **Codebases**: each code base is a card with a
+  progress bar of its sync (files done of all, time left), its schedule with Pause and Resume, and
+  what it indexes. Adding a code base leaves out tests, generated code, data files and assets by
+  default, for the common languages; **What it indexes** previews what a sync keeps and saves a
+  new scope. **Copy task for an agent**, there and on the Project map, gives a connected agent
+  what to read and how to write the project map.
+- Definitions and symbols in fifteen more languages: Java, C#, C, C++, PHP, Kotlin, Swift, Rust,
+  Scala, Dart, Lua, shell, SQL, Objective-C and Elixir, twenty in all. Their files are chunked by
+  function, method and type instead of line windows, `get_symbol` finds their definitions, and
+  `search_code` and `get_symbol` filter by them (`languages`). A method added to a type outside
+  it, in a Rust `impl`, a Swift or Dart `extension`, an Objective-C `@implementation`, a Kotlin
+  extension function or a C++ `Dock::moor`, is named after the type.
+- `GET /v1/workspaces/{workspace}/sources/{source}/streams` says what the index holds of each
+  stream (`index`: records, chunks, the pinned commit and its committer time), whatever its last
+  run did.
+- `GET /v1/workspaces/{workspace}/sources/{source}/coverage`: how much of a repository the project
+  map names: the projects with a service or a domain there, the share of its indexed files some
+  domain names, when and by which token each project was last written, and the top-level folders
+  of the files no domain names.
+- Desktop app: one workspace switcher in the sidebar, with what a workspace is; Codebases, Data
+  and Project map show the workspace chosen there.
+- Desktop app, Codebases: each card shows what the index holds (files, chunks, commit and its
+  date), the last check from the run's counts (`07:37 — no changes`), whether a running sync is a
+  full listing or a diff, the folder of this computer it reads, and whether the project map names
+  it, with the folders no domain names. The task for an agent is shown before it is copied, with
+  the three steps to map the code bases.
+- The Release workflow builds the desktop app from the tag and attaches it, unsigned, to the
+  draft release with `desktop-SHA256SUMS`: `.dmg` for macOS (Apple silicon and Intel),
+  `-setup.exe` for Windows x64, `.AppImage` and `.deb` for Linux x86_64. The release notes and
+  [Desktop app](docs/install.md#desktop-app) say how to open it the first time.
+- The app attached to a release installs that release's server: the desktop build waits for the
+  published image, and the sidecar freeze (`desktop/sidecar/freeze.py --release-image`) pins it
+  with its digest, and the tag's compose files, in the launcher it freezes. The build fails
+  unless the frozen launcher names that image. Pull requests keep the repository's pin.
+- One version for a release ([the rule](docs/releasing.md#the-rule-one-version)): the Release
+  workflow fails, before PyPI and the draft release, unless the tag, the image, the Python
+  package, the app's bundles and the image of every frozen launcher are of the same version
+  (`scripts/check-release-versions.py`), the service in the image prints that version, and
+  `tauri.conf.json` names no version of its own.
+
+### Changed
+
+- One naming convention for every MCP tool, HTTP route and CLI command, with no aliases:
+  [API conventions](docs/mcp/conventions.md). `tests/test_api_conventions.py` checks it. Renamed:
+  - Tools: `read_source` is `get_file`, `add_document` is `put_document`; `get_symbol` is gone:
+    `search_code` finds definitions in mode `symbol`, and by prefix in mode `symbol_prefix`.
+  - Sources: the kind `git` is `repository` (migration 0023); arguments and fields name a source
+    `source`/`sources`: `repository`, `repositories` and `unassigned_repositories` are gone.
+  - One object by `id`: `get_thread`, `get_meeting`, `get_decision`, `supersede_decision`,
+    `close_decision`, `retract_decision`, forget and the sensitive mark take `id`; naming a record by
+    source and external id is gone, everywhere (evidence too: `record_id` and `anchor`); the
+    answer of a pushed batch gives each record's `id` (`records`), and `memini push --json` lists
+    them (`ids`).
+  - Filters: `person` (`list_meetings`, `list_messages`), `person_ids` (`list_decisions`) and
+    `author` (`list_commits`) are `persons`; `text` (`list_commits`) is `query`; `other_project`
+    (`get_project`) is `linked_projects`; `include` and `exclude` of a source are
+    `include_paths` and `exclude_paths`; the runs listing takes `sources`, `streams` and `cursor`;
+    the persons listing takes `query` and `cursor` (were `q` and `after`), and `memini person
+    list` takes `--cursor`.
+    `list_meetings` and `list_messages` take `projects` and `domains`.
+  - Answers: every list answers `items` (search hits, meetings, messages, commits, sources,
+    streams, runs, tokens, persons, workspaces, sensitive records); `left_out` counts the results
+    of records marked sensitive left out of search, `list_meetings`, `list_messages` and
+    `list_decisions`; `next_until`, `next_before` and `next_after` are `next_cursor`.
+  - Times: a decision's `decided_at` is `occurred_at` and `recorded_at` is `created_at`; a
+    message's `sent_at` is `occurred_at`; a hit's `at` is `chunk_occurred_at`; a mark's
+    `sensitive_at` is `marked_at`. A hit's chunk id is `id`, a record's and a person's own id `id`.
+  - HTTP: `GET /v1/symbols` and the routes that read a thread or a meeting by external id are
+    gone; `PUT …/sources/{source}/documents` writes a document; forget is
+    `POST /v1/workspaces/{workspace}/records/{id}/forget` and the mark
+    `PUT /v1/workspaces/{workspace}/records/{id}/sensitive`.
+  - CLI: every MCP read tool is a command of the same name with its arguments as options:
+    `memini search`, `search-code`, `get-file`, `list-commits`, `list-messages`, `get-thread`,
+    `list-meetings`, `get-meeting`, `list-decisions`, `get-decision`, `get-catalog`,
+    `catalog-guide`, `get-project`, `get-domain` and `status`. A list filter keeps its plural
+    name and repeats (`--persons me --persons bo@example.test`), and the topic of a list is
+    `--query`. `memini search --code` is `memini search-code`; `memini meetings` and
+    `memini messages` are `memini list-meetings` and `memini list-messages`; `--workspace`,
+    `--source`, `--person`, `--role`, `--kind`, `--path` and `--language` of those commands are
+    `--workspaces`, `--sources`, `--persons`, `--roles`, `--kinds`, `--paths` and `--languages`.
+    Admin commands stay grouped by noun: `memini forget <workspace> <id>`, `memini sensitive
+    mark|unmark <workspace> <id>`, `memini decision record --occurred-at` with `--evidence
+    RECORD_ID[#ANCHOR]`, `memini runs` with `--cursor`.
+- `get_file` refuses a file whose record is marked sensitive unless asked with
+  `include_sensitive`, as `get_thread` does; reading a marked record answers 403
+  `sensitive_record`.
+- A release writes its version with `scripts/bump-version.py`, which also moves the changelog
+  entries; the release run refuses a tag whose desktop app version differs.
+  [Releasing](docs/releasing.md).
+- The chunker is version 3, which changes the index fingerprint: after the upgrade, search refuses
+  a workspace until `memini reindex --workspace NAME` has rebuilt it. Vectors are reused, so only
+  the files of the new languages are embedded again.
+- On a Mac the search model runs in Ollama on the Mac, about a hundred times faster than in
+  Docker, which has no GPU there. The desktop app's first setup finds Ollama, downloads the model
+  with its progress shown and installs the server in this mode, or offers to install Ollama with
+  Homebrew; the Server screen moves an installed server's model to the Mac or back. The launcher
+  does it with `memini-server embedding host|container|status` and
+  `memini-server start --embedding host`; the index stays as it is.
+  [Run the search model in Ollama on a Mac](docs/install.md#run-the-search-model-in-ollama-on-a-mac).
+- Desktop app: the folders given to the local server that no code base reads are listed on the
+  Server screen (**Folders on this computer**), not under the code bases of a workspace, which
+  showed the folders of other workspaces. A card showed the last run's progress, 0% after a diff
+  that changed nothing; it shows the state of the index instead.
+- Desktop: every action that calls the server or the launcher shows that it runs and how it
+  ended. Its button cannot be clicked meanwhile and says what runs (`Syncing…`, `Saving…`,
+  `Deleting…`) with a turning ring; actions whose result is not visible on the screen say what
+  they did. The rule is in `.claude/rules/desktop.md` and a test checks the screens.
+
+### Fixed
+
+- A first git sync that is stopped, by an edit of the source or a restart, keeps the files it has
+  written: it commits every 30 seconds of writing instead of once per batch of a hundred files,
+  which without a GPU took over half an hour and was lost whole.
 
 ## [0.1.0] - 2026-11-22
 
@@ -505,11 +420,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A database backup retains records forgotten after the backup. Restoring it requires the
   encryption keys from the time of the backup. [Restore procedure](docs/operations/backup.md).
 
-[Unreleased]: https://github.com/npavlov/memini/compare/v0.2.0-rc.5...main
-[0.2.0-rc.5]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.5
-[0.2.0-rc.4]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.4
-[0.2.0-rc.3]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.3
-[0.2.0-rc.2]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.2
-[0.2.0-rc.1]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.1
+[Unreleased]: https://github.com/npavlov/memini/compare/v0.2.0...main
+[0.2.0]: https://github.com/npavlov/memini/releases/tag/v0.2.0
 [0.1.0]: https://github.com/npavlov/memini/releases/tag/v0.1.0
 [0.1.0-rc.1]: https://github.com/npavlov/memini/releases/tag/v0.1.0-rc.1
