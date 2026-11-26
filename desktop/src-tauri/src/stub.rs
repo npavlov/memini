@@ -28,11 +28,14 @@ impl Stub {
         let requests = Arc::new(Mutex::new(Vec::new()));
         let seen = Arc::clone(&requests);
         std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                let request = serve(stream, &answer);
+            for mut stream in listener.incoming().flatten() {
+                let request = read(&stream);
+                // Kept before the answer goes out: a test that reads `asked` as soon as its
+                // client has the answer sees this request too.
                 seen.lock()
                     .expect("lock")
                     .push(format!("{} {}", request.line, request.body));
+                answer_with(&mut stream, &request, &answer);
             }
         });
         Self { address, requests }
@@ -81,14 +84,16 @@ fn read(stream: &TcpStream) -> Request {
     }
 }
 
-fn serve(mut stream: TcpStream, answer: &impl Fn(&Request) -> (u16, String)) -> Request {
-    let request = read(&stream);
-    let (status, json) = answer(&request);
+fn answer_with(
+    stream: &mut TcpStream,
+    request: &Request,
+    answer: &impl Fn(&Request) -> (u16, String),
+) {
+    let (status, json) = answer(request);
     write!(
         stream,
         "HTTP/1.1 {status} Answer\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{json}",
         json.len()
     )
     .expect("written");
-    request
 }
