@@ -27,7 +27,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from memini.decisions.model import DecisionItem
 from memini.provenance import Labelled
 from memini.search.patterns import MAX_GLOB_CHARS
-from memini.sensitive_option import include_sensitive_field
 
 __all__ = [
     "MAX_CODE_ENTRIES",
@@ -300,8 +299,6 @@ class GetDomainArguments(BaseModel):
     """Arguments of ``get_domain``."""
 
     model_config = ConfigDict(extra="forbid")
-
-    include_sensitive: bool = include_sensitive_field()
 
     project: Name = Field(description="The project, by name.")
     domain: Name = Field(description="The domain, or a subdomain as domain/subdomain.")
