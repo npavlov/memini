@@ -158,7 +158,7 @@ jobs:
       - name: Integration tests
         env:
           MEMINI_TEST_DATABASE_URL: postgresql://memini:memini@localhost:5432/memini
-          PYTEST_ADDOPTS: --durations=15
+          PYTEST_ADDOPTS: --durations=0 --durations-min=0.02
         run: make test-integration
 
   # The small retrieval eval, on every pull request: lexical, exact, regex and symbol search on the
