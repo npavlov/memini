@@ -37,7 +37,7 @@ function form(changes: Partial<NewTokenForm>): NewTokenForm {
 
 describe("parseTokenList", () => {
   it("reads the tokens of the API's list, which holds no secret", () => {
-    const tokens = parseTokenList({ tokens: [listed] });
+    const tokens = parseTokenList({ items: [listed] });
 
     expect(tokens).toEqual([
       {
@@ -56,13 +56,13 @@ describe("parseTokenList", () => {
   });
 
   it("puts a name with line breaks on one line", () => {
-    const tokens = parseTokenList({ tokens: [{ ...listed, name: "laptop\nagent" }] });
+    const tokens = parseTokenList({ items: [{ ...listed, name: "laptop\nagent" }] });
 
     expect(tokens[0]?.name).toBe("laptop agent");
   });
 
   it("throws a ShapeError when a token has no id", () => {
-    expect(() => parseTokenList({ tokens: [{ name: "x" }] })).toThrow(ShapeError);
+    expect(() => parseTokenList({ items: [{ name: "x" }] })).toThrow(ShapeError);
   });
 
   it("throws a ShapeError when the answer is not an object", () => {
@@ -91,13 +91,13 @@ describe("parseCreatedToken", () => {
 
 describe("parseWorkspaceNames", () => {
   it("returns the names of the workspaces", () => {
-    const names = parseWorkspaceNames({ workspaces: [{ name: "harbour" }, { name: "quay-2" }] });
+    const names = parseWorkspaceNames({ items: [{ name: "harbour" }, { name: "quay-2" }] });
 
     expect(names).toEqual(["harbour", "quay-2"]);
   });
 
   it("drops a name that is not a workspace handle", () => {
-    const names = parseWorkspaceNames({ workspaces: [{ name: "Harbour <b>" }, { name: "quay" }] });
+    const names = parseWorkspaceNames({ items: [{ name: "Harbour <b>" }, { name: "quay" }] });
 
     expect(names).toEqual(["quay"]);
   });

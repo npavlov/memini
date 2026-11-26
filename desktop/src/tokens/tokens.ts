@@ -60,7 +60,7 @@ function parseTokenInfo(value: unknown): TokenInfo {
 
 export function parseTokenList(value: unknown): readonly TokenInfo[] {
   const list = readObject(value, "the list of tokens");
-  return readArray(list["tokens"]).map(parseTokenInfo);
+  return readArray(list["items"]).map(parseTokenInfo);
 }
 
 export function parseCreatedToken(value: unknown): CreatedToken {
@@ -74,7 +74,7 @@ export function parseCreatedToken(value: unknown): CreatedToken {
 /** The names of the workspaces of `GET /v1/workspaces`. */
 export function parseWorkspaceNames(value: unknown): readonly string[] {
   const list = readObject(value, "the list of workspaces");
-  return readArray(list["workspaces"])
+  return readArray(list["items"])
     .map((item) => readString(readObject(item, "a workspace")["name"]))
     .filter((name): name is string => name !== null && HANDLE.test(name));
 }

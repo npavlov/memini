@@ -14,10 +14,10 @@ const answer = {
   redacted: { title: 1, description: 1 },
   masks: [],
   empty_masks: [{ domain: "berths/holds", project: "port", service: "berthing", path: "src/hold.py", files: 0 }],
-  overlaps: [{ domains: ["berths", "fees"], repository: "harbour-code", files: 2, examples: ["src/a.py"] }],
+  overlaps: [{ domains: ["berths", "fees"], source: "harbour-code", files: 2, examples: ["src/a.py"] }],
   services: [
-    { service: "berthing", repository: "harbour-code", files: 40, unassigned: 12, unassigned_share: 0.3 },
-    { service: "fees", repository: "harbour-code", files: 8, unassigned: 0, unassigned_share: 0 },
+    { service: "berthing", source: "harbour-code", files: 40, unassigned: 12, unassigned_share: 0.3 },
+    { service: "fees", source: "harbour-code", files: 8, unassigned: 0, unassigned_share: 0 },
   ],
 };
 
@@ -41,7 +41,7 @@ describe("parseSaveReport", () => {
       changed: true,
       redacted: 2,
       emptyMasks: [{ domain: "berths/holds", service: "berthing", path: "src/hold.py" }],
-      overlaps: [{ domains: ["berths", "fees"], repository: "harbour-code", files: 2 }],
+      overlaps: [{ domains: ["berths", "fees"], source: "harbour-code", files: 2 }],
       services: [
         { service: "berthing", files: 40, unassigned: 12 },
         { service: "fees", files: 8, unassigned: 0 },

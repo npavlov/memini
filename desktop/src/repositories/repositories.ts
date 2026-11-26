@@ -148,26 +148,26 @@ export function parseGitAccess(value: unknown): GitAccess {
   };
 }
 
-/** The git sources of `GET /v1/workspaces/{workspace}/sources`; other kinds are left out. */
+/** The sources of kind repository of `GET /v1/workspaces/{workspace}/sources`; other kinds are left out. */
 export function parseGitSources(value: unknown): readonly GitSource[] {
   const list = readObject(value, "the list of sources");
-  return readArray(list["sources"])
+  return readArray(list["items"])
     .map((item) => readObject(item, "a source"))
-    .filter((source) => readString(source["kind"]) === "git")
+    .filter((source) => readString(source["kind"]) === "repository")
     .map((source) => ({
       name: text(source["name"], 80),
       location: text(source["location"], 1000),
       refs: readStrings(source["refs"]).map((ref) => displayText(ref, 200)),
       scheduleSeconds: readNumber(source["schedule_seconds"]),
-      exclude: readStrings(source["exclude"]).map((glob) => displayText(glob, 400)),
-      include: readStrings(source["include"]).map((glob) => displayText(glob, 400)),
+      exclude: readStrings(source["exclude_paths"]).map((glob) => displayText(glob, 400)),
+      include: readStrings(source["include_paths"]).map((glob) => displayText(glob, 400)),
     }));
 }
 
 /** What each tracked ref of a source is doing, from its streams. */
 export function parseRefStates(value: unknown): readonly RefState[] {
   const list = readObject(value, "the streams of a source");
-  return readArray(list["streams"]).map((item) => {
+  return readArray(list["items"]).map((item) => {
     const stream = readObject(item, "a stream");
     const ref = text(stream["key"], 200);
     const pending = stream["pending_sync"];

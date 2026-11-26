@@ -21,23 +21,22 @@ use crate::error::{clean, AppError, AppResult};
 pub const READ_TOOLS: &[(&str, &str)] = &[
     ("search", "/v1/search"),
     ("search_code", "/v1/search/code"),
-    ("get_symbol", "/v1/symbols"),
     (
-        "read_source",
+        "get_file",
         "/v1/workspaces/{workspace}/sources/{source}/files/{path}",
     ),
     ("list_decisions", "/v1/decisions"),
-    ("get_decision", "/v1/decisions/{item_id}"),
+    ("get_decision", "/v1/decisions/{id}"),
     ("list_meetings", "/v1/meetings"),
-    ("get_meeting", "/v1/meetings/{record_id}"),
+    ("get_meeting", "/v1/meetings/{id}"),
     ("list_messages", "/v1/messages"),
-    ("get_thread", "/v1/threads/{record_id}"),
+    ("get_thread", "/v1/threads/{id}"),
     ("list_commits", "/v1/commits"),
 ];
 
 /// The placeholders that take a path of their own: such a value spans segments and may be empty
 /// (the root of a repository). Every other placeholder is one segment and not empty.
-const SPANNING: &[(&str, &str)] = &[("read_source", "path")];
+const SPANNING: &[(&str, &str)] = &[("get_file", "path")];
 
 /// How many `$ref`s are followed inside one parameter before the rest is left as it is.
 const MAX_REFERENCE_HOPS: usize = 8;
@@ -264,9 +263,9 @@ mod tests {
                     },
                     "post": {"summary": "Not a read"}
                 },
-                "/v1/decisions/{item_id}": {
+                "/v1/decisions/{id}": {
                     "get": {"summary": "Get a decision", "parameters": [
-                        {"name": "item_id", "in": "path", "required": true,
+                        {"name": "id", "in": "path", "required": true,
                          "schema": {"type": "string", "format": "uuid"}}
                     ]}
                 },
@@ -290,7 +289,7 @@ mod tests {
         }
         let names: Vec<&str> = READ_TOOLS.iter().map(|(name, _)| *name).collect();
         for written in [
-            "add_document",
+            "put_document",
             "record_decision",
             "supersede_decision",
             "close_decision",
@@ -311,7 +310,7 @@ mod tests {
             tools[0].description,
             "Ranked search. Over every kind of record."
         );
-        assert_eq!(tools[1].path, "/v1/decisions/{item_id}");
+        assert_eq!(tools[1].path, "/v1/decisions/{id}");
         assert!(tools[1].spanning.is_empty());
     }
 
@@ -364,7 +363,7 @@ mod tests {
     #[test]
     fn a_file_path_spans_segments_and_the_root_is_a_trailing_slash() {
         let file = route_of(&call(
-            "read_source",
+            "get_file",
             &[
                 ("workspace", "harbour"),
                 ("source", "harbour-notes"),
@@ -387,7 +386,7 @@ mod tests {
             ]
         );
         let root = route_of(&call(
-            "read_source",
+            "get_file",
             &[
                 ("workspace", "harbour"),
                 ("source", "harbour-notes"),
@@ -402,7 +401,7 @@ mod tests {
     #[test]
     fn a_value_cannot_name_another_route() {
         let slash = route_of(&call(
-            "read_source",
+            "get_file",
             &[
                 ("workspace", "harbour/sources/x"),
                 ("source", "s"),
@@ -416,15 +415,15 @@ mod tests {
 
         for path in ["../../tokens", "a/./b", ".."] {
             let error = route_of(&call(
-                "read_source",
+                "get_file",
                 &[("workspace", "harbour"), ("source", "s"), ("path", path)],
                 &[],
             ))
             .expect_err("refused");
             assert_eq!(error.kind, ErrorKind::Invalid, "{path}");
         }
-        assert!(route_of(&call("get_decision", &[("item_id", "..")], &[])).is_err());
-        assert!(route_of(&call("get_decision", &[("item_id", "")], &[])).is_err());
+        assert!(route_of(&call("get_decision", &[("id", "..")], &[])).is_err());
+        assert!(route_of(&call("get_decision", &[("id", "")], &[])).is_err());
     }
 
     #[test]
@@ -444,7 +443,7 @@ mod tests {
     #[test]
     fn path_values_must_match_the_route_and_argument_names_must_be_plain() {
         assert!(route_of(&call("get_decision", &[], &[])).is_err());
-        assert!(route_of(&call("search", &[("item_id", "x")], &[])).is_err());
+        assert!(route_of(&call("search", &[("id", "x")], &[])).is_err());
         assert!(route_of(&call("search", &[], &[("que ry", "x")])).is_err());
         assert!(route_of(&call("search", &[], &[("", "x")])).is_err());
         assert!(route_of(&call("search", &[], &[("a&b=c", "x")])).is_err());

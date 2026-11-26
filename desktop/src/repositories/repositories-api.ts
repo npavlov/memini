@@ -91,7 +91,7 @@ export async function addSource(backend: Backend, id: string, source: NewSource)
       location: source.location.trim(),
       refs: [source.ref.trim()],
       schedule_seconds: source.scheduleSeconds,
-      exclude: source.exclude,
+      exclude_paths: source.exclude,
     },
   });
   await syncSource(backend, id, source.workspace, source.name);
@@ -135,10 +135,10 @@ export interface SourceChanges {
 function changesBody(changes: SourceChanges): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   if (changes.exclude !== undefined) {
-    body["exclude"] = changes.exclude;
+    body["exclude_paths"] = changes.exclude;
   }
   if (changes.include !== undefined) {
-    body["include"] = changes.include;
+    body["include_paths"] = changes.include;
   }
   if (changes.schedule === "off") {
     body["schedule"] = { kind: "off" };

@@ -17,7 +17,7 @@ import {
 } from "./project-edit";
 import { addService, editService } from "./service-edit";
 
-const service = { description: "", repository: "harbour-code", files: 10, uses: null };
+const service = { description: "", source: "harbour-code", files: 10, uses: null };
 
 const port: Project = {
   name: "port",

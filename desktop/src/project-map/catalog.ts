@@ -54,7 +54,8 @@ export interface Service {
    */
   readonly origin: string | null;
   readonly description: string;
-  readonly repository: string;
+  /** The source, of kind repository, the service is in. */
+  readonly source: string;
   /** Its directory in the repository; empty for the whole of it. */
   readonly root: string;
   /** Files of the service in the index; null when the answer does not say. */
@@ -74,8 +75,8 @@ export interface Project {
   readonly domains: readonly Domain[];
 }
 
-export interface Repository {
-  readonly repository: string;
+export interface UnassignedSource {
+  readonly source: string;
   readonly files: number | null;
 }
 
@@ -83,7 +84,7 @@ export interface Catalog {
   readonly workspace: string;
   readonly projects: readonly Project[];
   /** Repositories of the workspace that no service names yet. */
-  readonly unassigned: readonly Repository[];
+  readonly unassigned: readonly UnassignedSource[];
 }
 
 function text(value: unknown): string {
@@ -139,7 +140,7 @@ function parseService(value: unknown, own: string): Service {
     name: text(entry["name"]),
     origin: text(entry["name"]),
     description: text(entry["description"]),
-    repository: text(entry["repository"]),
+    source: text(entry["source"]),
     root: text(entry["root"]),
     files: readNumber(entry["files"]),
     uses: Array.isArray(uses)
@@ -173,17 +174,17 @@ export function parseCatalog(value: unknown): Catalog {
   return {
     workspace: text(catalog["workspace"]),
     projects: readArray(catalog["projects"]).map(parseProject),
-    unassigned: readArray(catalog["unassigned_repositories"]).map((item) => {
-      const repository = readObject(item, "a repository of the catalog");
-      return { repository: text(repository["repository"]), files: readNumber(repository["files"]) };
+    unassigned: readArray(catalog["unassigned_sources"]).map((item) => {
+      const source = readObject(item, "a source of the catalog");
+      return { source: text(source["source"]), files: readNumber(source["files"]) };
     }),
   };
 }
 
-/** The git sources of the workspace, as the catalog names them: those of its services and those in no project. */
+/** The sources of kind repository of the workspace, as the catalog names them: those of its services and those in no project. */
 export function repositoriesOf(catalog: Catalog): readonly string[] {
-  const used = catalog.projects.flatMap((project) => project.services.map((service) => service.repository));
-  const names = [...used, ...catalog.unassigned.map((repository) => repository.repository)];
+  const used = catalog.projects.flatMap((project) => project.services.map((service) => service.source));
+  const names = [...used, ...catalog.unassigned.map((entry) => entry.source)];
   return Array.from(new Set(names.filter((name) => name !== ""))).sort();
 }
 
@@ -238,7 +239,7 @@ function serviceDocument(service: Service): JsonObject {
   const own = {
     name: service.name,
     description: service.description,
-    repository: service.repository,
+    source: service.source,
     root: service.root,
   };
   // Links are not edited here. The document replaces what is stored, so the links that were

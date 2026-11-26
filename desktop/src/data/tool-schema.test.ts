@@ -23,12 +23,12 @@ describe("parseTools", () => {
     const tools = parseTools([
       {
         name: "get_decision",
-        path: "/v1/decisions/{item_id}",
+        path: "/v1/decisions/{id}",
         summary: "Get a decision",
         description: "With its chain.",
         spanning: [],
         parameters: [
-          { name: "item_id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
           parameter("history", { type: "boolean", default: false }),
         ],
       },
@@ -37,11 +37,11 @@ describe("parseTools", () => {
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
       name: "get_decision",
-      path: "/v1/decisions/{item_id}",
+      path: "/v1/decisions/{id}",
       summary: "Get a decision",
       description: "With its chain.",
     });
-    expect(tools[0]?.fields.map((field) => field.name)).toEqual(["item_id", "history"]);
+    expect(tools[0]?.fields.map((field) => field.name)).toEqual(["id", "history"]);
   });
 
   it.each([
@@ -106,7 +106,7 @@ describe("parseTools", () => {
   it("lets a placeholder that holds a path of its own stay empty", () => {
     const tools = parseTools([
       {
-        name: "read_source",
+        name: "get_file",
         path: "/v1/workspaces/{workspace}/sources/{source}/files/{path}",
         spanning: ["path"],
         parameters: [

@@ -82,15 +82,15 @@ describe("parseGitAccess", () => {
 describe("parseGitSources and parseRefStates", () => {
   it("keeps the git sources of a workspace", () => {
     const sources = parseGitSources({
-      sources: [
+      items: [
         {
           name: "app",
-          kind: "git",
+          kind: "repository",
           location: "/srv/local/app",
           refs: ["refs/heads/main"],
           schedule_seconds: 3600,
-          include: [],
-          exclude: ["**/*_test.go"],
+          include_paths: [],
+          exclude_paths: ["**/*_test.go"],
         },
         { name: "chat", kind: "push", location: null, refs: [], schedule_seconds: null },
       ],
@@ -110,7 +110,7 @@ describe("parseGitSources and parseRefStates", () => {
 
   it("says what each branch is doing", () => {
     const states = parseRefStates({
-      streams: [
+      items: [
         { key: "refs/heads/main", pending_sync: { status: "running", last_error: null }, last_run: null },
         { key: "refs/heads/next", pending_sync: null, last_run: null },
         {
@@ -133,7 +133,7 @@ describe("parseGitSources and parseRefStates", () => {
 
   it("names the run of a sync that runs, and when the last one finished", () => {
     const states = parseRefStates({
-      streams: [
+      items: [
         {
           key: "refs/heads/main",
           pending_sync: { status: "running", last_error: null },
@@ -261,7 +261,7 @@ describe("the commands", () => {
             location: "/srv/local/app",
             refs: ["trunk"],
             schedule_seconds: 3600,
-            exclude: ["**/*_test.go"],
+            exclude_paths: ["**/*_test.go"],
           },
         },
       },

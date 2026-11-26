@@ -32,7 +32,7 @@ const answer = {
         {
           name: "harbour-code",
           description: "Berth holds and their rules.",
-          repository: "harbour-code",
+          source: "harbour-code",
           root: "",
           refs: [],
           files: 42,
@@ -62,7 +62,7 @@ const answer = {
       ],
     },
   ],
-  unassigned_repositories: [{ repository: "pilot-notes", refs: [], files: 7, languages: [] }],
+  unassigned_sources: [{ source: "pilot-notes", refs: [], files: 7, languages: [] }],
 };
 
 const port: Project = {
@@ -76,7 +76,7 @@ const port: Project = {
       name: "harbour-code",
       origin: "harbour-code",
       description: "Berth holds and their rules.",
-      repository: "harbour-code",
+      source: "harbour-code",
       root: "",
       files: 42,
       uses: null,
@@ -104,7 +104,7 @@ const document = {
   title: "Port operations",
   description: "Berths and fees.",
   services: [
-    { name: "harbour-code", description: "Berth holds and their rules.", repository: "harbour-code", root: "" },
+    { name: "harbour-code", description: "Berth holds and their rules.", source: "harbour-code", root: "" },
   ],
   domains: [
     {
@@ -137,7 +137,7 @@ describe("parseCatalog", () => {
     expect(catalog).toEqual<Catalog>({
       workspace: "harbor",
       projects: [port],
-      unassigned: [{ repository: "pilot-notes", files: 7 }],
+      unassigned: [{ source: "pilot-notes", files: 7 }],
     });
   });
 
@@ -188,7 +188,7 @@ describe("toProjectDocument", () => {
       {
         name: "harbour-code",
         description: "Berth holds and their rules.",
-        repository: "harbour-code",
+        source: "harbour-code",
         root: "",
         uses: [{ service: "fees", kind: "library", note: "", paths: [] }],
       },
@@ -198,7 +198,7 @@ describe("toProjectDocument", () => {
 
 describe("repositoriesOf", () => {
   it("lists the git sources of the workspace once each, those of services and those in no project", () => {
-    const twice = { ...answer, unassigned_repositories: [{ repository: "pilot-notes" }, { repository: "harbour-code" }] };
+    const twice = { ...answer, unassigned_sources: [{ source: "pilot-notes" }, { source: "harbour-code" }] };
 
     const repositories = repositoriesOf(parseCatalog(twice));
 

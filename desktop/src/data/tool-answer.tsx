@@ -94,6 +94,12 @@ function Cards({ body }: CardsProps): ReactElement {
           {cards.notice}
         </Text>
       )}
+      {cards.hidden === 0 ? null : (
+        <Text tone="muted" small>
+          {String(cards.hidden)} hidden (sensitive): records marked sensitive are left out unless a read asks for
+          them with a token that has the sensitive scope.
+        </Text>
+      )}
       {empty ? (
         <EmptyState title="The answer holds no item">
           <Text>The raw JSON shows what came back.</Text>

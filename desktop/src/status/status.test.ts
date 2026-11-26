@@ -10,7 +10,7 @@ import type { IndexRebuild } from "./status";
 /** One stream as `GET /v1/status` answers it; the names are invented. */
 const stream = {
   source: "harbour-notes",
-  source_kind: "git",
+  source_kind: "repository",
   key: "refs/heads/main",
   schedule_seconds: 3600,
   checked_until: "2026-11-23T11:00:00Z",
@@ -83,7 +83,7 @@ describe("parseServiceStatus", () => {
 
     expect(parsed).toEqual({
       source: "harbour-notes",
-      sourceKind: "git",
+      sourceKind: "repository",
       key: "refs/heads/main",
       scheduleSeconds: 3600,
       checkedUntil: "2026-11-23T11:00:00Z",

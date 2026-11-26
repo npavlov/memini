@@ -33,7 +33,7 @@ const search: Tool = {
 };
 
 const readSource: Tool = {
-  name: "read_source",
+  name: "get_file",
   path: "/v1/workspaces/{workspace}/sources/{source}/files/{path}",
   summary: "",
   description: "",
@@ -99,7 +99,7 @@ describe("toToolCall", () => {
     );
 
     expect(call).toEqual({
-      tool: "read_source",
+      tool: "get_file",
       path: { workspace: "harbour", source: "harbour-notes", path: "" },
       query: [["start_line", "5"]],
     });

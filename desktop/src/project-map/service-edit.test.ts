@@ -17,7 +17,7 @@ import {
 } from "./service-edit";
 
 function service(name: string, changes: Partial<Service>): Service {
-  return { name, origin: name, description: "", repository: "harbour-code", root: name, files: 10, uses: [], ...changes };
+  return { name, origin: name, description: "", source: "harbour-code", root: name, files: 10, uses: [], ...changes };
 }
 
 /** A project with two services: a domain has code in both, and one service uses the other. */
@@ -121,7 +121,7 @@ describe("addService", () => {
       name: "",
       origin: null,
       description: "",
-      repository: "pilot-notes",
+      source: "pilot-notes",
       root: "",
       files: null,
       uses: [],
@@ -209,7 +209,7 @@ describe("checkServices", () => {
 
   it.each([
     ["a service named as another", { name: "berthing" }, "Two services are named berthing."],
-    ["a service without a repository", { repository: "" }, "Every service needs its repository."],
+    ["a service without a repository", { source: "" }, "Every service needs its repository."],
     ["a directory that leaves the repository", { root: "../fees" }, "The directory of a service is a path inside its repository, without '.', '..' or empty parts; empty for the whole repository."],
     ["a directory with an empty part", { root: "a//b" }, "The directory of a service is a path inside its repository, without '.', '..' or empty parts; empty for the whole repository."],
     ["the directory of another service", { root: "/berthing/" }, "Two services are the same directory of the same repository."],
