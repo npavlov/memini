@@ -62,6 +62,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # The published image with the digest of its index, for the desktop app's launcher to pin.
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,16 +74,29 @@ jobs:
           platforms: arm64
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Publish multi-platform image with attestations
+        id: publish
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME#v}"
           echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker buildx build --platform linux/amd64,linux/arm64 --sbom=true \
-            --provenance=mode=max --tag "$image" --push .
+            --provenance=mode=max --tag "$image" --push \
+            --metadata-file "$RUNNER_TEMP/image-metadata.json" .
+          # The digest of the index just pushed, which the registry must report for the tag.
+          digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/image-metadata.json")
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' > "$RUNNER_TEMP/index.json"
+          test "$(jq -r .digest "$RUNNER_TEMP/index.json")" = "$digest"
+          echo "image=$image@$digest" >> "$GITHUB_OUTPUT"
+          echo "Published $image@$digest"
           for platform in linux/amd64 linux/arm64; do
             docker pull --platform "$platform" "$image"
-            docker run --rm --platform "$platform" --entrypoint memini "$image" --version
+            # The service in the image is the Python package of this tag (X.Y.ZrcN).
+            printed=$(docker run --rm --platform "$platform" --entrypoint memini "$image" --version)
+            echo "$printed"
+            release=${GITHUB_REF_NAME#v}
+            [[ " $printed " == *" ${release/-rc./rc} "* ]]
             docker run --rm --platform "$platform" --entrypoint python "$image" \
               -c 'import onnxruntime, psycopg, tokenizers, tree_sitter'
           done
@@ -98,8 +114,41 @@ jobs:
       - name: Install the published image and search the quickstart fixtures
         run: scripts/test-release-install.sh "ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME#v}" "$GITHUB_REF"
 
+  # One version for everything the release ships (docs/releasing.md): the tag, the image, the
+  # Python package, the app's bundles and the image each frozen launcher names. Nothing goes to
+  # PyPI or the draft release unless they agree.
+  versions:
+    needs: [build, image, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: memini-desktop-*
+          path: desktop-bundles
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: launcher-pin-*
+          path: launcher-pins
+          merge-multiple: true
+      - name: One version everywhere
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          python3 scripts/check-release-versions.py "$GITHUB_REF_NAME" "$IMAGE" \
+            release/dist desktop-bundles launcher-pins
+
   package:
-    needs: quickstart
+    needs: [quickstart, versions]
     environment: pypi
     runs-on: ubuntu-latest
     permissions:
@@ -134,20 +183,23 @@ jobs:
 
   # The desktop app, built from the tag on each platform (desktop-app.yml, which also checks the
   # app's version against the tag), without the Rust cache: a published bundle is built from
-  # nothing restored. It runs beside the image and the package; only the upload waits for the
-  # draft release.
+  # nothing restored. Its launcher pins the image the image job has just published, with its
+  # digest, so that the app of this release installs this release's server; the freeze checks
+  # that the frozen launcher names it. It runs beside the quickstart and the package; only the
+  # upload waits for the draft release.
   desktop:
-    needs: build
+    needs: image
     uses: ./.github/workflows/desktop-app.yml
     with:
       tag: ${{ github.ref_name }}
+      image: ${{ needs.image.outputs.image }}
       cache: false
       intel-mac: true
     permissions:
       contents: read
 
   attach-desktop:
-    needs: [notes, desktop]
+    needs: [notes, versions]
     runs-on: ubuntu-latest
     permissions:
       contents: write

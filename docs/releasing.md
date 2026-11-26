@@ -1,9 +1,26 @@
 # Releasing
 
-How a release or a release candidate of Memini is cut. A tag publishes the service; the server
-launcher and the desktop app follow it in a second change, because they pin the image the tag
-built. Version numbers are written in two forms: `0.2.0-rc.2` (tag, desktop app, launcher package)
-and `0.2.0rc2` (Python).
+How a release or a release candidate of Memini is cut.
+
+## The rule: one version
+
+**The app's version and the server's version are always the same.** A release has one version
+number, and everything it ships carries it: the service's Python package, the image tag, the
+desktop app and the launcher package. The app of release X installs exactly the image of release
+X, by its digest. The number is written in two forms, as `scripts/bump-version.py` maps them:
+`0.2.0-rc.2` (tag, image, desktop app, launcher package) and `0.2.0rc2` (Python package).
+
+The Release workflow enforces it: its `versions` job (`scripts/check-release-versions.py`) fails
+the release, before anything goes to PyPI or the draft release, unless the tag, the published
+image, the Python distributions, the app's bundles and the image each platform's frozen launcher
+names are of the same version. Before that, the build checks the project, `Cargo.toml`,
+`package.json` and `tauri.conf.json` against the tag (`scripts/release-notes.py`), the image job
+checks that the service in the image prints the tag's Python version, and the app's build checks
+that Tauri named every bundle with the tag's version.
+
+Between a tag and step 3, `scripts/memini-server.py` on `main` may still pin the previous
+release's image. Only builds of pull requests and of `main` use that pin; released artifacts
+never do: the release's app pins the image the release has just published.
 
 ## 1. Write the version
 
@@ -41,10 +58,18 @@ pull request, here without the Rust cache) and attaches it, unsigned, with `desk
 The build fails unless the app's version is the tag's. The release notes end with how to open the
 unsigned app the first time (`DESKTOP_APP` in `scripts/release-notes.py`).
 
-This app carries the launcher of the previous release until step 3 points it at the new image;
-the app that carries the new launcher comes with the next tag.
+The app's launcher installs this release's server. The desktop build waits for the image job and
+gets the published image with its digest (`ghcr.io/npavlov/memini:<version>@sha256:…`). The
+sidecar freeze (`desktop/sidecar/freeze.py --release-image`) pins that image in the copy of the
+launcher it freezes, with the compose files of the tag and their checksums, and fails unless the
+frozen launcher's `status --json` names that image. It accepts only an image of this repository
+with the tag's version and a digest. A pull request's build keeps the pin of
+`scripts/memini-server.py`.
 
 ## 3. Point the launcher at the image
+
+The released app already installs the new image (step 2). This step moves the repository's pin,
+which the Homebrew and Scoop packages and every later build of the app from `main` use.
 
 When the Release run has passed, read the digest of the published image:
 
@@ -63,7 +88,7 @@ In one PR:
   `cp <dir>/memini-server.rb Formula/` and `cp <dir>/memini-server.json bucket/`.
 - A line under `[Unreleased]` in `CHANGELOG.md`.
 
-The desktop app carries the launcher, so the app built from this commit installs the new server.
+The app built from `main` after this commit installs the new server, as the released app does.
 A managed server moves to the new image at its next start; the service migrates its database
 when it starts.
 

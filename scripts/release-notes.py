@@ -43,6 +43,10 @@ def release_notes(tag: str, project: Path, changelog: Path) -> str:
         raise ValueError(f"set the desktop app's version to {tag[1:]}: scripts/bump-version.py")
     if npm.is_file() and json.loads(npm.read_text())["version"] != tag[1:]:
         raise ValueError(f"set the desktop app's version to {tag[1:]}: scripts/bump-version.py")
+    # The bundles take Cargo.toml's version unless tauri.conf.json names one of its own.
+    tauri = root / "desktop/src-tauri/tauri.conf.json"
+    if tauri.is_file() and json.loads(tauri.read_text()).get("version", tag[1:]) != tag[1:]:
+        raise ValueError("tauri.conf.json names a version: remove it, Cargo.toml's is the app's")
     headings = re.split(r"^## ", changelog.read_text(), flags=re.MULTILINE)[1:]
     for section in headings:
         title, _, body = section.partition("\n")
