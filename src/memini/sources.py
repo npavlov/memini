@@ -646,6 +646,13 @@ class Stream:
     missing: bool = False
     """What it follows no longer exists at the source, e.g. a deleted branch
     (:mod:`memini.status`)."""
+    records: int = 0
+    """Live records the stream stored last: for git, the files of the ref in the index."""
+    chunks: int = 0
+    """The chunks of those records."""
+    commit: str | None = None
+    """git: the commit the index holds the ref at; ``None`` before the first complete sync, after
+    a sync that failed part way, and for a source of another kind."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -768,7 +775,15 @@ SELECT st.id, st.key, st.schedule, st.next_run_at, st.checked_until,
        extract(epoch FROM now() - st.checked_until)::float8,
        r.id, r.kind, r.status, r.started_at, r.finished_at, r.error,
        j.id, j.kind, j.status, j.attempts, j.run_after, j.last_error,
-       coalesce(st.cursor @> '{{"missing": true}}'::jsonb, false)
+       coalesce(st.cursor @> '{{"missing": true}}'::jsonb, false),
+       (SELECT count(*) FROM record rr
+        WHERE rr.stream_id = st.id AND rr.deleted_at IS NULL AND {record_condition})::int,
+       (SELECT count(*) FROM record rr
+        JOIN chunk c ON c.workspace_id = rr.workspace_id AND c.source_id = rr.source_id
+                    AND c.record_id = rr.id
+        WHERE rr.stream_id = st.id AND rr.deleted_at IS NULL AND {record_condition})::int,
+       CASE WHEN coalesce(st.cursor @> '{{"partial": true}}'::jsonb, false) THEN NULL
+            ELSE st.cursor ->> 'commit' END
 FROM stream st
 LEFT JOIN LATERAL (
     SELECT r.id, r.kind, r.status, r.started_at, r.finished_at, r.error
@@ -790,11 +805,12 @@ ORDER BY st.key
 """)
 
 
-def _stream(row: Sequence[Any]) -> Stream:
+def _stream(row: Sequence[Any], *, git: bool) -> Stream:
     (stream_id, key, schedule, next_run_at, checked_until, lag) = row[:6]
     run = row[6:12]
     job = row[12:18]
     schedule_seconds = None if schedule is None else schedule.total_seconds()
+    commit = row[21]
     return Stream(
         id=stream_id,
         key=key,
@@ -806,12 +822,15 @@ def _stream(row: Sequence[Any]) -> Stream:
         last_run=None if run[0] is None else RunBrief(*run),
         pending_job=None if job[0] is None else JobBrief(*job),
         missing=row[18],
+        records=row[19],
+        chunks=row[20],
+        commit=commit if git and isinstance(commit, str) else None,
     )
 
 
 async def list_streams(conn: Conn, access: ReadFilter, workspace: str, name: str) -> list[Stream]:
-    """The streams of a source, by key, with their lag, their newest run and their queued or
-    running sync job.
+    """The streams of a source, by key, with their lag, their newest run, their queued or
+    running sync job, and what the index holds of each (records, chunks, the pinned commit).
 
     Raises:
         NotFoundError: no such workspace or source that ``access`` may read.
@@ -821,9 +840,11 @@ async def list_streams(conn: Conn, access: ReadFilter, workspace: str, name: str
         run_condition=access.where(**_columns("r")),
         job_condition=access.where(**_columns("j")),
         stream_condition=access.where(**_columns("st")),
+        record_condition=access.where(**_columns("rr")),
     )
     cur = await conn.execute(query, (source.id,))
-    return [_stream(row) for row in await cur.fetchall()]
+    git = source.git is not None
+    return [_stream(row, git=git) for row in await cur.fetchall()]
 
 
 # --- Writing -------------------------------------------------------------------------------------

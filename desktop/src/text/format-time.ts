@@ -55,6 +55,24 @@ export function formatInstant(iso: string | null, format: InstantFormat = {}): s
   }).format(new Date(time));
 }
 
+/**
+ * An ISO instant as a clock reads it: the time only on the day of `nowMs`, else the date with
+ * it. A dash for none or one that is not a date.
+ */
+export function formatClock(iso: string | null, nowMs: number, format: InstantFormat = {}): string {
+  const time = iso === null ? Number.NaN : Date.parse(iso);
+  if (Number.isNaN(time)) {
+    return NOTHING;
+  }
+  const day = new Intl.DateTimeFormat(format.locale, { dateStyle: "short", timeZone: format.timeZone });
+  const today = day.format(new Date(time)) === day.format(new Date(nowMs));
+  return new Intl.DateTimeFormat(format.locale, {
+    ...(today ? {} : { dateStyle: "medium" as const }),
+    timeStyle: "short",
+    timeZone: format.timeZone,
+  }).format(new Date(time));
+}
+
 /** How long ago an ISO instant was, against a clock that is passed in: `3 min ago`. */
 export function formatAgo(iso: string | null, nowMs: number): string {
   const time = iso === null ? Number.NaN : Date.parse(iso);

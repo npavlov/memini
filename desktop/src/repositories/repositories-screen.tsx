@@ -12,42 +12,49 @@ import {
   Notice,
   Panel,
   Screen,
-  Select,
   Text,
   TextInput,
 } from "../components";
 import type { Connection } from "../connections/connections";
 import { useAction } from "../hooks/use-action";
 import { useLoad } from "../hooks/use-load";
+import type { Backend } from "../ipc/backend";
 import type { AppInfo } from "../ipc/app-info";
 import { useBackend } from "../ipc/backend-context";
 import { ConnectionRebuilds } from "../status/index-rebuilds";
+import { listTokens } from "../tokens/tokens-api";
+import type { WorkspaceChoice } from "../workspaces/use-workspaces";
+import { WORKSPACE_MEANING } from "../workspaces/workspaces";
 import { AddRepository } from "./add-repository";
-import { LocalFolders } from "./local-folders";
-import { isHandle } from "./repositories";
-import { createWorkspace, listWorkspaces } from "./repositories-api";
 import { CodebaseList } from "./codebase-list";
+import { isHandle } from "./repositories";
+import type { LocalRepo } from "./repositories";
+import { createWorkspace, listFolders } from "./repositories-api";
 
 export interface RepositoriesScreenProps {
   readonly connection: Connection;
   readonly info: AppInfo;
+  /** The workspaces, and the one chosen in the sidebar. */
+  readonly workspaces: WorkspaceChoice;
 }
 
 /**
- * The code bases of a workspace (S17, S18): add a folder of this computer, given to the local
- * server by the launcher, or a remote by its address; choose what each indexes; see how far each
- * sync is. Needs a token with the admin scope.
+ * The code bases of the workspace chosen in the sidebar (S17, S18): add a folder of this
+ * computer, given to the local server by the launcher, or a remote by its address; choose what
+ * each indexes; see what the index holds, the last check, and how much the project map names.
+ * Needs a token with the admin scope.
  */
-export function RepositoriesScreen({ connection, info }: RepositoriesScreenProps): ReactElement {
+export function RepositoriesScreen({ connection, info, workspaces }: RepositoriesScreenProps): ReactElement {
+  const workspace = workspaces.current;
   return (
     <Screen
-      title="Codebases"
-      lead="The code the server follows and indexes: add a folder of this computer or a repository at an address, choose what it indexes, and see how far each sync is. Needs a token with the admin scope."
+      title={workspace === null ? "Codebases" : `Codebases of ${workspace}`}
+      lead="The code the server follows and indexes for the workspace chosen in the sidebar: add a folder of this computer or a repository at an address, choose what it indexes, and see what the index holds. Needs a token with the admin scope."
     >
       {connection.hasToken ? (
         <>
           <ConnectionRebuilds connectionId={connection.id} />
-          <Workspaces connection={connection} info={info} />
+          <Workspace connection={connection} info={info} workspaces={workspaces} />
         </>
       ) : (
         <Notice tone="warn" title="This connection has no token">
@@ -58,50 +65,65 @@ export function RepositoriesScreen({ connection, info }: RepositoriesScreenProps
   );
 }
 
-function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement {
+interface Extras {
+  /** The folders given to the local server; null for another server, or when the launcher cannot say. */
+  readonly folders: readonly LocalRepo[] | null;
+  readonly tokenNames: ReadonlyMap<string, string>;
+}
+
+/** What the cards need beside the server's sources: the local folders, and the names of tokens. */
+async function readExtras(backend: Backend, id: string, local: boolean): Promise<Extras> {
+  const folders = local
+    ? await listFolders(backend).then(
+        (answer) => (answer.ok ? answer.repositories : null),
+        () => null,
+      )
+    : null;
+  const tokens = await listTokens(backend, id).catch(() => []);
+  return { folders, tokenNames: new Map(tokens.map((token) => [token.id, token.name])) };
+}
+
+function Workspace({ connection, info, workspaces }: RepositoriesScreenProps): ReactElement {
   const backend = useBackend();
-  const loaded = useLoad(useCallback(() => listWorkspaces(backend, connection.id), [backend, connection.id]));
-  const [chosen, setChosen] = useState<string | null>(null);
+  const local = connection.kind === "local";
+  const extras = useLoad(
+    useCallback(() => readExtras(backend, connection.id, local), [backend, connection.id, local]),
+  );
   // The form to add a repository opens on a click and closes once it has added one.
   const [adding, setAdding] = useState(false);
-  // Bumped after a change, so the lists below read the server again.
+  // Bumped after a change, so the list below reads the server again.
   const [round, setRound] = useState(0);
-  const changed = useCallback((): void => {
-    setRound((value) => value + 1);
-  }, []);
+  const { reload: reloadExtras } = extras;
   const added = useCallback((): void => {
     setAdding(false);
-    changed();
-  }, [changed]);
-  if (loaded.state.phase === "loading") {
+    setRound((value) => value + 1);
+    reloadExtras();
+  }, [reloadExtras]);
+  if (workspaces.error !== null) {
+    return <ErrorNotice error={workspaces.error} />;
+  }
+  if (workspaces.names === null) {
     return <Text tone="muted">Asking the server…</Text>;
   }
-  if (loaded.state.phase === "failed") {
-    return <ErrorNotice error={loaded.state.error} />;
-  }
-  const names = loaded.state.data;
-  const workspace = chosen !== null && names.includes(chosen) ? chosen : (names[0] ?? null);
-  const local = connection.kind === "local";
+  const workspace = workspaces.current;
+  const known = extras.state.phase === "ready" ? extras.state.data : { folders: null, tokenNames: new Map<string, string>() };
   return (
     <>
-      <Panel title="Workspace">
-        {names.length === 0 ? (
-          <Text>A code base goes into a workspace. This server has none yet: create one.</Text>
+      <Panel title={workspace === null ? "Workspace" : `Workspace ${workspace}`}>
+        <Text>{WORKSPACE_MEANING}</Text>
+        {workspace === null ? (
+          <Text>This server has none yet: create one, then add its code bases.</Text>
         ) : (
-          <Field label="Code bases of" hint="Each workspace has its own code bases and its own project map.">
-            <Select
-              value={workspace ?? ""}
-              options={names.map((name) => ({ value: name, label: name }))}
-              onChange={setChosen}
-            />
-          </Field>
+          <Text tone="muted" small>
+            Switch the workspace in the sidebar: every screen shows the one chosen there. Add another
+            for a second company or client whose code must not mix with this one.
+          </Text>
         )}
         <NewWorkspace
           connection={connection}
-          startOpen={names.length === 0}
+          startOpen={workspaces.names.length === 0}
           onCreated={(name) => {
-            setChosen(name);
-            loaded.reload();
+            workspaces.reload(name);
           }}
         />
       </Panel>
@@ -130,14 +152,19 @@ function Workspaces({ connection, info }: RepositoriesScreenProps): ReactElement
                   setAdding(true);
                 }}
               >
-                Add a code base
+                Add a code base to {workspace}
               </Button>
             </Actions>
           )}
-          <CodebaseList key={`${workspace}:${String(round)}`} connection={connection} workspace={workspace} />
+          <CodebaseList
+            key={`${workspace}:${String(round)}`}
+            connection={connection}
+            workspace={workspace}
+            folders={known.folders}
+            tokenNames={known.tokenNames}
+          />
         </>
       )}
-      {local ? <LocalFolders key={String(round)} onChanged={changed} /> : null}
     </>
   );
 }
@@ -195,7 +222,7 @@ function NewWorkspaceForm({ connection, onCreated, onCancel }: NewWorkspaceFormP
   return (
     <Form inline onSubmit={() => (valid ? creating.run() : undefined)}>
       <Columns>
-        <Field label="New workspace" note="optional" grow>
+        <Field label="New workspace" hint="Its name: lowercase, such as the company's or client's." grow>
           <TextInput value={name} kind="code" maxLength={63} placeholder="harbour" onChange={setName} />
         </Field>
       </Columns>

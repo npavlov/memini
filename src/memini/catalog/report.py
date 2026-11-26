@@ -17,7 +17,9 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from memini.catalog.model import (
+    MAX_UNCOVERED_FOLDERS,
     DomainCode,
+    FolderFiles,
     LanguageFiles,
     MaskFiles,
     MaskReport,
@@ -36,6 +38,7 @@ __all__ = [
     "matched_files",
     "project_report",
     "service_files",
+    "source_report",
 ]
 
 MAX_OVERLAP_EXAMPLES = 3
@@ -43,6 +46,16 @@ MAX_OVERLAP_EXAMPLES = 3
 
 type Files = Mapping[UUID, Sequence[str]]
 """The file paths the index holds of each repository, by source."""
+
+
+@dataclass(frozen=True, slots=True)
+class SourceReport:
+    """What the catalog maps of one repository: see :func:`source_report`."""
+
+    covered: int
+    by_project: dict[str, tuple[set[str], set[str], int]]
+    """``(services, domain addresses, files its domains name)`` by project."""
+    uncovered_folders: list[FolderFiles]
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,3 +188,38 @@ def project_report(
             )
         )
     return ProjectReport(masks=masks, overlaps=overlaps, services=services)
+
+
+def _top_folder(path: str) -> str:
+    head, slash, _ = path.partition("/")
+    return head if slash else "(root)"
+
+
+def source_report(catalog: CodeMap, source_id: UUID, paths: Sequence[str]) -> SourceReport:
+    """How much of the repository ``source_id``, whose indexed files are ``paths``, the
+    domains of any project name: the files they name together, what each project maps there,
+    and the top-level folders of the files none names, most files first."""
+    covered: set[str] = set()
+    by_project: dict[str, tuple[set[str], set[str], int]] = {}
+    for service in catalog.services:
+        if service.source_id == source_id:
+            by_project.setdefault(service.project, (set(), set(), 0))[0].add(service.name)
+    named: dict[str, set[str]] = {}
+    for area in catalog.areas_in(source_id):
+        matched = catalog.matching(area.regex, paths)
+        covered.update(matched)
+        named.setdefault(area.project, set()).update(matched)
+        by_project.setdefault(area.project, (set(), set(), 0))[1].add(area.address)
+    for project, files in named.items():
+        services, domains, _ = by_project[project]
+        by_project[project] = (services, domains, len(files))
+    left = Counter(_top_folder(path) for path in paths if path not in covered)
+    folders = sorted(left.items(), key=lambda item: (-item[1], item[0]))
+    return SourceReport(
+        covered=len(covered),
+        by_project=by_project,
+        uncovered_folders=[
+            FolderFiles(folder=folder, files=files)
+            for folder, files in folders[:MAX_UNCOVERED_FOLDERS]
+        ],
+    )

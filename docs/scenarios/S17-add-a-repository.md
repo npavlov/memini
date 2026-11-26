@@ -18,7 +18,10 @@ hand-edited Compose file and secret files.
 
 ## Answer
 
-The Repositories screen of the desktop app, for the workspace the user picks or creates:
+The Codebases screen of the desktop app, for the workspace chosen in the sidebar (memini-qpk.34).
+The switcher under the brand holds for every screen and says what a workspace is: a separate space
+for one company or client, its code, mail, decisions and project map kept apart; a token can be
+limited to it. A server without one offers **New workspace** first.
 
 - **A folder on this computer.** It is offered for the local connection. The app checks that the
   folder holds a git repository, then `memini-server repos add FOLDER`. The launcher lists the
@@ -30,8 +33,12 @@ The Repositories screen of the desktop app, for the workspace the user picks or 
 - **A repository at an address.** An `https://`, `ssh://` or `git@host:path` address with a branch;
   the app adds the git source and syncs it.
 - **The list.** Each git source of the workspace, with each branch's state (syncing, synced,
-  failed with the reason, not synced yet), Sync now and Delete. Each folder given to the server,
-  whether it is still there, and Take back.
+  failed with the reason, not synced yet), Sync now and Delete. A mounted folder is the server's,
+  not a workspace's: it is shown on the card of the code base that reads it (the folder on this
+  computer, where the server sees it, the branch checked out). Never a source of another
+  workspace.
+- **Folders on this computer**, on the Server screen: the folders given to the server that no
+  code base of any workspace reads, whether each is still there, and Take back.
 
 On the Server screen, **Git access** gives the server one ssh key and one https token
 (`memini-server git ssh-key|https-token|remove`). For an ssh key the launcher fetches the host keys
@@ -59,6 +66,10 @@ folder.
   never be an option. Every argument is one element, and no secret is an argument.
 - `desktop/src/repositories/repositories.test.ts`: the answers are parsed, and the forms checked.
   Adding a source sends one branch and syncs it.
+- `desktop/src/repositories/codebase-state.test.ts`: a folder is found by where the server sees
+  it, and the Server screen lists only the folders no source reads.
+- `desktop/src/workspaces/workspaces.test.ts`: the workspace shown is the one chosen while it
+  exists, else the first.
 - By hand, on the release candidate: add a folder under `/Users` and one on another disk, and add
   a public remote. Each is synced and found by `search_code`.
 

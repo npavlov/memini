@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 
-import { AppFrame, EmptyState, ErrorNotice, NavItem, Sidebar, Splash, Text } from "./components";
+import { AppFrame, EmptyState, ErrorNotice, NavItem, Sidebar, SidebarPicker, Splash, Text } from "./components";
 import { tokenProblem } from "./connections/connection-check";
 import type { TokenProblem } from "./connections/connection-check";
 import { activeConnection } from "./connections/connections";
@@ -22,6 +22,9 @@ import { StatusBar } from "./status/status-bar";
 import { useConnectionHealth } from "./status/use-connection-health";
 import { RepositoriesScreen } from "./repositories/repositories-screen";
 import { TokensScreen } from "./tokens/tokens-screen";
+import { useWorkspaces } from "./workspaces/use-workspaces";
+import type { WorkspaceChoice } from "./workspaces/use-workspaces";
+import { WORKSPACE_HINT } from "./workspaces/workspaces";
 
 /** The screens of the navigation. The state of the connection is not one: it is the bar below. */
 const SCREENS = [
@@ -76,8 +79,30 @@ function Shell({ boot }: ShellProps): ReactElement {
   const [screen, setScreen] = useState<ScreenId>(
     boot.view.connections.length === 0 ? "connection" : "data",
   );
+  const active = activeConnection(view);
+  const watch = useConnectionHealth(active);
+  // Known at once for a connection without a token; for a refused one, once the server said so.
+  const problem = active === null ? null : tokenProblem(active, watch.health?.token ?? null);
+  const workspaces = useWorkspaces(
+    active,
+    active === null || !active.hasToken || problem !== null ? null : `${active.id}:${active.url}`,
+  );
+  const names = workspaces.names ?? [];
   const sidebar = (
-    <Sidebar footer={boot.info.version === "" ? "" : `Version ${boot.info.version}`}>
+    <Sidebar
+      footer={boot.info.version === "" ? "" : `Version ${boot.info.version}`}
+      header={
+        workspaces.current === null ? null : (
+          <SidebarPicker
+            label="Workspace"
+            value={workspaces.current}
+            options={names.map((name) => ({ value: name, label: name }))}
+            onChange={workspaces.choose}
+            hint={WORKSPACE_HINT}
+          />
+        )
+      }
+    >
       {SCREENS.map((item) => (
         <NavItem
           key={item.id}
@@ -91,10 +116,6 @@ function Shell({ boot }: ShellProps): ReactElement {
       ))}
     </Sidebar>
   );
-  const active = activeConnection(view);
-  const watch = useConnectionHealth(active);
-  // Known at once for a connection without a token; for a refused one, once the server said so.
-  const problem = active === null ? null : tokenProblem(active, watch.health?.token ?? null);
   return (
     <AppFrame sidebar={sidebar} statusBar={<StatusBar connection={active} watch={watch} />}>
       <CurrentScreen
@@ -102,6 +123,7 @@ function Shell({ boot }: ShellProps): ReactElement {
         view={view}
         info={boot.info}
         onView={setView}
+        workspaces={workspaces}
         token={{
           problem,
           onAddToken: () => {
@@ -124,10 +146,11 @@ interface CurrentScreenProps {
   readonly view: ConnectionsView;
   readonly info: AppInfo;
   readonly onView: (view: ConnectionsView) => void;
+  readonly workspaces: WorkspaceChoice;
   readonly token: TokenGate;
 }
 
-function CurrentScreen({ screen, view, info, onView, token }: CurrentScreenProps): ReactElement {
+function CurrentScreen({ screen, view, info, onView, workspaces, token }: CurrentScreenProps): ReactElement {
   const active = activeConnection(view);
   switch (screen) {
     case "connection":
@@ -144,7 +167,7 @@ function CurrentScreen({ screen, view, info, onView, token }: CurrentScreenProps
           <Text>Add a server on the Connection screen, or choose one of the saved connections.</Text>
         </EmptyState>
       ) : (
-        <ConnectionScreen screen={screen} connection={active} info={info} token={token} />
+        <ConnectionScreen screen={screen} connection={active} info={info} workspaces={workspaces} token={token} />
       );
   }
 }
@@ -153,11 +176,15 @@ interface ConnectionScreenProps {
   readonly screen: "mcp" | "tokens" | "repos" | "data" | "map";
   readonly connection: Connection;
   readonly info: AppInfo;
+  readonly workspaces: WorkspaceChoice;
   readonly token: TokenGate;
 }
 
-/** A screen about one connection. It is keyed by the connection, so answers never cross over. */
-function ConnectionScreen({ screen, connection, info, token }: ConnectionScreenProps): ReactElement {
+/**
+ * A screen about one connection. It is keyed by the connection, so answers never cross over;
+ * the screens of a workspace's data show the one chosen in the sidebar.
+ */
+function ConnectionScreen({ screen, connection, info, workspaces, token }: ConnectionScreenProps): ReactElement {
   const key = `${connection.id}:${connection.url}:${String(connection.hasToken)}`;
   const { problem, onAddToken } = token;
   // The MCP screen has an address to show without a token; the others have only the server's data.
@@ -171,10 +198,10 @@ function ConnectionScreen({ screen, connection, info, token }: ConnectionScreenP
     case "tokens":
       return <TokensScreen key={key} connection={connection} />;
     case "repos":
-      return <RepositoriesScreen key={key} connection={connection} info={info} />;
+      return <RepositoriesScreen key={key} connection={connection} info={info} workspaces={workspaces} />;
     case "data":
-      return <DataScreen key={key} connection={connection} />;
+      return <DataScreen key={key} connection={connection} workspace={workspaces.current} />;
     case "map":
-      return <ProjectMapScreen key={key} connection={connection} />;
+      return <ProjectMapScreen key={key} connection={connection} workspaces={workspaces} />;
   }
 }

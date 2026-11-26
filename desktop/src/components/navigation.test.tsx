@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { markupOf } from "./markup";
-import { Brand, NavItem, RowList, SelectableRow, Sidebar, Tabs } from "./navigation";
+import { Brand, NavItem, RowList, SelectableRow, Sidebar, SidebarPicker, Tabs } from "./navigation";
 
 const noop = (): void => undefined;
 
@@ -15,6 +15,41 @@ describe("Sidebar and Brand", () => {
 
   it("leaves out an empty footer", () => {
     expect(markupOf(<Sidebar footer="">items</Sidebar>)).not.toContain("sidebar-footer");
+  });
+
+  it("puts a header between the brand and the items, and leaves out none", () => {
+    const markup = markupOf(<Sidebar header="choice">items</Sidebar>);
+
+    expect(markup).toMatch(/<\/p><div class="sidebar-header">choice<\/div>items/u);
+    expect(markupOf(<Sidebar>items</Sidebar>)).not.toContain("sidebar-header");
+  });
+});
+
+describe("SidebarPicker", () => {
+  it("is a labelled choice with its hint, the chosen value selected", () => {
+    const markup = markupOf(
+      <SidebarPicker
+        label="Workspace"
+        value="harbour"
+        options={[
+          { value: "harbour", label: "harbour" },
+          { value: "quay", label: "quay" },
+        ]}
+        onChange={noop}
+        hint="A space of its own."
+      />,
+    );
+
+    expect(markup).toMatch(/^<label class="sidebar-picker"><span class="sidebar-picker-label">Workspace<\/span>/u);
+    expect(markup).toContain('<select class="sidebar-picker-select">');
+    expect(markup).toContain('<option value="harbour" selected="">harbour</option>');
+    expect(markup).toContain('<small class="sidebar-picker-hint">A space of its own.</small>');
+  });
+
+  it("leaves out an empty hint", () => {
+    const markup = markupOf(<SidebarPicker label="Workspace" value="" options={[]} onChange={noop} />);
+
+    expect(markup).not.toContain("sidebar-picker-hint");
   });
 
   it("shows the glyph next to the name, which is written in lower case", () => {

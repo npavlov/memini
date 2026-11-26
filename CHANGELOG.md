@@ -7,7 +7,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `GET /v1/workspaces/{workspace}/sources/{source}/streams` says what the index holds of each
+  stream (`index`: records, chunks, the pinned commit and its committer time), whatever its last
+  run did.
+- `GET /v1/workspaces/{workspace}/sources/{source}/coverage`: how much of a repository the project
+  map names: the projects with a service or a domain there, the share of its indexed files some
+  domain names, when and by which token each project was last written, and the top-level folders
+  of the files no domain names.
+- Desktop app: one workspace switcher in the sidebar, with what a workspace is; Codebases, Data
+  and Project map show the workspace chosen there.
+- Desktop app, Codebases: each card shows what the index holds (files, chunks, commit and its
+  date), the last check from the run's counts (`07:37 — no changes`), whether a running sync is a
+  full listing or a diff, the folder of this computer it reads, and whether the project map names
+  it, with the folders no domain names. The task for an agent is shown before it is copied, with
+  the three steps to map the code bases.
+
 ### Changed
+
+- Desktop app: the folders given to the local server that no code base reads are listed on the
+  Server screen (**Folders on this computer**), not under the code bases of a workspace, which
+  showed the folders of other workspaces. A card showed the last run's progress, 0% after a diff
+  that changed nothing; it shows the state of the index instead.
 
 - The server launcher, and the desktop app that carries it, install and start the image of
   0.2.0-rc.3.

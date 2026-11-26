@@ -95,6 +95,8 @@ MAX_LINKS: Final = 64
 """Services one service declares it uses."""
 MAX_NOTE_CHARS: Final = 1000
 """The longest note of a link; the database checks the same number."""
+MAX_UNCOVERED_FOLDERS: Final = 20
+"""Top-level folders the coverage of a repository lists; the rest are not listed."""
 
 LinkKind = Literal["library", "http", "queue", "other"]
 """How a service uses another: a library it imports, an HTTP API it calls, a queue between them,
@@ -572,6 +574,48 @@ class ServiceCoverage(BaseModel):
     unassigned: int = Field(description="Of them, files that no domain of any project names.")
     unassigned_share: float | None = Field(
         description="unassigned / files, 0 to 1; null for a service without files."
+    )
+
+
+class FolderFiles(BaseModel):
+    folder: str = Field(
+        description="A top-level folder of the repository; (root) for the files at the top."
+    )
+    files: int
+
+
+class ProjectCoverage(BaseModel):
+    """A project that maps part of a repository: a service of it is there, or a domain of it
+    names code there."""
+
+    project: str
+    services: list[str] = Field(description="Its services in the repository, by name.")
+    domains: list[str] = Field(
+        description="The addresses of its domains and subdomains that name code in the"
+        " repository, by address."
+    )
+    files: int = Field(description="Files of the repository its domains name, each once.")
+    updated_at: datetime = Field(description="When anything in the project last changed.")
+    updated_by: UUID = Field(description=_UPDATED_BY)
+    updated_token: UUID | None = Field(description=_UPDATED_WITH)
+
+
+class SourceCoverage(BaseModel):
+    """How much of a repository the catalog maps: the projects and domains that name its code,
+    and the files no domain names. Counted over the files the index holds, each path once
+    whatever its refs."""
+
+    workspace: str
+    source: str
+    files: int = Field(description="Files in the index; 0 before the first complete sync.")
+    covered: int = Field(description="Of them, files that a domain of any project names.")
+    covered_share: float | None = Field(
+        description="covered / files, 0 to 1; null for a repository without files."
+    )
+    projects: list[ProjectCoverage] = Field(description="By name; empty: not mapped.")
+    uncovered_folders: list[FolderFiles] = Field(
+        description="The top-level folders that hold files no domain names, with how many,"
+        f" most first; at most {MAX_UNCOVERED_FOLDERS}."
     )
 
 

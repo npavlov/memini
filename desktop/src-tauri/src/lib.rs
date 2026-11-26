@@ -88,6 +88,7 @@ pub fn run() {
             commands::repositories::api_workspace_create,
             commands::repositories::api_source_create,
             commands::repositories::api_source_streams,
+            commands::repositories::api_source_coverage,
             commands::repositories::api_source_sync,
             commands::repositories::api_source_delete,
             commands::repositories::api_source_update,

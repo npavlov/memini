@@ -183,8 +183,8 @@ pub struct SourceRef {
     pub source: String,
 }
 
-/// `GET /v1/workspaces/{workspace}/sources/{source}/streams`: each tracked ref with its lag and
-/// newest run.
+/// `GET /v1/workspaces/{workspace}/sources/{source}/streams`: each tracked ref with its lag,
+/// newest run, and what the index holds of it (files, chunks, the commit).
 #[tauri::command]
 pub async fn api_source_streams(
     state: State<'_, AppState>,
@@ -192,6 +192,17 @@ pub async fn api_source_streams(
     source: SourceRef,
 ) -> AppResult<Value> {
     source_call(&state, &id, &source, Method::GET, Some("streams")).await
+}
+
+/// `GET /v1/workspaces/{workspace}/sources/{source}/coverage`: how much of a repository the
+/// catalog maps, the projects and domains that name its code, and the folders none names.
+#[tauri::command]
+pub async fn api_source_coverage(
+    state: State<'_, AppState>,
+    id: String,
+    source: SourceRef,
+) -> AppResult<Value> {
+    source_call(&state, &id, &source, Method::GET, Some("coverage")).await
 }
 
 /// `POST /v1/workspaces/{workspace}/sources/{source}/sync`: sync every stream now.

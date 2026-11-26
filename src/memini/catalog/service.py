@@ -3,8 +3,9 @@
 
 One function per tool, for the MCP tools (:mod:`memini.mcp.catalog`) and the HTTP routes
 (:mod:`memini.api.catalog`) alike: :func:`run_get_catalog`, :func:`run_get_domain`,
-:func:`run_get_project`, :func:`run_put_project` and :func:`catalog_guide`. The reads take the
-caller's :class:`~memini.auth.ReadFilter`. The write takes its
+:func:`run_get_project`, :func:`run_put_project` and :func:`catalog_guide`; and
+:func:`run_get_coverage`, the share of a repository the domains name, an HTTP read only. The
+reads take the caller's :class:`~memini.auth.ReadFilter`. The write takes its
 :class:`~memini.auth.WriteAccess` (the ``ingest`` scope) and its ``ReadFilter`` (the ``read``
 scope) both: its answer counts the files each mask matches, which is a read of the index, so a
 token that may only push records cannot probe a repository's paths through it.
@@ -73,6 +74,7 @@ from memini.catalog.model import (
     LinkEntry,
     LinkMaskReport,
     MaskFiles,
+    ProjectCoverage,
     ProjectDetail,
     ProjectDocument,
     ProjectEntry,
@@ -80,11 +82,12 @@ from memini.catalog.model import (
     RefInfo,
     RepositoryInfo,
     ServiceEntry,
+    SourceCoverage,
     SubdomainDetail,
     SubdomainDocument,
     SubdomainEntry,
 )
-from memini.catalog.report import domain_code, languages, project_report
+from memini.catalog.report import domain_code, languages, project_report, source_report
 from memini.catalog.store import (
     Author,
     Repository,
@@ -119,6 +122,7 @@ __all__ = [
     "catalog_guide",
     "normalize",
     "run_get_catalog",
+    "run_get_coverage",
     "run_get_domain",
     "run_get_project",
     "run_put_project",
@@ -627,6 +631,58 @@ async def run_get_catalog(
             for each in repositories
             if each.id not in in_a_service
         ],
+    )
+
+
+async def run_get_coverage(
+    conn: Conn, access: ReadFilter, workspace: str, source: str
+) -> SourceCoverage:
+    """How much of the repository ``source`` the catalog of ``workspace`` maps: the projects and
+    domains that name its code, the share of its indexed files some domain names, and the
+    top-level folders of the rest (:func:`memini.catalog.report.source_report`)."""
+    with catalog_errors():
+        async with conn.transaction():
+            found = await _readable_workspace(conn, access, workspace)
+            repository = next(
+                (
+                    each
+                    for each in await store.repositories(conn, access, found.id)
+                    if each.name == source
+                ),
+                None,
+            )
+            if repository is None:
+                raise NotFoundError("source")
+            projects = await store.read_projects(conn, access, found.id)
+            catalog = (await load_code_maps(conn, access, [found.id]))[found.id]
+            files = (await store.source_files(conn, access, [repository.id]))[repository.id]
+    report = source_report(catalog, repository.id, files)
+    stamps = {project.name: project.stamp for project in projects}
+    entries: list[ProjectCoverage] = []
+    for name in sorted(report.by_project):
+        stamp = stamps.get(name)
+        if stamp is None:  # a project the token may not read
+            continue
+        services, domains, count = report.by_project[name]
+        entries.append(
+            ProjectCoverage(
+                project=name,
+                services=sorted(services),
+                domains=sorted(domains),
+                files=count,
+                updated_at=stamp.at,
+                updated_by=stamp.by,
+                updated_token=stamp.token,
+            )
+        )
+    return SourceCoverage(
+        workspace=found.name,
+        source=repository.name,
+        files=len(files),
+        covered=report.covered,
+        covered_share=round(report.covered / len(files), 4) if files else None,
+        projects=entries,
+        uncovered_folders=report.uncovered_folders,
     )
 
 
