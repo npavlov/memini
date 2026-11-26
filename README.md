@@ -52,6 +52,6 @@ Create a workspace, import one example email conversation and find who proposed 
 - Find messages addressed to a person or meetings they attended. [Messages](docs/mcp/list_messages.md) · [Meetings](docs/mcp/list_meetings.md)
 - Map what code belongs to: projects, domains and the services behind them, and how projects use each other. Search inside one domain across repositories. [Catalog](docs/mcp/get_catalog.md) · [Instruction for an agent](docs/mcp/catalog_guide.md)
 - See who changed a file, a service or a domain. [Commit history](docs/mcp/list_commits.md)
-- Run and connect Memini from a desktop app on macOS, Windows or Linux. [Desktop app](desktop/README.md)
+- Run and connect Memini from a desktop app on macOS, Windows or Linux: download the `.dmg`, `-setup.exe`, `.AppImage` or `.deb` from a [release](https://github.com/npavlov/memini/releases). It is unsigned; [how to open it the first time](docs/install.md#desktop-app) · [Desktop app](desktop/README.md)
 
 Browse the **[online user knowledge base](https://npavlov.github.io/memini/)** or its [version in this checkout](docs/index.md) for setup, Intake, CLI and MCP tools, security, backup, upgrades and troubleshooting. For development and project history, see [Contributing](CONTRIBUTING.md), the [changelog](CHANGELOG.md) and the [Apache-2.0 license](LICENSE). [Report a vulnerability privately](SECURITY.md).

@@ -102,3 +102,12 @@ def test_a_tag_whose_desktop_version_lags_is_refused(tree: Path) -> None:
 
     with pytest.raises(ValueError, match=r"desktop app's version to 0\.2\.0"):
         notes.release_notes("v0.2.0", tree / "pyproject.toml", tree / "CHANGELOG.md")
+
+
+def test_release_notes_say_how_to_open_the_unsigned_app() -> None:
+    note = load("release-notes").DESKTOP_APP
+    assert note.startswith("### Desktop app\n")
+    assert "xattr -dr com.apple.quarantine /Applications/Memini.app" in note
+    assert "**More info**" in note
+    assert "**Run anyway**" in note
+    assert "desktop-SHA256SUMS" in note

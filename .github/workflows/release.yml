@@ -132,6 +132,44 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             "${flags[@]}" --notes-file release-notes.md --title "$GITHUB_REF_NAME"
 
+  # The desktop app, built from the tag on each platform (desktop-app.yml, which also checks the
+  # app's version against the tag), without the Rust cache: a published bundle is built from
+  # nothing restored. It runs beside the image and the package; only the upload waits for the
+  # draft release.
+  desktop:
+    needs: build
+    uses: ./.github/workflows/desktop-app.yml
+    with:
+      tag: ${{ github.ref_name }}
+      cache: false
+      intel-mac: true
+    permissions:
+      contents: read
+
+  attach-desktop:
+    needs: [notes, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: memini-desktop-*
+          path: dist-desktop
+          merge-multiple: true
+      - name: Checksums of the desktop app
+        run: |
+          (cd dist-desktop && sha256sum -- * > ../desktop-SHA256SUMS)
+          mv desktop-SHA256SUMS dist-desktop/
+          cat dist-desktop/desktop-SHA256SUMS
+      - name: Attach the desktop app to draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/attach-release-assets.sh "$GITHUB_REF_NAME" dist-desktop
+
   installers:
     needs: notes
     uses: ./.github/workflows/platform-installers.yml
