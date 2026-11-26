@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0-rc.4] - 2026-11-26
+
 ### Added
 
 - `GET /v1/workspaces/{workspace}/sources/{source}/streams` says what the index holds of each
@@ -445,7 +447,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A database backup retains records forgotten after the backup. Restoring it requires the
   encryption keys from the time of the backup. [Restore procedure](docs/operations/backup.md).
 
-[Unreleased]: https://github.com/npavlov/memini/compare/v0.2.0-rc.3...main
+[Unreleased]: https://github.com/npavlov/memini/compare/v0.2.0-rc.4...main
+[0.2.0-rc.4]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.4
 [0.2.0-rc.3]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.3
 [0.2.0-rc.2]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.2
 [0.2.0-rc.1]: https://github.com/npavlov/memini/releases/tag/v0.2.0-rc.1
