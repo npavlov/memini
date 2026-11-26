@@ -16,7 +16,8 @@ export interface ScopeEditorProps {
   readonly connection: Connection;
   readonly workspace: string;
   readonly source: GitSource;
-  readonly onSaved: () => void;
+  /** Settles once the card shows the state after the save, so Save waits until then. */
+  readonly onSaved: () => Promise<void>;
 }
 
 const NUMBER = new Intl.NumberFormat("en");
@@ -43,7 +44,7 @@ export function ScopeEditor({ connection, workspace, source, onSaved }: ScopeEdi
   const save = useCallback(async (): Promise<void> => {
     await updateSource(backend, connection.id, workspace, source.name, { exclude });
     await syncSource(backend, connection.id, workspace, source.name);
-    onSaved();
+    await onSaved();
   }, [backend, connection.id, exclude, onSaved, source.name, workspace]);
   const looking = useAction(look);
   const saving = useAction(save);

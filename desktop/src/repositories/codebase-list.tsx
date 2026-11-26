@@ -213,7 +213,8 @@ interface CodebaseCardProps {
   readonly codebase: Codebase;
   readonly folder: LocalRepo | null;
   readonly tokenNames: ReadonlyMap<string, string>;
-  readonly onChanged: () => void;
+  /** Reads the code bases again; settles once the card shows what was read. */
+  readonly onChanged: () => Promise<void>;
 }
 
 function scheduleWords(seconds: number | null): string {
@@ -301,7 +302,9 @@ function CodebaseCard(props: CodebaseCardProps): ReactElement {
         const schedule = what === "pause" ? "off" : RESUME_SECONDS;
         await updateSource(backend, connection.id, workspace, source.name, { schedule });
       }
-      onChanged();
+      // The action, and so its button, ends only once the card shows the stream's state read
+      // after the request: a queued or running sync, or a run that finished since the click.
+      await onChanged();
     },
     [ask, backend, connection.id, onChanged, source.name, workspace],
   );
@@ -384,9 +387,9 @@ function CodebaseCard(props: CodebaseCardProps): ReactElement {
           connection={connection}
           workspace={workspace}
           source={source}
-          onSaved={() => {
+          onSaved={async () => {
+            await onChanged();
             setEditing(false);
-            onChanged();
           }}
         />
       ) : null}
