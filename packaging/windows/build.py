@@ -112,27 +112,36 @@ def payload(temp: Path, package: str, wheel: Path | None) -> Path:
     )
     if not wheel:
         wait_for_pypi(package)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "--isolated",
-            "install",
-            "--index-url",
-            "https://pypi.org/simple",
-            "--only-binary=:all:",
-            "--no-compile",
-            "--target",
-            library,
-            "-c",
-            constraints,
-            "--report",
-            temp / "pip-report.json",
-            wheel.resolve() if wheel else f"memini=={package}",
-        ],
-        check=True,
-    )
+    # PyPI's index pages are cached apart from its JSON API: pip can still miss a version the
+    # API lists, so the install is tried again until the wait is over.
+    deadline = time.monotonic() + PYPI_WAIT_SECONDS
+    while True:
+        attempt = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "--isolated",
+                "install",
+                "--index-url",
+                "https://pypi.org/simple",
+                "--only-binary=:all:",
+                "--no-compile",
+                "--target",
+                library,
+                "-c",
+                constraints,
+                "--report",
+                temp / "pip-report.json",
+                wheel.resolve() if wheel else f"memini=={package}",
+            ],
+            check=False,
+        )
+        if attempt.returncode == 0:
+            break
+        if wheel or time.monotonic() > deadline:
+            raise subprocess.CalledProcessError(attempt.returncode, attempt.args)
+        time.sleep(30)
     report = json.loads((temp / "pip-report.json").read_text(encoding="utf-8"))
     verify_wheels(report, lock)
     selected = next(p for p in report["install"] if p["metadata"]["name"].lower() == "memini")

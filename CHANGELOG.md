@@ -7,6 +7,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The server launcher, and the desktop app that carries it, install and start the image of
+  0.2.0-rc.4.
+
+### Fixed
+
+- The Windows installer's release check tries the install again for up to ten minutes: PyPI's
+  index pages can lag its JSON API, and the run of 0.2.0-rc.4 failed there once.
+
 ## [0.2.0-rc.4] - 2026-11-26
 
 ### Added
