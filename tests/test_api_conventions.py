@@ -229,16 +229,31 @@ def test_the_cli_has_no_retired_commands() -> None:
 # Answer keys that lists used before they all answered items. The scripts and workflows that
 # drive a release read answers too; a release run failed on rc.2 because one still read hits.
 RETIRED_ANSWER_KEYS = {"hits"}
+# A list answer is items: a fake server in a packaging test that answers a list under its own
+# name (rc.3's Windows installer test answered "workspaces") breaks the installed CLI's check.
+RETIRED_LIST_ANSWERS = {"workspaces", "sources", "tokens", "persons", "runs", "streams"}
 
 
 def test_scripts_and_workflows_read_answers_by_their_current_keys() -> None:
     root = Path(__file__).resolve().parents[1]
-    files = [*root.glob("scripts/*"), *root.glob(".github/workflows/*.yml")]
+    files = [
+        *root.glob("scripts/*"),
+        *root.glob(".github/workflows/*.yml"),
+        *root.glob("packaging/**/*.py"),
+        *root.glob("packaging/**/*.sh"),
+    ]
     stale = [
         f"{path.relative_to(root)}: {key}"
         for path in files
         if path.is_file()
         for key in RETIRED_ANSWER_KEYS
         if re.search(rf"""\[["']{key}["']\]|\.get\(["']{key}["']""", path.read_text("utf-8"))
+    ]
+    stale += [
+        f"{path.relative_to(root)}: answers {key}"
+        for path in files
+        if path.is_file() and path.suffix == ".py"
+        for key in RETIRED_LIST_ANSWERS
+        if re.search(rf"""["']{key}["']:\s*\[""", path.read_text("utf-8"))
     ]
     assert not stale, stale
