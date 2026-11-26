@@ -72,6 +72,30 @@ def verify_wheels(report: dict, lock: dict) -> None:
             raise ValueError(f"dependency wheel does not match uv.lock: {key[2]}")
 
 
+# How long a release's installer build waits for PyPI's index to list the version the release run
+# has just published: the simple index can lag the upload by a minute or more.
+PYPI_WAIT_SECONDS = 600
+
+
+def wait_for_pypi(package: str) -> None:
+    """Return once PyPI's simple index lists memini ``package``; fail after the wait."""
+    url = "https://pypi.org/simple/memini/"
+    deadline = time.monotonic() + PYPI_WAIT_SECONDS
+    while True:
+        request = urllib.request.Request(
+            url, headers={"Accept": "application/vnd.pypi.simple.v1+json"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as answer:  # noqa: S310
+                if package in json.load(answer).get("versions", []):
+                    return
+        except OSError:
+            pass
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"memini {package} did not appear on PyPI in {PYPI_WAIT_SECONDS}s")
+        time.sleep(15)
+
+
 def payload(temp: Path, package: str, wheel: Path | None) -> Path:
     root = temp / "payload"
     runtime = root / "runtime"
@@ -86,6 +110,8 @@ def payload(temp: Path, package: str, wheel: Path | None) -> Path:
         "".join(f"{p['name']}=={p['version']}\n" for p in lock["package"] if p["name"] != "memini"),
         encoding="utf-8",
     )
+    if not wheel:
+        wait_for_pypi(package)
     subprocess.run(
         [
             sys.executable,
@@ -185,7 +211,7 @@ def smoke(bin_dir: Path, package: str, cwd: Path) -> None:
             self.wfile.write(
                 json.dumps(
                     {
-                        "workspaces": [
+                        "items": [
                             {
                                 "name": "install-smoke",
                                 "created_at": "2026-01-01T00:00:00Z",

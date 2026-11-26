@@ -7,6 +7,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The server launcher, and the desktop app that carries it, install and start the image of
+  0.2.0-rc.3.
+
+### Fixed
+
+- The Windows installer's release check answered its fake server's workspace list as
+  `workspaces` instead of `items`, and it installed the just-published package before PyPI listed
+  it; 0.2.0-rc.3 has no installers for that reason. The check now answers `items` and waits for
+  PyPI to list the version, and the conventions test reads packaging code too.
+
 ## [0.2.0-rc.3] - 2026-11-26
 
 ### Fixed
