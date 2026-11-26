@@ -785,9 +785,11 @@ async def test_journal_reads_and_search(app: FastAPI, db: Conn, world: World) ->
         for exclusions in (
             {"persons": str(world.beta_person)},
             {"sources": "other"},
-            {"sources": "chat"},
         ):
             assert ok(await http.get("/v1/search", params=params | exclusions))["decisions"] == []
+        # Its evidence is in the source chat: that filter keeps it.
+        of_chat = ok(await http.get("/v1/search", params=params | {"sources": "chat"}))
+        assert [i["id"] for i in of_chat["decisions"]] == [new]
         assert (
             ok(await http.get("/v1/decisions", params={"persons": str(world.beta_person)}))["items"]
             == []
