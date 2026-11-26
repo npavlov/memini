@@ -6,6 +6,59 @@ the service's container, with the token from `MEMINI_TOKEN_FILE` or `MEMINI_TOKE
 `MEMINI_URL` and `MEMINI_TOKEN` or `MEMINI_TOKEN_FILE`, where `--url URL` and `--token-file FILE`
 override them for one run. Reading needs a token with the `read` scope, managing sources requires `admin`, and pushing records or writing decisions requires `ingest`. Read commands take `--json` for the API's answer as it is.
 
+## Read commands
+
+Each read command is one MCP tool ([mcp/README.md](mcp/README.md)): the tool's name with dashes, and the
+tool's arguments as options with dashes, under the same names. The argument that names the object is
+positional (`<query>`, `<id>`, `<source> <path>`, `<project>`). A list filter keeps its plural name
+and takes one value per use; repeat it for more: `--persons me --persons bo@example.test` sends
+`persons: ["me", "bo@example.test"]`. `--workspace` of a `get-` command defaults to the only
+workspace the token may read. The rules are in [mcp/conventions.md](mcp/conventions.md).
+
+```
+memini search <query> [--mode hybrid|dense|lexical] [--workspaces NAME ...] [--sources NAME ...]
+              [--kinds KIND ...] [--persons PERSON ...] [--roles ROLE ...] [--projects NAME ...]
+              [--domains NAME ...] [--services NAME ...] [--since TIME] [--until TIME]
+              [--include-sensitive] [--limit N]
+memini search-code <query> [--mode semantic|exact|regex|symbol|symbol_prefix] [--workspaces NAME ...]
+              [--sources NAME ...] [--paths GLOB ...] [--languages LANG ...] [--projects NAME ...]
+              [--domains NAME ...] [--services NAME ...] [--no-case-sensitive] [--include-sensitive]
+              [--limit N]
+memini get-file <source> [<path>] [--workspace NAME] [--ref REF] [--start-line N] [--end-line N]
+              [--include-sensitive]
+memini list-commits [--workspaces NAME ...] [--sources NAME ...] [--paths GLOB ...]
+              [--persons PERSON ...] [--query TEXT] [--since TIME] [--until TIME] [--limit N]
+              [--cursor CURSOR]
+memini list-messages [--persons PERSON ...] [--roles recipient|mention|author ...] [--query TEXT]
+              [--since TIME] [--until TIME] [--workspaces NAME ...] [--sources NAME ...]
+              [--projects NAME ...] [--domains NAME ...] [--include-sensitive] [--limit N]
+memini get-thread <id>
+memini list-meetings [--persons PERSON ...] [--query TEXT] [--since TIME] [--until TIME]
+              [--workspaces NAME ...] [--sources NAME ...] [--projects NAME ...]
+              [--domains NAME ...] [--include-sensitive] [--limit N]
+memini get-meeting <id> [--include-transcript]
+memini list-decisions [--workspaces NAME ...] [--persons PERSON ...] [--projects NAME ...]
+              [--domains NAME ...] [--query TEXT] [--since TIME] [--until TIME] [--history]
+              [--include-sensitive] [--limit N]
+memini get-decision <id> [--include-sensitive]
+memini get-catalog [--workspace NAME]            # JSON
+memini catalog-guide                             # JSON
+memini get-project <project> [--workspace NAME] [--linked-projects NAME ...]   # JSON
+memini get-domain <project> <domain> [--workspace NAME]                        # JSON
+memini status [--gate]
+```
+
+For example, the definition of a function, then the commits that changed its file this month:
+
+```
+memini search-code switch_on --mode symbol
+memini list-commits --sources shop --paths 'src/lamp.py' --since 2026-11-01T00:00:00Z
+```
+
+## Admin commands
+
+Admin commands are grouped by noun.
+
 ```
 memini workspace create <name> | list
 memini source add <ws> <name> --location URL_OR_PATH --ref REF [--ref ...] [--schedule DURATION]
@@ -21,7 +74,6 @@ memini run <run-id>                              # one run with its report
 memini token create --scope {read,ingest,admin,sensitive} [--scope ...] [--workspace NAME] [--name LABEL]
                     [--expires-in DURATION]      # prints the token alone, once
 memini token list | revoke <id-or-prefix>
-memini search <query> [--code] [--mode MODE] [--workspace NAME ...] [--source NAME ...] [--project NAME ...] [--domain NAME ...] [--limit N]
 memini push --workspace NAME --source NAME [--stream KEY] [--batch-size N] [--dry-run] [--json] FILE|-
                     # records from JSON or JSON lines (ingest scope); intake.md
 memini decision record <ws> --statement TEXT [--kind decision|open_question] [--occurred-at TIME]
@@ -31,7 +83,12 @@ memini decision supersede <ws> <id> --supersedes ITEM_ID[:replaces|answers] [...
 memini decision close|retract <ws> <id>
 memini extract <ws> [--source NAME ...] [--since TIME] [--dry-run]   # extract decisions from stored
                     records the current extractor has not read (needs the admin scope)
+memini forget <ws> <id>                          # delete one record and its index for good (admin)
+memini sensitive mark <ws> <id> [--reason TEXT] | unmark <ws> <id> | list <ws>   # admin
+memini person list|show|lookup|add|rename|merge|split|me <ws> ...
 ```
+
+## Operator commands
 
 Operator commands work on the database directly, so they run inside the service's container:
 `docker compose exec memini memini …`, or `bin/memini …`. They come before a token exists, or below

@@ -1132,7 +1132,7 @@ async def test_a_branch_deleted_at_the_remote_is_tombstoned_and_comes_back_with_
     assert not (await stream_status(env, MAIN)).missing
     summary = summarize_status(await read_status(env.pool, reader(env)))
     assert "missing at the source: 1" in summary
-    assert f"acme/shop (git) {DEV}: missing at the source, lag" in summary
+    assert f"acme/shop (repository) {DEV}: missing at the source, lag" in summary
     listed = {
         stream.key: stream.missing
         for stream in await list_streams(env.db, reader(env), "acme", "shop")

@@ -1292,11 +1292,11 @@ ref.
 
 **Comms tools** (decided 2026-11-18). `list_meetings`, `get_meeting`, `list_messages`,
 `get_thread` and `put_document` are one library, `memini.comms`, behind the MCP tools and their
-routes, with the same arguments and results: `GET /v1/meetings`, `GET /v1/meetings/{record_id}`,
-`GET /v1/messages`, `GET /v1/threads/{record_id}`, `GET …/meetings/{external_id}` and
-`GET …/threads/{external_id}` (`…` is `/v1/workspaces/{workspace}/sources/{source}`), and
-`POST …/documents`; `memini meetings` and `memini messages` are clients of the two lists. The
-reads need the `read` scope, `put_document` the `ingest` scope. A listing is for a `person`: `me`
+routes, with the same arguments and results: `GET /v1/meetings`, `GET /v1/meetings/{id}`,
+`GET /v1/messages`, `GET /v1/threads/{id}` and `PUT /v1/workspaces/{workspace}/sources/{source}/documents`;
+`memini list-meetings`, `get-meeting`, `list-messages` and `get-thread` are their clients, as every
+read tool has its command of the same name (docs/mcp/conventions.md). The reads need the `read`
+scope, `put_document` the `ingest` scope. A listing is for `persons`: `me`
 (the default; the person marked with the caller's principal, in each workspace read), a person id,
 or an alias as sources show it (a mail address, also `Name <address>`, is an email; anything else
 is tried as a chat user id, a display name, then a git author name, the order ingest resolves a bare

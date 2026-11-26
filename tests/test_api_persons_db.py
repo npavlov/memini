@@ -136,7 +136,7 @@ async def test_mail_and_chat_become_one_person_and_split_again(
 ) -> None:
     admin, reader = world["admin"], world["reader"]
     listed = ok(await client.get(PERSONS, headers=reader))
-    assert [p["display_name"] for p in listed["persons"]] == ["Ann Example", "Ann Example"]
+    assert [p["display_name"] for p in listed["items"]] == ["Ann Example", "Ann Example"]
     by_mail = await lookup(client, reader, "email", "ANN@example.test")
     by_chat = await lookup(client, reader, "chat_user_id", "U-ANN")
     assert by_mail["id"] != by_chat["id"]
@@ -158,7 +158,7 @@ async def test_mail_and_chat_become_one_person_and_split_again(
     }
     assert (await lookup(client, reader, "chat_user_id", "U-ANN"))["id"] == by_mail["id"]
     listed = ok(await client.get(PERSONS, headers=reader))
-    assert [p["id"] for p in listed["persons"]] == [by_mail["id"]]
+    assert [p["id"] for p in listed["items"]] == [by_mail["id"]]
     merged = ok(await client.get(f"{PERSONS}/{by_chat['id']}", headers=reader))
     assert (merged["canonical_id"], merged["merged_into"]) == (by_mail["id"], by_mail["id"])
 
@@ -274,17 +274,19 @@ async def test_a_listing_pages_and_searches(
 ) -> None:
     reader = world["reader"]
     first = ok(await client.get(PERSONS, params={"limit": 1}, headers=reader))
-    assert len(first["persons"]) == 1
+    assert len(first["items"]) == 1
     second = ok(
-        await client.get(PERSONS, params={"limit": 1, "after": first["next_after"]}, headers=reader)
+        await client.get(
+            PERSONS, params={"limit": 1, "cursor": first["next_cursor"]}, headers=reader
+        )
     )
-    assert len(second["persons"]) == 1
-    assert second["next_after"] is None
-    assert first["persons"][0]["id"] != second["persons"][0]["id"]
-    found = ok(await client.get(PERSONS, params={"q": "u-ann"}, headers=reader))
-    assert [a["normalized_value"] for a in found["persons"][0]["aliases"]] == ["U-ANN"]
+    assert len(second["items"]) == 1
+    assert second["next_cursor"] is None
+    assert first["items"][0]["id"] != second["items"][0]["id"]
+    found = ok(await client.get(PERSONS, params={"query": "u-ann"}, headers=reader))
+    assert [a["normalized_value"] for a in found["items"][0]["aliases"]] == ["U-ANN"]
     refused(
-        await client.get(PERSONS, params={"after": "not a cursor"}, headers=reader),
+        await client.get(PERSONS, params={"cursor": "not a cursor"}, headers=reader),
         422,
         "invalid_cursor",
     )
@@ -331,5 +333,5 @@ async def test_scopes_and_the_workspace_limit_hold(
         "not_found",
     )
     beta = ok(await client.get("/v1/workspaces/beta/persons", headers=beta_admin))
-    assert len(beta["persons"]) == 2
-    assert ann["id"] not in {person["id"] for person in beta["persons"]}
+    assert len(beta["items"]) == 2
+    assert ann["id"] not in {person["id"] for person in beta["items"]}

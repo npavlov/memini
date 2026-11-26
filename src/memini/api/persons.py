@@ -122,8 +122,8 @@ class PersonInfo(BaseModel):
 
 class PersonList(BaseModel):
     items: list[PersonInfo] = Field(description="By display name.")
-    next_after: str | None = Field(
-        description="Pass it as after= for the next page; null on the last page."
+    next_cursor: str | None = Field(
+        description="Pass it as cursor= for the next page; null on the last page."
     )
 
 
@@ -208,7 +208,7 @@ def build_persons_router() -> APIRouter:
         workspace: str,
         access: ReadAccess,
         conn: Connection,
-        q: Annotated[
+        query: Annotated[
             str | None,
             Query(
                 max_length=1000,
@@ -223,25 +223,27 @@ def build_persons_router() -> APIRouter:
         limit: Annotated[
             int, Query(ge=1, le=persons.MAX_PERSON_PAGE)
         ] = persons.DEFAULT_PERSON_PAGE,
-        after: Annotated[str | None, Query(description="next_after of the previous page.")] = None,
+        cursor: Annotated[
+            str | None, Query(description="next_cursor of the previous page.")
+        ] = None,
     ) -> PersonList:
         """The persons of a workspace by display name, each with the aliases of everyone merged
         into it."""
-        cursor = None
-        if after is not None:
+        after = None
+        if cursor is not None:
             try:
-                cursor = persons.PersonCursor.decode(after)
+                after = persons.PersonCursor.decode(cursor)
             except ValueError:
                 raise ApiError(
-                    422, "invalid_cursor", "after is not the next_after of a person listing."
+                    422, "invalid_cursor", "cursor is not the next_cursor of a person listing."
                 ) from None
         with _person_errors():
             page = await persons.list_persons(
-                conn, access, workspace, query=q, merged=merged, limit=limit, after=cursor
+                conn, access, workspace, query=query, merged=merged, limit=limit, after=after
             )
         return PersonList(
             items=[PersonInfo.of(person) for person in page.persons],
-            next_after=None if page.next is None else page.next.encode(),
+            next_cursor=None if page.next is None else page.next.encode(),
         )
 
     @router.post("", status_code=201, summary="Add a person")

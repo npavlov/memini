@@ -40,7 +40,7 @@ the service's worker runs; the run report of the batch counts ``extractions_enqu
 
 import json
 import logging
-from collections.abc import Callable, Coroutine, Generator
+from collections.abc import Callable, Coroutine, Generator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Annotated, Any, Final, Literal, cast
@@ -58,6 +58,7 @@ from memini.config import Settings
 from memini.db import Pool
 from memini.embeddings import EmbeddingError
 from memini.extraction.job import extraction_enabled
+from memini.ids import record_id
 from memini.index import IndexMismatchError
 from memini.query import QueryServices
 from memini.workspaces import NotFoundError
@@ -308,6 +309,15 @@ class IndexInfo(BaseModel):
         )
 
 
+class IngestedRecord(BaseModel):
+    kind: Literal["thread", "meeting", "document"]
+    external_id: str
+    id: str = Field(
+        description="The record's id: what GET /v1/threads/{id}, GET /v1/meetings/{id}, forget"
+        " and the sensitive mark take, and evidence cites."
+    )
+
+
 class IngestAccepted(BaseModel):
     run_id: UUID | None = Field(description="The run of the batch; GET /v1/runs/{id} has it.")
     stream: str | None = Field(description="The stream's key; null without one.")
@@ -317,11 +327,24 @@ class IngestAccepted(BaseModel):
         description="The stream's checkpoint after the batch; null without a stream."
     )
     index: IndexInfo
+    records: list[IngestedRecord] = Field(
+        description="Every record and tombstone of the batch, in its order, with its id."
+    )
 
     @classmethod
-    def of(cls, result: ingest.IngestResult, *, indexed: bool) -> "IngestAccepted":
+    def of(
+        cls, result: ingest.IngestResult, records: Sequence[RecordBody], *, indexed: bool
+    ) -> "IngestAccepted":
         checkpoint = result.checkpoint
         return cls(
+            records=[
+                IngestedRecord(
+                    kind=record.kind,
+                    external_id=record.external_id,
+                    id=record_id(result.source_id, record.kind, record.external_id),
+                )
+                for record in records
+            ],
             run_id=result.run_id,
             stream=result.stream,
             window_complete=result.window_complete,
@@ -490,6 +513,6 @@ def build_ingest_router() -> APIRouter:
                 indexer=indexer,
                 extract=extraction_enabled(settings),
             )
-        return IngestAccepted.of(result, indexed=indexer is not None)
+        return IngestAccepted.of(result, body.records, indexed=indexer is not None)
 
     return router

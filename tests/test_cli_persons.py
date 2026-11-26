@@ -110,17 +110,17 @@ def person(person_id: str = ANN, **fields: Any) -> Json:
 def test_list_prints_persons_and_the_next_page(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
-    service.replies({"items": [person(is_me=True)], "next_after": "Y3Vyc29y"})
+    service.replies({"items": [person(is_me=True)], "next_cursor": "Y3Vyc29y"})
 
     run = cli("person", "list", "acme", "--query", "ann", "--merged", "--limit", "5")
 
     assert run.code == EXIT_OK, run.err
     request = service.last
     assert (request.method, request.url.path) == ("GET", PERSONS)
-    assert dict(request.url.params) == {"q": "ann", "merged": "true", "limit": "5"}
+    assert dict(request.url.params) == {"query": "ann", "merged": "true", "limit": "5"}
     assert ANN in run.out
     assert "email:ann@example.test" in run.out
-    assert "--after Y3Vyc29y" in run.err
+    assert "--cursor Y3Vyc29y" in run.err
     assert "Authorization" in request.headers
     assert TOKEN not in run.out + run.err
 

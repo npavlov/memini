@@ -52,16 +52,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `source`/`sources`: `repository`, `repositories` and `unassigned_repositories` are gone.
   - One object by `id`: `get_thread`, `get_meeting`, `get_decision`, `supersede_decision`,
     `close_decision`, `retract_decision`, forget and the sensitive mark take `id`; naming a record by
-    source and external id is gone, everywhere (evidence too: `record_id` and `anchor`).
+    source and external id is gone, everywhere (evidence too: `record_id` and `anchor`); the
+    answer of a pushed batch gives each record's `id` (`records`), and `memini push --json` lists
+    them (`ids`).
   - Filters: `person` (`list_meetings`, `list_messages`), `person_ids` (`list_decisions`) and
     `author` (`list_commits`) are `persons`; `text` (`list_commits`) is `query`; `other_project`
     (`get_project`) is `linked_projects`; `include` and `exclude` of a source are
-    `include_paths` and `exclude_paths`; the runs listing takes `sources`, `streams` and `cursor`.
+    `include_paths` and `exclude_paths`; the runs listing takes `sources`, `streams` and `cursor`;
+    the persons listing takes `query` and `cursor` (were `q` and `after`), and `memini person
+    list` takes `--cursor`.
     `list_meetings` and `list_messages` take `projects` and `domains`.
   - Answers: every list answers `items` (search hits, meetings, messages, commits, sources,
     streams, runs, tokens, persons, workspaces, sensitive records); `left_out` counts the results
     of records marked sensitive left out of search, `list_meetings`, `list_messages` and
-    `list_decisions`; `next_until` and `next_before` are `next_cursor`.
+    `list_decisions`; `next_until`, `next_before` and `next_after` are `next_cursor`.
   - Times: a decision's `decided_at` is `occurred_at` and `recorded_at` is `created_at`; a
     message's `sent_at` is `occurred_at`; a hit's `at` is `chunk_occurred_at`; a mark's
     `sensitive_at` is `marked_at`. A hit's chunk id is `id`, a record's and a person's own id `id`.
@@ -69,10 +73,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     gone; `PUT …/sources/{source}/documents` writes a document; forget is
     `POST /v1/workspaces/{workspace}/records/{id}/forget` and the mark
     `PUT /v1/workspaces/{workspace}/records/{id}/sensitive`.
-  - CLI: `memini forget <workspace> <id>`, `memini sensitive mark|unmark <workspace> <id>`,
-    `memini decision record --occurred-at` with `--evidence RECORD_ID[#ANCHOR]`, `memini search`
-    with `--source`, `--project`, `--domain`, `--service`, `--person` and `--role`, `memini runs`
-    with `--cursor`.
+  - CLI: every MCP read tool is a command of the same name with its arguments as options:
+    `memini search`, `search-code`, `get-file`, `list-commits`, `list-messages`, `get-thread`,
+    `list-meetings`, `get-meeting`, `list-decisions`, `get-decision`, `get-catalog`,
+    `catalog-guide`, `get-project`, `get-domain` and `status`. A list filter keeps its plural
+    name and repeats (`--persons me --persons bo@example.test`), and the topic of a list is
+    `--query`. `memini search --code` is `memini search-code`; `memini meetings` and
+    `memini messages` are `memini list-meetings` and `memini list-messages`; `--workspace`,
+    `--source`, `--person`, `--role`, `--kind`, `--path` and `--language` of those commands are
+    `--workspaces`, `--sources`, `--persons`, `--roles`, `--kinds`, `--paths` and `--languages`.
+    Admin commands stay grouped by noun: `memini forget <workspace> <id>`, `memini sensitive
+    mark|unmark <workspace> <id>`, `memini decision record --occurred-at` with `--evidence
+    RECORD_ID[#ANCHOR]`, `memini runs` with `--cursor`.
 - `get_file` refuses a file whose record is marked sensitive unless asked with
   `include_sensitive`, as `get_thread` does; reading a marked record answers 403
   `sensitive_record`.

@@ -24,7 +24,7 @@ Send these parameters to `tools/call`.
 {
   "name": "list_commits",
   "arguments": {
-    "repositories": [
+    "sources": [
       "harbour-code"
     ],
     "paths": [

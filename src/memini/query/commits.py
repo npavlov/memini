@@ -191,7 +191,7 @@ class CommitsTimeoutError(CommitsError):
     def __init__(self, timeout: float) -> None:
         super().__init__(
             f"the history walk was stopped after {timeout:g} s (git_log_timeout); narrow it with"
-            " repositories, paths, since or until"
+            " sources, paths, since or until"
         )
         self.timeout = timeout
 
@@ -201,7 +201,7 @@ class CommitsTooLargeError(CommitsError):
 
     def __init__(self) -> None:
         super().__init__(
-            "the history walk printed more than the service reads; narrow it with repositories,"
+            "the history walk printed more than the service reads; narrow it with sources,"
             " paths, since or until"
         )
 

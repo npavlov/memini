@@ -60,7 +60,7 @@ The dry run validates one record. The first push reports one inserted record. Se
 ## Find the answer
 
 ```sh
-memini search "archive bucket retention" --workspace demo --limit 3
+memini search "archive bucket retention" --workspaces demo --limit 3
 ```
 
 ![Terminal showing the matched email, its source and the original question about archive retention](assets/install-search.png)

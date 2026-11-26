@@ -208,7 +208,7 @@ async def test_a_push_source_takes_a_batch_and_the_same_batch_again_changes_noth
     assert await scalar(db, "SELECT string_agg(xmin::text, ',' ORDER BY id) FROM record") == xmin
 
     streams = ok(await client.get("/v1/workspaces/alpha/sources/chat/streams", headers=admin))
-    (stream,) = streams["streams"]
+    (stream,) = streams["items"]
     assert stream["key"] == "chat/general"
     assert stream["checked_until"] == "2026-03-02T00:00:00Z"
     assert stream["last_run"]["kind"] == "ingest"
@@ -315,7 +315,7 @@ async def test_a_batch_that_is_not_valid_is_refused_without_its_values(
     private = "private-text-that-must-not-echo-7f3a"
 
     no_author = thread("general/0001")
-    no_author["payload"]["items"][0] = {"sent_at": iso(T0), "text": private}
+    no_author["payload"]["messages"][0] = {"sent_at": iso(T0), "text": private}
     error = refused(
         await client.post(RECORDS, json=day_batch(no_author), headers=pusher), 422, "invalid_batch"
     )

@@ -150,9 +150,7 @@ async def test_an_admin_creates_two_workspaces_and_a_git_source_in_each(
     alpha = await new_workspace(client, admin, "alpha")
     beta = await new_workspace(client, admin, "beta")
     assert alpha["name"] == "alpha"
-    assert {
-        w["name"] for w in ok(await client.get("/v1/workspaces", headers=admin))["workspaces"]
-    } == {
+    assert {w["name"] for w in ok(await client.get("/v1/workspaces", headers=admin))["items"]} == {
         "alpha",
         "beta",
     }
@@ -168,8 +166,8 @@ async def test_an_admin_creates_two_workspaces_and_a_git_source_in_each(
             location=str(link),
             refs=["main", "refs/tags/v1", "refs/heads/main"],
             schedule_seconds=3600,
-            include=["src/**"],
-            exclude=["**/*.min.js"],
+            include_paths=["src/**"],
+            exclude_paths=["**/*.min.js"],
         ),
         201,
     )
@@ -178,8 +176,8 @@ async def test_an_admin_creates_two_workspaces_and_a_git_source_in_each(
     assert local["location"] == os.path.realpath(repos / "app")
     assert local["refs"] == ["refs/heads/main", "refs/tags/v1"]
     assert local["schedule_seconds"] == 3600
-    assert local["include"] == ["src/**"]
-    assert local["exclude"] == ["**/*.min.js"]
+    assert local["include_paths"] == ["src/**"]
+    assert local["exclude_paths"] == ["**/*.min.js"]
     assert (local["visibility"], local["retention_days"], local["llm_policy"]) == (
         "private",
         None,
@@ -192,7 +190,7 @@ async def test_an_admin_creates_two_workspaces_and_a_git_source_in_each(
     assert remote["schedule_seconds"] is None
     assert remote["llm_policy"] == "none"
 
-    listed = ok(await client.get("/v1/workspaces/alpha/sources", headers=admin))["sources"]
+    listed = ok(await client.get("/v1/workspaces/alpha/sources", headers=admin))["items"]
     assert [source["name"] for source in listed] == ["app"]
     assert ok(await client.get("/v1/workspaces/beta/sources/site", headers=admin)) == remote
 
@@ -217,8 +215,8 @@ async def test_an_admin_creates_two_workspaces_and_a_git_source_in_each(
     assert uuid.UUID(beta["id"]) != workspace_id
 
     streams = ok(await client.get("/v1/workspaces/alpha/sources/app/streams", headers=admin))
-    assert [stream["key"] for stream in streams["streams"]] == ["refs/heads/main", "refs/tags/v1"]
-    first = streams["streams"][0]
+    assert [stream["key"] for stream in streams["items"]] == ["refs/heads/main", "refs/tags/v1"]
+    first = streams["items"][0]
     assert first["schedule_seconds"] == 3600
     assert first["next_run_at"] is None
     assert first["checked_until"] is None
@@ -369,8 +367,8 @@ async def test_invalid_settings_are_refused_without_echoing_them(
 
     for body, setting in (
         ({"refs": ["main~1"]}, "refs"),
-        ({"include": ["/etc/**"]}, "include"),
-        ({"exclude": ["a/../b"]}, "exclude"),
+        ({"include_paths": ["/etc/**"]}, "include_paths"),
+        ({"exclude_paths": ["a/../b"]}, "exclude_paths"),
     ):
         error = refused(await new_source(client, admin, "alpha", **body), 422, "invalid_source")
         assert error["message"].startswith(f"The source setting {setting} is not valid")
@@ -453,8 +451,8 @@ async def test_a_patch_changes_refs_name_and_settings(
     assert await scalar(db, "SELECT count(*) FROM job WHERE source_id = %s", source_id) == 1
 
     settings = {
-        "include": ["src/**"],
-        "exclude": ["**/test/**"],
+        "include_paths": ["src/**"],
+        "exclude_paths": ["**/test/**"],
         "visibility": "workspace",
         "retention_days": 30,
         "llm_policy": "cloud",
@@ -494,7 +492,9 @@ async def test_a_patch_changes_refs_name_and_settings(
     for body in invalid:
         refused(await client.patch(path, json=body, headers=admin), 422, "validation_error")
     refused(
-        await client.patch(path, json={"include": ["../up"]}, headers=admin), 422, "invalid_source"
+        await client.patch(path, json={"include_paths": ["../up"]}, headers=admin),
+        422,
+        "invalid_source",
     )
     refused(
         await client.patch("/v1/workspaces/alpha/sources/missing", json={}, headers=admin),
@@ -519,12 +519,12 @@ async def test_the_builtin_excludes_are_switched_off_and_on_per_source(
     path = "/v1/workspaces/alpha/sources/site"
 
     # Another rule changes; the switch stays as it was.
-    changed = ok(await client.patch(path, json={"include": ["src/**"]}, headers=admin))
-    assert (changed["include"], changed["builtin_excludes"]) == (["src/**"], False)
+    changed = ok(await client.patch(path, json={"include_paths": ["src/**"]}, headers=admin))
+    assert (changed["include_paths"], changed["builtin_excludes"]) == (["src/**"], False)
     assert (await scalar(db, config, "site"))["builtin_excludes"] is False
 
     changed = ok(await client.patch(path, json={"builtin_excludes": True}, headers=admin))
-    assert (changed["include"], changed["builtin_excludes"]) == (["src/**"], True)
+    assert (changed["include_paths"], changed["builtin_excludes"]) == (["src/**"], True)
     assert await scalar(db, config, "site") == {
         "location": REMOTE,
         "include": ["src/**"],
@@ -612,7 +612,7 @@ async def test_a_sync_enqueues_one_job_per_stream_and_merges_with_the_next(
     assert (fired.streams, fired.jobs) == (2, 0)
     assert await scalar(db, "SELECT count(*) FROM job WHERE source_id = %s", source_id) == 2
 
-    streams = ok(await client.get(f"{path}/streams", headers=admin))["streams"]
+    streams = ok(await client.get(f"{path}/streams", headers=admin))["items"]
     assert [stream["pending_sync"]["id"] for stream in streams] == [job["job_id"] for job in first]
     assert all(stream["pending_sync"]["status"] == "queued" for stream in streams)
     assert all(stream["next_run_at"] is not None for stream in streams)
@@ -656,28 +656,28 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
     )
     assert listed["items"][0]["source"] is None
 
-    of_source = ok(await client.get("/v1/workspaces/alpha/runs?source=app", headers=admin))
+    of_source = ok(await client.get("/v1/workspaces/alpha/runs?sources=app", headers=admin))
     assert [r["id"] for r in of_source["items"]] == [str(dev_run), str(main_run)]
     of_stream = ok(
         await client.get(
             "/v1/workspaces/alpha/runs",
-            params={"source": "app", "stream": "refs/heads/main"},
+            params={"sources": "app", "streams": "refs/heads/main"},
             headers=admin,
         )
     )
     assert [r["id"] for r in of_stream["items"]] == [str(main_run)]
     refused(
-        await client.get("/v1/workspaces/alpha/runs?stream=refs/heads/main", headers=admin),
+        await client.get("/v1/workspaces/alpha/runs?streams=refs/heads/main", headers=admin),
         422,
         "invalid_filter",
     )
     refused(
-        await client.get("/v1/workspaces/alpha/runs?source=nope", headers=admin), 404, "not_found"
+        await client.get("/v1/workspaces/alpha/runs?sources=nope", headers=admin), 404, "not_found"
     )
     refused(
         await client.get(
             "/v1/workspaces/alpha/runs",
-            params={"source": "app", "stream": "refs/heads/nope"},
+            params={"sources": "app", "streams": "refs/heads/nope"},
             headers=admin,
         ),
         404,
@@ -691,10 +691,10 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
         pages.append(",".join(r["id"] for r in page["items"]))
         if page["next_cursor"] is None:
             break
-        params["before"] = page["next_cursor"]
+        params["cursor"] = page["next_cursor"]
     assert pages == [f"{reindex_run},{dev_run}", str(main_run)]
     refused(
-        await client.get("/v1/workspaces/alpha/runs?before=not-a-cursor", headers=admin),
+        await client.get("/v1/workspaces/alpha/runs?cursor=not-a-cursor", headers=admin),
         422,
         "invalid_cursor",
     )
@@ -716,7 +716,7 @@ async def test_runs_are_listed_newest_first_and_read_with_their_report(
     assert detail["finished_at"] is not None
 
     shown = ok(await client.get("/v1/workspaces/alpha/sources/app/streams", headers=admin))
-    last_runs = {s["key"]: s["last_run"]["id"] for s in shown["streams"]}
+    last_runs = {s["key"]: s["last_run"]["id"] for s in shown["items"]}
     assert last_runs == {"refs/heads/dev": str(dev_run), "refs/heads/main": str(main_run)}
 
     limited = await bearer(db, owner, "read", workspace_id=beta_id)
@@ -959,7 +959,12 @@ async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
     await new_workspace(client, admin, "alpha")
     source = ok(
         await new_source(
-            client, admin, "alpha", name="app", location=str(repos / "app"), exclude=["**/*.json"]
+            client,
+            admin,
+            "alpha",
+            name="app",
+            location=str(repos / "app"),
+            exclude_paths=["**/*.json"],
         ),
         201,
     )
@@ -980,7 +985,7 @@ async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
     tried = ok(
         await client.get(
             url,
-            params={"exclude": ["**/*_test.go", "**/*.test.ts"], "builtin_excludes": "true"},
+            params={"exclude_paths": ["**/*_test.go", "**/*.test.ts"], "builtin_excludes": "true"},
             headers=admin,
         )
     )
@@ -991,15 +996,15 @@ async def test_a_preview_counts_what_the_rules_keep_by_extension_and_folder(
     by_folder = {group["key"]: group["indexed"] for group in tried["by_folder"]}
     assert by_folder == {"web": 1, "berths": 1, "fixtures": 1, "(root)": 1}
     saved = ok(await client.get("/v1/workspaces/alpha/sources/app", headers=admin))
-    assert saved["exclude"] == ["**/*.json"]
+    assert saved["exclude_paths"] == ["**/*.json"]
 
     # An empty exclude clears the list: every file but the lock file is kept.
-    cleared = ok(await client.get(url, params={"exclude": ""}, headers=admin))
+    cleared = ok(await client.get(url, params={"exclude_paths": ""}, headers=admin))
     assert cleared["indexed"] == 6
 
     missing = {"ref": "refs/heads/nowhere"}
     refused(await client.get(url, params=missing, headers=admin), 404, "not_found")
     option = {"ref": "--upload-pack=x"}
     assert (await client.get(url, params=option, headers=admin)).status_code == 422
-    absolute = {"exclude": "/srv/**"}
+    absolute = {"exclude_paths": "/srv/**"}
     refused(await client.get(url, params=absolute, headers=admin), 422, "invalid_source")

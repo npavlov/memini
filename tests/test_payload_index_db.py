@@ -379,7 +379,9 @@ async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cite
         result = await client.call_tool("search", query)
     schema = tools["search"].output_schema
     assert schema is not None
-    assert {"anchor", "link", "at"} <= set(schema["$defs"]["SearchHit"]["properties"])
+    assert {"anchor", "link", "chunk_occurred_at"} <= set(
+        schema["$defs"]["SearchHit"]["properties"]
+    )
     assert result.is_error is False
     assert result.structured_content == found
     (content,) = result.content
@@ -392,7 +394,7 @@ async def test_a_hit_carries_its_anchor_link_and_time_over_http_and_mcp_and_cite
     # record_id and anchor are evidence as they are.
     decision = {
         "statement": "Seedlings are pricked out on Saturday.",
-        "decided_at": "2026-03-04T06:20:00Z",
+        "occurred_at": "2026-03-04T06:20:00Z",
         "evidence": [
             {"record_id": hit["record_id"], "anchor": hit["anchor"]},
             {"record_id": journal["record_id"], "anchor": journal["anchor"]},
@@ -431,7 +433,7 @@ async def test_a_batch_sent_again_embeds_nothing_and_an_edit_reembeds_its_group_
         assert await rows(db, "SELECT id, xmin::text FROM chunk ORDER BY id") == xmin
 
         thread = json.loads(json.dumps(BATCH[0]))
-        messages = thread["payload"]["items"]
+        messages = thread["payload"]["messages"]
         index = next(i for i, m in enumerate(messages) if m["text"].startswith("Bought the hose"))
         messages[index]["text"] = "Bought the hose: ten metres, olive."  # as long as before
         edited = ok(await client.post(RECORDS, json={"records": [thread]}, headers=pusher))

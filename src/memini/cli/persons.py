@@ -2,7 +2,7 @@
 
 ::
 
-    memini person list <workspace> [--query TEXT] [--merged] [--limit N] [--after CURSOR]
+    memini person list <workspace> [--query TEXT] [--merged] [--limit N] [--cursor CURSOR]
     memini person show <workspace> <person-id>
     memini person lookup <workspace> {email,chat_user_id,display_name,git_author} <value>
     memini person add <workspace> <display-name> [--alias KIND=VALUE ...]
@@ -140,10 +140,10 @@ def list_command(args: argparse.Namespace, api: Api) -> int:
     body = api.get(
         _persons(args.workspace),
         {
-            "q": args.query,
+            "query": args.query,
             "merged": "true" if args.merged else None,
             "limit": args.limit,
-            "after": args.after,
+            "cursor": args.cursor,
         },
     )
     if args.json:
@@ -166,9 +166,9 @@ def list_command(args: argparse.Namespace, api: Api) -> int:
             for p in persons
         ),
     )
-    following = body.get("next_after")
+    following = body.get("next_cursor")
     if isinstance(following, str):
-        message(f"more: --after {text(following)}")
+        message(f"more: --cursor {text(following)}")
     return EXIT_OK
 
 
@@ -286,7 +286,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_PERSON_PAGE,
         help=f"persons per page, 1 to {MAX_PERSON_PAGE} (default: {DEFAULT_PERSON_PAGE})",
     )
-    listing.add_argument("--after", metavar="CURSOR", help="the page after this cursor")
+    listing.add_argument("--cursor", metavar="CURSOR", help="the page after this cursor")
     _json(listing)
     listing.set_defaults(client=list_command)
 

@@ -1,81 +1,77 @@
-"""``memini meetings`` and ``memini messages``: thin clients of ``GET /v1/meetings`` and
-``GET /v1/messages``, the MCP tools ``list_meetings`` and ``list_messages``.
+"""``memini list-meetings``, ``list-messages``, ``get-meeting`` and ``get-thread``: thin clients
+of ``GET /v1/meetings``, ``/v1/messages``, ``/v1/meetings/{id}`` and ``/v1/threads/{id}``, the MCP
+tools of the same names.
 
-The arguments are the tools'; the service checks them. ``--person`` takes ``me`` (the default), a
-person id or an alias; a query, if given, keeps the meetings or messages whose text holds a word of
-it. Each result prints as its locator, kind, place and time, its link, then its title or text: the
-source's text, data, printed with control characters escaped. ``--json`` prints the API's answer
-as it is. Needs the ``read`` scope.
+The options are the tools' arguments (:mod:`memini.cli.reading`); the service checks them.
+``--persons`` takes ``me`` (the default), a person id or an alias; ``--query``, if given, keeps the
+meetings or messages whose text holds a word of it. Each result prints as its locator, kind, place
+and time, its link, then its title or text: the source's text, data, printed with control
+characters escaped. ``--json`` prints the API's answer as it is. Needs the ``read`` scope.
 """
 
 import argparse
 from collections.abc import Mapping
-from typing import Final, get_args
+from typing import Any, Final, get_args
 
 from memini.cli.arguments import Commands, parse_source_name, parse_workspace_name
-from memini.cli.client import Api
+from memini.cli.client import Api, segment
 from memini.cli.common import EXIT_OK, message, printable
-from memini.cli.decisions import parse_time
-from memini.cli.output import as_list, as_mapping, print_json, text, when
+from memini.cli.output import as_list, as_mapping, print_fields, print_json, text, when
+from memini.cli.reading import (
+    add_filter,
+    add_include_sensitive,
+    add_json,
+    add_limit,
+    add_time_window,
+    left_out,
+    time_params,
+)
 from memini.comms import MESSAGE_ROLES, MessageRole
 from memini.search.model import DEFAULT_LIMIT, MAX_LIMIT
 
-__all__ = ["TEXT_LINES", "add_commands", "meetings_command", "messages_command"]
+__all__ = [
+    "TEXT_LINES",
+    "add_commands",
+    "get_meeting_command",
+    "get_thread_command",
+    "list_meetings_command",
+    "list_messages_command",
+]
 
 TEXT_LINES: Final = 6
-"""Lines of a snippet or a message printed; the rest is cut, ``--json`` has all of it."""
-
-
-def _limit(value: str) -> int:
-    try:
-        limit = int(value)
-    except ValueError:
-        limit = 0
-    if not 1 <= limit <= MAX_LIMIT:
-        raise argparse.ArgumentTypeError(f"a number from 1 to {MAX_LIMIT}")
-    return limit
+"""Lines of a snippet or a message printed by a list; the rest is cut, ``--json`` has all of it."""
 
 
 def _params(args: argparse.Namespace) -> dict[str, str | int | list[str] | None]:
     return {
-        "persons": args.person,
+        "persons": args.persons,
         "query": args.query,
-        "since": None if args.since is None else args.since.isoformat(),
-        "until": None if args.until is None else args.until.isoformat(),
-        "workspaces": args.workspace,
-        "sources": args.source,
-        "projects": args.project,
-        "domains": args.domain,
+        **time_params(args),
+        "workspaces": args.workspaces,
+        "sources": args.sources,
+        "projects": args.projects,
+        "domains": args.domains,
         "limit": args.limit,
         "include_sensitive": "true" if args.include_sensitive else None,
     }
 
 
-def _left_out(body: Mapping[str, object], what: str) -> None:
-    """Say how many results of records marked sensitive the service left out."""
-    left_out = body.get("left_out")
-    if isinstance(left_out, int) and left_out:
-        message(
-            f"{left_out} {what} marked sensitive left out; --include-sensitive reads them, with a"
-            " token that has the sensitive scope"
-        )
-
-
-def _print_text(value: object, *, cut: bool = False) -> None:
+def _print_text(value: object, *, cut: bool = False, lines_max: int | None = TEXT_LINES) -> None:
     lines = value.splitlines() if isinstance(value, str) else []
-    for line in lines[:TEXT_LINES]:
+    shown = lines if lines_max is None else lines[:lines_max]
+    for line in shown:
         print(f"    {printable(line.expandtabs(4))}".rstrip())
-    if len(lines) > TEXT_LINES or cut:
+    if len(shown) < len(lines) or cut:
         print("    …")
 
 
-def meetings_command(args: argparse.Namespace, api: Api) -> int:
+def list_meetings_command(args: argparse.Namespace, api: Api) -> int:
     body = api.get("v1/meetings", _params(args))
     if args.json:
         print_json(body)
         return EXIT_OK
     meetings = [as_mapping(meeting) for meeting in as_list(body.get("items"))]
-    _left_out(body, "meetings")
+    left_out(body, "meetings")
     if not meetings:
         message("no meetings")
         return EXIT_OK
@@ -85,7 +81,7 @@ def meetings_command(args: argparse.Namespace, api: Api) -> int:
         place = f"{text(meeting.get('workspace'))}/{text(meeting.get('source'))}"
         print(
             f"{text(meeting.get('locator'))}  (meeting, {place},"
-            f" {when(meeting.get('started_at') or meeting.get('occurred_at'))})"
+            f" {when(meeting.get('occurred_at'))})"
         )
         print(f"  {text(meeting.get('title'))}")
         participants = meeting.get("participants")
@@ -98,15 +94,15 @@ def meetings_command(args: argparse.Namespace, api: Api) -> int:
     return EXIT_OK
 
 
-def messages_command(args: argparse.Namespace, api: Api) -> int:
+def list_messages_command(args: argparse.Namespace, api: Api) -> int:
     params = _params(args)
-    params["roles"] = args.role
+    params["roles"] = args.roles
     body = api.get("v1/messages", params)
     if args.json:
         print_json(body)
         return EXIT_OK
     messages = [as_mapping(each) for each in as_list(body.get("items"))]
-    _left_out(body, "messages")
+    left_out(body, "messages")
     if not messages:
         message("no messages")
         return EXIT_OK
@@ -130,86 +126,126 @@ def messages_command(args: argparse.Namespace, api: Api) -> int:
     return EXIT_OK
 
 
-def _common(parser: argparse.ArgumentParser, what: str) -> None:
+def _record_fields(record: Mapping[str, Any]) -> list[tuple[str, str]]:
+    return [
+        ("id", text(record.get("id"))),
+        ("locator", text(record.get("locator"))),
+        ("place", f"{text(record.get('workspace'))}/{text(record.get('source'))}"),
+        ("occurred", when(record.get("occurred_at"))),
+        ("link", text(record.get("link"))),
+    ]
+
+
+def get_thread_command(args: argparse.Namespace, api: Api) -> int:
+    body = api.get(f"v1/threads/{segment(args.id)}")
+    if args.json:
+        print_json(body)
+        return EXIT_OK
+    fields = _record_fields(body)
+    fields[1:1] = [("title", text(body.get("title"))), ("channel", text(body.get("channel")))]
+    print_fields(fields)
+    for each in map(as_mapping, as_list(body.get("messages"))):
+        print()
+        author, at = text(each.get("author")), when(each.get("occurred_at"))
+        print(f"{author}, {at}  ({text(each.get('anchor'))})")
+        _print_text(each.get("text"), cut=each.get("truncated") is True, lines_max=None)
+    return EXIT_OK
+
+
+def get_meeting_command(args: argparse.Namespace, api: Api) -> int:
+    params = {"include_transcript": "true" if args.include_transcript else None}
+    body = api.get(f"v1/meetings/{segment(args.id)}", params)
+    if args.json:
+        print_json(body)
+        return EXIT_OK
+    fields = _record_fields(body)
+    fields[1:1] = [("title", text(body.get("title")))]
+    fields.append(("participants", text(body.get("participants"))))
+    print_fields(fields)
+    summary = body.get("summary")
+    if isinstance(summary, str):
+        print("\nsummary:")
+        _print_text(summary, lines_max=None)
+    items = [as_mapping(item) for item in as_list(body.get("action_items"))]
+    if items:
+        print("\naction items:")
+        for item in items:
+            owner = item.get("owner")
+            print(f"  - {text(item.get('text'))}" + ("" if owner is None else f" ({text(owner)})"))
+    if body.get("transcript") is not None:
+        print("\ntranscript:")
+        for each in map(as_mapping, as_list(body.get("transcript"))):
+            print(f"  {text(each.get('speaker'))}: {text(each.get('text'))}")
+    return EXIT_OK
+
+
+def _list_options(parser: argparse.ArgumentParser, what: str) -> None:
     parser.add_argument(
-        "query", nargs="?", help=f"words of the topic: only {what} whose text holds one"
+        "--query", metavar="TEXT", help=f"words of the topic: only {what} whose text holds one"
     )
-    parser.add_argument(
-        "--person",
-        action="append",
+    add_filter(
+        parser,
+        "persons",
+        "whose: me (default), a person id, or an alias (a mail address, a chat user id, a"
+        " display name)",
         metavar="PERSON",
-        help="whose: me (default), a person id, or an alias (a mail address, a chat user id, a"
-        " display name); repeat for more",
     )
-    parser.add_argument(
-        "--since", type=parse_time, metavar="TIME", help="from this time on (ISO 8601, with Z)"
-    )
-    parser.add_argument(
-        "--include-sensitive",
-        action="store_true",
-        help="also records marked sensitive; needs a token with the sensitive scope",
-    )
-    parser.add_argument("--until", type=parse_time, metavar="TIME", help="before this time")
-    parser.add_argument(
-        "--workspace",
-        action="append",
-        type=parse_workspace_name,
-        metavar="NAME",
-        help="only this workspace; repeat for more",
-    )
-    parser.add_argument(
-        "--source",
-        action="append",
-        type=parse_source_name,
-        metavar="NAME",
-        help="only this source; repeat for more",
-    )
-    parser.add_argument(
-        "--project",
-        action="append",
-        metavar="NAME",
-        help=f"only {what} linked to this project of the catalog; repeat for more",
-    )
-    parser.add_argument(
-        "--domain",
-        action="append",
-        metavar="NAME",
-        help=f"only {what} linked to this domain (domain or domain/subdomain); repeat for more",
-    )
-    parser.add_argument(
-        "--limit",
-        type=_limit,
-        default=DEFAULT_LIMIT,
-        help=f"the most results, 1 to {MAX_LIMIT} (default {DEFAULT_LIMIT})",
-    )
-    parser.add_argument("--json", action="store_true", help="print the API's JSON answer")
+    add_time_window(parser, what)
+    add_filter(parser, "workspaces", "only this workspace", type=parse_workspace_name)
+    add_filter(parser, "sources", "only this source", type=parse_source_name)
+    add_filter(parser, "projects", f"only {what} linked to this project of the catalog")
+    add_filter(parser, "domains", f"only {what} linked to this domain (domain or domain/subdomain)")
+    add_include_sensitive(parser)
+    add_limit(parser, DEFAULT_LIMIT, MAX_LIMIT)
+    add_json(parser)
 
 
 def add_commands(commands: Commands) -> None:
-    """Add ``meetings`` and ``messages``."""
-    meetings = commands.add_client(
-        "meetings",
-        help="meetings a person took part in (default: me)",
-        description="List the meetings a person took part in, newest first, or with a query those"
-        " whose notes hold a word of it, best match first: the MCP tool list_meetings.",
-    )
-    _common(meetings, "meetings")
-    meetings.set_defaults(client=meetings_command)
-
+    """Add ``list-messages``, ``get-thread``, ``list-meetings`` and ``get-meeting``."""
     messages = commands.add_client(
-        "messages",
-        help="messages to, mentioning or from a person (default: to or mentioning me)",
-        description="List messages one by one: by default those sent to the person or that"
-        " mention them; --role author lists the person's own. Newest first, or with a query the"
-        " best match first: the MCP tool list_messages.",
+        "list-messages",
+        help="messages to, mentioning or from persons (default: to or mentioning me)",
+        description="List messages one by one: by default those sent to the persons or that"
+        " mention them; --roles author lists their own. Newest first, or with --query the best"
+        " match first: the MCP tool list_messages.",
     )
-    _common(messages, "messages")
+    _list_options(messages, "messages")
     roles: tuple[MessageRole, ...] = get_args(MessageRole)
-    messages.add_argument(
-        "--role",
-        action="append",
+    add_filter(
+        messages,
+        "roles",
+        f"what the person is in the message (default: {' and '.join(MESSAGE_ROLES)})",
         choices=roles,
-        help="what the person is in the message; repeat for more"
-        f" (default: {' and '.join(MESSAGE_ROLES)})",
     )
-    messages.set_defaults(client=messages_command)
+    messages.set_defaults(client=list_messages_command)
+
+    thread = commands.add_client(
+        "get-thread",
+        help="a whole thread by its id",
+        description="A chat or mail thread with all its messages: the MCP tool get_thread.",
+    )
+    thread.add_argument("id", help="the thread's id, as results give it")
+    add_json(thread)
+    thread.set_defaults(client=get_thread_command)
+
+    meetings = commands.add_client(
+        "list-meetings",
+        help="meetings persons took part in (default: me)",
+        description="List the meetings persons took part in, newest first, or with --query"
+        " those whose notes hold a word of it, best match first: the MCP tool list_meetings.",
+    )
+    _list_options(meetings, "meetings")
+    meetings.set_defaults(client=list_meetings_command)
+
+    meeting = commands.add_client(
+        "get-meeting",
+        help="a meeting's notes by its id",
+        description="A meeting's notes, summary and action items, and with --include-transcript"
+        " its transcript: the MCP tool get_meeting.",
+    )
+    meeting.add_argument("id", help="the meeting's id, as results give it")
+    meeting.add_argument(
+        "--include-transcript", action="store_true", help="also the transcript, segment by segment"
+    )
+    add_json(meeting)
+    meeting.set_defaults(client=get_meeting_command)

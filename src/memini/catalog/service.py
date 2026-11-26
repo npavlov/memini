@@ -804,9 +804,7 @@ async def _write(
     )
     for service in new.services:
         if service.repository not in sources:
-            raise CatalogError(
-                404, "not_found", f"No such repository ({service.where}.repository)."
-            )
+            raise CatalogError(404, "not_found", f"No such repository ({service.where}.source).")
     held = {service.name: service for service in stored.services}
     removed = [held[name].id for name in held.keys() - {s.name for s in new.services}]
     if await store.services_named_elsewhere(conn, stored.id, removed):

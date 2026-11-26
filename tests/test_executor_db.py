@@ -235,7 +235,7 @@ async def threads(env: Env, source: uuid.UUID) -> dict[str, list[str]]:
         source,
     )
     return {
-        row["external_id"]: [m["author"] for m in json.loads(row["payload"])["items"]]
+        row["external_id"]: [m["author"] for m in json.loads(row["payload"])["messages"]]
         for row in found
     }
 

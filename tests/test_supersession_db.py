@@ -95,7 +95,7 @@ _BLOCK = re.compile(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>",
 
 
 def _lines(body: Mapping[str, Any]) -> list[Json]:
-    found = _BLOCK.search(body["items"][-1]["content"])
+    found = _BLOCK.search(body["messages"][-1]["content"])
     assert found is not None
     return [json.loads(line) for line in found.group(2).split("\n")]
 
@@ -110,7 +110,7 @@ class LabelledLlm:
     def extraction(self, lines: list[Json]) -> list[Json]:
         """The labelled items and the restatement of the record the first line describes,
         known by its time."""
-        [ref] = [ref for ref in RECORDS if _at(ref) == lines[0]["chunk_occurred_at"]]
+        [ref] = [ref for ref in RECORDS if _at(ref) == lines[0]["at"]]
         found: list[Json] = []
         labels = _labels()
         for item in labels["items"]:

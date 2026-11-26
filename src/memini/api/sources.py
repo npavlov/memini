@@ -1049,12 +1049,12 @@ def build_sources_router() -> APIRouter:
             include_rules = (
                 config.include
                 if include_paths is None
-                else sources.check_patterns("include", [p for p in include_paths if p])
+                else sources.check_patterns("include_paths", [p for p in include_paths if p])
             )
             exclude_rules = (
                 config.exclude
                 if exclude_paths is None
-                else sources.check_patterns("exclude", [p for p in exclude_paths if p])
+                else sources.check_patterns("exclude_paths", [p for p in exclude_paths if p])
             )
         chosen = ref or (found.refs[0] if found.refs else None)
         if chosen is None:

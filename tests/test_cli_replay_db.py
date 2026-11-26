@@ -120,7 +120,7 @@ def query(url: str, sql: LiteralString) -> list[tuple[Any, ...]]:
 
 def authors(url: str) -> set[str]:
     found = query(url, "SELECT convert_from(payload, 'UTF8') FROM record")
-    return {m["author"] for (payload,) in found for m in json.loads(payload)["items"]}
+    return {m["author"] for (payload,) in found for m in json.loads(payload)["messages"]}
 
 
 def test_replay_parses_the_stored_responses_again(

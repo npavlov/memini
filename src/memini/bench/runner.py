@@ -693,7 +693,7 @@ async def _small_domain(
     document = ProjectDocument.model_validate(
         {
             "title": "Benchmark",
-            "services": [{"name": REPO_SOURCE, "repository": REPO_SOURCE}],
+            "services": [{"name": REPO_SOURCE, "source": REPO_SOURCE}],
             "domains": [
                 {
                     "name": SMALL_DOMAIN,

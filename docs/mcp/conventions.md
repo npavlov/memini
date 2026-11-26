@@ -95,9 +95,19 @@ text.
 
 ## CLI
 
-- A filter is an option in the singular that repeats and goes to the service as the plural list:
-  `--workspace a --workspace b` is `workspaces`, `--person` is `persons`, `--source` is `sources`.
-- The object a command acts on is a positional argument: its name, or `<id>` for an object with an
-  id (`memini decision close <workspace> <id>`, `memini forget <workspace> <id>`).
-- An option has the name of the argument it sends, with dashes: `--occurred-at`, `--include`
+- **A read command is a tool**: the tool's name with dashes (`search_code` is `memini
+  search-code`, `list_decisions` is `memini list-decisions`), and its arguments as options with
+  dashes under the same names: `--persons`, `--since`, `--include-sensitive`, `--case-sensitive`
+  (and `--no-case-sensitive`). A list filter keeps its plural name and takes one value per use,
+  repeated for more: `--persons a --persons b` is `persons: ["a", "b"]`. Every read tool has its
+  command; the [CLI reference](../cli.md) lists them.
+- The argument that names the object is positional: `memini search <query>`, `memini get-thread
+  <id>`, `memini get-file <source> [<path>]`, `memini get-domain <project> <domain>`. A
+  `--workspace` that MCP may leave out defaults to the only workspace the token may read.
+- **Admin commands are nouns** with subcommands: `workspace`, `source`, `token`, `decision`
+  (`record`, `supersede`, `close`, `retract`), `sensitive`, `person`, and the single-action
+  `forget`, `sync`, `streams`, `runs`, `run`, `extract`, `push`. The object a command acts on is
+  a positional argument: its name, or `<id>` for an object with an id (`memini decision close
+  <workspace> <id>`, `memini forget <workspace> <id>`).
+- An admin option has the name of the argument it sends, with dashes: `--occurred-at`, `--include`
   and `--exclude` for the paths of `include_paths` and `exclude_paths`.

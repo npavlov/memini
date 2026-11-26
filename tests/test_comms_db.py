@@ -227,10 +227,10 @@ def check_messages(key: Json, messages: list[Json]) -> None:
         returned = {
             m["id"] for m in messages if RecordRef(m["source"], m["kind"], m["external_id"]) == ref
         }
-        assert set(expected["items"]) <= returned, (key["id"], ref, returned)
+        assert set(expected["messages"]) <= returned, (key["id"], ref, returned)
     for message in messages:
         assert set(message["roles"]) & {"recipient", "mention"}, message["locator"]
-        assert message["anchor"] == f"msg-{message['message_id']}"
+        assert message["anchor"] == f"msg-{message['id']}"
 
 
 async def test_the_m2_check_over_mcp_and_http(world: World) -> None:
@@ -251,7 +251,7 @@ async def test_the_m2_check_over_mcp_and_http(world: World) -> None:
     async with mcp_client(app, token) as client:
         for key in cast("list[Json]", labels["meetings_attended"]):
             result = ok(await client.call_tool("list_meetings", {"query": key["text"]}))
-            assert [p["person_id"] for p in result["persons"]] == [str(world.persons[me()])]
+            assert [p["id"] for p in result["persons"]] == [str(world.persons[me()])]
             assert result["persons"][0]["is_me"] is True
             check_meetings(key, result["items"])
         for key in cast("list[Json]", labels["messages_to_me"]):
@@ -344,7 +344,9 @@ async def test_list_meetings_without_a_query_is_newest_first_and_follows_merges(
         assert first["participants"]
 
         # The person ingest made of "Мира Кастелан" stands for Mira now: its canonical person.
-        by_merged = ok(await client.call_tool("list_meetings", {"person": str(world.merged[me()])}))
+        by_merged = ok(
+            await client.call_tool("list_meetings", {"persons": [str(world.merged[me()])]})
+        )
         assert by_merged["persons"] == result["persons"]
         assert by_merged["items"] == result["items"]
 
@@ -353,13 +355,13 @@ async def test_list_meetings_without_a_query_is_newest_first_and_follows_merges(
             await client.call_tool(
                 "list_meetings",
                 {
-                    "person": "Lev Zarechny",
+                    "persons": ["Lev Zarechny"],
                     "since": "2026-09-11T00:00:00Z",
                     "until": "2026-10-01T00:00:00Z",
                 },
             )
         )
-        assert [p["person_id"] for p in lev["persons"]] == [str(world.persons["lev"])]
+        assert [p["id"] for p in lev["persons"]] == [str(world.persons["lev"])]
         assert lev["persons"][0]["is_me"] is False
         assert [m["external_id"] for m in lev["items"]] == [
             "notes-0930-weekly-sync",
@@ -375,7 +377,7 @@ async def test_list_messages_by_role_and_time(world: World) -> None:
     app = world.app()
     async with mcp_client(app, await world.token("read")) as client:
         to_me = ok(await client.call_tool("list_messages", {"limit": 100}))["items"]
-        times = [m["sent_at"] for m in to_me]
+        times = [m["occurred_at"] for m in to_me]
         assert times == sorted(times, reverse=True)
         expected = {
             (ref, message_id)
@@ -396,7 +398,7 @@ async def test_list_messages_by_role_and_time(world: World) -> None:
             await client.call_tool(
                 "list_messages",
                 {
-                    "person": "lev.zarechny@saltreed.example.test",
+                    "persons": ["lev.zarechny@saltreed.example.test"],
                     "roles": ["author"],
                     "sources": ["chat"],
                     "since": "2026-09-14T00:00:00Z",
@@ -408,7 +410,7 @@ async def test_list_messages_by_role_and_time(world: World) -> None:
         for message in from_lev:
             assert message["author"] == "U03LEV"
             assert message["source"] == "chat"
-            assert message["sent_at"] >= "2026-09-14T00:00:00Z"
+            assert message["occurred_at"] >= "2026-09-14T00:00:00Z"
 
         summary = text(await client.call_tool("list_messages", {"limit": 2}))
         assert summary.startswith("2 messages.")
@@ -420,7 +422,7 @@ def messages_to_mira(payload: Json) -> list[str]:
     mira = cast("list[Json]", next(p for p in people()["people"] if p["key"] == me())["aliases"])
     names = {str(alias["value"]) for alias in mira}
     found: list[str] = []
-    for message in cast("list[Json]", payload["items"]):
+    for message in cast("list[Json]", payload["messages"]):
         named = [
             *message.get("recipients", []),
             *message.get("cc", []),
@@ -444,48 +446,35 @@ async def test_get_meeting_and_get_thread(world: World) -> None:
         assert meeting["summary"]
         assert meeting["title"]
         mira = next(p for p in meeting["persons"] if p["is_me"])
-        assert mira["person_id"] == str(world.persons[me()])  # through the merge
+        assert mira["id"] == str(world.persons[me()])  # through the merge
         assert mira["roles"] == ["participant"]
         assert "Мира Кастелан" in meeting["participants"]
         full = ok(
             await client.call_tool(
                 "get_meeting",
-                {
-                    "source": "meetings",
-                    "external_id": sync.external_id,
-                    "include_transcript": True,
-                },
+                {"id": world.record_id(sync), "include_transcript": True},
             )
         )
-        assert full["record_id"] == meeting["record_id"]
+        assert full["id"] == meeting["id"]
         assert [s["anchor"] for s in full["transcript"]][:1] == ["seg-s01"]
         assert "include_transcript" in text(
             await client.call_tool("get_meeting", {"id": world.record_id(sync)})
         )
 
-        got = ok(
-            await client.call_tool(
-                "get_thread", {"source": "chat", "external_id": thread.external_id}
-            )
-        )
+        got = ok(await client.call_tool("get_thread", {"id": world.record_id(thread)}))
         payload = final_records()[thread].payload
-        assert [m["id"] for m in got["items"]] == [m["id"] for m in payload["items"]]
-        first = got["items"][0]
+        assert [m["id"] for m in got["messages"]] == [m["id"] for m in payload["messages"]]
+        first = got["messages"][0]
         assert first["anchor"] == "msg-1788858900.000100"
         assert first["locator"] == f"chat:{thread.external_id}#msg-1788858900.000100"
-        assert first["link"] == payload["items"][0]["url"]
-        roles = {p["person_id"]: p["roles"] for p in got["persons"]}
+        assert first["link"] == payload["messages"][0]["url"]
+        roles = {p["id"]: p["roles"] for p in got["persons"]}
         assert roles[str(world.persons[me()])] == ["author", "mention"]
 
         assert "use get_thread" in refused(
             await client.call_tool("get_meeting", {"id": world.record_id(thread)})
         )
-        assert (
-            refused(
-                await client.call_tool("get_thread", {"source": "chat", "external_id": "nothing"})
-            )
-            == "No such thread."
-        )
+        assert refused(await client.call_tool("get_thread", {"id": "0" * 64})) == "No such thread."
         deleted = RecordRef("meetings", "meeting", "notes-0929-quick-call")
         assert (
             refused(await client.call_tool("get_meeting", {"id": world.record_id(deleted)}))
@@ -493,9 +482,7 @@ async def test_get_meeting_and_get_thread(world: World) -> None:
         )
 
     async with http_client(app, token) as http:
-        response = await http.get(
-            f"/v1/workspaces/{WORKSPACE}/sources/chat/threads/{thread.external_id}"
-        )
+        response = await http.get(f"/v1/threads/{world.record_id(thread)}")
         assert response.status_code == 200, response.text
         assert response.json() == got
         response = await http.get(
@@ -573,7 +560,7 @@ async def test_who_me_is_and_unknown_persons(world: World) -> None:
     app = world.app()
     async with mcp_client(app, await world.token("read")) as client:
         assert (
-            refused(await client.call_tool("list_messages", {"person": "nobody@example.test"}))
+            refused(await client.call_tool("list_messages", {"persons": ["nobody@example.test"]}))
             == "No such person."
         )
         await unset_me(world.db, world.access, WORKSPACE)
@@ -605,13 +592,13 @@ async def test_add_document_stores_an_indexed_document(world: World) -> None:
                 "put_document", {**document, "occurred_at": added["occurred_at"]}
             )
         )
-        assert (again["stored"], again["record_id"]) == ("unchanged", added["record_id"])
+        assert (again["stored"], again["id"]) == ("unchanged", added["id"])
         hits = ok(
             await client.call_tool(
                 "search", {"query": "berth fees December", "mode": "lexical", "sources": ["docs"]}
             )
         )["items"]
-        assert added["record_id"] in {hit["record_id"] for hit in hits}
+        assert added["id"] in {hit["record_id"] for hit in hits}
         summary = text(await client.call_tool("put_document", document))
         assert summary.startswith(f"Document {added['locator']} in {WORKSPACE}/docs:")
         refusal = refused(await client.call_tool("put_document", {**document, "source": "nope"}))
@@ -620,18 +607,18 @@ async def test_add_document_stores_an_indexed_document(world: World) -> None:
     # A source that is not a push source is refused; the push API's errors come through.
     await world.db.execute("UPDATE source SET kind = 'mcp' WHERE id = %s", (world.sources["mail"],))
     async with http_client(app, await world.token("read", "ingest")) as http:
-        response = await http.post(
+        response = await http.put(
             f"/v1/workspaces/{WORKSPACE}/sources/mail/documents",
             json={"title": "x", "text": "y"},
         )
         assert (response.status_code, response.json()["error"]["code"]) == (409, "not_ingestible")
-        response = await http.post(
+        response = await http.put(
             f"/v1/workspaces/{WORKSPACE}/sources/docs/documents",
             json={"title": "   ", "text": "y"},
         )
         assert (response.status_code, response.json()["error"]["code"]) == (422, "invalid_batch")
         assert "title" in response.json()["error"]["message"]
-        response = await http.post(
+        response = await http.put(
             f"/v1/workspaces/{WORKSPACE}/sources/docs/documents",
             json={"title": "Notes", "text": "Nothing yet.", "external_id": "notes-1"},
         )

@@ -43,6 +43,7 @@ from memini.db import Pool, connect, open_pool
 from memini.decisions.assign import LlmAssigner, assign_handler, assigner_name, run_assignment
 from memini.embeddings import FakeEmbedder
 from memini.evaluation.domains import LlmEvalAssigner, load_set, run_domain_eval
+from memini.ids import record_id
 from memini.jobs import ASSIGN_DOMAINS_KIND, execute_job
 from memini.jobs.queue import claim
 from memini.llm import LlmGate, create_llm_gate
@@ -112,7 +113,7 @@ _BLOCK = re.compile(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>",
 
 
 def data_lines(body: Mapping[str, Any]) -> list[dict[str, Any]]:
-    found = _BLOCK.search(body["items"][-1]["content"])
+    found = _BLOCK.search(body["messages"][-1]["content"])
     assert found is not None
     return [json.loads(line) for line in found.group(2).split("\n")]
 
@@ -256,13 +257,16 @@ async def record(
     **place: Any,
 ) -> Json:
     """A decision recorded by hand, citing message m1 of the thread."""
-    body = {
-        "statement": statement,
-        "decided_at": at.isoformat(),
-        "evidence": [{"source": source, "external_id": external_id, "anchor": "m1"}],
-        **place,
-    }
     async with http_client(app, w.tokens["writer"]) as http:
+        found = ok(await http.get(f"/v1/workspaces/harbor/sources/{source}"))
+        body = {
+            "statement": statement,
+            "occurred_at": at.isoformat(),
+            "evidence": [
+                {"record_id": record_id(UUID(found["id"]), "thread", external_id), "anchor": "m1"}
+            ],
+            **place,
+        }
         return ok(await http.post(DECISIONS, json=body), 201)
 
 

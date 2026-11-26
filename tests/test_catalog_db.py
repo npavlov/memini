@@ -698,13 +698,15 @@ async def test_a_hit_says_what_its_file_belongs_to(world: World) -> None:
             "search_code",
             {"query": "harbour", "mode": "exact", "limit": 50, "workspaces": ["harbor"]},
         )
-        symbols = await client.call_tool("get_symbol", {"name": "harbour_rate"})
+        symbols = await client.call_tool("search_code", {"query": "harbour_rate", "mode": "symbol"})
     async with http_client(world.app(), await world.token()) as http:
         over_http = await http.get(
             "/v1/search/code",
             params={"query": "harbour", "mode": "exact", "limit": 50, "workspaces": ["harbor"]},
         )
-        symbols_over_http = await http.get("/v1/symbols", params={"name": "harbour_rate"})
+        symbols_over_http = await http.get(
+            "/v1/search/code", params={"query": "harbour_rate", "mode": "symbol"}
+        )
 
     nothing: Json = {"project": None, "service": None, "domains": []}
     assert hit_of(before, "quay/fees/rates.py")["context"] == nothing  # no catalog yet
@@ -739,7 +741,8 @@ async def test_a_hit_says_what_its_file_belongs_to(world: World) -> None:
     in_a_service = [hit for hit in found["items"] if hit["context"]["service"] is not None]
     assert 0 < len(in_a_service) < len(found["items"])
     assert summary.count("belongs to: ") == len(in_a_service)
-    (definition,) = ok(symbols)["definitions"]
+    (definition,) = ok(symbols)["items"]
+    assert definition["definition"]["name"] == "harbour_rate"
     assert definition["context"] == in_both
     assert "belongs to: project port, service quay" in text(symbols)
     # The HTTP routes return the same shapes.
@@ -747,10 +750,10 @@ async def test_a_hit_says_what_its_file_belongs_to(world: World) -> None:
     assert body(symbols_over_http) == ok(symbols)
 
 
-async def test_read_source_says_what_the_path_belongs_to(world: World) -> None:
-    async def read(client: Client, repository: str, path: str) -> CallToolResult:
+async def test_get_file_says_what_the_path_belongs_to(world: World) -> None:
+    async def read(client: Client, source: str, path: str) -> CallToolResult:
         return await client.call_tool(
-            "get_file", {"workspace": "harbor", "repository": repository, "path": path}
+            "get_file", {"workspace": "harbor", "source": source, "path": path}
         )
 
     async with mcp_client(world.app(), await world.token("read", "ingest")) as client:
@@ -950,7 +953,7 @@ async def test_what_get_catalog_returns_goes_back_into_put_project(world: World)
             "title": project["title"],
             "description": project["description"],
             "services": [
-                {key: service[key] for key in ("name", "description", "repository", "root")}
+                {key: service[key] for key in ("name", "description", "source", "root")}
                 for service in project["services"]
             ],
             "domains": [
@@ -1127,7 +1130,7 @@ async def test_a_domain_names_a_service_of_another_project_of_its_workspace(worl
     assert error(dropped_over_http, 409, "service_in_use") == refused(dropped)
     assert refused(no_service) == "No such service (domains[0].code[0])."
     # A repository of another workspace is not there to name.
-    assert refused(no_repository) == "No such repository (services[0].repository)."
+    assert refused(no_repository) == "No such repository (services[0].source)."
     # None of the refused documents left anything behind.
     assert [project["name"] for project in catalog["projects"]] == ["lights", "port"]
     assert catalog["projects"][1]["version"] == 1
@@ -1262,22 +1265,23 @@ async def test_a_link_is_returned_by_get_project_of_both_projects_in_its_directi
         between = ok(
             await client.call_tool(
                 "get_project",
-                {"workspace": "harbor", "project": "port", "linked_projects": "signals"},
+                {"workspace": "harbor", "project": "port", "linked_projects": ["signals"]},
             )
         )
         inside = ok(
             await client.call_tool(
-                "get_project", {"workspace": "harbor", "project": "port", "linked_projects": "port"}
+                "get_project",
+                {"workspace": "harbor", "project": "port", "linked_projects": ["port"]},
             )
         )
         missing = await client.call_tool("get_project", {"workspace": "harbor", "project": "tug"})
         no_other = await client.call_tool(
-            "get_project", {"workspace": "harbor", "project": "port", "linked_projects": "tug"}
+            "get_project", {"workspace": "harbor", "project": "port", "linked_projects": ["tug"]}
         )
         catalog = ok(await client.call_tool("get_catalog", {"workspace": "harbor"}))
     async with http_client(world.app(), await world.token("read")) as http:
         port_over_http = await http.get(project_url())
-        between_over_http = await http.get(project_url(), params={"linked_projects": "signals"})
+        between_over_http = await http.get(project_url(), params={"linked_projects": ["signals"]})
         missing_over_http = await http.get(project_url("tug"))
     exported = [
         json.loads(line)
@@ -1351,7 +1355,7 @@ async def test_links_sent_twice_change_nothing_and_a_change_is_one_version(world
             "title": project["title"],
             "description": project["description"],
             "services": [
-                {key: service[key] for key in ("name", "description", "repository", "root")}
+                {key: service[key] for key in ("name", "description", "source", "root")}
                 | {
                     "uses": [
                         {key: link[key] for key in ("project", "service", "kind", "note", "paths")}

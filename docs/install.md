@@ -134,7 +134,15 @@ memini search "how is the first admin token created" --limit 3
 ```
 
 The first hits are in `src/memini/cli/admin.py`, each with its locator
-(`memini@<commit>:src/memini/cli/admin.py#L…`) and the first lines of the chunk.
+(`memini@<commit>:src/memini/cli/admin.py#L…`) and the first lines of the chunk. Every MCP read
+tool is a command of the same name with the same options ([CLI reference](cli.md)): find where a
+function is defined, read the file, and see who changed it:
+
+```sh
+memini search-code bootstrap_command --mode symbol
+memini get-file memini src/memini/cli/admin.py --start-line 1 --end-line 40
+memini list-commits --sources memini --paths src/memini/cli/admin.py --limit 5
+```
 
 ### Your own repositories
 

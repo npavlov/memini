@@ -1343,5 +1343,5 @@ def authors(found: Mapping[str, list[Row]]) -> set[str]:
     return {
         message["author"]
         for row in found["records"]
-        for message in json.loads(bytes.fromhex(row["row"]["payload"][2:]))["items"]
+        for message in json.loads(bytes.fromhex(row["row"]["payload"][2:]))["messages"]
     }

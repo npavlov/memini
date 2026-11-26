@@ -26,6 +26,7 @@ from memini.provenance import Labelled
 from memini.query.model import Persons
 from memini.search.model import MAX_FILTER_VALUES, MAX_QUERY_CHARS
 from memini.sensitive_option import include_sensitive_field
+from memini.sensitivity import sensitive_records
 from memini.workspaces import list_workspaces
 
 __all__ = [
@@ -179,6 +180,13 @@ async def run_list_decisions(
                     {item.workspace_id for item in items},
                     item_ids=[item.id for item in items],
                 )
+            if not access.include_sensitive:
+                # The wide read names a sensitive record's evidence as stored: mark it as the
+                # caller's own read would, then leave out what only such records support.
+                marked = await sensitive_records(
+                    conn, [each.record_id for item in items for each in item.evidence]
+                )
+                items = [_as_read(item, marked) for item in items]
     shown = [item for item in items if access.include_sensitive or not _hidden(item)]
     return DecisionList(
         items=[DecisionItem.of(item, found.context(item.id)) for item in shown],
@@ -187,6 +195,19 @@ async def run_list_decisions(
             WithoutDomain(project=project, items=count) for project, count in counts.items()
         ],
     )
+
+
+def _as_read(item: knowledge.Item, marked: frozenset[str]) -> knowledge.Item:
+    """``item`` with the evidence of the records in ``marked`` in the state ``sensitive``."""
+    if not any(each.record_id in marked for each in item.evidence):
+        return item
+    evidence = tuple(
+        replace(each, record_state="sensitive")
+        if each.record_id in marked and each.record_state == "stored"
+        else each
+        for each in item.evidence
+    )
+    return replace(item, evidence=evidence)
 
 
 def _hidden(item: knowledge.Item) -> bool:

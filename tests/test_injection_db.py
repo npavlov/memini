@@ -291,30 +291,28 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
             "search_code", {"query": "ignore", "mode": "exact", "case_sensitive": False}
         )
         assert {hit["path"] for hit in found["items"]} == {"src/berth_hold.py"}
-        found, blocks = await call("get_symbol", {"name": "hold_until"})
-        assert found["definitions"]
-        found, blocks = await call(
-            "get_file", {"repository": REPOSITORY, "path": "src/berth_hold.py"}
-        )
+        found, blocks = await call("search_code", {"query": "hold_until", "mode": "symbol"})
+        assert found["items"]
+        assert {hit["definition"]["name"] for hit in found["items"]} == {"hold_until"}
+        found, blocks = await call("get_file", {"source": REPOSITORY, "path": "src/berth_hold.py"})
         assert blocks == [code_files()["berth_hold.py"].removesuffix("\n")]
-        await call("get_file", {"repository": REPOSITORY, "path": "src"})
+        await call("get_file", {"source": REPOSITORY, "path": "src"})
         found, blocks = await call("list_commits", {"sources": [REPOSITORY]})
-        (commit,) = found["commits"]
-        assert all(commit[key] for key in ("source_kind", "repository", "locator", "occurred_at"))
+        (commit,) = found["items"]
+        assert all(commit[key] for key in ("source_kind", "source", "locator", "occurred_at"))
         assert (commit["subject"], commit["body"]) == (
             attempts()[3],
             f"{attempts()[1]}\n\n{attempts()[7]}",
         )
         assert COMMIT_MESSAGE in blocks[0]
 
-        found, blocks = await call("list_meetings", {"person": "Mira Castellane"})
+        found, blocks = await call("list_meetings", {"persons": ["Mira Castellane"]})
         assert found["items"]
-        await call("list_meetings", {"person": "Mira Castellane", "query": "fees"})
+        await call("list_meetings", {"persons": ["Mira Castellane"], "query": "fees"})
         found, blocks = await call(
             "get_meeting",
             {
-                "source": "meetings",
-                "external_id": "notes-1111-pilot-fees",
+                "id": world.record_id("meetings", "meeting", "notes-1111-pilot-fees"),
                 "include_transcript": True,
             },
         )
@@ -325,19 +323,19 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
         await call(
             "get_meeting",
             {
-                "source": "meetings",
-                "external_id": "notes-1112-stand-sync",
+                "id": world.record_id("meetings", "meeting", "notes-1112-stand-sync"),
                 "include_transcript": True,
             },
         )
 
-        found, blocks = await call("list_messages", {"person": "U0GUEST77", "roles": ["author"]})
+        found, blocks = await call("list_messages", {"persons": ["U0GUEST77"], "roles": ["author"]})
         assert len(found["items"]) >= 8
-        await call("list_messages", {"person": "mira.castellane@saltreed.example.test"})
+        await call("list_messages", {"persons": ["mira.castellane@saltreed.example.test"]})
         for source, external_id in thread_refs():
-            found, blocks = await call("get_thread", {"source": source, "external_id": external_id})
+            thread_id = world.record_id(source, "thread", external_id)
+            found, blocks = await call("get_thread", {"id": thread_id})
             joined = "\n".join(blocks)
-            for message in found["items"]:
+            for message in found["messages"]:
                 assert message["text"] in joined, (external_id, message["id"])
 
         await call("status", {})
@@ -354,7 +352,8 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
         )
         assert added["stored"] == "inserted"
 
-        evidence = [{"source": "chat", "external_id": t5, "anchor": t5.split("/")[1]}]
+        t5_id = world.record_id("chat", "thread", t5)
+        evidence = [{"record_id": t5_id, "anchor": f"msg-{t5.split('/')[1]}"}]
         items: list[str] = []
         for statement in attempts()[:4]:
             item, blocks = await call(
@@ -363,7 +362,7 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
                     "workspace": WORKSPACE,
                     "kind": "decision",
                     "statement": statement,
-                    "decided_at": "2026-11-06T09:30:00Z",
+                    "occurred_at": "2026-11-06T09:30:00Z",
                     "evidence": evidence,
                 },
             )
@@ -371,14 +370,14 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
             items.append(item["id"])
         await call(
             "supersede_decision",
-            {"item_id": items[1], "supersedes": [{"item_id": items[0], "relation": "replaces"}]},
+            {"id": items[1], "supersedes": [{"item_id": items[0], "relation": "replaces"}]},
         )
-        _, blocks = await call("get_decision", {"item_id": items[1]})
+        _, blocks = await call("get_decision", {"id": items[1]})
         assert set(attempts()[:2]) <= set(blocks)
         _, blocks = await call("list_decisions", {"workspaces": [WORKSPACE], "history": True})
         assert set(attempts()[:4]) <= set(blocks)
-        await call("close_decision", {"item_id": items[2]})
-        await call("retract_decision", {"item_id": items[3]})
+        await call("close_decision", {"id": items[2]})
+        await call("retract_decision", {"id": items[3]})
 
         # The catalog: an agent writes its titles and descriptions from what repositories say,
         # so an attempt in a README can end up in one. It is stored, and shown as data.
@@ -389,9 +388,7 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
                 "project": "port",
                 "title": attempts()[0],
                 "description": attempts()[1],
-                "services": [
-                    {"name": "code", "repository": REPOSITORY, "description": attempts()[2]}
-                ],
+                "services": [{"name": "code", "source": REPOSITORY, "description": attempts()[2]}],
                 "domains": [
                     {
                         "name": "berths",
@@ -428,7 +425,7 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
                 "services": [
                     {
                         "name": "dispatch",
-                        "repository": REPOSITORY,
+                        "source": REPOSITORY,
                         "root": "tugs",
                         "uses": [
                             {
@@ -472,17 +469,16 @@ async def test_every_tool_labels_the_corpus_as_data_and_keeps_it_in_its_fences(
 
     # The HTTP routes return the same shapes, labelled the same way.
     meeting = world.record_id("meetings", "meeting", "notes-1111-pilot-fees")
-    thread = world.record_id("chat", "thread", t5)
     async with http_client(world.app(), token) as http:
         for path, params in (
             ("/v1/search", {"query": "instructions"}),
             ("/v1/search/code", {"query": "ignore", "mode": "exact"}),
-            ("/v1/commits", {"repositories": REPOSITORY}),
+            ("/v1/commits", {"sources": REPOSITORY}),
             (f"/v1/meetings/{meeting}", {"include_transcript": "true"}),
-            (f"/v1/threads/{thread}", {}),
+            (f"/v1/threads/{t5_id}", {}),
             ("/v1/decisions", {"history": "true"}),
             (f"/v1/decisions/{items[1]}", {}),
-            ("/v1/messages", {"person": "U0GUEST77", "roles": "author"}),
+            ("/v1/messages", {"persons": "U0GUEST77", "roles": "author"}),
             (f"/v1/workspaces/{WORKSPACE}/catalog", {}),
             (f"/v1/workspaces/{WORKSPACE}/projects/port", {"linked_projects": ["tugs"]}),
             (f"/v1/workspaces/{WORKSPACE}/projects/port/domains/berths/holds", {}),
@@ -498,7 +494,7 @@ _BLOCK = re.compile(r"<<<BEGIN DATA ([0-9a-f]{16})>>>\n(.*)\n<<<END DATA \1>>>",
 
 
 def data_lines(body: Mapping[str, Any]) -> list[Json]:
-    found = _BLOCK.search(body["items"][-1]["content"])
+    found = _BLOCK.search(body["messages"][-1]["content"])
     assert found is not None
     return [json.loads(line) for line in found.group(2).split("\n")]
 
@@ -549,7 +545,7 @@ def faithful(_name: str, lines: list[Json]) -> Json:
     items: list[Json] = []
     for item in cast("list[Json]", labels()["items"]):
         evidence = cast("list[Json]", item["evidence"])
-        if record_time(cast(str, evidence[0]["external_id"])) == lines[0]["chunk_occurred_at"]:
+        if record_time(cast(str, evidence[0]["external_id"])) == lines[0]["at"]:
             anchors = [cast(str, each["anchor"]) for each in evidence]
             items.append({"anchors": anchors, "basis": "decided", "statement": item["statement"]})
     return {"items": items}
@@ -642,7 +638,7 @@ def check_requests(bodies: Sequence[Json]) -> None:
     assert bodies
     for body in bodies:
         assert not {"tools", "tool_choice", "functions", "function_call"} & set(body)
-        system, user = (message["content"] for message in body["items"])
+        system, user = (message["content"] for message in body["messages"])
         for token in TEMPLATE_TOKENS:
             assert token not in user
             assert token not in system
@@ -702,7 +698,7 @@ async def test_documented_mcp_examples(world: World) -> None:
     pages = Path(__file__).resolve().parents[1] / "docs" / "mcp"
     examples: dict[str, Json] = {}
     for page in pages.glob("*.md"):
-        if page.name == "README.md":
+        if page.name in ("README.md", "conventions.md"):  # an index and the rules, no tool
             continue
         block = re.search(r"```json\n(.*?)\n```", page.read_text(), re.DOTALL)
         assert block is not None, page
@@ -710,6 +706,22 @@ async def test_documented_mcp_examples(world: World) -> None:
         assert example["name"] == page.stem
         examples[page.stem] = example["arguments"]
     assert examples.keys() == {tool.name for tool in TOOLS}
+
+    # The examples name records by the ids results give: those of the corpus's records.
+    source, t5 = next((s, external) for s, external in thread_refs() if "1793955600" in external)
+    by_placeholder = {
+        "<the thread's id, as results give it>": world.record_id(source, "thread", t5),
+        "<the thread's id, as search gives it>": world.record_id(source, "thread", t5),
+        "<the meeting's id, as results give it>": world.record_id(
+            "meetings", "meeting", "notes-1111-pilot-fees"
+        ),
+    }
+
+    def filled(args: Json, more: Mapping[str, str] | None = None) -> Json:
+        text = json.dumps(args)
+        for placeholder, value in {**by_placeholder, **(more or {})}.items():
+            text = text.replace(placeholder, value)
+        return cast(Json, json.loads(text))
 
     token = await world.token("read", "ingest")
     async with mcp_client(world.app(), token) as client:
@@ -721,7 +733,7 @@ async def test_documented_mcp_examples(world: World) -> None:
 
         ids: list[str] = []
         for n in range(4):
-            args = dict(examples["record_decision"])
+            args = filled(examples["record_decision"])
             if n:
                 args["statement"] = f"Harbour schedule revision {n}."
             ids.append((await run_example("record_decision", args))["id"])
@@ -731,7 +743,5 @@ async def test_documented_mcp_examples(world: World) -> None:
         for name, args in examples.items():
             if name == "record_decision":
                 continue
-            text = json.dumps(args).replace("<earlier_id>", ids[0])
-            await run_example(
-                name, json.loads(text.replace("<item_id>", targets.get(name, ids[1])))
-            )
+            more = {"<earlier_id>": ids[0], "<item id>": targets.get(name, ids[1])}
+            await run_example(name, filled(args, more))

@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
-from urllib.parse import quote
+from uuid import UUID
 
 import httpx2
 import pytest
@@ -32,6 +32,7 @@ from memini.cli.common import EXIT_FAILURE, EXIT_OK
 from memini.config import Settings, environment_variables
 from memini.db import open_pool
 from memini.embeddings import FakeEmbedder
+from memini.ids import record_id
 
 pytestmark = [pytest.mark.integration]
 
@@ -121,13 +122,13 @@ def chat_thread(*, edited: bool = False) -> Json:
         {
             "id": "1793700000.000100",
             "author": "Lev Primerov",
-            "occurred_at": "2026-11-05T10:00:00Z",
+            "sent_at": "2026-11-05T10:00:00Z",
             "text": "Выпускаем 2.4 в четверг или ждём исправления экспорта?",
         },
         {
             "id": "1793700300.000200",
             "author": "Ana Example",
-            "occurred_at": "2026-11-05T10:05:00Z",
+            "sent_at": "2026-11-05T10:05:00Z",
             "mentions": ["Lev Primerov"],
             "text": "Ждём исправления, выпускаем в пятницу.",
         },
@@ -138,14 +139,14 @@ def chat_thread(*, edited: bool = False) -> Json:
             {
                 "id": "1793701200.000300",
                 "author": "Lev Primerov",
-                "occurred_at": "2026-11-05T10:20:00Z",
+                "sent_at": "2026-11-05T10:20:00Z",
                 "text": "Agreed, Monday.",
             }
         )
     return {
         "kind": "thread",
         "external_id": "C0RELEASE/1793700000.000100",
-        "occurred_at": messages[-1]["occurred_at"],
+        "occurred_at": messages[-1]["sent_at"],
         "external_url": "https://chat.example.invalid/archives/C0RELEASE/p1793700000000100",
         "payload": {
             "channel": "release",
@@ -196,9 +197,9 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         def push(*argv: str) -> Run:
             return cli("push", "--workspace", "acme", "--source", "inbox", *argv)
 
-        def read(kind: str, external_id: str, **params: str) -> Json:
+        def get(path: str, **params: str) -> Json:
             answer = httpx2.get(
-                f"{url}/v1/workspaces/acme/sources/inbox/{kind}/{quote(external_id, safe='')}",
+                f"{url}/v1/{path}",
                 params=params,
                 headers={"Authorization": f"Bearer {admin}"},
                 timeout=30,
@@ -206,6 +207,13 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
             assert answer.status_code == 200, answer.text
             body: Json = answer.json()
             return body
+
+        inbox = UUID(get("workspaces/acme/sources/inbox")["id"])
+
+        def read(kind: str, external_id: str, **params: str) -> Json:
+            """A thread or a meeting by its id, the record id of its external id in the inbox."""
+            record = record_id(inbox, "thread" if kind == "threads" else "meeting", external_id)
+            return get(f"{kind}/{record}", **params)
 
         mail, meeting, document = (
             example("mail-thread.json"),
@@ -224,16 +232,16 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         # Read back as they were sent: texts, names and times verbatim.
         chat = read("threads", chat_thread()["external_id"])
         assert chat["channel"] == "release"
-        assert [m["text"] for m in chat["items"]] == [
-            m["text"] for m in chat_thread()["payload"]["items"]
+        assert [m["text"] for m in chat["messages"]] == [
+            m["text"] for m in chat_thread()["payload"]["messages"]
         ]
-        assert chat["items"][1]["mentions"] == ["Lev Primerov"]
+        assert chat["messages"][1]["mentions"] == ["Lev Primerov"]
         mail_back = read("threads", mail["external_id"])
         assert mail_back["title"] == "Retention of the archive bucket"
-        sent = mail["payload"]["items"]
-        assert [(m["author"], m["recipients"], m["cc"], m["text"]) for m in mail_back["items"]] == [
-            (m["author"], m["recipients"], m["cc"], m["text"]) for m in sent
-        ]
+        sent = mail["payload"]["messages"]
+        assert [
+            (m["author"], m["recipients"], m["cc"], m["text"]) for m in mail_back["messages"]
+        ] == [(m["author"], m["recipients"], m["cc"], m["text"]) for m in sent]
         notes = read("meetings", meeting["external_id"], include_transcript="true")
         assert notes["title"] == "Platform weekly"
         assert notes["participants"] == meeting["payload"]["participants"]
@@ -252,7 +260,7 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         updated = ok(push(edited))
         assert "stored 1 (inserted 0, updated 1, revived 0), deleted 0, unchanged 0" in updated.out
         chat = read("threads", chat_thread()["external_id"])
-        assert [m["text"] for m in chat["items"]] == [
+        assert [m["text"] for m in chat["messages"]] == [
             "Выпускаем 2.4 в четверг или ждём исправления экспорта?",
             "Ждём исправления, выпускаем в понедельник.",
             "Agreed, Monday.",
@@ -279,7 +287,9 @@ def test_from_the_cli_records_of_every_kind_are_pushed_read_back_and_updated(
         guide = ok(push("--json", str(EXAMPLES / "thread.json")))
         summary = json.loads(guide.out)
         assert (summary["stream"], summary["counts"]["inserted"]) == ("chat/platform", 1)
-        assert len(summary["items"]) == 1
+        assert len(summary["runs"]) == 1
         assert summary["rejected"] == []
+        (pushed,) = summary["ids"]
+        assert pushed["id"] == record_id(inbox, pushed["kind"], pushed["external_id"])
         monkeypatch.setenv("MEMINI_TOKEN_FILE", str(admin_file))
         assert "chat/platform" in ok(cli("streams", "acme", "inbox")).out

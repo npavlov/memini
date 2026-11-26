@@ -135,7 +135,7 @@ async def authors(env: Env) -> dict[str, list[str]]:
         env.target.source_id,
     )
     return {
-        external_id: [m["author"] for m in json.loads(payload)["items"]]
+        external_id: [m["author"] for m in json.loads(payload)["messages"]]
         for external_id, payload in found
     }
 
@@ -210,7 +210,7 @@ async def test_responses_are_stored_redacted_and_hashed(env: Env) -> None:
     )
     result = json.loads(detail)
     assert result["isError"] is False
-    assert json.loads(result["content"][0]["text"])["items"][1]["text"] == "Friday works for me."
+    assert json.loads(result["content"][0]["text"])["messages"][1]["text"] == "Friday works for me."
     assert (
         await scalar(
             env.db, "SELECT count(*) FROM raw_window WHERE parsed_at IS NOT NULL AND complete"

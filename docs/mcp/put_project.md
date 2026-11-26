@@ -28,7 +28,7 @@ Send these parameters to `tools/call`.
     "services": [
       {
         "name": "harbour-code",
-        "repository": "harbour-code",
+        "source": "harbour-code",
         "description": "Berth holds and their rules."
       }
     ],
@@ -72,7 +72,7 @@ A service of the example that calls the berth API of a service in another projec
 ```json
 {
   "name": "harbour-code",
-  "repository": "harbour-code",
+  "source": "harbour-code",
   "uses": [
     {
       "project": "tugs",

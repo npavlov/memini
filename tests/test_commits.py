@@ -303,12 +303,12 @@ def test_the_bounds_come_from_the_settings() -> None:
             CommitsTimeoutError(2.5),
             "commits_timeout",
             "The history walk was stopped after 2.5 s (git_log_timeout); narrow it with"
-            " repositories, paths, since or until.",
+            " sources, paths, since or until.",
         ),
         (
             CommitsTooLargeError(),
             "commits_too_large",
-            "The history walk printed more than the service reads; narrow it with repositories,"
+            "The history walk printed more than the service reads; narrow it with sources,"
             " paths, since or until.",
         ),
     ],

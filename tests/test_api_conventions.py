@@ -44,8 +44,24 @@ RETIRED = {
     "unassigned_repositories",
 }
 RETIRED_FIELDS = RETIRED - {"person", "author", "item_id"}
-# The CLI takes a filter as a flag in the singular that repeats (--person a --person b).
-RETIRED_OPTIONS = RETIRED - {"person"}
+RETIRED_OPTIONS = RETIRED
+# Tools that write: the CLI has them as admin commands grouped by noun (memini decision record),
+# or not at all (put_document and put_project are for agents; memini push sends records).
+WRITE_TOOLS = {
+    "put_document",
+    "put_project",
+    "record_decision",
+    "supersede_decision",
+    "close_decision",
+    "retract_decision",
+}
+# Options a read command has beyond its tool's arguments: how the answer prints, and the gate.
+CLI_ONLY_OPTIONS = {"help", "json", "gate"}
+# Tool arguments a read command leaves out, and why: get_domain takes include_sensitive in MCP
+# only, where nothing reads it; its HTTP route has no such parameter.
+CLI_LEFT_OUT = {("get_domain", "include_sensitive")}
+# Commands the CLI had before the read commands took the tools' names; none may come back.
+RETIRED_COMMANDS = {"meetings", "messages", "read", "symbol", "decisions", "catalog", "commits"}
 # Fields that hold a list of things but are data, not filters or answers: named as they are.
 DATA_LISTS = {"evidence", "supersedes", "participants", "paths"}
 # Where a word is the data of a document, not a filter: put_document's own text.
@@ -166,3 +182,45 @@ def test_the_cli_follows_the_convention() -> None:
         if not action.option_strings and action.dest.endswith("_id"):
             problems.append(f"memini {command}: <{action.dest}> names its object as id")
     assert not problems, "\n".join(problems)
+
+
+def _top_level(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    for action in parser._actions:  # pyright: ignore[reportPrivateUsage]
+        found: object = getattr(action, "choices", None)
+        if isinstance(found, dict) and action.nargs == argparse.PARSER:
+            return cast("dict[str, argparse.ArgumentParser]", found)
+    raise AssertionError("memini has no commands")
+
+
+@pytest.mark.parametrize(
+    "tool", [tool for tool in TOOLS if tool.name not in WRITE_TOOLS], ids=lambda tool: tool.name
+)
+def test_a_read_tool_is_a_cli_command_with_its_arguments(tool: Any) -> None:
+    """``memini search-code`` is ``search_code``: the tool's name and its arguments, with
+    dashes. An argument that names the object is positional; every other one is an option."""
+    command = tool.name.replace("_", "-")
+    commands = _top_level(build_parser())
+    assert command in commands, f"no memini {command}"
+    arguments = set(_properties(tool.arguments.model_json_schema()))
+    taken: set[str] = set()
+    for action in commands[command]._actions:  # pyright: ignore[reportPrivateUsage]
+        if action.dest in CLI_ONLY_OPTIONS:
+            continue
+        assert action.dest in arguments, f"memini {command}: {action.dest} is no argument"
+        taken.add(action.dest)
+        for option in action.option_strings:
+            spelled = option.removeprefix("--no-").removeprefix("--").replace("-", "_")
+            assert spelled == action.dest, f"memini {command}: {option} for {action.dest}"
+    left_out = {name for name in arguments - taken if (tool.name, name) not in CLI_LEFT_OUT}
+    assert not left_out, f"memini {command} lacks {sorted(left_out)}"
+
+
+def test_the_cli_has_no_retired_commands() -> None:
+    commands = set(_top_level(build_parser()))
+    assert not commands & RETIRED_COMMANDS, sorted(commands & RETIRED_COMMANDS)
+    tools = {tool.name.replace("_", "-") for tool in TOOLS}
+    # A command named like a tool is that tool; any other command is an admin noun.
+    for command in commands:
+        verb = command.split("-", 1)[0]
+        if verb in VERBS and "-" in command:
+            assert command in tools, f"memini {command} is named like a tool but is none"

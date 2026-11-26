@@ -299,7 +299,7 @@ async def test_http_scopes(client: httpx2.AsyncClient, db: Conn, world: World) -
     reader = await new_token(db, world, "read")
     response = await client.get("/v1/workspaces", headers=bearer(reader))
     assert response.status_code == 200
-    assert [w["name"] for w in response.json()["workspaces"]] == ["alpha", "beta"]
+    assert [w["name"] for w in response.json()["items"]] == ["alpha", "beta"]
 
 
 async def test_a_token_limited_to_a_workspace_cannot_read_another(
@@ -309,9 +309,7 @@ async def test_a_token_limited_to_a_workspace_cannot_read_another(
 
     response = await client.get("/v1/workspaces", headers=bearer(limited))
     assert response.status_code == 200
-    assert [(w["id"], w["name"]) for w in response.json()["workspaces"]] == [
-        (str(world.alpha), "alpha")
-    ]
+    assert [(w["id"], w["name"]) for w in response.json()["items"]] == [(str(world.alpha), "alpha")]
 
     assert (await client.get("/v1/workspaces/alpha", headers=bearer(limited))).status_code == 200
     other = await client.get("/v1/workspaces/beta", headers=bearer(limited))
@@ -362,7 +360,7 @@ async def test_the_read_path_returns_only_what_the_filter_allows(
 
     response = await client.get("/v1/workspaces", headers=bearer(unlimited))
     assert response.status_code == 200
-    assert response.json() == {"workspaces": []}
+    assert response.json() == {"items": []}
     response = await client.get("/v1/workspaces/alpha", headers=bearer(unlimited))
     assert response.status_code == 404
 
@@ -463,25 +461,24 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
     )
     scoped_metadata = {
         "/v1/tokens",
-        "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{run_id}",
-        "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{run_id}/next",
+        "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{id}",
+        "/v1/workspaces/{workspace}/sources/{source}/agent-runs/{id}/next",
         # An admin listing of marked records: names only, through the admin's write access.
         "/v1/workspaces/{workspace}/records/sensitive",
     }
     path_values = {
         "workspace": "alpha",
         "source": "source",
-        "record_id": "0" * 64,
         "path": "file.py",
-        "external_id": "external",
         "project": "sample",
         "domain": "sample",
-        **dict.fromkeys(("run_id", "person_id", "item_id"), str(SOME_TOKEN_ID)),
+        **dict.fromkeys(("id", "person_id"), str(SOME_TOKEN_ID)),
     }
+    # A record is named by its own id, which is not a UUID.
+    record_paths = {"/v1/meetings/{id}", "/v1/threads/{id}"}
     query_values = {
         "/v1/search": {"query": "sample", "mode": "lexical"},
         "/v1/search/code": {"query": "sample", "mode": "exact"},
-        "/v1/symbols": {"name": "sample"},
         "/v1/workspaces/{workspace}/persons/lookup": {"kind": "display_name", "value": "Sample"},
     }
     mutations = {
@@ -541,7 +538,8 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
                 )
                 continue
             observed.clear()
-            response = await http.get(path.format_map(path_values), params=query_values.get(path))
+            values = {**path_values, "id": "0" * 64} if path in record_paths else path_values
+            response = await http.get(path.format_map(values), params=query_values.get(path))
             assert response.status_code in {200, 404}, (path, response.text)
             if path in no_rows:
                 assert (response.status_code, observed) == (200, []), path
@@ -553,15 +551,14 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
         "status": {},
         "search": query_values["/v1/search"],
         "search_code": query_values["/v1/search/code"],
-        "get_file": {"workspace": "alpha", "repository": "source"},
-        "get_symbol": {"name": "sample"},
+        "get_file": {"workspace": "alpha", "source": "source"},
         "list_commits": {},
         "list_meetings": {},
         "list_messages": {},
-        "get_meeting": {"record_id": "0" * 64},
-        "get_thread": {"record_id": "0" * 64},
+        "get_meeting": {"id": "0" * 64},
+        "get_thread": {"id": "0" * 64},
         "list_decisions": {},
-        "get_decision": {"item_id": str(SOME_TOKEN_ID)},
+        "get_decision": {"id": str(SOME_TOKEN_ID)},
         "get_catalog": {"workspace": "alpha"},
         "get_project": {"workspace": "alpha", "project": "sample"},
         "get_domain": {"workspace": "alpha", "project": "sample", "domain": "sample"},
@@ -577,14 +574,19 @@ async def test_all_http_and_mcp_reads_apply_the_callers_filter(
     }
     assert {tool.name for tool in TOOLS if not tool.read_only} == writes
     assert {tool.name for tool in TOOLS if tool.read_only} == set(arguments)
-    for tool in TOOLS:
-        if tool.name in writes:
-            continue
+    # A definition is found with search_code in its symbol modes.
+    calls = [(tool, arguments[tool.name]) for tool in TOOLS if tool.name not in writes]
+    calls += [
+        (tool, {"query": "sample", "mode": mode})
+        for tool in TOOLS
+        if tool.name == "search_code"
+        for mode in ("symbol", "symbol_prefix")
+    ]
+    for tool, given in calls:
         assert tool.scope == "read"
         observed.clear()
         result = await tool.call(
-            ToolCall(principal=principal, pool=pool, services=app.state.services),
-            arguments[tool.name],
+            ToolCall(principal=principal, pool=pool, services=app.state.services), given
         )
         if tool.name in no_rows_tools:
             assert (result.is_error, observed) == (False, []), tool.name

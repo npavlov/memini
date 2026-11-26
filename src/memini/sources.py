@@ -888,8 +888,8 @@ async def create_git_source(
     name = _check_name(new.name)
     config = GitConfig(
         location=check_location(new.location, options),
-        include=check_patterns("include", new.include),
-        exclude=check_patterns("exclude", new.exclude),
+        include=check_patterns("include_paths", new.include),
+        exclude=check_patterns("exclude_paths", new.exclude),
         builtin_excludes=_check_flag("builtin_excludes", new.builtin_excludes),
     )
     refs = check_refs(new.refs)
@@ -1113,10 +1113,14 @@ async def update_source(
     refs = UNSET if isinstance(changes.refs, Unset) else check_refs(changes.refs)
     schedule = UNSET if isinstance(changes.schedule, Unset) else check_schedule(changes.schedule)
     include = (
-        UNSET if isinstance(changes.include, Unset) else check_patterns("include", changes.include)
+        UNSET
+        if isinstance(changes.include, Unset)
+        else check_patterns("include_paths", changes.include)
     )
     exclude = (
-        UNSET if isinstance(changes.exclude, Unset) else check_patterns("exclude", changes.exclude)
+        UNSET
+        if isinstance(changes.exclude, Unset)
+        else check_patterns("exclude_paths", changes.exclude)
     )
     builtin_excludes = (
         UNSET

@@ -309,8 +309,18 @@ def test_no_command_has_an_option_that_takes_a_token(capsys: pytest.CaptureFixtu
         ("token", "list"),
         ("token", "revoke"),
         ("search",),
-        ("meetings",),
-        ("messages",),
+        ("search-code",),
+        ("get-file",),
+        ("list-commits",),
+        ("list-messages",),
+        ("get-thread",),
+        ("list-meetings",),
+        ("get-meeting",),
+        ("list-decisions",),
+        ("get-decision",),
+        ("get-catalog",),
+        ("get-project",),
+        ("get-domain",),
         ("serve",),
         ("migrate",),
         ("bootstrap",),
@@ -1113,7 +1123,7 @@ def test_search_prints_hits_with_escaped_snippets(
     }
     service.answer(ok({"items": [hit, {**hit, "snippet": "short"}]}))
 
-    result = cli("search", "--code", "lamp", "--mode", "exact", "--language", "python")
+    result = cli("search-code", "lamp", "--mode", "exact", "--languages", "python")
 
     assert service.last.url.path == "/v1/search/code"
     assert service.last.url.params.multi_items() == [
@@ -1147,7 +1157,7 @@ def test_search_prints_the_link_of_a_hit_inside_a_thread(
     }
     service.answer(ok({"items": [hit]}))
 
-    result = cli("search", "hose", "--kind", "thread")
+    result = cli("search", "hose", "--kinds", "thread")
 
     assert result.out.splitlines() == [
         "chat:greenhouse/1#msg-2  (thread, acme/chat, 2026-03-03T18:01Z)",
@@ -1159,10 +1169,10 @@ def test_search_prints_the_link_of_a_hit_inside_a_thread(
 @pytest.mark.parametrize(
     ("argv", "complaint"),
     [
-        (("search", "lamp", "--mode", "exact"), "--mode exact is for search --code"),
-        (("search", "--code", "lamp", "--mode", "hybrid"), "--mode hybrid is for search"),
-        (("search", "lamp", "--path", "src/**"), "--path is for search --code only"),
-        (("search", "--code", "lamp", "--kind", "thread"), "--kind is for search only"),
+        (("search", "lamp", "--mode", "exact"), "invalid choice: 'exact'"),
+        (("search-code", "lamp", "--mode", "hybrid"), "invalid choice: 'hybrid'"),
+        (("search", "lamp", "--paths", "src/**"), "unrecognized arguments: --paths"),
+        (("search-code", "lamp", "--kinds", "thread"), "unrecognized arguments: --kinds"),
     ],
 )
 def test_search_refuses_options_of_the_other_tool(
@@ -1175,10 +1185,26 @@ def test_search_refuses_options_of_the_other_tool(
     assert service.requests == []
 
 
-# --- meetings, messages --------------------------------------------------------------------------
+def test_search_code_sends_case_sensitive_false_only_when_asked(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok({"items": []}))
+
+    cli("search-code", "Lamp", "--mode", "exact", "--no-case-sensitive", "--paths", "src/**")
+
+    assert service.last.url.params.multi_items() == [
+        ("query", "Lamp"),
+        ("limit", "10"),
+        ("mode", "exact"),
+        ("paths", "src/**"),
+        ("case_sensitive", "false"),
+    ]
 
 
-def test_meetings_prints_each_meeting_with_its_passage(
+# --- list-meetings, list-messages -------------------------------------------------------------
+
+
+def test_list_meetings_prints_each_meeting_with_its_passage(
     cli: Callable[..., Run], service: FakeService
 ) -> None:
     meeting: Json = {
@@ -1196,7 +1222,15 @@ def test_meetings_prints_each_meeting_with_its_passage(
     }
     service.answer(ok({"persons": [], "items": [meeting]}))
 
-    result = cli("meetings", "release", "--since", "2026-03-01T00:00:00Z", "--source", "notes")
+    result = cli(
+        "list-meetings",
+        "--query",
+        "release",
+        "--since",
+        "2026-03-01T00:00:00Z",
+        "--sources",
+        "notes",
+    )
 
     assert service.last.url.path == "/v1/meetings"
     assert service.last.url.params.multi_items() == [
@@ -1213,7 +1247,9 @@ def test_meetings_prints_each_meeting_with_its_passage(
     ]
 
 
-def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: FakeService) -> None:
+def test_list_messages_takes_roles_and_persons(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
     each: Json = {
         "workspace": "acme",
         "source": "chat",
@@ -1230,7 +1266,9 @@ def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: Fak
     }
     service.answer(ok({"persons": [], "items": [each]}))
 
-    result = cli("messages", "--person", "bo@example.test", "--role", "author", "--limit", "5")
+    result = cli(
+        "list-messages", "--persons", "bo@example.test", "--roles", "author", "--limit", "5"
+    )
 
     assert service.last.url.path == "/v1/messages"
     assert service.last.url.params.multi_items() == [
@@ -1245,6 +1283,184 @@ def test_messages_takes_roles_and_a_person(cli: Callable[..., Run], service: Fak
         "    Bought the hose.",
         "    …",
     ]
+
+
+# --- get-thread, get-meeting, get-file, list-commits, decisions, catalog ------------------------
+
+
+RECORD_ID = "a" * 64
+
+
+def test_get_thread_prints_every_message(cli: Callable[..., Run], service: FakeService) -> None:
+    service.answer(
+        ok(
+            {
+                "id": RECORD_ID,
+                "workspace": "acme",
+                "source": "chat",
+                "locator": "chat:general/1",
+                "occurred_at": "2026-03-02T09:30:00Z",
+                "link": None,
+                "title": None,
+                "channel": "general",
+                "messages": [
+                    {
+                        "author": "U02BO",
+                        "occurred_at": "2026-03-02T09:30:00Z",
+                        "anchor": "msg-m1",
+                        "text": "Bought the hose.\x1b[2J",
+                        "truncated": False,
+                    }
+                ],
+            }
+        )
+    )
+
+    result = cli("get-thread", RECORD_ID)
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == f"/v1/threads/{RECORD_ID}"
+    assert "U02BO, 2026-03-02T09:30Z  (msg-m1)" in result.out
+    assert "    Bought the hose.\\x1b[2J" in result.out
+
+
+def test_get_meeting_asks_for_the_transcript(cli: Callable[..., Run], service: FakeService) -> None:
+    service.answer(ok({"id": RECORD_ID, "title": "Planning", "transcript": []}))
+
+    result = cli("get-meeting", RECORD_ID, "--include-transcript")
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == f"/v1/meetings/{RECORD_ID}"
+    assert service.last.url.params.multi_items() == [("include_transcript", "true")]
+
+
+def test_get_file_takes_the_only_workspace_and_prints_numbered_lines(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(
+        ok({"items": [{"name": "acme"}]}),
+        ok(
+            {
+                "locator": "shop@3f2a1b2:src/lamp.py#L3-L4",
+                "kind": "file",
+                "start_line": 3,
+                "content": "def on():\n    pass\n",
+            }
+        ),
+    )
+
+    result = cli("get-file", "shop", "src/lamp.py", "--start-line", "3", "--end-line", "4")
+
+    assert result.code == EXIT_OK
+    assert [request.url.path for request in service.requests] == [
+        "/v1/workspaces",
+        "/v1/workspaces/acme/sources/shop/files/src/lamp.py",
+    ]
+    assert service.last.url.params.multi_items() == [("start_line", "3"), ("end_line", "4")]
+    assert result.out.splitlines() == ["     3  def on():", "     4      pass"]
+
+
+def test_get_file_asks_for_the_workspace_when_the_token_reads_more(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok({"items": [{"name": "acme"}, {"name": "beta"}]}))
+
+    result = cli("get-file", "shop", "README.md")
+
+    assert result.code == EXIT_USAGE
+    assert "--workspace" in result.err
+    assert len(service.requests) == 1
+
+
+def test_list_commits_sends_the_tools_arguments(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(
+        ok(
+            {
+                "items": [
+                    {
+                        "locator": "shop@3f2a1b2",
+                        "occurred_at": "2026-03-02T09:30:00Z",
+                        "author": {"name": "Bo Example", "email": "bo@example.test"},
+                        "subject": "Fix the lamp",
+                        "changes": [{"status": "M", "path": "src/lamp.py"}],
+                        "changes_total": 1,
+                    }
+                ],
+                "next_cursor": "abc",
+            }
+        )
+    )
+
+    result = cli("list-commits", "--sources", "shop", "--persons", "me", "--query", "lamp")
+
+    assert service.last.url.path == "/v1/commits"
+    assert service.last.url.params.multi_items() == [
+        ("sources", "shop"),
+        ("persons", "me"),
+        ("query", "lamp"),
+        ("limit", "20"),
+    ]
+    assert result.out.splitlines() == [
+        "shop@3f2a1b2  (2026-03-02T09:30Z, Bo Example <bo@example.test>)",
+        "  Fix the lamp",
+        "    M  src/lamp.py",
+    ]
+    assert "--cursor abc" in result.err
+
+
+def test_list_decisions_sends_the_tools_arguments(
+    cli: Callable[..., Run], service: FakeService
+) -> None:
+    service.answer(ok({"items": [], "left_out": 0}))
+
+    result = cli(
+        "list-decisions", "--persons", "me", "--since", "2026-03-01T00:00:00Z", "--history"
+    )
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == "/v1/decisions"
+    assert service.last.url.params.multi_items() == [
+        ("persons", "me"),
+        ("since", "2026-03-01T00:00:00+00:00"),
+        ("history", "true"),
+        ("limit", "50"),
+    ]
+
+
+def test_get_decision_takes_its_id(cli: Callable[..., Run], service: FakeService) -> None:
+    item_id = "0193a1b2-0000-7000-8000-0000000000d1"
+    service.answer(ok({"item": {"id": item_id}, "chain": []}))
+
+    result = cli("get-decision", item_id, "--json")
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == f"/v1/decisions/{item_id}"
+
+
+@pytest.mark.parametrize(
+    ("argv", "path"),
+    [
+        (("get-catalog", "--workspace", "acme"), "/v1/workspaces/acme/catalog"),
+        (("get-project", "harbor", "--workspace", "acme"), "/v1/workspaces/acme/projects/harbor"),
+        (
+            ("get-domain", "harbor", "fees/berth", "--workspace", "acme"),
+            "/v1/workspaces/acme/projects/harbor/domains/fees/berth",
+        ),
+        (("catalog-guide",), "/v1/catalog/guide"),
+    ],
+)
+def test_the_catalog_commands_print_the_answer(
+    cli: Callable[..., Run], service: FakeService, argv: tuple[str, ...], path: str
+) -> None:
+    service.answer(ok({"projects": []}))
+
+    result = cli(*argv)
+
+    assert result.code == EXIT_OK
+    assert service.last.url.path == path
+    assert json.loads(result.out) == {"projects": []}
 
 
 # --- token ---------------------------------------------------------------------------------------

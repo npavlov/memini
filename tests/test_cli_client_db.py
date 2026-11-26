@@ -202,8 +202,8 @@ def test_from_the_cli_two_workspaces_each_with_a_repository_synced_and_reported(
         report = ok(cli("run", run_id))
         report_json = json.loads(ok(cli("run", run_id, "--json")).out)
         streams = ok(cli("streams", "alpha", "shop"))
-        found = ok(cli("search", "--code", "switch_on", "--mode", "exact"))
-        everywhere = ok(cli("search", "lamps", "--workspace", "alpha"))
+        found = ok(cli("search-code", "switch_on", "--mode", "exact"))
+        everywhere = ok(cli("search", "lamps", "--workspaces", "alpha"))
 
         # A read token limited to beta: it sees beta's runs, not alpha's, and changes nothing.
         reader = ok(cli("token", "create", "--scope", "read", "--workspace", "beta")).out.strip()
@@ -220,7 +220,7 @@ def test_from_the_cli_two_workspaces_each_with_a_repository_synced_and_reported(
     ]
     assert sources.out.splitlines()[1].split()[:6] == [
         "blog",
-        "git",
+        "repository",
         "refs/heads/main",
         "every",
         "1d",
